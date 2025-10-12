@@ -25,9 +25,9 @@ const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
       <ul id="icalTokens"></ul>
     </section>
     <script>
-      const token = localStorage.getItem('api_token') || '';
+  const token = localStorage.getItem('api_token') || '';
       const headers = token ? { 'Authorization': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-      const apiBase = "{apiBase}";
+  const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
       async function loadApiKeys(){
         const res = await fetch(`${apiBase}/apikeys`, { headers });
         const data = await res.json();
