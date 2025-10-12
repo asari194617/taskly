@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { getApiBase } from "@/lib/api";
+import { gql } from "@/lib/graphql";
 
 export default function SettingsBasic() {
   const [displayName, setDisplayName] = React.useState("");
@@ -26,13 +27,10 @@ export default function SettingsBasic() {
   React.useEffect(() => {
     async function fetchMe() {
       try {
-        const res = await fetch(`${getApiBase()}/users/me`, {
-          headers: { Authorization: token },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setDisplayName(data.display_name || "");
-        }
+        const data = await gql<{ me: { display_name?: string } }>(
+          `query{ me{ display_name } }`
+        );
+        setDisplayName(data.me.display_name || "");
       } catch {}
     }
     if (token) fetchMe();
@@ -41,21 +39,17 @@ export default function SettingsBasic() {
   async function save() {
     setLoading(true);
     try {
-      const res = await fetch(`${getApiBase()}/users/me`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: token },
-        body: JSON.stringify({ display_name: displayName }),
+      await gql<{ updateMe: boolean }>(
+        `mutation($name:String!){ updateMe(display_name:$name) }`,
+        { name: displayName }
+      );
+      toast({ title: "保存しました" });
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "保存に失敗しました",
+        description: e?.message,
       });
-      if (res.ok) {
-        toast({ title: "保存しました" });
-      } else {
-        const msg = await res.text();
-        toast({
-          variant: "destructive",
-          title: "保存に失敗しました",
-          description: msg || undefined,
-        });
-      }
     } finally {
       setLoading(false);
     }

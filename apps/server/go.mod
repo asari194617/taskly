@@ -25,6 +25,7 @@ require (
 	github.com/go-webauthn/x v0.1.8 // indirect
 	github.com/google/go-tpm v0.9.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/graphql-go/graphql v0.8.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect

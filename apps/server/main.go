@@ -29,6 +29,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/golang-jwt/jwt/v5"
+	graphql "github.com/graphql-go/graphql"
 	"github.com/pquerna/otp/totp"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
@@ -325,6 +326,108 @@ func main() {
 	}))
 
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
+
+	// GraphQL endpoint for application <-> application server traffic
+	// Keep REST for API key based integrations. Minimal initial schema provided.
+	meType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Me",
+		Fields: graphql.Fields{
+			"id":           &graphql.Field{Type: graphql.Int},
+			"email":        &graphql.Field{Type: graphql.String},
+			"display_name": &graphql.Field{Type: graphql.String},
+			"is_admin":     &graphql.Field{Type: graphql.Boolean},
+			"is_manager":   &graphql.Field{Type: graphql.Boolean},
+		},
+	})
+	rootQuery := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Query",
+		Fields: graphql.Fields{
+			"me": &graphql.Field{
+				Type: meType,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					ctx := p.Context
+					// Fiber context passed via Context; fall back to global if unavailable
+					if c, ok := ctx.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) && !userFromAPIKey(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						var roles []RoleUser
+						_ = DB.Where("user_id = ?", u.ID).Find(&roles).Error
+						isAdmin := false
+						isManager := false
+						for _, r := range roles {
+							if r.Role == "admin" {
+								isAdmin = true
+							}
+							if r.Role == "manager" {
+								isManager = true
+							}
+						}
+						return map[string]any{
+							"id":           u.ID,
+							"email":        u.Email,
+							"display_name": u.DisplayName,
+							"is_admin":     isAdmin,
+							"is_manager":   isManager,
+						}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+		},
+	})
+	rootMutation := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Mutation",
+		Fields: graphql.Fields{
+			"updateMe": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"display_name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					displayName, _ := p.Args["display_name"].(string)
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) && !userFromAPIKey(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						dn := strings.TrimSpace(displayName)
+						if len(dn) > 255 {
+							dn = dn[:255]
+						}
+						if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("display_name", dn).Error; err != nil {
+							return false, err
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+		},
+	})
+	schema, err := graphql.NewSchema(graphql.SchemaConfig{Query: rootQuery, Mutation: rootMutation})
+	if err == nil {
+		app.Post("/graphql", func(c *fiber.Ctx) error {
+			// Parse GraphQL request: { query, variables }
+			var body struct {
+				Query     string         `json:"query"`
+				Variables map[string]any `json:"variables"`
+			}
+			_ = c.BodyParser(&body)
+			params := graphql.Params{
+				Schema:         schema,
+				RequestString:  body.Query,
+				VariableValues: body.Variables,
+				Context:        context.WithValue(context.Background(), "fiberCtx", c),
+			}
+			result := graphql.Do(params)
+			if len(result.Errors) > 0 {
+				return c.Status(400).JSON(result)
+			}
+			return c.JSON(result)
+		})
+	}
 
 	// Day shift scheduler (08:30 local) – minimal implementation
 	if strings.ToLower(env("DAYSHIFT_ENABLED", "true")) == "true" {
@@ -623,18 +726,15 @@ func main() {
 	}
 	audit := func(c *fiber.Ctx) error {
 		err := c.Next()
-		hashed := ""
-		if tok, ok := c.Locals("token").(string); ok && tok != "" {
-			hashed = sha256Hex([]byte(tok))
-		}
+		// Per policy: record ONLY REST requests authenticated with API Key
 		if apiKey, ok := c.Locals("apiKey").(string); ok && apiKey != "" {
-			hashed = sha256Hex([]byte(apiKey))
+			hashed := sha256Hex([]byte(apiKey))
+			var uid *uint
+			if u, ok := c.Locals("user").(*User); ok {
+				uid = &u.ID
+			}
+			_ = DB.Create(&ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
 		}
-		var uid *uint
-		if u, ok := c.Locals("user").(*User); ok {
-			uid = &u.ID
-		}
-		_ = DB.Create(&ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
 		return err
 	}
 
@@ -1838,7 +1938,7 @@ func main() {
 	})
 
 	port := env("API_PORT", "8080")
-	log.Printf("API listening on :%s", port)
+	log.Printf("Application Server listening on :%s", port)
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatal(err)
 	}

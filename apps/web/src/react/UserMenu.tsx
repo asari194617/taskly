@@ -15,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 import { getApiBase } from "@/lib/api";
+import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 
 type Me = { id: number; email: string; display_name?: string | null };
@@ -27,17 +28,14 @@ export default function UserMenu() {
       (typeof window !== "undefined" && localStorage.getItem("api_token")) ||
       "";
     if (!token) return;
-    fetch(`${getApiBase()}/users/me`, { headers: { Authorization: token } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setMe(data);
-      })
-      .catch(() => {
+    gql<{ me: Me }>(`query{ me{ id email display_name } }`)
+      .then((data) => setMe(data.me))
+      .catch(() =>
         toast({
           variant: "destructive",
           title: "ユーザー情報の取得に失敗しました",
-        });
-      });
+        })
+      );
   }, []);
 
   const logout = async () => {
