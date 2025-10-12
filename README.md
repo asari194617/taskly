@@ -1,2 +1,2 @@
 # taslky
-A simple-web task app
+A simple-web task app.
