@@ -1,0 +1,55 @@
+---
+import AdminGuard from "../../components/AdminGuard.astro";
+const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>User Management</title>
+  </head>
+  <body>
+    <AdminGuard />
+    <h1>Users</h1>
+    <input id="q" placeholder="Search email/display name" />
+    <button id="searchBtn">Search</button>
+    <table id="usersTbl"><thead><tr><th>ID</th><th>Email</th><th>Name</th><th>Roles</th><th>Blocked</th><th>Actions</th></tr></thead><tbody></tbody></table>
+    <script>
+      const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
+      const token = localStorage.getItem('api_token') || '';
+      const headers = token ? { 'Authorization': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+      async function load(){
+        const q = document.getElementById('q').value;
+        const res = await fetch(`${apiBase}/admin/users?q=${encodeURIComponent(q)}`, { headers });
+        const data = await res.json();
+        const tbody = document.querySelector('#usersTbl tbody');
+        tbody.innerHTML = '';
+        (data||[]).forEach(u => {
+          const tr = document.createElement('tr');
+          const roles = (u.roles||[]).join(', ');
+          tr.innerHTML = `<td>${u.id}</td><td>${u.email}</td><td>${u.display_name||''}</td><td>${roles}</td><td>${u.is_blocked? 'Yes':'No'}</td><td>
+            <button data-role="admin" data-add="${u.id}">Add Admin</button>
+            <button data-role="manager" data-add="${u.id}">Add Manager</button>
+            <button data-role="admin" data-del="${u.id}">Del Admin</button>
+            <button data-role="manager" data-del="${u.id}">Del Manager</button>
+            <button data-block="${u.id}">Block</button>
+            <button data-unblock="${u.id}">Unblock</button>
+          </td>`;
+          tbody.appendChild(tr);
+        });
+      }
+      document.getElementById('searchBtn').addEventListener('click', load);
+      document.getElementById('usersTbl').addEventListener('click', async (e) => {
+        const addId = e.target.getAttribute('data-add');
+        const delId = e.target.getAttribute('data-del');
+        const role = e.target.getAttribute('data-role');
+        const blk = e.target.getAttribute('data-block');
+        const unb = e.target.getAttribute('data-unblock');
+        if(addId && role){ await fetch(`${apiBase}/admin/users/${addId}/roles`, { method:'POST', headers, body: JSON.stringify({ role }) }); load(); }
+        if(delId && role){ await fetch(`${apiBase}/admin/users/${delId}/roles/${role}`, { method:'DELETE', headers }); load(); }
+        if(blk){ const reason = prompt('Reason (optional)'); await fetch(`${apiBase}/admin/users/${blk}/block`, { method:'POST', headers, body: JSON.stringify({ reason }) }); load(); }
+        if(unb){ await fetch(`${apiBase}/admin/users/${unb}/unblock`, { method:'POST', headers }); load(); }
+      });
+      load();
+    </script>
+  </body>
+</html>

@@ -72,5 +72,11 @@ CREATE TABLE IF NOT EXISTS tasks_teams_logs (
   teams_message_id VARCHAR(255) NULL,
   teams_conversation_id VARCHAR(255) NULL,
   is_success BOOLEAN NOT NULL DEFAULT FALSE,
+  callback_url TEXT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  last_status VARCHAR(32) NULL,
+  last_error TEXT NULL,
+  last_response_status INT NULL,
+  last_response_body TEXT NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -1,0 +1,19 @@
+---
+import AdminGuard from "../../components/AdminGuard.astro";
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Taskly Admin</title>
+  </head>
+  <body>
+    <AdminGuard />
+    <h1>Admin</h1>
+    <ul>
+      <li><a href="/admin/dayshift">Day Shift</a></li>
+      <li><a href="/admin/calendar">Business Calendar</a></li>
+      <li><a href="/admin/users">User Management</a></li>
+      <li><a href="/settings">Settings (Tokens)</a></li>
+    </ul>
+  </body>
+</html>

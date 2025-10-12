@@ -1,0 +1,13 @@
+---
+const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
+---
+<script>
+  (async () => {
+    const token = localStorage.getItem('api_token') || '';
+    if (!token) { location.href = '/login'; return; }
+    const res = await fetch("{apiBase}/users/me", { headers: { 'Authorization': token } });
+    if(!res.ok){ location.href = '/login'; return; }
+    const me = await res.json();
+    if(!(me && (me.is_admin || me.is_manager))){ alert('Forbidden'); location.href = '/'; }
+  })();
+</script>

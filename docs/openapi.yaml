@@ -13,7 +13,10 @@ tags:
   - name: users
   - name: tasks
   - name: integrations
+  - name: admin
   - name: ical
+  - name: dayshift
+  - name: calendar
 paths:
   /healthz:
     get:
@@ -57,6 +60,8 @@ paths:
                 code:
                   type: string
                 totp:
+                  type: string
+                recovery_code:
                   type: string
               required: [email]
       responses:
@@ -114,17 +119,90 @@ paths:
       responses:
         "200":
           description: User profile
+  /2fa/totp/setup:
+    post:
+      summary: Begin TOTP setup (returns secret and otpauth)
+      tags: [auth]
+      responses:
+        "200": { description: Setup info }
+  /2fa/totp/activate:
+    post:
+      summary: Activate TOTP after verifying code
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+              required: [code]
+      responses:
+        "204": { description: No content }
+  /2fa/totp/disable:
+    post:
+      summary: Disable TOTP for current user
+      tags: [auth]
+      responses:
+        "204": { description: No content }
+  /2fa/recovery/generate:
+    post:
+      summary: Generate recovery codes (replaces existing unused)
+      tags: [auth]
+      responses:
+        "200": { description: New codes returned }
+  /2fa/recovery/consume:
+    post:
+      summary: Consume a recovery code (login assistance)
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                code: { type: string }
+              required: [email, code]
+      responses:
+        "204": { description: Code consumed }
   /tasks:
     get:
-      summary: List tasks
+      summary: List tasks with search and cursor pagination
       tags: [tasks]
       parameters:
         - in: query
           name: q
           schema: { type: string }
+        - in: query
+          name: overdue
+          schema: { type: boolean }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: cursor_deadline
+          schema: { type: string, format: date-time }
+        - in: query
+          name: cursor_id
+          schema: { type: integer }
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+                  next_cursor:
+                    type: object
+                    additionalProperties:
+                      type: string
     post:
       summary: Create task
       tags: [tasks]
@@ -176,8 +254,39 @@ paths:
         "204": { description: Deleted }
   /integrations/teams/inbound:
     post:
-      summary: Inbound Teams email webhook (Power Automate)
+      summary: Inbound Teams webhook (Power Automate)
       tags: [integrations]
+      parameters:
+        - in: header
+          name: X-Teams-Secret
+          required: true
+          schema: { type: string }
+          description: Shared secret to authenticate inbound requests from Power Automate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                title: { type: string }
+                description: { type: string }
+                subject_id: { type: integer }
+                status_callback: { type: string }
+              required: [email, title, subject_id]
+      responses:
+        "202": { description: Enqueued }
+  /integrations/dayshift/inbound:
+    post:
+      summary: Inbound webhook to mark Day Shift unfulfilled when an email about 日直 is detected
+      tags: [integrations]
+      parameters:
+        - in: header
+          name: X-Taskly-Secret
+          required: true
+          schema: { type: string }
+          description: Shared secret for Day Shift inbound.
       requestBody:
         required: true
         content:
@@ -186,14 +295,138 @@ paths:
               type: object
               properties:
                 title: { type: string }
-                description: { type: string }
-              required: [title]
+                content: { type: string }
+                date:
+                  {
+                    type: string,
+                    format: date,
+                    description: Override target date; default is today,
+                  }
       responses:
         "202": { description: Accepted }
+  /admin/permissions:
+    get:
+      summary: List all permission overrides
+      tags: [admin]
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create a permission override
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: integer }
+                target: { type: string }
+                method: { type: string }
+                value: { type: string, nullable: true }
+              required: [user_id, target, method]
+      responses:
+        "201": { description: Created }
+  /admin/permissions/{id}:
+    delete:
+      summary: Delete a permission override
+      tags: [admin]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "204": { description: Deleted }
+  /admin/users:
+    get:
+      summary: List users with roles and block status
+      tags: [admin]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+      responses:
+        "200": { description: OK }
+  /admin/users/{id}/roles:
+    post:
+      summary: Grant a role to the user
+      tags: [admin]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [admin, manager] }
+              required: [role]
+      responses:
+        "201": { description: Granted }
+  /admin/users/{id}/roles/{role}:
+    delete:
+      summary: Revoke a role from the user
+      tags: [admin]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string, enum: [admin, manager] }
+      responses:
+        "204": { description: Revoked }
+  /admin/users/{id}/block:
+    post:
+      summary: Block a user (optional expiry)
+      tags: [admin]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, nullable: true }
+                expires_at: { type: string, format: date-time, nullable: true }
+      responses:
+        "201": { description: Blocked }
+  /admin/users/{id}/unblock:
+    post:
+      summary: Unblock a user
+      tags: [admin]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Unblocked }
   /integrations/teams/status:
     post:
       summary: Callback endpoint for Teams processing status
       tags: [integrations]
+      parameters:
+        - in: header
+          name: X-Signature
+          required: false
+          schema: { type: string }
+          description: HMAC-SHA256 signature of the body in the format `sha256=<hex>`. Required if signing is enabled.
       requestBody:
         required: true
         content:
@@ -207,6 +440,173 @@ paths:
                 conversation_id: { type: string }
       responses:
         "200": { description: OK }
+  /admin/dayshift/assignments:
+    get:
+      summary: List Day Shift assignments (recent)
+      tags: [admin, dayshift]
+      responses:
+        "200": { description: OK }
+  /admin/dayshift/rotate:
+    post:
+      summary: Rotate to next business day and assign pair
+      tags: [admin, dayshift]
+      responses:
+        "204": { description: No content }
+  /admin/dayshift/{date}/status:
+    post:
+      summary: Update assignment status for a date
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: date
+          required: true
+          schema: { type: string, format: date }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  { type: string, enum: [assigned, completed, unfulfilled] }
+                notes: { type: string, nullable: true }
+              required: [status]
+      responses:
+        "204": { description: No content }
+  /admin/dayshift/{date}/shift:
+    post:
+      summary: Shift assignment to next business day
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "204": { description: No content }
+  /admin/dayshift/cycles:
+    get:
+      summary: List cycles
+      tags: [admin, dayshift]
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create a cycle
+      tags: [admin, dayshift]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                begin_date: { type: string, format: date }
+                finish_date: { type: string, format: date }
+                description: { type: string }
+              required: [begin_date, finish_date, description]
+      responses:
+        "201": { description: Created }
+  /admin/dayshift/cycles/{id}:
+    delete:
+      summary: Delete a cycle
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: No content }
+  /admin/dayshift/cycles/{id}/pairs:
+    get:
+      summary: List explicit pairs for a cycle
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Add a pair to a cycle
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user1_id: { type: integer }
+                user2_id: { type: integer }
+                position: { type: integer, nullable: true }
+              required: [user1_id, user2_id]
+      responses:
+        "201": { description: Created }
+  /admin/dayshift/cycles/{id}/pairs/{pairId}:
+    delete:
+      summary: Delete a pair from a cycle
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: pairId
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: No content }
+  /admin/dayshift/cycles/{id}/pairs/{pairId}/move:
+    post:
+      summary: Change the order of a pair within the cycle
+      tags: [admin, dayshift]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: pairId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                position: { type: integer }
+              required: [position]
+      responses:
+        "200": { description: OK }
+  /admin/calendar/upsert-range:
+    post:
+      summary: Upsert business calendar for a date range
+      tags: [admin, calendar]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start: { type: string, format: date }
+                end: { type: string, format: date }
+                is_business_day: { type: boolean }
+                notes: { type: string, nullable: true }
+              required: [start, end, is_business_day]
+      responses:
+        "204": { description: No content }
   /ical/{token}.ics:
     get:
       summary: Get iCal feed for a user
@@ -223,8 +623,50 @@ paths:
             text/calendar:
               schema:
                 type: string
+  /ical/tokens:
+    get:
+      summary: List iCal tokens for current user
+      tags: [ical]
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create a new iCal token
+      tags: [ical]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+      responses:
+        "201": { description: Created }
+  /ical/tokens/{id}:
+    delete:
+      summary: Delete an iCal token
+      tags: [ical]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
 components:
   schemas:
+    Task:
+      type: object
+      properties:
+        id: { type: integer }
+        added_user_id: { type: integer }
+        title: { type: string }
+        subject_id: { type: integer }
+        description: { type: string, nullable: true }
+        is_require_hand_in: { type: boolean }
+        deadline: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     TaskInput:
       type: object
       properties:

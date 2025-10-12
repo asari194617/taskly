@@ -1,0 +1,72 @@
+---
+const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Settings</title>
+  </head>
+  <body>
+    <h1>Settings</h1>
+    <section>
+      <h2>API Keys</h2>
+      <form id="apiKeyForm">
+        <input name="description" placeholder="Description (optional)" />
+        <button type="submit">Create API Key</button>
+      </form>
+      <ul id="apiKeys"></ul>
+    </section>
+    <section>
+      <h2>iCal Tokens</h2>
+      <form id="icalForm">
+        <input name="description" placeholder="Description (optional)" />
+        <button type="submit">Create iCal Token</button>
+      </form>
+      <ul id="icalTokens"></ul>
+    </section>
+    <script>
+      const token = localStorage.getItem('api_token') || '';
+      const headers = token ? { 'Authorization': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+      const apiBase = "{apiBase}";
+      async function loadApiKeys(){
+        const res = await fetch(`${apiBase}/apikeys`, { headers });
+        const data = await res.json();
+        const ul = document.getElementById('apiKeys');
+        ul.innerHTML = '';
+        (data||[]).forEach(k => {
+          const li = document.createElement('li');
+          li.textContent = `#${k.id} — ${k.description||''} — valid=${k.is_valid}`;
+          ul.appendChild(li);
+        });
+      }
+      async function loadIcal(){
+        const res = await fetch(`${apiBase}/ical/tokens`, { headers });
+        const data = await res.json();
+        const ul = document.getElementById('icalTokens');
+        ul.innerHTML = '';
+        (data||[]).forEach(i => {
+          const li = document.createElement('li');
+          const a = document.createElement('a'); a.href = i.url; a.textContent = i.url; a.target = '_blank';
+          li.appendChild(document.createTextNode(`#${i.id} — `)); li.appendChild(a);
+          ul.appendChild(li);
+        });
+      }
+      document.getElementById('apiKeyForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const res = await fetch(`${apiBase}/apikeys`, { method:'POST', headers, body: JSON.stringify({ description: fd.get('description') || null }) });
+        const out = await res.json();
+        if(out && out.token){ alert(`API Key (store safely): ${out.token}`); }
+        await loadApiKeys();
+      });
+      document.getElementById('icalForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await fetch(`${apiBase}/ical/tokens`, { method:'POST', headers, body: JSON.stringify({ description: fd.get('description') || null }) });
+        await loadIcal();
+      });
+      loadApiKeys();
+      loadIcal();
+    </script>
+  </body>
+</html>
