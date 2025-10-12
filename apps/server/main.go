@@ -355,9 +355,9 @@ func main() {
 				Type: meType,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					ctx := p.Context
-					// Fiber context passed via Context; fall back to global if unavailable
+					// Fiber context passed via Context
 					if c, ok := ctx.Value("fiberCtx").(*fiber.Ctx); ok {
-						if !userFromSession(c) && !userFromAPIKey(c) {
+						if !userFromSession(c) { // GraphQLはセッション専用
 							return nil, fmt.Errorf("unauthorized")
 						}
 						u := c.Locals("user").(*User)
@@ -388,7 +388,7 @@ func main() {
 				Type: authSettingsType,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
-						if !userFromSession(c) && !userFromAPIKey(c) {
+						if !userFromSession(c) { // GraphQLはセッション専用
 							return nil, fmt.Errorf("unauthorized")
 						}
 						u := c.Locals("user").(*User)
@@ -407,6 +407,137 @@ func main() {
 					return nil, fmt.Errorf("context missing")
 				},
 			},
+			"tasks": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "TasksResult",
+					Fields: graphql.Fields{
+						"items": &graphql.Field{Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+							Name: "Task",
+							Fields: graphql.Fields{
+								"id":                 &graphql.Field{Type: graphql.Int},
+								"title":              &graphql.Field{Type: graphql.String},
+								"subject_id":         &graphql.Field{Type: graphql.Int},
+								"description":        &graphql.Field{Type: graphql.String},
+								"is_require_hand_in": &graphql.Field{Type: graphql.Boolean},
+								"deadline":           &graphql.Field{Type: graphql.String},
+								"created_at":         &graphql.Field{Type: graphql.String},
+								"updated_at":         &graphql.Field{Type: graphql.String},
+							},
+						}))},
+						"next_cursor": &graphql.Field{Type: graphql.NewObject(graphql.ObjectConfig{
+							Name: "TasksCursor",
+							Fields: graphql.Fields{
+								"cursor_deadline": &graphql.Field{Type: graphql.String},
+								"cursor_id":       &graphql.Field{Type: graphql.String},
+							},
+						})},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{
+					"limit":           &graphql.ArgumentConfig{Type: graphql.Int},
+					"overdue":         &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"q":               &graphql.ArgumentConfig{Type: graphql.String},
+					"cursor_deadline": &graphql.ArgumentConfig{Type: graphql.String},
+					"cursor_id":       &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) && !userFromAPIKey(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						// permission read tasks (default allow)
+						if okp, err := checkPermission(u.ID, "tasks", "read", nil); err != nil {
+							return nil, err
+						} else if !okp {
+							return nil, fmt.Errorf("forbidden")
+						}
+						overdue, _ := p.Args["overdue"].(bool)
+						qstr, _ := p.Args["q"].(string)
+						limit := 20
+						if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 100 {
+							limit = v
+						}
+						var cursorDeadline *time.Time
+						if s, _ := p.Args["cursor_deadline"].(string); s != "" {
+							if t, err := time.Parse(time.RFC3339, s); err == nil {
+								cursorDeadline = &t
+							}
+						}
+						var cursorID uint
+						if s, _ := p.Args["cursor_id"].(string); s != "" {
+							if v, err := strconv.Atoi(s); err == nil && v > 0 {
+								cursorID = uint(v)
+							}
+						}
+						dbq := DB.Model(&Task{})
+						now := time.Now()
+						if overdue {
+							dbq = dbq.Where("deadline IS NOT NULL AND deadline < ?", now)
+						} else {
+							dbq = dbq.Where("deadline IS NULL OR deadline >= ?", now)
+						}
+						if strings.TrimSpace(qstr) != "" {
+							like := "%" + strings.TrimSpace(qstr) + "%"
+							dbq = dbq.Where("title LIKE ? OR description LIKE ?", like, like)
+						}
+						if cursorDeadline != nil {
+							if overdue {
+								dbq = dbq.Where("(deadline < ?) OR (deadline = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
+							} else {
+								dbq = dbq.Where("(deadline > ?) OR (deadline = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
+							}
+						} else if cursorID != 0 {
+							if overdue {
+								dbq = dbq.Where("id < ?", cursorID)
+							} else {
+								dbq = dbq.Where("id > ?", cursorID)
+							}
+						}
+						if overdue {
+							dbq = dbq.Order("deadline DESC").Order("id DESC")
+						} else {
+							dbq = dbq.Order("CASE WHEN deadline IS NULL THEN 1 ELSE 0 END ASC").Order("deadline ASC").Order("id ASC")
+						}
+						var items []Task
+						if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
+							return nil, err
+						}
+						var nextCursor map[string]string
+						if len(items) > limit {
+							last := items[limit-1]
+							items = items[:limit]
+							if last.Deadline != nil {
+								nextCursor = map[string]string{
+									"cursor_deadline": last.Deadline.Format(time.RFC3339),
+									"cursor_id":       fmt.Sprintf("%d", last.ID),
+								}
+							} else {
+								nextCursor = map[string]string{"cursor_id": fmt.Sprintf("%d", last.ID)}
+							}
+						}
+						// serialize items with string dates
+						outItems := make([]map[string]any, 0, len(items))
+						for _, it := range items {
+							out := map[string]any{
+								"id":                 it.ID,
+								"title":              it.Title,
+								"subject_id":         it.SubjectID,
+								"description":        it.Description,
+								"is_require_hand_in": it.IsRequireHandIn,
+							}
+							if it.Deadline != nil {
+								out["deadline"] = it.Deadline.Format(time.RFC3339)
+							} else {
+								out["deadline"] = nil
+							}
+							outItems = append(outItems, out)
+						}
+						return map[string]any{"items": outItems, "next_cursor": nextCursor}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
 		},
 	})
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
@@ -420,7 +551,7 @@ func main() {
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					displayName, _ := p.Args["display_name"].(string)
 					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
-						if !userFromSession(c) && !userFromAPIKey(c) {
+						if !userFromSession(c) { // GraphQLはセッション専用
 							return false, fmt.Errorf("unauthorized")
 						}
 						u := c.Locals("user").(*User)
@@ -443,7 +574,7 @@ func main() {
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
-						if !userFromSession(c) && !userFromAPIKey(c) {
+						if !userFromSession(c) { // GraphQLはセッション専用
 							return false, fmt.Errorf("unauthorized")
 						}
 						u := c.Locals("user").(*User)
@@ -462,6 +593,211 @@ func main() {
 						if err := DB.Model(&User{}).Where("id = ?", fresh.ID).Update("email_code_allowed", val).Error; err != nil {
 							return false, err
 						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"logout": &graphql.Field{
+				Type: graphql.Boolean,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) { // セッション専用
+							return false, fmt.Errorf("unauthorized")
+						}
+						if tok, ok := c.Locals("token").(string); ok && tok != "" {
+							_ = RDB.Del(c.Context(), "session:"+tok).Err()
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"deleteMe": &graphql.Field{
+				Type: graphql.Boolean,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) { // セッション専用
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+							return false, err
+						}
+						if tok, ok := c.Locals("token").(string); ok && tok != "" {
+							_ = RDB.Del(c.Context(), "session:"+tok).Err()
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"totpSetup": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "TOTPSetup",
+					Fields: graphql.Fields{
+						"secret":  &graphql.Field{Type: graphql.String},
+						"otpauth": &graphql.Field{Type: graphql.String},
+					},
+				}),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						secret := generateBase32Secret()
+						key := fmt.Sprintf("totp-setup:%d", u.ID)
+						if err := RDB.Set(c.Context(), key, secret, 10*time.Minute).Err(); err != nil {
+							return nil, fmt.Errorf("server")
+						}
+						issuer := "Taskly"
+						label := fmt.Sprintf("%s:%s", issuer, u.Email)
+						otpauth := fmt.Sprintf("otpauth://totp/%s?secret=%s&issuer=%s", urlEncode(label), secret, urlEncode(issuer))
+						return map[string]any{"secret": secret, "otpauth": otpauth}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"totpActivate": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"code": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						code, _ := p.Args["code"].(string)
+						key := fmt.Sprintf("totp-setup:%d", u.ID)
+						secret, _ := RDB.Get(c.Context(), key).Result()
+						if secret == "" {
+							return false, fmt.Errorf("setup expired")
+						}
+						if !validateTOTP(secret, code) {
+							return false, fmt.Errorf("invalid code")
+						}
+						enc, err := encryptString(secret)
+						if err != nil {
+							return false, fmt.Errorf("server")
+						}
+						var ts TOTPSecret
+						if err := DB.Where("user_id = ?", u.ID).First(&ts).Error; err == nil {
+							ts.Secret = enc
+							ts.IsActive = true
+							_ = DB.Save(&ts).Error
+						} else {
+							_ = DB.Create(&TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
+						}
+						_ = RDB.Del(c.Context(), key).Err()
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"totpDisable": &graphql.Field{
+				Type: graphql.Boolean,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						var ts TOTPSecret
+						if err := DB.Where("user_id = ?", u.ID).First(&ts).Error; err != nil {
+							return false, fmt.Errorf("not enabled")
+						}
+						ts.IsActive = false
+						if err := DB.Save(&ts).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"recoveryGenerate": &graphql.Field{
+				Type: graphql.NewList(graphql.String),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						_ = DB.Where("user_id = ? AND is_used = 0", u.ID).Delete(&RecoveryCode{}).Error
+						codes := make([]string, 0, 10)
+						for i := 0; i < 10; i++ {
+							plain := generateRecoveryCode()
+							hashed := sha256Hex([]byte(plain))
+							_ = DB.Create(&RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
+							codes = append(codes, plain)
+						}
+						return codes, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"webauthnRegisterBegin": &graphql.Field{
+				Type: graphql.String, // returns JSON string of creation options
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return "", fmt.Errorf("unauthorized")
+						}
+						if WAuth == nil {
+							return "", fmt.Errorf("webauthn not configured")
+						}
+						u := c.Locals("user").(*User)
+						creation, sd, err := WAuth.BeginRegistration(u)
+						if err != nil {
+							return "", fmt.Errorf("begin failed")
+						}
+						bsd, _ := json.Marshal(sd)
+						_ = RDB.Set(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID), string(bsd), 10*time.Minute).Err()
+						b, _ := json.Marshal(creation)
+						return string(b), nil
+					}
+					return "", fmt.Errorf("context missing")
+				},
+			},
+			"webauthnRegisterFinish": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // JSON string of finish payload
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						if WAuth == nil {
+							return false, fmt.Errorf("webauthn not configured")
+						}
+						u := c.Locals("user").(*User)
+						raw, _ := RDB.Get(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Result()
+						if raw == "" {
+							return false, fmt.Errorf("session expired")
+						}
+						var sd webauthn.SessionData
+						_ = json.Unmarshal([]byte(raw), &sd)
+						// Build http.Request equivalent with JSON body
+						payload, _ := p.Args["input"].(string)
+						req, _ := http.NewRequestWithContext(c.Context(), "POST", "", strings.NewReader(payload))
+						req.Header.Set("Content-Type", "application/json")
+						cred, err := WAuth.FinishRegistration(u, sd, req)
+						if err != nil {
+							return false, fmt.Errorf("finish failed")
+						}
+						pub := base64.RawStdEncoding.EncodeToString(cred.PublicKey)
+						cid := base64.RawStdEncoding.EncodeToString(cred.ID)
+						devName := "Passkey"
+						rec := Passkey{UserID: u.ID, CredentialID: cid, PublicKey: pub, SignCount: int64(cred.Authenticator.SignCount), DeviceName: &devName}
+						if err := DB.Create(&rec).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = RDB.Del(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Err()
 						return true, nil
 					}
 					return false, fmt.Errorf("context missing")

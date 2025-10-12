@@ -50,88 +50,101 @@ export default function SettingsSecurity() {
   }
 
   async function beginTotp() {
-    const res = await fetch(`${getApiBase()}/2fa/totp/setup`, {
-      method: "POST",
-      headers: { Authorization: token },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setTotpSecret(data.secret);
-      setTotpUri(data.otpauth);
-    }
+    const d = await gql<{ totpSetup: { secret: string; otpauth: string } }>(
+      `mutation{ totpSetup{ secret otpauth } }`
+    );
+    setTotpSecret(d.totpSetup.secret);
+    setTotpUri(d.totpSetup.otpauth);
   }
   async function activateTotp() {
-    const res = await fetch(`${getApiBase()}/2fa/totp/activate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
-      body: JSON.stringify({ code: totpCode }),
-    });
-    if (res.ok) {
+    try {
+      await gql<{ totpActivate: boolean }>(
+        `mutation($code:String!){ totpActivate(code:$code) }`,
+        { code: totpCode }
+      );
       toast({ title: "TOTPを有効化しました" });
       setAuth((s) => (s ? { ...s, totp_enabled: true } : s));
       setTotpSecret("");
       setTotpUri("");
       setTotpCode("");
-    } else {
+    } catch {
       toast({ variant: "destructive", title: "コードが正しくありません" });
     }
   }
   async function disableTotp() {
-    const res = await fetch(`${getApiBase()}/2fa/totp/disable`, {
-      method: "POST",
-      headers: { Authorization: token },
-    });
-    if (res.ok) setAuth((s) => (s ? { ...s, totp_enabled: false } : s));
+    try {
+      await gql<{ totpDisable: boolean }>(`mutation{ totpDisable }`);
+      setAuth((s) => (s ? { ...s, totp_enabled: false } : s));
+    } catch {}
   }
 
   async function generateRecovery() {
-    const res = await fetch(`${getApiBase()}/2fa/recovery/generate`, {
-      method: "POST",
-      headers: { Authorization: token },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const text = (data.codes as string[]).join("\n");
-      await navigator.clipboard.writeText(text);
-      toast({ title: "リカバリーコードをコピーしました" });
-    }
+    const data = await gql<{ recoveryGenerate: string[] }>(
+      `mutation{ recoveryGenerate }`
+    );
+    const text = (data.recoveryGenerate as string[]).join("\n");
+    await navigator.clipboard.writeText(text);
+    toast({ title: "リカバリーコードをコピーしました" });
   }
 
   async function registerPasskey() {
-    // Begin
-    const meRes = await fetch(`${getApiBase()}/users/me`, {
-      headers: { Authorization: token },
-    });
-    if (!meRes.ok) return;
-    const me = await meRes.json();
-    const begin = await fetch(`${getApiBase()}/webauthn/register/begin`, {
-      method: "POST",
-      headers: { Authorization: token },
-    });
-    const options = await begin.json();
-    (options.publicKey.challenge as any) = base64urlToBuffer(
-      options.publicKey.challenge
-    );
-    options.publicKey.user.id = new TextEncoder().encode(String(me.id));
-    const cred: any = await navigator.credentials.create({
-      publicKey: options.publicKey,
-    });
-    const attResp = cred.response;
-    const finishPayload = {
-      id: cred.id,
-      rawId: bufferToBase64url(cred.rawId),
-      type: cred.type,
-      response: {
-        attestationObject: bufferToBase64url(attResp.attestationObject),
-        clientDataJSON: bufferToBase64url(attResp.clientDataJSON),
-      },
-    };
-    const finish = await fetch(`${getApiBase()}/webauthn/register/finish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
-      body: JSON.stringify(finishPayload),
-    });
-    if (finish.ok) toast({ title: "パスキーを登録しました" });
+    try {
+      // Begin via GraphQL and convert fields
+      const beginStr = await gql<string>(`mutation{ webauthnRegisterBegin }`);
+      const options = JSON.parse(beginStr);
+      if (
+        options?.publicKey?.challenge &&
+        typeof options.publicKey.challenge === "string"
+      ) {
+        (options.publicKey.challenge as any) = base64urlToBuffer(
+          options.publicKey.challenge
+        );
+      }
+      if (
+        options?.publicKey?.user?.id &&
+        typeof options.publicKey.user.id === "string"
+      ) {
+        options.publicKey.user.id = base64urlToBuffer(
+          options.publicKey.user.id as string
+        ) as any;
+      }
+      if (Array.isArray(options?.publicKey?.excludeCredentials)) {
+        options.publicKey.excludeCredentials =
+          options.publicKey.excludeCredentials.map((ex: any) => {
+            if (ex?.id && typeof ex.id === "string")
+              ex.id = base64urlToBuffer(ex.id);
+            return ex;
+          });
+      }
+      const cred: any = await navigator.credentials.create({
+        publicKey: options.publicKey,
+      });
+      const attResp: any = cred.response;
+      const finishPayload = {
+        id: cred.id,
+        rawId: bufferToBase64url(cred.rawId),
+        type: cred.type,
+        response: {
+          attestationObject: bufferToBase64url(attResp.attestationObject),
+          clientDataJSON: bufferToBase64url(attResp.clientDataJSON),
+        },
+      };
+      const finished = await gql<boolean>(
+        `mutation($input:String!){ webauthnRegisterFinish(input:$input) }`,
+        { input: JSON.stringify(finishPayload) }
+      );
+      if (finished) {
+        toast({ title: "パスキーを登録しました" });
+      } else {
+        throw new Error("finish returned false");
+      }
+    } catch (err: any) {
+      toast({
+        title: "Failed to register passkey",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
   }
 
   return (

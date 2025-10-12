@@ -8,10 +8,8 @@ import {
   EmptyTitle,
 } from "../components/ui/empty";
 import { Button } from "../components/ui/button";
+import { gql } from "@/lib/graphql";
 import { AlertCircle, Hourglass, FileText } from "lucide-react";
-
-const apiBase =
-  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
 
 type Task = {
   id: number;
@@ -29,16 +27,10 @@ export default function TasksList() {
       window.location.replace("/login");
       return;
     }
-    fetch(`${apiBase}/tasks`, { headers: { Authorization: token } })
-      .then(async (res) => {
-        if (res.status === 401) {
-          window.location.replace("/login");
-          return { items: [] };
-        }
-        const data = await res.json();
-        return data;
-      })
-      .then((data) => setItems((data && data.items) || []))
+    gql<{ tasks: { items: Task[] } }>(
+      `query{ tasks(limit:20){ items{ id title subject_id deadline } } }`
+    )
+      .then((d) => setItems(d.tasks.items))
       .catch((e) => setError(e?.message || "読み込みに失敗しました"));
   }, []);
 

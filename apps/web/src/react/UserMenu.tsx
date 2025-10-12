@@ -40,15 +40,7 @@ export default function UserMenu() {
 
   const logout = async () => {
     try {
-      const token =
-        (typeof window !== "undefined" && localStorage.getItem("api_token")) ||
-        "";
-      if (token) {
-        await fetch(`${getApiBase()}/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: token },
-        });
-      }
+      await gql<{ logout: boolean }>(`mutation{ logout }`);
     } catch {}
     try {
       localStorage.removeItem("api_token");

@@ -57,19 +57,15 @@ export default function SettingsBasic() {
 
   async function deleteAccount() {
     if (!confirm("本当にアカウントを削除しますか？")) return;
-    const res = await fetch(`${getApiBase()}/users/me`, {
-      method: "DELETE",
-      headers: { Authorization: token },
-    });
-    if (res.ok) {
+    try {
+      await gql<{ deleteMe: boolean }>(`mutation{ deleteMe }`);
       localStorage.removeItem("api_token");
       location.href = "/";
-    } else {
-      const msg = await res.text();
+    } catch (e: any) {
       toast({
         variant: "destructive",
         title: "削除に失敗しました",
-        description: msg || undefined,
+        description: e?.message || undefined,
       });
     }
   }
