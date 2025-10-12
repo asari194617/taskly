@@ -81,7 +81,7 @@ A simple, fast class management service.
 
 ## Tech stacks
 
-- Backend API server and Batch transactions: Go (Fiber)
+- Backend Application server and Batch transactions: Go (Fiber)
 - Front: Astro (Shadcnを全面利用, CloudFlare Pagesで動作させる)
 - iOS/iPad: Swift
 - Android: Kotlin
@@ -89,11 +89,11 @@ A simple, fast class management service.
 - Windows: WinUI 3
 - CDN: CloudFlare R2 (S3のクライアントを使って管理)
 - 明日もやるかどうかの判定: Gemini’s API (毎回文面が異なるため)
-- CI/CD: GitHub Actions (APIサーバーのみ)
+- CI/CD: GitHub Actions (アプリケーションサーバーのみ)
 - DB: MySQL
 - メール生成: React Email
-- Metrics: Prometheus (APIサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)
-- (APIとiCalとMCPとTeamsを除く)各プラットフォームとAPIサーバーのやりとり: GraphQL
+- Metrics: Prometheus (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)
+- (APIとiCalとMCPとTeamsを除く)各プラットフォームとアプリケーションサーバーのやりとり: GraphQL
 - APIプラットフォーム: REST API
 
 ## Schemas
@@ -336,7 +336,7 @@ MCPサーバーとして接続するための認証情報を管理する
 - 基本的な権限は「admin」「manager」「user」ロールに紐付け、`permissions`テーブルは「特定のユーザーに例外的な権限を与える」ためのオーバーライド用として定義します。
 - icalのURLやAPIキーは設定から発行できるようにしてください。
 - iCalのURLを発行する場合は、URLクエリにtokenを入れたものを発行してください。
-- APIサーバーとフロントはサブドメインを分けるため、適切なCORSを設定してください。
+- アプリケーションサーバーとフロントはサブドメインを分けるため、適切なCORSを設定してください。
 - それぞれのサービスは最終的にDockerコンテナにしたいです。
 
 ## 管理画面
@@ -356,7 +356,7 @@ MCPサーバーとして接続するための認証情報を管理する
 ## 全体
 
 - ブロックリストに入っているユーザーはすべての機能を利用できません。ログイン時に確認してください。
-- GitHub Actionsを使用して、APIサーバーとMCPサーバー用(これらを一つにまとめても構いません)のCI/CDパイプラインを構築してください。
+- GitHub Actionsを使用して、アプリケーションサーバーとMCPサーバー用(これらを一つにまとめても構いません)のCI/CDパイプラインを構築してください。
 
 ## 日直について
 

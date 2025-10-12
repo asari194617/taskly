@@ -1,4 +1,4 @@
-module github.com/asari194617/taskly/apps/api
+module github.com/asari194617/taskly/apps/server
 
 go 1.22.5
 
