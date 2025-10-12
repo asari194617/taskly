@@ -1,0 +1,21 @@
+---
+import Layout from "../layouts/AppLayout.astro";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+---
+<Layout title="ページが見つかりません">
+  <div class="mx-auto max-w-md py-16 text-center space-y-4">
+    <div class="text-6xl font-bold">404</div>
+    <div class="text-lg">お探しのページは見つかりませんでした。</div>
+    <div class="text-sm text-muted-foreground">URLが正しいか確認してください。</div>
+    <div class="pt-4">
+      <a href="/">
+        <Button class="inline-flex items-center gap-2">
+          <ArrowLeft class="h-4 w-4" />
+          ホームへ戻る
+        </Button>
+      </a>
+    </div>
+  </div>
+  
+</Layout>

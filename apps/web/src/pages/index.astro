@@ -1,13 +1,22 @@
 ---
+import Layout from "../layouts/AppLayout.astro";
 ---
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Taskly</title>
-  </head>
-  <body>
-    <h1>Taskly</h1>
-    <p>Welcome. Web app scaffold coming soon.</p>
-  </body>
-</html>
+<Layout title="Taskly">
+  <div class="mx-auto max-w-3xl space-y-6">
+    <div class="space-y-2">
+      <h1 class="text-3xl font-bold tracking-tight">Taskly</h1>
+      <p class="text-muted-foreground">シンプルで高速なクラス管理サービス。課題の管理、日直の通知、APIキーやiCalなどをサポートします。</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/login" class="inline-flex items-center justify-center h-10 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90">ログイン</a>
+      <a href="/settings" class="inline-flex items-center justify-center h-10 px-4 rounded-md border bg-background hover:bg-accent hover:text-accent-foreground">設定</a>
+    </div>
+  </div>
+  <script>
+    // If already logged in, go to /home
+    (function(){
+      const tok = localStorage.getItem('api_token');
+      if(tok){ window.location.replace('/home'); }
+    })();
+  </script>
+</Layout>

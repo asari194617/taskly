@@ -788,6 +788,14 @@ func main() {
 		if err != nil {
 			return c.Status(401).JSON(fiber.Map{"error": "invalid passkey"})
 		}
+		// Blocklist enforcement before issuing session
+		var blkCnt int64
+		_ = DB.Model(&Block{}).
+			Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).
+			Count(&blkCnt).Error
+		if blkCnt > 0 {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
+		}
 		// update sign count
 		_ = DB.Model(&Passkey{}).Where("user_id = ? AND credential_id = ?", u.ID, base64.RawStdEncoding.EncodeToString(cred.ID)).Update("sign_count", int64(cred.Authenticator.SignCount)).Error
 		// issue session token
@@ -802,6 +810,41 @@ func main() {
 		jwtStr, _ := jwtt.SignedString([]byte(env("JWT_SECRET", "dev")))
 		_ = RDB.Del(c.Context(), fmt.Sprintf("webauthn:login:%d", u.ID)).Err()
 		return c.JSON(fiber.Map{"token": token, "jwt": jwtStr})
+	})
+
+	// User profile: update display name
+	app.Patch("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var body struct {
+			DisplayName *string `json:"display_name"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		updates := map[string]any{}
+		if body.DisplayName != nil {
+			dn := strings.TrimSpace(*body.DisplayName)
+			if len(dn) > 255 {
+				dn = dn[:255]
+			}
+			updates["display_name"] = dn
+		}
+		if len(updates) == 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "no changes"})
+		}
+		if err := DB.Model(&User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		return c.SendStatus(204)
+	})
+
+	// User account delete (soft delete)
+	app.Delete("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		return c.SendStatus(204)
 	})
 
 	// API keys endpoints

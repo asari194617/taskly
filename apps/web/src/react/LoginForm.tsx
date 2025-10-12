@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import { Modal } from "../components/ui/modal";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
@@ -24,8 +25,10 @@ export default function LoginForm() {
   const [availableMethods, setAvailableMethods] = React.useState<string[]>([]);
   const [selectedMethod, setSelectedMethod] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [step, setStep] = React.useState<"email" | "verify">("email");
+  const [blocked, setBlocked] = React.useState<string | null>(null);
 
   const discover = async () => {
     setMessage(null);
@@ -54,7 +57,7 @@ export default function LoginForm() {
   };
 
   const requestCode = async () => {
-    setLoading(true);
+    setSending(true);
     setMessage(null);
     try {
       const res = await fetch(`${apiBase}/auth/request-code`, {
@@ -67,7 +70,7 @@ export default function LoginForm() {
     } catch (e: any) {
       setMessage(e.message || "エラーが発生しました");
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
@@ -87,10 +90,20 @@ export default function LoginForm() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+      if (!res.ok) {
+        if (data?.error === "blocked") {
+          setBlocked(
+            "このアカウントは現在ブロックされています。管理者にお問い合わせください。"
+          );
+          throw new Error("blocked");
+        }
+        throw new Error(data?.error || JSON.stringify(data));
+      }
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         setMessage("ログインしました");
+        // redirect to top, which will send to /home if logged in
+        window.location.href = "/";
       } else {
         setMessage("予期せぬレスポンスです");
       }
@@ -178,146 +191,163 @@ export default function LoginForm() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>ログイン</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {step === "email" && (
-          <div className="space-y-2">
-            <Label htmlFor="email">メールアドレス</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                onClick={discover}
-                disabled={loading || !email}
-              >
-                次へ
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {step === "verify" && hasPassword === true ? (
-          <div className="space-y-2">
-            <Label htmlFor="password">パスワード</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
-        ) : null}
-        {step === "verify" && hasPassword === false && (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>認証方法を選択</Label>
-              <div className="flex flex-wrap gap-2">
-                {availableMethods.includes("email_code") && (
-                  <Button
-                    type="button"
-                    variant={
-                      selectedMethod === "email_code" ? "default" : "secondary"
-                    }
-                    onClick={async () => {
-                      setSelectedMethod("email_code");
-                      await requestCode();
-                    }}
-                    disabled={loading || !email}
-                  >
-                    メールコード
-                  </Button>
-                )}
-                {availableMethods.includes("passkey") && (
-                  <Button
-                    type="button"
-                    variant={
-                      selectedMethod === "passkey" ? "default" : "secondary"
-                    }
-                    onClick={() => setSelectedMethod("passkey")}
-                  >
-                    パスキー
-                  </Button>
-                )}
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>ログイン</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {step === "email" && (
+            <div className="space-y-2">
+              <Label htmlFor="email">メールアドレス</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={discover}
+                  disabled={loading || !email}
+                >
+                  次へ
+                </Button>
               </div>
             </div>
-            {selectedMethod === "email_code" && (
+          )}
+
+          {step === "verify" && hasPassword === true ? (
+            <div className="space-y-2">
+              <Label htmlFor="password">パスワード</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+          ) : null}
+          {step === "verify" && hasPassword === false && (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label>認証方法を選択</Label>
+                <div className="flex flex-wrap gap-2">
+                  {availableMethods.includes("email_code") && (
+                    <Button
+                      type="button"
+                      variant={
+                        selectedMethod === "email_code"
+                          ? "default"
+                          : "secondary"
+                      }
+                      onClick={async () => {
+                        setSelectedMethod("email_code");
+                        await requestCode();
+                      }}
+                      disabled={loading || sending || !email}
+                    >
+                      {sending ? "送信中…" : "メールコード"}
+                    </Button>
+                  )}
+                  {availableMethods.includes("passkey") && (
+                    <Button
+                      type="button"
+                      variant={
+                        selectedMethod === "passkey" ? "default" : "secondary"
+                      }
+                      onClick={() => setSelectedMethod("passkey")}
+                    >
+                      パスキー
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {selectedMethod === "email_code" && (
+                <div className="space-y-2">
+                  <Label htmlFor="code">メールコード</Label>
+                  <Input
+                    id="code"
+                    type="text"
+                    inputMode="numeric"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="123456"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "verify" && totpEnabled && (
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2">
-                <Label htmlFor="code">メールコード</Label>
+                <Label htmlFor="totp">TOTP</Label>
                 <Input
-                  id="code"
+                  id="totp"
                   type="text"
                   inputMode="numeric"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  value={totp}
+                  onChange={(e) => setTotp(e.target.value)}
                   placeholder="123456"
                 />
               </div>
-            )}
-          </div>
-        )}
-
-        {step === "verify" && totpEnabled && (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-2">
-              <Label htmlFor="totp">TOTP</Label>
-              <Input
-                id="totp"
-                type="text"
-                inputMode="numeric"
-                value={totp}
-                onChange={(e) => setTotp(e.target.value)}
-                placeholder="123456"
-              />
+              <div className="space-y-2">
+                <Label htmlFor="recovery">リカバリー</Label>
+                <Input
+                  id="recovery"
+                  type="text"
+                  value={recovery}
+                  onChange={(e) => setRecovery(e.target.value)}
+                  placeholder="abcd-efgh"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="recovery">リカバリー</Label>
-              <Input
-                id="recovery"
-                type="text"
-                value={recovery}
-                onChange={(e) => setRecovery(e.target.value)}
-                placeholder="abcd-efgh"
-              />
-            </div>
-          </div>
-        )}
+          )}
 
-        {step === "verify" && (
-          <div className="flex gap-2">
-            <Button type="button" onClick={login} disabled={loading || !email}>
-              ログイン
-            </Button>
-            {(passkeyEnabled || selectedMethod === "passkey") && (
+          {step === "verify" && (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={login}
+                disabled={loading || !email}
+              >
+                ログイン
+              </Button>
+              {(passkeyEnabled || selectedMethod === "passkey") && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={passkeyLogin}
+                  disabled={loading || !email}
+                >
+                  パスキーでログイン
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="secondary"
-                onClick={passkeyLogin}
-                disabled={loading || !email}
+                onClick={() => setStep("email")}
               >
-                パスキーでログイン
+                戻る
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setStep("email")}
-            >
-              戻る
-            </Button>
-          </div>
-        )}
-        {message && <p className="text-sm text-muted-foreground">{message}</p>}
-      </CardContent>
-    </Card>
+            </div>
+          )}
+          {message && (
+            <p className="text-sm text-muted-foreground">{message}</p>
+          )}
+        </CardContent>
+      </Card>
+      <Modal
+        open={!!blocked}
+        onClose={() => setBlocked(null)}
+        title="ログインできません"
+      >
+        <p className="text-sm text-muted-foreground">{blocked}</p>
+      </Modal>
+    </>
   );
 }

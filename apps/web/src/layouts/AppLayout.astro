@@ -1,5 +1,6 @@
 ---
 import "../styles/globals.css";
+import UserMenu from "../react/UserMenu";
 const { title = "Taskly" } = Astro.props;
 ---
 <html lang="ja">
@@ -11,15 +12,18 @@ const { title = "Taskly" } = Astro.props;
   <body class="min-h-screen">
     <header class="container py-4 flex items-center justify-between">
       <a href="/" class="font-semibold">Taskly</a>
-      <button id="themeToggle" class="inline-flex items-center justify-center h-9 w-9 rounded-md border bg-background text-foreground hover:bg-accent hover:text-accent-foreground">
-        <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5">
-          <path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm0 4a1 1 0 0 1-1-1v-1a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1ZM12 4a1 1 0 0 1-1-1V2a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1Zm8 8a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2h-1a1 1 0 0 1-1-1ZM2 13a1 1 0 0 1 0-2h1a1 1 0 1 1 0 2H2Zm15.657 6.657a1 1 0 0 1 0-1.414l.707-.707a1 1 0 1 1 1.414 1.414l-.707.707a1 1 0 0 1-1.414 0ZM4.222 6.343A1 1 0 0 1 5.636 4.93l.707.707A1 1 0 1 1 4.93 7.05l-.707-.707a1 1 0 0 1 0-1.414Zm14.142-1.414a1 1 0 0 1 0 1.414l-.707.707A1 1 0 0 1 16.243 5.95l.707-.707a1 1 0 0 1 1.414 0ZM5.636 19.071a1 1 0 0 1-1.414-1.414l.707-.707A1 1 0 1 1 6.343 18.364l-.707.707Z" />
-        </svg>
-        <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5 hidden">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 1 0 9.79 9.79Z" />
-        </svg>
-        <span class="sr-only">Toggle theme</span>
-      </button>
+      <div class="flex items-center gap-2">
+        <button id="themeToggle" class="inline-flex items-center justify-center h-9 w-9 rounded-md border bg-background text-foreground hover:bg-accent hover:text-accent-foreground">
+          <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5">
+            <path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm0 4a1 1 0 0 1-1-1v-1a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1ZM12 4a1 1 0 0 1-1-1V2a1 1 0 1 1 2 0v1a1 1 0 0 1-1 1Zm8 8a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2h-1a1 1 0 0 1-1-1ZM2 13a1 1 0 0 1 0-2h1a1 1 0 1 1 0 2H2Zm15.657 6.657a1 1 0 0 1 0-1.414l.707-.707a1 1 0 1 1 1.414 1.414l-.707.707a1 1 0 0 1-1.414 0ZM4.222 6.343A1 1 0 0 1 5.636 4.93l.707.707A1 1 0 1 1 4.93 7.05l-.707-.707a1 1 0 0 1 0-1.414Zm14.142-1.414a1 1 0 0 1 0 1.414l-.707.707A1 1 0 0 1 16.243 5.95l.707-.707a1 1 0 0 1 1.414 0ZM5.636 19.071a1 1 0 0 1-1.414-1.414l.707-.707A1 1 0 1 1 6.343 18.364l-.707.707Z" />
+          </svg>
+          <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5 hidden">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 1 0 9.79 9.79Z" />
+          </svg>
+          <span class="sr-only">Toggle theme</span>
+        </button>
+        <UserMenu client:load />
+      </div>
     </header>
     <main class="container py-8">
       <slot />
@@ -29,18 +33,22 @@ const { title = "Taskly" } = Astro.props;
         const btn = document.getElementById('themeToggle');
         const sun = document.getElementById('icon-sun');
         const moon = document.getElementById('icon-moon');
-        function syncIcons(){
-          const dark = document.documentElement.classList.contains('dark');
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        function applyTheme(){
+          const stored = localStorage.getItem('theme');
+          const wantDark = stored ? stored === 'dark' : mq.matches;
+          document.documentElement.classList.toggle('dark', wantDark);
+          const dark = wantDark;
           if (dark) { sun?.classList.add('hidden'); moon?.classList.remove('hidden'); }
           else { sun?.classList.remove('hidden'); moon?.classList.add('hidden'); }
         }
-        const isDark = localStorage.getItem('theme') === 'dark';
-        if(isDark) document.documentElement.classList.add('dark');
-        syncIcons();
+        applyTheme();
+        mq.addEventListener?.('change', applyTheme);
         btn?.addEventListener('click', () => {
-          const dark = document.documentElement.classList.toggle('dark');
-          localStorage.setItem('theme', dark ? 'dark' : 'light');
-          syncIcons();
+          const nowDark = document.documentElement.classList.contains('dark');
+          const next = !nowDark;
+          localStorage.setItem('theme', next ? 'dark' : 'light');
+          applyTheme();
         });
       })();
     </script>
