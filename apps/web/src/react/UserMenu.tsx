@@ -8,12 +8,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, Settings } from "lucide-react";
-
-function apiBase() {
-  // Allow relative fetch in same origin during SSR/CSR
-  return "";
-}
+import {
+  Home as HomeIcon,
+  User as UserIcon,
+  LogOut,
+  Settings,
+} from "lucide-react";
+import { getApiBase } from "@/lib/api";
+import { toast } from "@/hooks/use-toast";
 
 type Me = { id: number; email: string; display_name?: string | null };
 
@@ -25,12 +27,17 @@ export default function UserMenu() {
       (typeof window !== "undefined" && localStorage.getItem("api_token")) ||
       "";
     if (!token) return;
-    fetch(`${apiBase()}/users/me`, { headers: { Authorization: token } })
+    fetch(`${getApiBase()}/users/me`, { headers: { Authorization: token } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setMe(data);
       })
-      .catch(() => {});
+      .catch(() => {
+        toast({
+          variant: "destructive",
+          title: "ユーザー情報の取得に失敗しました",
+        });
+      });
   }, []);
 
   const logout = async () => {
@@ -39,7 +46,7 @@ export default function UserMenu() {
         (typeof window !== "undefined" && localStorage.getItem("api_token")) ||
         "";
       if (token) {
-        await fetch(`${apiBase()}/auth/logout`, {
+        await fetch(`${getApiBase()}/auth/logout`, {
           method: "POST",
           headers: { Authorization: token },
         });
@@ -48,6 +55,7 @@ export default function UserMenu() {
     try {
       localStorage.removeItem("api_token");
     } catch {}
+    toast({ title: "ログアウトしました" });
     window.location.href = "/login";
   };
 
@@ -84,6 +92,11 @@ export default function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <a href="/home">
+          <DropdownMenuItem className="cursor-pointer">
+            <HomeIcon className="mr-2 h-4 w-4" /> ホーム
+          </DropdownMenuItem>
+        </a>
         <a href="/settings">
           <DropdownMenuItem className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" /> 設定

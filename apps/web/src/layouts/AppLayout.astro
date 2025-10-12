@@ -1,6 +1,7 @@
 ---
 import "../styles/globals.css";
 import UserMenu from "../react/UserMenu";
+import { Toaster } from "@/components/ui/toaster";
 const { title = "Taskly" } = Astro.props;
 ---
 <html lang="ja">
@@ -28,6 +29,7 @@ const { title = "Taskly" } = Astro.props;
     <main class="container py-8">
       <slot />
     </main>
+    <Toaster client:load />
     <script>
       (function(){
         const btn = document.getElementById('themeToggle');

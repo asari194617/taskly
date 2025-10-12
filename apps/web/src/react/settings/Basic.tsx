@@ -13,17 +13,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { getApiBase } from "@/lib/api";
 
 export default function SettingsBasic() {
   const [displayName, setDisplayName] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const { toast } = useToast();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
 
   React.useEffect(() => {
     async function fetchMe() {
       try {
-        const res = await fetch("/users/me", {
+        const res = await fetch(`${getApiBase()}/users/me`, {
           headers: { Authorization: token },
         });
         if (res.ok) {
@@ -38,12 +41,21 @@ export default function SettingsBasic() {
   async function save() {
     setLoading(true);
     try {
-      const res = await fetch("/users/me", {
+      const res = await fetch(`${getApiBase()}/users/me`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: token },
         body: JSON.stringify({ display_name: displayName }),
       });
-      if (!res.ok) alert("保存に失敗しました");
+      if (res.ok) {
+        toast({ title: "保存しました" });
+      } else {
+        const msg = await res.text();
+        toast({
+          variant: "destructive",
+          title: "保存に失敗しました",
+          description: msg || undefined,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -51,7 +63,7 @@ export default function SettingsBasic() {
 
   async function deleteAccount() {
     if (!confirm("本当にアカウントを削除しますか？")) return;
-    const res = await fetch("/users/me", {
+    const res = await fetch(`${getApiBase()}/users/me`, {
       method: "DELETE",
       headers: { Authorization: token },
     });
@@ -59,7 +71,12 @@ export default function SettingsBasic() {
       localStorage.removeItem("api_token");
       location.href = "/";
     } else {
-      alert("削除に失敗しました");
+      const msg = await res.text();
+      toast({
+        variant: "destructive",
+        title: "削除に失敗しました",
+        description: msg || undefined,
+      });
     }
   }
 

@@ -6,6 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getApiBase } from "@/lib/api";
+import { toast } from "@/hooks/use-toast";
 
 type AuthState = {
   email_login_enabled: boolean;
@@ -23,25 +25,35 @@ export default function SettingsSecurity() {
 
   React.useEffect(() => {
     if (!token) return;
-    fetch("/settings/auth", { headers: { Authorization: token } })
+    fetch(`${getApiBase()}/settings/auth`, {
+      headers: { Authorization: token },
+    })
       .then((r) => r.json())
       .then(setAuth)
-      .catch(() => {});
+      .catch(() => {
+        toast({
+          variant: "destructive",
+          title: "認証設定の取得に失敗しました",
+        });
+      });
   }, [token]);
 
   async function toggleEmailLogin(v: boolean) {
     const prev = auth;
     setAuth((s) => (s ? { ...s, email_login_enabled: v } : s));
-    const res = await fetch("/settings/auth", {
+    const res = await fetch(`${getApiBase()}/settings/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: token },
       body: JSON.stringify({ email_login_enabled: v }),
     });
-    if (!res.ok && prev) setAuth(prev);
+    if (!res.ok && prev) {
+      setAuth(prev);
+      toast({ variant: "destructive", title: "更新に失敗しました" });
+    }
   }
 
   async function beginTotp() {
-    const res = await fetch("/2fa/totp/setup", {
+    const res = await fetch(`${getApiBase()}/2fa/totp/setup`, {
       method: "POST",
       headers: { Authorization: token },
     });
@@ -52,23 +64,23 @@ export default function SettingsSecurity() {
     }
   }
   async function activateTotp() {
-    const res = await fetch("/2fa/totp/activate", {
+    const res = await fetch(`${getApiBase()}/2fa/totp/activate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: token },
       body: JSON.stringify({ code: totpCode }),
     });
     if (res.ok) {
-      alert("TOTPを有効化しました");
+      toast({ title: "TOTPを有効化しました" });
       setAuth((s) => (s ? { ...s, totp_enabled: true } : s));
       setTotpSecret("");
       setTotpUri("");
       setTotpCode("");
     } else {
-      alert("コードが正しくありません");
+      toast({ variant: "destructive", title: "コードが正しくありません" });
     }
   }
   async function disableTotp() {
-    const res = await fetch("/2fa/totp/disable", {
+    const res = await fetch(`${getApiBase()}/2fa/totp/disable`, {
       method: "POST",
       headers: { Authorization: token },
     });
@@ -76,7 +88,7 @@ export default function SettingsSecurity() {
   }
 
   async function generateRecovery() {
-    const res = await fetch("/2fa/recovery/generate", {
+    const res = await fetch(`${getApiBase()}/2fa/recovery/generate`, {
       method: "POST",
       headers: { Authorization: token },
     });
@@ -84,20 +96,18 @@ export default function SettingsSecurity() {
       const data = await res.json();
       const text = (data.codes as string[]).join("\n");
       await navigator.clipboard.writeText(text);
-      alert(
-        "リカバリーコードをクリップボードにコピーしました。安全な場所に保存してください。"
-      );
+      toast({ title: "リカバリーコードをコピーしました" });
     }
   }
 
   async function registerPasskey() {
     // Begin
-    const meRes = await fetch("/users/me", {
+    const meRes = await fetch(`${getApiBase()}/users/me`, {
       headers: { Authorization: token },
     });
     if (!meRes.ok) return;
     const me = await meRes.json();
-    const begin = await fetch("/webauthn/register/begin", {
+    const begin = await fetch(`${getApiBase()}/webauthn/register/begin`, {
       method: "POST",
       headers: { Authorization: token },
     });
@@ -119,12 +129,12 @@ export default function SettingsSecurity() {
         clientDataJSON: bufferToBase64url(attResp.clientDataJSON),
       },
     };
-    const finish = await fetch("/webauthn/register/finish", {
+    const finish = await fetch(`${getApiBase()}/webauthn/register/finish`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: token },
       body: JSON.stringify(finishPayload),
     });
-    if (finish.ok) alert("パスキーを登録しました");
+    if (finish.ok) toast({ title: "パスキーを登録しました" });
   }
 
   return (
