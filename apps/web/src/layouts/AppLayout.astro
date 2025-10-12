@@ -9,8 +9,24 @@ const { title = "Taskly" } = Astro.props;
     <title>{title}</title>
   </head>
   <body class="min-h-screen">
+    <header class="container py-4 flex items-center justify-between">
+      <a href="/" class="font-semibold">Taskly</a>
+      <button id="themeToggle" class="text-sm px-3 py-1 rounded border">
+        Toggle Theme
+      </button>
+    </header>
     <main class="container py-8">
       <slot />
     </main>
+    <script>
+      (function(){
+        const isDark = localStorage.getItem('theme') === 'dark';
+        if(isDark) document.documentElement.classList.add('dark');
+        document.getElementById('themeToggle')?.addEventListener('click', () => {
+          const dark = document.documentElement.classList.toggle('dark');
+          localStorage.setItem('theme', dark ? 'dark' : 'light');
+        });
+      })();
+    </script>
   </body>
 </html>
