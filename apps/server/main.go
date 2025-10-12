@@ -329,6 +329,21 @@ func main() {
 
 	// GraphQL endpoint for application <-> application server traffic
 	// Keep REST for API key based integrations. Minimal initial schema provided.
+	// Reusable Task GraphQL type
+	taskType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Task",
+		Fields: graphql.Fields{
+			"id":                 &graphql.Field{Type: graphql.Int},
+			"title":              &graphql.Field{Type: graphql.String},
+			"subject_id":         &graphql.Field{Type: graphql.Int},
+			"description":        &graphql.Field{Type: graphql.String},
+			"is_require_hand_in": &graphql.Field{Type: graphql.Boolean},
+			"deadline":           &graphql.Field{Type: graphql.String},
+			"created_at":         &graphql.Field{Type: graphql.String},
+			"updated_at":         &graphql.Field{Type: graphql.String},
+		},
+	})
+	// Me and AuthSettings types
 	meType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Me",
 		Fields: graphql.Fields{
@@ -339,7 +354,6 @@ func main() {
 			"is_manager":   &graphql.Field{Type: graphql.Boolean},
 		},
 	})
-
 	authSettingsType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "AuthSettings",
 		Fields: graphql.Fields{
@@ -411,19 +425,7 @@ func main() {
 				Type: graphql.NewObject(graphql.ObjectConfig{
 					Name: "TasksResult",
 					Fields: graphql.Fields{
-						"items": &graphql.Field{Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
-							Name: "Task",
-							Fields: graphql.Fields{
-								"id":                 &graphql.Field{Type: graphql.Int},
-								"title":              &graphql.Field{Type: graphql.String},
-								"subject_id":         &graphql.Field{Type: graphql.Int},
-								"description":        &graphql.Field{Type: graphql.String},
-								"is_require_hand_in": &graphql.Field{Type: graphql.Boolean},
-								"deadline":           &graphql.Field{Type: graphql.String},
-								"created_at":         &graphql.Field{Type: graphql.String},
-								"updated_at":         &graphql.Field{Type: graphql.String},
-							},
-						}))},
+						"items": &graphql.Field{Type: graphql.NewList(taskType)},
 						"next_cursor": &graphql.Field{Type: graphql.NewObject(graphql.ObjectConfig{
 							Name: "TasksCursor",
 							Fields: graphql.Fields{
@@ -543,6 +545,161 @@ func main() {
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Mutation",
 		Fields: graphql.Fields{
+			"createTask": &graphql.Field{
+				Type: taskType,
+				Args: graphql.FieldConfigArgument{
+					"title":              &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"subject_id":         &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"description":        &graphql.ArgumentConfig{Type: graphql.String},
+					"is_require_hand_in": &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"deadline":           &graphql.ArgumentConfig{Type: graphql.String}, // RFC3339 or empty
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						if okp, err := checkPermission(u.ID, "tasks", "create", nil); err != nil {
+							return nil, err
+						} else if !okp {
+							return nil, fmt.Errorf("forbidden")
+						}
+						title, _ := p.Args["title"].(string)
+						subjectID, _ := p.Args["subject_id"].(int)
+						desc, _ := p.Args["description"].(string)
+						var descPtr *string
+						if desc != "" {
+							descPtr = &desc
+						}
+						irh, _ := p.Args["is_require_hand_in"].(bool)
+						deadlineStr, _ := p.Args["deadline"].(string)
+						var deadlinePtr *time.Time
+						if strings.TrimSpace(deadlineStr) != "" {
+							if t, err := time.Parse(time.RFC3339, deadlineStr); err == nil {
+								deadlinePtr = &t
+							} else {
+								return nil, fmt.Errorf("invalid deadline")
+							}
+						}
+						rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, IsRequireHandIn: irh, Deadline: deadlinePtr}
+						if err := DB.Create(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "is_require_hand_in": rec.IsRequireHandIn}
+						if rec.Deadline != nil {
+							out["deadline"] = rec.Deadline.Format(time.RFC3339)
+						} else {
+							out["deadline"] = nil
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"updateTask": &graphql.Field{
+				Type: taskType,
+				Args: graphql.FieldConfigArgument{
+					"id":                 &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"title":              &graphql.ArgumentConfig{Type: graphql.String},
+					"subject_id":         &graphql.ArgumentConfig{Type: graphql.Int},
+					"description":        &graphql.ArgumentConfig{Type: graphql.String},
+					"is_require_hand_in": &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"deadline":           &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						id, _ := p.Args["id"].(int)
+						var rec Task
+						if err := DB.First(&rec, id).Error; err != nil {
+							return nil, fmt.Errorf("not found")
+						}
+						if okp, err := checkPermission(u.ID, "tasks", "update", &rec.AddedUserID); err != nil {
+							return nil, err
+						} else if !okp {
+							return nil, fmt.Errorf("forbidden")
+						}
+						if v, ok := p.Args["title"].(string); ok {
+							rec.Title = v
+						}
+						if v, ok := p.Args["subject_id"].(int); ok {
+							rec.SubjectID = uint(v)
+						}
+						if v, ok := p.Args["description"].(string); ok {
+							if strings.TrimSpace(v) == "" {
+								rec.Description = nil
+							} else {
+								rec.Description = &v
+							}
+						}
+						if v, ok := p.Args["is_require_hand_in"].(bool); ok {
+							rec.IsRequireHandIn = v
+						}
+						if v, ok := p.Args["deadline"].(string); ok {
+							if strings.TrimSpace(v) == "" {
+								rec.Deadline = nil
+							} else if t, err := time.Parse(time.RFC3339, v); err == nil {
+								rec.Deadline = &t
+							} else {
+								return nil, fmt.Errorf("invalid deadline")
+							}
+						}
+						if err := DB.Save(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "is_require_hand_in": rec.IsRequireHandIn}
+						if rec.Deadline != nil {
+							out["deadline"] = rec.Deadline.Format(time.RFC3339)
+						} else {
+							out["deadline"] = nil
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"deleteTask": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						id, _ := p.Args["id"].(int)
+						var rec Task
+						if err := DB.First(&rec, id).Error; err != nil {
+							return false, fmt.Errorf("not found")
+						}
+						// Admin/manager allow, otherwise need delete permission
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						allowed := isAdmin || isManager
+						if !allowed {
+							if okp, err := checkPermission(u.ID, "tasks", "delete", &rec.AddedUserID); err != nil {
+								return false, err
+							} else {
+								allowed = okp
+							}
+						}
+						if !allowed {
+							return false, fmt.Errorf("forbidden")
+						}
+						if err := DB.Delete(&Task{}, rec.ID).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
 			"updateMe": &graphql.Field{
 				Type: graphql.Boolean,
 				Args: graphql.FieldConfigArgument{
