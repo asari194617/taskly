@@ -7,8 +7,10 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -29,13 +32,15 @@ import (
 	"github.com/pquerna/otp/totp"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 var (
-	DB  *gorm.DB
-	RDB *redis.Client
+	DB    *gorm.DB
+	RDB   *redis.Client
+	WAuth *webauthn.WebAuthn
 )
 
 type User struct {
@@ -43,9 +48,42 @@ type User struct {
 	Email            string  `gorm:"uniqueIndex;size:255;not null"`
 	DisplayName      string  `gorm:"size:255"`
 	HashedPassword   *string `gorm:"size:255"`
+	EmailCodeAllowed bool    `gorm:"default:true"`
 	IsDeleted        bool    `gorm:"default:false"`
 	IsDayShiftActive bool    `gorm:"default:false"`
 	CreatedAt        time.Time
+}
+
+// WebAuthn user interface implementation
+func (u *User) WebAuthnID() []byte {
+	return []byte(fmt.Sprintf("%d", u.ID))
+}
+func (u *User) WebAuthnName() string {
+	if u.Email != "" {
+		return u.Email
+	}
+	return fmt.Sprintf("user-%d", u.ID)
+}
+func (u *User) WebAuthnDisplayName() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	if u.Email != "" {
+		return u.Email
+	}
+	return fmt.Sprintf("user-%d", u.ID)
+}
+func (u *User) WebAuthnIcon() string { return "" }
+func (u *User) WebAuthnCredentials() []webauthn.Credential {
+	var pks []Passkey
+	_ = DB.Where("user_id = ?", u.ID).Find(&pks).Error
+	res := make([]webauthn.Credential, 0, len(pks))
+	for _, p := range pks {
+		cid, _ := base64.RawStdEncoding.DecodeString(p.CredentialID)
+		pub, _ := base64.RawStdEncoding.DecodeString(p.PublicKey)
+		res = append(res, webauthn.Credential{ID: cid, PublicKey: pub, Authenticator: webauthn.Authenticator{SignCount: uint32(p.SignCount)}})
+	}
+	return res
 }
 
 type Session struct {
@@ -136,6 +174,28 @@ type RecoveryCode struct {
 	HashedCode string `gorm:"size:255;not null"`
 	IsUsed     bool   `gorm:"default:false"`
 	CreatedAt  time.Time
+}
+
+// Login codes (email magic code)
+type LoginCode struct {
+	ID         uint      `gorm:"primaryKey"`
+	Email      string    `gorm:"index;size:255;not null"`
+	HashedCode string    `gorm:"size:255;not null"`
+	ExpiresAt  time.Time `gorm:"index;not null"`
+	ConsumedAt *time.Time
+	CreatedAt  time.Time
+}
+
+// Passkeys (WebAuthn) per specification
+type Passkey struct {
+	ID           uint      `gorm:"primaryKey"`
+	UserID       uint      `gorm:"index;not null"`
+	CredentialID string    `gorm:"size:255;uniqueIndex;not null"`
+	PublicKey    string    `gorm:"type:text;not null"`
+	SignCount    int64     `gorm:"not null"`
+	DeviceName   *string   `gorm:"size:255"`
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 }
 
 // Day shift models
@@ -241,8 +301,19 @@ func main() {
 	RDB = mustInitRedis()
 	metricsServer(env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
 
+	// Init WebAuthn (Passkey)
+	if wa, err := webauthn.New(&webauthn.Config{
+		RPDisplayName: env("WEBAUTHN_RP_NAME", "Taskly"),
+		RPID:          env("WEBAUTHN_RP_ID", "localhost"),
+		RPOrigin:      env("WEBAUTHN_ORIGIN", "http://localhost:4321"),
+	}); err != nil {
+		log.Printf("webauthn init error: %v", err)
+	} else {
+		WAuth = wa
+	}
+
 	// Auto-migrate core models
-	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{})
+	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{})
 
 	app := fiber.New()
 	app.Use(recover.New())
@@ -269,26 +340,165 @@ func main() {
 		if err := c.BodyParser(&body); err != nil || body.Email == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
 		}
-		// rate limit per email
-		coolKey := "login-cooldown:" + strings.ToLower(body.Email)
-		if exists, _ := RDB.Exists(c.Context(), coolKey).Result(); exists > 0 {
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests"})
+		email := strings.ToLower(strings.TrimSpace(body.Email))
+		// cooldown: deny if a code was created within last 60s and not expired
+		var recent LoginCode
+		if err := DB.Where("email = ?", email).Order("id DESC").First(&recent).Error; err == nil {
+			if time.Since(recent.CreatedAt) < 60*time.Second && recent.ConsumedAt == nil {
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests"})
+			}
 		}
+		// generate code
 		code := fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
-		if err := RDB.Set(c.Context(), "login-code:"+strings.ToLower(body.Email), code, 10*time.Minute).Err(); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "server"})
-		}
-		_ = RDB.Set(c.Context(), coolKey, "1", 60*time.Second).Err()
-		// send email via postfix
+		// send email via SMTP synchronously; only store code if send succeeds
 		smtpHost := env("SMTP_HOST", "localhost")
 		smtpPort := env("SMTP_PORT", "25")
 		from := env("SMTP_FROM", "noreply@taskly.local")
-		msg := []byte("To: " + body.Email + "\r\n" +
-			"Subject: Taskly Login Code\r\n" +
-			"Content-Type: text/plain; charset=utf-8\r\n\r\n" +
-			fmt.Sprintf("Your login code is: %s\nIt expires in 10 minutes.\n", code))
-		_ = smtp.SendMail(smtpHost+":"+smtpPort, nil, from, []string{body.Email}, msg)
-		return c.SendStatus(fiber.StatusAccepted)
+		smtpUser := env("SMTP_USER", from)
+		smtpPass := env("SMTP_PASSWORD", "")
+		// Build RFC5322 message with required headers (From/To/Subject/Date)
+		nowRFC := time.Now().Format(time.RFC1123Z)
+		msg := []byte(
+			"From: " + from + "\r\n" +
+				"To: " + body.Email + "\r\n" +
+				"Subject: Taskly Login Code\r\n" +
+				"Date: " + nowRFC + "\r\n" +
+				"MIME-Version: 1.0\r\n" +
+				"Content-Type: text/plain; charset=utf-8\r\n" +
+				"\r\n" +
+				fmt.Sprintf("Your login code is: %s\r\nIt expires in 10 minutes.\r\n", code),
+		)
+		var auth smtp.Auth
+		if smtpPass != "" {
+			auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+		}
+		// Use manual client with timeouts to prevent hanging
+		toSec, _ := strconv.Atoi(env("SMTP_TIMEOUT", "60"))
+		if toSec <= 0 {
+			toSec = 60
+		}
+		dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
+		mode := strings.ToLower(strings.TrimSpace(env("SMTP_TLS", ""))) // "starttls" | "smtps" | ""
+		var conn net.Conn
+		var err error
+		if mode == "smtps" || smtpPort == "465" {
+			// Implicit TLS
+			conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost})
+		} else {
+			conn, err = dialer.DialContext(c.Context(), "tcp", smtpHost+":"+smtpPort)
+		}
+		if err != nil {
+			log.Printf("smtp dial error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail connect failed"})
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		cl, err := smtp.NewClient(conn, smtpHost)
+		if err != nil {
+			log.Printf("smtp client error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail client failed"})
+		}
+		defer func() { _ = cl.Quit() }()
+		// STARTTLS if requested
+		if mode == "starttls" {
+			if ok, _ := cl.Extension("STARTTLS"); ok {
+				if err := cl.StartTLS(&tls.Config{ServerName: smtpHost}); err != nil {
+					log.Printf("smtp starttls error: %v", err)
+					return c.Status(502).JSON(fiber.Map{"error": "mail tls failed"})
+				}
+			}
+		}
+		if auth != nil {
+			if ok, _ := cl.Extension("AUTH"); ok {
+				_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+				if err := cl.Auth(auth); err != nil {
+					log.Printf("smtp auth error: %v", err)
+					return c.Status(502).JSON(fiber.Map{"error": "mail auth failed"})
+				}
+			}
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if err := cl.Mail(from); err != nil {
+			log.Printf("smtp mail from error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail from failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if err := cl.Rcpt(body.Email); err != nil {
+			log.Printf("smtp rcpt to error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail rcpt failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		w, err := cl.Data()
+		if err != nil {
+			log.Printf("smtp data start error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail data failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if _, err := w.Write(msg); err != nil {
+			_ = w.Close()
+			log.Printf("smtp data write error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail write failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if err := w.Close(); err != nil {
+			log.Printf("smtp data close error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail finalize failed"})
+		}
+		// store code after successful send
+		exp := time.Now().Add(10 * time.Minute)
+		lc := LoginCode{Email: email, HashedCode: sha256Hex([]byte(code)), ExpiresAt: exp}
+		if err := DB.Create(&lc).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "server"})
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// Discover auth options for an email (password/TOTP presence)
+	app.Post("/auth/options", func(c *fiber.Ctx) error {
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := c.BodyParser(&body); err != nil || body.Email == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		}
+		var u User
+		hasUser := DB.Where("email = ?", body.Email).First(&u).Error == nil
+		hasPassword := false
+		if hasUser && u.HashedPassword != nil && *u.HashedPassword != "" {
+			hasPassword = true
+		}
+		totpEnabled := false
+		if hasUser {
+			if ok, _, _ := getActiveTOTP(u.ID); ok {
+				totpEnabled = true
+			}
+		}
+		// passkey presence
+		passkeyEnabled := false
+		if hasUser {
+			var cnt int64
+			_ = DB.Model(&Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
+			passkeyEnabled = cnt > 0
+		}
+		methods := []string{}
+		if hasPassword {
+			methods = append(methods, "password")
+		}
+		if !hasUser || (hasUser && u.EmailCodeAllowed) {
+			methods = append(methods, "email_code")
+		}
+		if totpEnabled {
+			methods = append(methods, "totp", "recovery")
+		}
+		if passkeyEnabled {
+			methods = append(methods, "passkey")
+		}
+		return c.JSON(fiber.Map{"has_password": hasPassword, "totp_enabled": totpEnabled, "passkey_enabled": passkeyEnabled, "email_login_enabled": func() bool {
+			if hasUser {
+				return u.EmailCodeAllowed
+			}
+			return true
+		}(), "methods": methods})
 	})
 
 	app.Post("/auth/login", func(c *fiber.Ctx) error {
@@ -321,13 +531,42 @@ func main() {
 			Count(&cnt).Error; err == nil && cnt > 0 {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
 		}
-		// verify login code if provided (email magic code)
-		if body.Code != "" {
-			stored, _ := RDB.Get(c.Context(), "login-code:"+strings.ToLower(body.Email)).Result()
-			if stored == "" || stored != body.Code {
+		// Primary factor: if password is set, require password; otherwise allow email code
+		reqPassword := (u.HashedPassword != nil && *u.HashedPassword != "")
+		primaryOK := false
+		if reqPassword {
+			if body.Password == "" {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "password required"})
+			}
+			// verify bcrypt password
+			if err := bcrypt.CompareHashAndPassword([]byte(*u.HashedPassword), []byte(body.Password)); err == nil {
+				primaryOK = true
+			} else {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password"})
+			}
+		} else {
+			// Respect user setting for email code login
+			if !u.EmailCodeAllowed {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "email code disabled"})
+			}
+			// verify login code (email magic code) using DB
+			if body.Code == "" {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "code required"})
+			}
+			email := strings.ToLower(strings.TrimSpace(body.Email))
+			var lc LoginCode
+			if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, time.Now()).Order("id DESC").First(&lc).Error; err != nil {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 			}
-			_ = RDB.Del(c.Context(), "login-code:"+strings.ToLower(body.Email)).Err()
+			if lc.HashedCode != sha256Hex([]byte(body.Code)) {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
+			}
+			now := time.Now()
+			_ = DB.Model(&LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+			primaryOK = true
+		}
+		if !primaryOK {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		// 2FA enforcement (TOTP or recovery code)
 		if active, secret, _ := getActiveTOTP(u.ID); active {
@@ -398,6 +637,172 @@ func main() {
 		_ = DB.Create(&ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
 		return err
 	}
+
+	// Auth settings endpoints
+	app.Get("/settings/auth", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		// refresh user
+		var fresh User
+		_ = DB.First(&fresh, u.ID).Error
+		hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
+		totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+		return c.JSON(fiber.Map{
+			"email_login_enabled": fresh.EmailCodeAllowed,
+			"has_password":        hasPassword,
+			"totp_enabled":        totpEnabled,
+		})
+	})
+	app.Post("/settings/auth", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var body struct {
+			EmailLoginEnabled *bool `json:"email_login_enabled"`
+		}
+		if err := c.BodyParser(&body); err != nil || body.EmailLoginEnabled == nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		var fresh User
+		if err := DB.First(&fresh, u.ID).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		// Allow disabling email login if user has password or TOTP enabled
+		hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
+		totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+		var pkCount int64
+		_ = DB.Model(&Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+		if !*body.EmailLoginEnabled && !(hasPassword || totpEnabled || pkCount > 0) {
+			return c.Status(400).JSON(fiber.Map{"error": "cannot disable without another auth factor"})
+		}
+		fresh.EmailCodeAllowed = *body.EmailLoginEnabled
+		if err := DB.Model(&User{}).Where("id = ?", fresh.ID).Update("email_code_allowed", fresh.EmailCodeAllowed).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		return c.SendStatus(204)
+	})
+
+	// WebAuthn: helpers
+	fiberToHTTPRequest := func(c *fiber.Ctx) *http.Request {
+		req, _ := http.NewRequestWithContext(c.Context(), "POST", "", io.NopCloser(strings.NewReader(string(c.Body()))))
+		for k, v := range c.GetReqHeaders() {
+			if len(v) > 0 {
+				req.Header.Set(k, v[0])
+			}
+		}
+		return req
+	}
+
+	// WebAuthn registration (requires auth)
+	app.Post("/webauthn/register/begin", authRequired, audit, func(c *fiber.Ctx) error {
+		if WAuth == nil {
+			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
+		}
+		u := c.Locals("user").(*User)
+		// Load credentials for user into interface methods
+		creation, sd, err := WAuth.BeginRegistration(u)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "begin failed"})
+		}
+		b, _ := json.Marshal(sd)
+		_ = RDB.Set(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID), string(b), 10*time.Minute).Err()
+		return c.JSON(creation)
+	})
+	app.Post("/webauthn/register/finish", authRequired, audit, func(c *fiber.Ctx) error {
+		if WAuth == nil {
+			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
+		}
+		u := c.Locals("user").(*User)
+		raw, _ := RDB.Get(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Result()
+		if raw == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "session expired"})
+		}
+		var sd webauthn.SessionData
+		_ = json.Unmarshal([]byte(raw), &sd)
+		req := fiberToHTTPRequest(c)
+		cred, err := WAuth.FinishRegistration(u, sd, req)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "finish failed"})
+		}
+		// store credential
+		pub := base64.RawStdEncoding.EncodeToString(cred.PublicKey)
+		cid := base64.RawStdEncoding.EncodeToString(cred.ID)
+		devName := "Passkey"
+		rec := Passkey{
+			UserID:       u.ID,
+			CredentialID: cid,
+			PublicKey:    pub,
+			SignCount:    int64(cred.Authenticator.SignCount),
+			DeviceName:   &devName,
+		}
+		if err := DB.Create(&rec).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		_ = RDB.Del(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Err()
+		return c.SendStatus(204)
+	})
+
+	// WebAuthn login (no auth)
+	app.Post("/webauthn/login/begin", func(c *fiber.Ctx) error {
+		if WAuth == nil {
+			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
+		}
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Email) == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		var u User
+		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "not found"})
+		}
+		assertion, sd, err := WAuth.BeginLogin(&u)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "begin failed"})
+		}
+		b, _ := json.Marshal(sd)
+		_ = RDB.Set(c.Context(), fmt.Sprintf("webauthn:login:%d", u.ID), string(b), 10*time.Minute).Err()
+		return c.JSON(assertion)
+	})
+	app.Post("/webauthn/login/finish", func(c *fiber.Ctx) error {
+		if WAuth == nil {
+			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
+		}
+		var body struct {
+			Email string `json:"email"`
+		}
+		_ = c.BodyParser(&body)
+		if strings.TrimSpace(body.Email) == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		var u User
+		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "not found"})
+		}
+		raw, _ := RDB.Get(c.Context(), fmt.Sprintf("webauthn:login:%d", u.ID)).Result()
+		if raw == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "session expired"})
+		}
+		var sd webauthn.SessionData
+		_ = json.Unmarshal([]byte(raw), &sd)
+		req := fiberToHTTPRequest(c)
+		cred, err := WAuth.FinishLogin(&u, sd, req)
+		if err != nil {
+			return c.Status(401).JSON(fiber.Map{"error": "invalid passkey"})
+		}
+		// update sign count
+		_ = DB.Model(&Passkey{}).Where("user_id = ? AND credential_id = ?", u.ID, base64.RawStdEncoding.EncodeToString(cred.ID)).Update("sign_count", int64(cred.Authenticator.SignCount)).Error
+		// issue session token
+		token := fmt.Sprintf("sess_%d_%d", u.ID, time.Now().UnixNano())
+		ttl := time.Hour * 24 * 30
+		if err := RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "session"})
+		}
+		DB.Create(&Session{ClientPlatform: "web", HashedToken: token, ExpiresAt: ptrTime(time.Now().Add(ttl))})
+		claims := jwt.MapClaims{"sub": u.ID, "exp": time.Now().Add(ttl).Unix()}
+		jwtt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		jwtStr, _ := jwtt.SignedString([]byte(env("JWT_SECRET", "dev")))
+		_ = RDB.Del(c.Context(), fmt.Sprintf("webauthn:login:%d", u.ID)).Err()
+		return c.JSON(fiber.Map{"token": token, "jwt": jwtStr})
+	})
 
 	// API keys endpoints
 	app.Get("/apikeys", authRequired, audit, func(c *fiber.Ctx) error {

@@ -57,7 +57,6 @@ services:
       DB_PASSWORD: taskly_password
       DB_NAME: taskly
       REDIS_ADDR: redis:6379
-      SMTP_HOST: postfix
       METRICS_BIND_ADDR: 0.0.0.0:9464
   # web and mcp can be added later
 volumes:

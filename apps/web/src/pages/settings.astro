@@ -1,5 +1,5 @@
 ---
-const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
+const apiBase = (import.meta as any).env.PUBLIC_API_URL || 'http://localhost:8080';
 ---
 <html>
   <head>
@@ -8,6 +8,17 @@ const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
   </head>
   <body>
     <h1>Settings</h1>
+    <section>
+      <h2>Auth</h2>
+      <label>
+        <input type="checkbox" id="emailLoginToggle" /> Email login enabled
+      </label>
+      <p id="authHints" class="text-sm text-gray-500"></p>
+      <button id="saveAuth" type="button">Save Auth Settings</button>
+      <div style="margin-top: 12px;">
+        <button id="registerPasskey" type="button">Register Passkey</button>
+      </div>
+    </section>
     <section>
       <h2>API Keys</h2>
       <form id="apiKeyForm">
@@ -26,47 +37,127 @@ const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
     </section>
     <script>
   const token = localStorage.getItem('api_token') || '';
-      const headers = token ? { 'Authorization': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-  const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
+    const headers = (token ? { 'Authorization': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' });
+  const apiBase = (import.meta as any).env.PUBLIC_API_URL || 'http://localhost:8080';
+      async function loadAuth(){
+        const res = await fetch(`${apiBase}/settings/auth`, { headers: headers as any });
+        if(!res.ok) return;
+        const data = await res.json();
+        const cb = document.getElementById('emailLoginToggle') as HTMLInputElement | null;
+        if(cb) cb.checked = !!data.email_login_enabled;
+        const hints: string[] = [];
+        if(data.has_password) hints.push('パスワード有効');
+        if(data.totp_enabled) hints.push('TOTP有効');
+        // Informative only; passkey presence is implied once registered
+        const hintsEl = document.getElementById('authHints');
+        if(hintsEl) hintsEl.textContent = hints.join(' / ');
+      }
+      document.getElementById('saveAuth')?.addEventListener('click', async () => {
+        const cb = document.getElementById('emailLoginToggle') as HTMLInputElement | null;
+        const res = await fetch(`${apiBase}/settings/auth`, { method:'POST', headers: headers as any, body: JSON.stringify({ email_login_enabled: !!cb?.checked }) });
+        if(!res.ok){
+          const tx = await res.text();
+          alert('保存に失敗しました: ' + tx);
+        } else {
+          alert('保存しました');
+        }
+        await loadAuth();
+      });
       async function loadApiKeys(){
-        const res = await fetch(`${apiBase}/apikeys`, { headers });
+        const res = await fetch(`${apiBase}/apikeys`, { headers: headers as any });
         const data = await res.json();
         const ul = document.getElementById('apiKeys');
-        ul.innerHTML = '';
+        if(ul) ul.innerHTML = '';
         (data||[]).forEach(k => {
           const li = document.createElement('li');
           li.textContent = `#${k.id} — ${k.description||''} — valid=${k.is_valid}`;
-          ul.appendChild(li);
+          ul?.appendChild(li);
         });
       }
       async function loadIcal(){
-        const res = await fetch(`${apiBase}/ical/tokens`, { headers });
+        const res = await fetch(`${apiBase}/ical/tokens`, { headers: headers as any });
         const data = await res.json();
         const ul = document.getElementById('icalTokens');
-        ul.innerHTML = '';
+        if(ul) ul.innerHTML = '';
         (data||[]).forEach(i => {
           const li = document.createElement('li');
           const a = document.createElement('a'); a.href = i.url; a.textContent = i.url; a.target = '_blank';
           li.appendChild(document.createTextNode(`#${i.id} — `)); li.appendChild(a);
-          ul.appendChild(li);
+          ul?.appendChild(li);
         });
       }
-      document.getElementById('apiKeyForm').addEventListener('submit', async (e) => {
+      document.getElementById('apiKeyForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        const res = await fetch(`${apiBase}/apikeys`, { method:'POST', headers, body: JSON.stringify({ description: fd.get('description') || null }) });
+        const fd = new FormData(e.target as HTMLFormElement | undefined);
+        const res = await fetch(`${apiBase}/apikeys`, { method:'POST', headers: headers as any, body: JSON.stringify({ description: fd.get('description') || null }) });
         const out = await res.json();
         if(out && out.token){ alert(`API Key (store safely): ${out.token}`); }
         await loadApiKeys();
       });
-      document.getElementById('icalForm').addEventListener('submit', async (e) => {
+      document.getElementById('icalForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        await fetch(`${apiBase}/ical/tokens`, { method:'POST', headers, body: JSON.stringify({ description: fd.get('description') || null }) });
+        const fd = new FormData(e.target as HTMLFormElement | undefined);
+        await fetch(`${apiBase}/ical/tokens`, { method:'POST', headers: headers as any, body: JSON.stringify({ description: fd.get('description') || null }) });
         await loadIcal();
       });
+      loadAuth();
       loadApiKeys();
       loadIcal();
+
+      function b64urlToArray(buf: string): Uint8Array {
+        // convert base64url to Uint8Array
+        buf = buf.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = buf.length % 4;
+        if (pad) buf += '='.repeat(4 - pad);
+        const bin = atob(buf);
+        const out = new Uint8Array(bin.length);
+        for (let i=0; i<bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+      }
+      function arrayToB64url(bytes: ArrayBuffer | Uint8Array): string {
+        const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        let s = '';
+        for (let i=0; i<arr.length; i++) s += String.fromCharCode(arr[i]);
+        return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
+      }
+      document.getElementById('registerPasskey')?.addEventListener('click', async () => {
+        try{
+          // begin
+          const beginRes = await fetch(`${apiBase}/webauthn/register/begin`, { method:'POST', headers: headers as any });
+          if(!beginRes.ok){
+            alert('Passkey開始に失敗しました'); return;
+          }
+          const options = await beginRes.json();
+          // decode challenge and user.id
+          options.challenge = b64urlToArray(options.challenge);
+          if(options.user && options.user.id){ options.user.id = b64urlToArray(options.user.id); }
+          if(options.excludeCredentials){
+            options.excludeCredentials = options.excludeCredentials.map((c:any)=>({ ...c, id: b64urlToArray(c.id) }));
+          }
+          const cred: any = await (navigator as any).credentials.create({ publicKey: options });
+          if(!cred){ alert('Passkey作成がキャンセルされました'); return; }
+          const attResp = cred.response;
+          const payload = {
+            id: cred.id,
+            rawId: arrayToB64url(cred.rawId),
+            type: cred.type,
+            response: {
+              attestationObject: arrayToB64url(attResp.attestationObject),
+              clientDataJSON: arrayToB64url(attResp.clientDataJSON),
+            }
+          };
+          const finishRes = await fetch(`${apiBase}/webauthn/register/finish`, { method:'POST', headers: headers as any, body: JSON.stringify(payload) });
+          if(!finishRes.ok){
+            const tx = await finishRes.text();
+            alert('登録に失敗しました: ' + tx);
+          } else {
+            alert('Passkeyを登録しました');
+          }
+        }catch(e){
+          console.error(e);
+          alert('Passkey登録中にエラーが発生しました');
+        }
+      });
     </script>
   </body>
 </html>

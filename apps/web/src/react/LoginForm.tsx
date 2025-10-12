@@ -9,15 +9,49 @@ import {
   CardTitle,
 } from "../components/ui/card";
 
-const apiBase = import.meta.env.PUBLIC_API_URL || "http://localhost:8080";
+const apiBase =
+  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
 
 export default function LoginForm() {
   const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
   const [totp, setTotp] = React.useState("");
   const [recovery, setRecovery] = React.useState("");
+  const [hasPassword, setHasPassword] = React.useState<boolean | null>(null);
+  const [totpEnabled, setTotpEnabled] = React.useState<boolean>(false);
+  const [passkeyEnabled, setPasskeyEnabled] = React.useState<boolean>(false);
+  const [availableMethods, setAvailableMethods] = React.useState<string[]>([]);
+  const [selectedMethod, setSelectedMethod] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
+  const [step, setStep] = React.useState<"email" | "verify">("email");
+
+  const discover = async () => {
+    setMessage(null);
+    setHasPassword(null);
+    setTotpEnabled(false);
+    if (!email) return;
+    try {
+      const res = await fetch(`${apiBase}/auth/options`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setHasPassword(!!data?.has_password);
+      setTotpEnabled(!!data?.totp_enabled);
+      const methods: string[] = Array.isArray(data?.methods)
+        ? data.methods
+        : [];
+      setAvailableMethods(methods);
+      setPasskeyEnabled(!!data?.passkey_enabled || methods.includes("passkey"));
+      setStep("verify");
+    } catch (_err) {
+      setMessage("認証方式の取得に失敗しました");
+    }
+  };
 
   const requestCode = async () => {
     setLoading(true);
@@ -46,9 +80,10 @@ export default function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
+          password: password || undefined,
           code: code || undefined,
           totp: totp || undefined,
-          recovery: recovery || undefined,
+          recovery_code: recovery || undefined,
         }),
       });
       const data = await res.json();
@@ -66,70 +101,221 @@ export default function LoginForm() {
     }
   };
 
+  // WebAuthn helpers
+  const b64urlToArray = (buf: string) => {
+    buf = buf.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = buf.length % 4;
+    if (pad) buf += "=".repeat(4 - pad);
+    const bin = atob(buf);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+  const arrayToB64url = (bytes: ArrayBuffer | Uint8Array) => {
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let s = "";
+    for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+  const passkeyLogin = async () => {
+    if (!email) return;
+    setLoading(true);
+    setMessage(null);
+    try {
+      const beginRes = await fetch(`${apiBase}/webauthn/login/begin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!beginRes.ok) throw new Error(await beginRes.text());
+      const options = await beginRes.json();
+      // decode challenge, allowCredentials ids
+      options.challenge = b64urlToArray(options.challenge);
+      if (options.allowCredentials) {
+        options.allowCredentials = options.allowCredentials.map((c: any) => ({
+          ...c,
+          id: b64urlToArray(c.id),
+        }));
+      }
+      const assertion: any = await (navigator as any).credentials.get({
+        publicKey: options,
+      });
+      if (!assertion) throw new Error("キャンセルされました");
+      const payload = {
+        email,
+        id: assertion.id,
+        rawId: arrayToB64url(assertion.rawId),
+        type: assertion.type,
+        response: {
+          authenticatorData: arrayToB64url(
+            assertion.response.authenticatorData
+          ),
+          clientDataJSON: arrayToB64url(assertion.response.clientDataJSON),
+          signature: arrayToB64url(assertion.response.signature),
+          userHandle: assertion.response.userHandle
+            ? arrayToB64url(assertion.response.userHandle)
+            : null,
+        },
+      };
+      const finishRes = await fetch(`${apiBase}/webauthn/login/finish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await finishRes.json();
+      if (!finishRes.ok) throw new Error(data?.error || "passkey login failed");
+      if (data?.token) {
+        localStorage.setItem("api_token", data.token);
+        setMessage("ログインしました（パスキー）");
+      } else {
+        setMessage("予期せぬレスポンスです");
+      }
+    } catch (e: any) {
+      setMessage(e.message || "エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>ログイン</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="email">メールアドレス</Label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-          />
+        {step === "email" && (
+          <div className="space-y-2">
+            <Label htmlFor="email">メールアドレス</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+            />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={discover}
+                disabled={loading || !email}
+              >
+                次へ
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "verify" && hasPassword === true ? (
+          <div className="space-y-2">
+            <Label htmlFor="password">パスワード</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+        ) : null}
+        {step === "verify" && hasPassword === false && (
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label>認証方法を選択</Label>
+              <div className="flex flex-wrap gap-2">
+                {availableMethods.includes("email_code") && (
+                  <Button
+                    type="button"
+                    variant={
+                      selectedMethod === "email_code" ? "default" : "secondary"
+                    }
+                    onClick={async () => {
+                      setSelectedMethod("email_code");
+                      await requestCode();
+                    }}
+                    disabled={loading || !email}
+                  >
+                    メールコード
+                  </Button>
+                )}
+                {availableMethods.includes("passkey") && (
+                  <Button
+                    type="button"
+                    variant={
+                      selectedMethod === "passkey" ? "default" : "secondary"
+                    }
+                    onClick={() => setSelectedMethod("passkey")}
+                  >
+                    パスキー
+                  </Button>
+                )}
+              </div>
+            </div>
+            {selectedMethod === "email_code" && (
+              <div className="space-y-2">
+                <Label htmlFor="code">メールコード</Label>
+                <Input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="123456"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === "verify" && totpEnabled && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
+              <Label htmlFor="totp">TOTP</Label>
+              <Input
+                id="totp"
+                type="text"
+                inputMode="numeric"
+                value={totp}
+                onChange={(e) => setTotp(e.target.value)}
+                placeholder="123456"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recovery">リカバリー</Label>
+              <Input
+                id="recovery"
+                type="text"
+                value={recovery}
+                onChange={(e) => setRecovery(e.target.value)}
+                placeholder="abcd-efgh"
+              />
+            </div>
+          </div>
+        )}
+
+        {step === "verify" && (
           <div className="flex gap-2">
+            <Button type="button" onClick={login} disabled={loading || !email}>
+              ログイン
+            </Button>
+            {(passkeyEnabled || selectedMethod === "passkey") && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={passkeyLogin}
+                disabled={loading || !email}
+              >
+                パスキーでログイン
+              </Button>
+            )}
             <Button
               type="button"
-              onClick={requestCode}
-              disabled={loading || !email}
+              variant="secondary"
+              onClick={() => setStep("email")}
             >
-              コード送信
+              戻る
             </Button>
           </div>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="space-y-2 col-span-1">
-            <Label htmlFor="code">メールコード</Label>
-            <Input
-              id="code"
-              type="text"
-              inputMode="numeric"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="123456"
-            />
-          </div>
-          <div className="space-y-2 col-span-1">
-            <Label htmlFor="totp">TOTP</Label>
-            <Input
-              id="totp"
-              type="text"
-              inputMode="numeric"
-              value={totp}
-              onChange={(e) => setTotp(e.target.value)}
-              placeholder="123456"
-            />
-          </div>
-          <div className="space-y-2 col-span-1">
-            <Label htmlFor="recovery">リカバリー</Label>
-            <Input
-              id="recovery"
-              type="text"
-              value={recovery}
-              onChange={(e) => setRecovery(e.target.value)}
-              placeholder="abcd-efgh"
-            />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" onClick={login} disabled={loading || !email}>
-            ログイン
-          </Button>
-        </div>
+        )}
         {message && <p className="text-sm text-muted-foreground">{message}</p>}
       </CardContent>
     </Card>

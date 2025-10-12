@@ -21,3 +21,4 @@ relay_domains = $mydestination
 
 smtp_tls_security_level = none
 smtpd_tls_security_level = none
+smtpd_peername_lookup = no
