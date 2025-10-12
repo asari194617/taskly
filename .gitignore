@@ -1,0 +1,29 @@
+# General
+.DS_Store
+node_modules/
+.env
+.env.*
+*.log
+coverage/
+dist/
+.idea/
+.vscode/
+
+# Go
+bin/
+.coverage*
+*.test
+**/vendor/
+
+# Astro
+/.astro/
+
+# macOS
+*.swp
+
+# Docker
+**/.docker-data/
+
+# Build artifacts
+**/build/
+**/out/

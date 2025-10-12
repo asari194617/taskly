@@ -1,0 +1,25 @@
+name: mcp-ci
+
+on:
+  push:
+    paths:
+      - "apps/mcp/**"
+      - ".github/workflows/mcp.yml"
+  pull_request:
+    paths:
+      - "apps/mcp/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        working-directory: apps/mcp
+        run: npm ci || npm install
+      - name: Build
+        working-directory: apps/mcp
+        run: npm run build

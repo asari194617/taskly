@@ -1,0 +1,23 @@
+# Minimal postfix config for local relay
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+# TLS off for local dev
+smtpd_use_tls=no
+smtp_use_tls=no
+
+myhostname = postfix
+myorigin = $myhostname
+mydestination = $myhostname, localhost.localdomain, localhost
+relayhost =
+inet_interfaces = all
+inet_protocols = ipv4
+
+mynetworks = 0.0.0.0/0
+local_recipient_maps =
+relay_domains = $mydestination
+
+smtp_tls_security_level = none
+smtpd_tls_security_level = none

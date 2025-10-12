@@ -1,0 +1,63 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: taskly
+      MYSQL_USER: taskly
+      MYSQL_PASSWORD: taskly_password
+    ports:
+      - "3306:3306"
+    command:
+      [
+        "--default-authentication-plugin=mysql_native_password",
+        "--sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+      ]
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+  postfix:
+    build: ./docker/postfix
+    container_name: taskly-postfix
+    ports:
+      - "25:25"
+    environment:
+      - MYNETWORKS=0.0.0.0/0
+      - RELAY_NETWORKS=:0.0.0.0/0
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+  api:
+    build: ../apps/api
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      REDIS_ADDR: redis:6379
+      SMTP_HOST: postfix
+      METRICS_BIND_ADDR: 0.0.0.0:9464
+  # web and mcp can be added later
+volumes:
+  db-data:
+  redis-data:

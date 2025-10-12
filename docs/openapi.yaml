@@ -1,0 +1,236 @@
+openapi: 3.0.3
+info:
+  title: Taskly API
+  version: 0.1.0
+  description: Initial draft of Taskly REST API.
+servers:
+  - url: https://api.taskly.local
+    description: Production
+  - url: http://localhost:8080
+    description: Local
+tags:
+  - name: auth
+  - name: users
+  - name: tasks
+  - name: integrations
+  - name: ical
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      tags: [auth]
+      responses:
+        "200":
+          description: OK
+  /auth/request-code:
+    post:
+      summary: Request login code via email
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+              required: [email]
+      responses:
+        "202":
+          description: Code sent
+  /auth/login:
+    post:
+      summary: Login with code or password + 2FA
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                code:
+                  type: string
+                totp:
+                  type: string
+              required: [email]
+      responses:
+        "200":
+          description: Logged in
+  /auth/logout:
+    post:
+      summary: Logout current session
+      tags: [auth]
+      responses:
+        "204":
+          description: No content
+  /apikeys:
+    get:
+      summary: List API keys for current user
+      tags: [users]
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create a new API key (respecting limits)
+      tags: [users]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+      responses:
+        "201": { description: Created }
+  /apikeys/{id}:
+    patch:
+      summary: Invalidate or update an API key
+      tags: [users]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_valid: { type: boolean }
+      responses:
+        "200": { description: Updated }
+  /users/me:
+    get:
+      summary: Get current user
+      tags: [users]
+      responses:
+        "200":
+          description: User profile
+  /tasks:
+    get:
+      summary: List tasks
+      tags: [tasks]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create task
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created
+  /tasks/{id}:
+    get:
+      summary: Get task
+      tags: [tasks]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "200": { description: OK }
+    patch:
+      summary: Update task
+      tags: [tasks]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "200": { description: Updated }
+    delete:
+      summary: Delete task (admin/manager)
+      tags: [tasks]
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "204": { description: Deleted }
+  /integrations/teams/inbound:
+    post:
+      summary: Inbound Teams email webhook (Power Automate)
+      tags: [integrations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+              required: [title]
+      responses:
+        "202": { description: Accepted }
+  /integrations/teams/status:
+    post:
+      summary: Callback endpoint for Teams processing status
+      tags: [integrations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_success: { type: boolean }
+                task_id: { type: integer }
+                message_id: { type: string }
+                conversation_id: { type: string }
+      responses:
+        "200": { description: OK }
+  /ical/{token}.ics:
+    get:
+      summary: Get iCal feed for a user
+      tags: [ical]
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: iCal content
+          content:
+            text/calendar:
+              schema:
+                type: string
+components:
+  schemas:
+    TaskInput:
+      type: object
+      properties:
+        title: { type: string }
+        subject_id: { type: integer }
+        description: { type: string }
+        is_require_hand_in: { type: boolean }
+        deadline: { type: string, format: date-time }
+      required: [title, subject_id]
