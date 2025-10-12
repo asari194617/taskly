@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getApiBase } from "@/lib/api";
+import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 
 type AuthState = {
@@ -25,29 +26,25 @@ export default function SettingsSecurity() {
 
   React.useEffect(() => {
     if (!token) return;
-    fetch(`${getApiBase()}/settings/auth`, {
-      headers: { Authorization: token },
-    })
-      .then((r) => r.json())
-      .then(setAuth)
-      .catch(() => {
-        toast({
-          variant: "destructive",
-          title: "認証設定の取得に失敗しました",
-        });
-      });
+    gql<{ authSettings: AuthState }>(
+      `query{ authSettings{ email_login_enabled has_password totp_enabled } }`
+    )
+      .then((d) => setAuth(d.authSettings))
+      .catch(() =>
+        toast({ variant: "destructive", title: "認証設定の取得に失敗しました" })
+      );
   }, [token]);
 
   async function toggleEmailLogin(v: boolean) {
     const prev = auth;
     setAuth((s) => (s ? { ...s, email_login_enabled: v } : s));
-    const res = await fetch(`${getApiBase()}/settings/auth`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
-      body: JSON.stringify({ email_login_enabled: v }),
-    });
-    if (!res.ok && prev) {
-      setAuth(prev);
+    try {
+      await gql<{ setAuthSettings: boolean }>(
+        `mutation($on:Boolean!){ setAuthSettings(email_login_enabled:$on) }`,
+        { on: v }
+      );
+    } catch {
+      if (prev) setAuth(prev);
       toast({ variant: "destructive", title: "更新に失敗しました" });
     }
   }

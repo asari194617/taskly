@@ -339,6 +339,15 @@ func main() {
 			"is_manager":   &graphql.Field{Type: graphql.Boolean},
 		},
 	})
+
+	authSettingsType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "AuthSettings",
+		Fields: graphql.Fields{
+			"email_login_enabled": &graphql.Field{Type: graphql.Boolean},
+			"has_password":        &graphql.Field{Type: graphql.Boolean},
+			"totp_enabled":        &graphql.Field{Type: graphql.Boolean},
+		},
+	})
 	rootQuery := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Query",
 		Fields: graphql.Fields{
@@ -375,6 +384,29 @@ func main() {
 					return nil, fmt.Errorf("context missing")
 				},
 			},
+			"authSettings": &graphql.Field{
+				Type: authSettingsType,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) && !userFromAPIKey(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						var fresh User
+						if err := DB.First(&fresh, u.ID).Error; err != nil {
+							return nil, err
+						}
+						hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
+						totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+						return map[string]any{
+							"email_login_enabled": fresh.EmailCodeAllowed,
+							"has_password":        hasPassword,
+							"totp_enabled":        totpEnabled,
+						}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
 		},
 	})
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
@@ -397,6 +429,37 @@ func main() {
 							dn = dn[:255]
 						}
 						if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("display_name", dn).Error; err != nil {
+							return false, err
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"setAuthSettings": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"email_login_enabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) && !userFromAPIKey(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						val, _ := p.Args["email_login_enabled"].(bool)
+						var fresh User
+						if err := DB.First(&fresh, u.ID).Error; err != nil {
+							return false, err
+						}
+						hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
+						totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+						var pkCount int64
+						_ = DB.Model(&Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+						if !val && !(hasPassword || totpEnabled || pkCount > 0) {
+							return false, fmt.Errorf("cannot disable without another auth factor")
+						}
+						if err := DB.Model(&User{}).Where("id = ?", fresh.ID).Update("email_code_allowed", val).Error; err != nil {
 							return false, err
 						}
 						return true, nil
