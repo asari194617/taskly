@@ -72,6 +72,14 @@ type WebPushSubscription struct {
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }
 
+// VAPID keys for Web Push (single row)
+type WebPushVAPID struct {
+	ID         uint      `gorm:"primaryKey"`
+	PublicKey  string    `gorm:"size:255;not null"`
+	PrivateKey string    `gorm:"size:255;not null"`
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
+}
+
 // RBAC and permissions
 type RoleUser struct {
 	ID        uint   `gorm:"primaryKey"`

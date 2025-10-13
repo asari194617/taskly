@@ -25,7 +25,7 @@ func main() {
 	initWebAuthn()
 
 	// Auto-migrate core models
-	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{})
+	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{})
 
 	app := fiber.New()
 	app.Use(recover.New())
@@ -50,10 +50,15 @@ func main() {
 	if strings.ToLower(env("TASK_DIGEST_ENABLED", "true")) == "true" {
 		go tasksNotifyScheduler(env("TASK_DIGEST_TIME", "07:30"))
 	}
+	// Daily tasks push digest (07:45 default)
+	if strings.ToLower(env("PUSH_DIGEST_ENABLED", "false")) == "true" {
+		go pushNotifyScheduler(env("PUSH_DIGEST_TIME", "07:45"))
+	}
 
 	// Register extracted route groups
 	registerAuthRoutes(app)
 	registerPushRoutes(app)
+	registerPushVAPIDRoutes(app)
 	registerSettingsRoutes(app)
 	registerWebAuthnRoutes(app)
 	registerAPIKeyRoutes(app)

@@ -3,10 +3,163 @@ import * as React from "react";
 import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+
+const apiBase =
+  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
+
+function urlB64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 export default function SettingsNotifications() {
   const [emailOn, setEmailOn] = React.useState(true);
   const [pushOn, setPushOn] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [perm, setPerm] = React.useState<NotificationPermission>(
+    typeof Notification !== "undefined" ? Notification.permission : "default"
+  );
+  const [message, setMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        if (!("serviceWorker" in navigator)) return;
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (!mounted) return;
+        setPushOn(!!sub);
+        setPerm(
+          typeof Notification !== "undefined"
+            ? Notification.permission
+            : "default"
+        );
+      } catch {}
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const fetchVapidKey = async (): Promise<string> => {
+    const res = await fetch(`${apiBase}/push/vapidPublicKey`);
+    if (!res.ok) throw new Error("VAPIDキーの取得に失敗しました");
+    const data = await res.json();
+    if (!data?.publicKey) throw new Error("VAPIDキーが空です");
+    return data.publicKey as string;
+  };
+
+  const subscribe = async () => {
+    setMessage(null);
+    try {
+      if (!("serviceWorker" in navigator))
+        throw new Error("Service Worker未対応です");
+      if (!("PushManager" in window)) throw new Error("Push通知未対応です");
+      // Ensure SW registered
+      const swReg = await navigator.serviceWorker.ready;
+      let permission =
+        typeof Notification !== "undefined"
+          ? Notification.permission
+          : "default";
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+        setPerm(permission);
+      }
+      if (permission !== "granted") throw new Error("通知が許可されていません");
+
+      const vapid = await fetchVapidKey();
+      const appServerKey = urlB64ToUint8Array(vapid);
+      const sub = await swReg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: appServerKey,
+      });
+      const key = sub.toJSON() as any;
+      const token = localStorage.getItem("api_token") || "";
+      const res = await fetch(`${apiBase}/push/subscribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({
+          endpoint: sub.endpoint,
+          P256dh: key.keys?.p256dh,
+          Auth: key.keys?.auth,
+        }),
+      });
+      if (!res.ok) throw new Error("サーバー登録に失敗しました");
+      setPushOn(true);
+      setMessage("プッシュ通知を有効化しました");
+    } catch (e: any) {
+      setMessage(e.message || "エラーが発生しました");
+      throw e;
+    }
+  };
+
+  const unsubscribe = async () => {
+    setMessage(null);
+    try {
+      if (!("serviceWorker" in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe();
+        const token = localStorage.getItem("api_token") || "";
+        await fetch(`${apiBase}/push/unsubscribe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: token ? `Bearer ${token}` : "",
+            "X-Client-Platform": "web",
+          },
+          body: JSON.stringify({ endpoint }),
+        });
+      }
+      setPushOn(false);
+      setMessage("プッシュ通知を無効化しました");
+    } catch (e: any) {
+      setMessage(e.message || "エラーが発生しました");
+    }
+  };
+
+  const togglePush = async (next: boolean) => {
+    setLoading(true);
+    try {
+      if (next) await subscribe();
+      else await unsubscribe();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const testPush = async () => {
+    setMessage(null);
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      const res = await fetch(`${apiBase}/push/test`, {
+        method: "POST",
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+      });
+      if (!res.ok) throw new Error("テスト送信に失敗しました");
+      setMessage("テスト通知を送信しました");
+    } catch (e: any) {
+      setMessage(e.message || "エラーが発生しました");
+    }
+  };
+
   return (
     <SettingsShell>
       <div className="space-y-6">
@@ -27,10 +180,42 @@ export default function SettingsNotifications() {
             <div>
               <div className="font-medium">Web Push</div>
               <div className="text-sm text-muted-foreground">
-                ブラウザのプッシュ通知（準備中）。
+                ブラウザのプッシュ通知を有効にすると、締切やお知らせを受け取れます。
               </div>
+              {perm === "denied" && (
+                <div className="text-xs text-red-500 mt-1">
+                  通知がブラウザでブロックされています。ブラウザのサイト設定から通知を許可してください。
+                </div>
+              )}
+              {message && (
+                <div className="text-xs text-muted-foreground mt-1">
+                  {message}
+                </div>
+              )}
             </div>
-            <Switch checked={pushOn} onCheckedChange={setPushOn} />
+            <Switch
+              checked={pushOn}
+              onCheckedChange={togglePush}
+              disabled={loading || perm === "denied"}
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="secondary"
+              onClick={testPush}
+              disabled={!pushOn || loading}
+            >
+              テスト通知を送信
+            </Button>
+            {!pushOn && perm !== "granted" && (
+              <Button
+                variant="secondary"
+                onClick={() => subscribe()}
+                disabled={loading}
+              >
+                許可して有効化
+              </Button>
+            )}
           </div>
         </Card>
       </div>

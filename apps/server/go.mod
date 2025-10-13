@@ -3,6 +3,7 @@ module github.com/asari194617/taskly/apps/server
 go 1.22.5
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.2.0
 	github.com/go-webauthn/webauthn v0.10.1
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -24,6 +25,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.5.0 // indirect
 	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/go-webauthn/x v0.1.8 // indirect
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/google/go-tpm v0.9.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
