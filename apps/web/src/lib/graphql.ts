@@ -12,7 +12,13 @@ export async function gql<T>(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: token } : {}),
+      ...(token
+        ? {
+            Authorization: token.startsWith("Bearer ")
+              ? token
+              : `Bearer ${token}`,
+          }
+        : {}),
     },
     body: JSON.stringify({ query, variables }),
   });
