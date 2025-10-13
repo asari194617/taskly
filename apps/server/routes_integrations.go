@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,14 +28,39 @@ func registerIntegrationRoutes(app *fiber.App) {
 				return c.Status(401).JSON(fiber.Map{"error": "invalid signature"})
 			}
 		}
-		var p struct {
-			IsSuccess      bool   `json:"is_success"`
-			TaskID         uint   `json:"task_id"`
-			MessageID      string `json:"message_id"`
-			ConversationID string `json:"conversation_id"`
-		}
-		if err := c.BodyParser(&p); err != nil {
+		// Accept task_id as string or number
+		var raw map[string]any
+		if err := c.BodyParser(&raw); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		var p struct {
+			IsSuccess      bool
+			TaskID         uint
+			MessageID      string
+			ConversationID string
+		}
+		if v, ok := raw["is_success"].(bool); ok {
+			p.IsSuccess = v
+		}
+		if tid, ok := raw["task_id"]; ok {
+			switch tv := tid.(type) {
+			case string:
+				if n, err := strconv.ParseUint(strings.TrimSpace(tv), 10, 64); err == nil {
+					p.TaskID = uint(n)
+				}
+			case float64:
+				if tv >= 0 {
+					p.TaskID = uint(tv)
+				}
+			default:
+				// ignore
+			}
+		}
+		if v, ok := raw["message_id"].(string); ok {
+			p.MessageID = v
+		}
+		if v, ok := raw["conversation_id"].(string); ok {
+			p.ConversationID = v
 		}
 		if p.TaskID != 0 {
 			_ = DB.Table("tasks_teams_logs").Create(map[string]any{
@@ -72,15 +98,36 @@ func registerIntegrationRoutes(app *fiber.App) {
 				return c.Status(401).JSON(fiber.Map{"error": "invalid signature"})
 			}
 		}
-		// store minimal log
-		type payload struct {
-			IsSuccess      bool   `json:"is_success"`
-			TaskID         uint   `json:"task_id"`
-			MessageID      string `json:"message_id"`
-			ConversationID string `json:"conversation_id"`
+		// store minimal log; accept task_id string or number
+		var raw map[string]any
+		_ = c.BodyParser(&raw)
+		var p struct {
+			IsSuccess      bool
+			TaskID         uint
+			MessageID      string
+			ConversationID string
 		}
-		var p payload
-		_ = c.BodyParser(&p)
+		if v, ok := raw["is_success"].(bool); ok {
+			p.IsSuccess = v
+		}
+		if tid, ok := raw["task_id"]; ok {
+			switch tv := tid.(type) {
+			case string:
+				if n, err := strconv.ParseUint(strings.TrimSpace(tv), 10, 64); err == nil {
+					p.TaskID = uint(n)
+				}
+			case float64:
+				if tv >= 0 {
+					p.TaskID = uint(tv)
+				}
+			}
+		}
+		if v, ok := raw["message_id"].(string); ok {
+			p.MessageID = v
+		}
+		if v, ok := raw["conversation_id"].(string); ok {
+			p.ConversationID = v
+		}
 		if p.TaskID != 0 {
 			_ = DB.Table("tasks_teams_logs").Create(map[string]any{
 				"task_id":    p.TaskID,

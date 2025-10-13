@@ -37,7 +37,8 @@ import { Kbd } from "../components/ui/kbd";
 import {
   DeadlinePicker,
   type DeadlineMeta,
-  rfc3339FromMeta,
+  sinceUntilFromMeta,
+  deriveLabelFromEnums,
 } from "@/components/DeadlinePicker";
 import { Plus, CalendarDays } from "lucide-react";
 import {
@@ -70,7 +71,8 @@ type Task = {
   title: string;
   subject_id: number;
   deadline?: string | null;
-  deadline_meta?: string | null;
+  deadline_since?: string | null;
+  deadline_until?: string | null;
   description?: string | null;
   type?: string | null;
   is_require_hand_in?: boolean;
@@ -80,12 +82,7 @@ type Subject = { id: number; title: string };
 
 // Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
 
-function localDateFromRFC3339(rfc3339?: string | null): string {
-  if (!rfc3339) return "";
-  const d = new Date(rfc3339);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+// RFC3339 helpers removed — we now carry date string directly
 
 // slotFromRFC3339 removed
 
@@ -140,7 +137,7 @@ export default function TasksList() {
     }
     Promise.all([
       gql<{ tasks: { items: Task[] } }>(
-        `query($q:String){ tasks(limit:20, q:$q){ items{ id title subject_id deadline deadline_meta } } }`,
+        `query($q:String){ tasks(limit:20, q:$q){ items{ id title subject_id deadline deadline_since deadline_until } } }`,
         { q: q || undefined }
       ),
       gql<{ subjects: Subject[] }>(`query{ subjects{ id title } }`),
@@ -257,26 +254,26 @@ export default function TasksList() {
   // removed old datetime helpers
 
   async function createTask() {
-    if (!newTitle.trim() || !newSubjectId.trim()) {
+    if (!newTitle.trim() || !newSubjectId.trim() || !newDate.trim()) {
       toast({
         variant: "destructive",
-        title: "タイトルとサブジェクトは必須です",
+        title: "タイトル・サブジェクト・期限（日付）は必須です",
       });
       return;
     }
     setCreating(true);
     try {
       const res = await gql<{ createTask: Task }>(
-        `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_meta:String,$description:String,$type:String){
-          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_meta:$deadline_meta, description:$description, type:$type){ id title subject_id deadline deadline_meta description type is_require_hand_in self_check_required }
+        `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
+          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required }
         }`,
         {
           title: newTitle.trim(),
           subject_id: parseInt(newSubjectId, 10),
           is: newRequire,
           scr: newSelfCheck,
-          deadline: rfc3339FromMeta(newDate, newMeta),
-          deadline_meta: newMeta ? JSON.stringify(newMeta) : undefined,
+          deadline: newDate,
+          ...sinceUntilFromMeta(newDate, newMeta), // enums
           description: newDesc || undefined,
           type: newType || undefined,
         }
@@ -307,14 +304,8 @@ export default function TasksList() {
     setEditingId(t.id);
     setEditTitle(t.title);
     setEditSubjectId(String(t.subject_id || ""));
-    setEditDate(localDateFromRFC3339(t.deadline));
-    try {
-      setEditMeta(
-        t.deadline_meta ? (JSON.parse(t.deadline_meta) as DeadlineMeta) : null
-      );
-    } catch {
-      setEditMeta(null);
-    }
+    setEditDate(t.deadline || "");
+    setEditMeta(null);
     setEditRequire(!!t.is_require_hand_in);
     setEditSelfCheck(!!t.self_check_required);
     setEditType(t.type || "");
@@ -338,8 +329,8 @@ export default function TasksList() {
               ...x,
               title: editTitle,
               subject_id: parseInt(editSubjectId || "0", 10) || x.subject_id,
-              deadline: rfc3339FromMeta(editDate, editMeta) || null,
-              deadline_meta: editMeta ? JSON.stringify(editMeta) : undefined,
+              deadline: editDate || null,
+              // keep since/until in local state if needed (not shown here)
               is_require_hand_in: editRequire,
             }
           : x
@@ -347,8 +338,8 @@ export default function TasksList() {
     );
     try {
       await gql<{ updateTask: Task }>(
-        `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_meta:String,$description:String,$type:String){
-          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_meta:$deadline_meta, description:$description, type:$type){ id }
+        `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
+          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id }
         }`,
         {
           id,
@@ -356,8 +347,8 @@ export default function TasksList() {
           subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
           is: editRequire,
           scr: editSelfCheck,
-          deadline: rfc3339FromMeta(editDate, editMeta),
-          deadline_meta: editMeta ? JSON.stringify(editMeta) : undefined,
+          deadline: editDate || undefined,
+          ...sinceUntilFromMeta(editDate, editMeta),
           description: editDesc,
           type: editType,
         }
@@ -817,35 +808,14 @@ export default function TasksList() {
                     })
                     .map((t) => {
                       const deadline = (() => {
-                        if (t.deadline_meta) {
-                          try {
-                            const m = JSON.parse(
-                              t.deadline_meta
-                            ) as DeadlineMeta;
-                            const d = t.deadline ? new Date(t.deadline) : null;
-                            const ds = d ? d.toLocaleDateString() : "";
-                            switch (m.kind) {
-                              case "outside":
-                                return `${ds} ${m.slot}`.trim() || "期限なし";
-                              case "one":
-                                return (
-                                  `${ds} ${m.period}限`.trim() || "期限なし"
-                                );
-                              case "two":
-                                return `${ds} ${m.pair}限`.trim() || "期限なし";
-                              case "range":
-                                return (
-                                  `${ds} ${m.start}限〜${m.end}限`.trim() ||
-                                  "期限なし"
-                                );
-                              default:
-                                return ds || "期限なし";
-                            }
-                          } catch {}
-                        }
-                        return t.deadline
-                          ? new Date(t.deadline).toLocaleDateString()
-                          : "期限なし";
+                        // Prefer symbolic label from since/until
+                        const label = deriveLabelFromEnums(
+                          t.deadline || "",
+                          t.deadline_since,
+                          t.deadline_until
+                        );
+                        if (label) return label;
+                        return t.deadline || "期限なし";
                       })();
                       const isEditing = editingId === t.id;
                       return (

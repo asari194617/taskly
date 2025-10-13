@@ -33,13 +33,14 @@ func registerGraphQL(app *fiber.App) {
 			"title":               &graphql.Field{Type: graphql.String},
 			"subject_id":          &graphql.Field{Type: graphql.Int},
 			"description":         &graphql.Field{Type: graphql.String},
-			"type":                &graphql.Field{Type: graphql.String},
-			"is_require_hand_in":  &graphql.Field{Type: graphql.Boolean},
-			"self_check_required": &graphql.Field{Type: graphql.Boolean},
-			"deadline":            &graphql.Field{Type: graphql.String},
-			"deadline_meta":       &graphql.Field{Type: graphql.String},
-			"created_at":          &graphql.Field{Type: graphql.String},
-			"updated_at":          &graphql.Field{Type: graphql.String},
+			"type":                &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"is_require_hand_in":  &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"self_check_required": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"deadline":            &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
+			"deadline_since":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
+			"deadline_until":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
+			"created_at":          &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"updated_at":          &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 		},
 	})
 	meType := graphql.NewObject(graphql.ObjectConfig{
@@ -192,10 +193,11 @@ func registerGraphQL(app *fiber.App) {
 						}
 						dbq := DB.Model(&Task{})
 						now := time.Now()
+						eff := effectiveDeadlineExpr("")
 						if overdue {
-							dbq = dbq.Where("deadline IS NOT NULL AND deadline < ?", now)
+							dbq = dbq.Where(eff+" < ?", now)
 						} else {
-							dbq = dbq.Where("deadline IS NULL OR deadline >= ?", now)
+							dbq = dbq.Where(eff+" >= ?", now)
 						}
 						if strings.TrimSpace(qstr) != "" {
 							like := "%" + strings.TrimSpace(qstr) + "%"
@@ -203,9 +205,9 @@ func registerGraphQL(app *fiber.App) {
 						}
 						if cursorDeadline != nil {
 							if overdue {
-								dbq = dbq.Where("(deadline < ?) OR (deadline = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
+								dbq = dbq.Where("("+eff+" < ?) OR ("+eff+" = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
 							} else {
-								dbq = dbq.Where("(deadline > ?) OR (deadline = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
+								dbq = dbq.Where("("+eff+" > ?) OR ("+eff+" = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
 							}
 						} else if cursorID != 0 {
 							if overdue {
@@ -215,9 +217,9 @@ func registerGraphQL(app *fiber.App) {
 							}
 						}
 						if overdue {
-							dbq = dbq.Order("deadline DESC").Order("id DESC")
+							dbq = dbq.Order(eff + " DESC").Order("id DESC")
 						} else {
-							dbq = dbq.Order("CASE WHEN deadline IS NULL THEN 1 ELSE 0 END ASC").Order("deadline ASC").Order("id ASC")
+							dbq = dbq.Order(eff + " ASC").Order("id ASC")
 						}
 						var items []Task
 						if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
@@ -227,14 +229,8 @@ func registerGraphQL(app *fiber.App) {
 						if len(items) > limit {
 							last := items[limit-1]
 							items = items[:limit]
-							if last.Deadline != nil {
-								nextCursor = map[string]string{
-									"cursor_deadline": last.Deadline.Format(time.RFC3339),
-									"cursor_id":       fmt.Sprintf("%d", last.ID),
-								}
-							} else {
-								nextCursor = map[string]string{"cursor_id": fmt.Sprintf("%d", last.ID)}
-							}
+							ed := effectiveDeadlineTime(last)
+							nextCursor = map[string]string{"cursor_deadline": ed.Format(time.RFC3339), "cursor_id": fmt.Sprintf("%d", last.ID)}
 						}
 						// serialize
 						outItems := make([]map[string]any, 0, len(items))
@@ -248,16 +244,11 @@ func registerGraphQL(app *fiber.App) {
 								"is_require_hand_in":  it.IsRequireHandIn,
 								"self_check_required": it.SelfCheckRequired,
 							}
-							if it.Deadline != nil {
-								out["deadline"] = it.Deadline.Format(time.RFC3339)
-							} else {
-								out["deadline"] = nil
-							}
-							if it.DeadlineMeta != nil {
-								out["deadline_meta"] = *it.DeadlineMeta
-							} else {
-								out["deadline_meta"] = nil
-							}
+							out["deadline"] = it.Deadline.Format("2006-01-02")
+							out["deadline_since"] = it.DeadlineSince
+							out["deadline_until"] = it.DeadlineUntil
+							out["created_at"] = it.CreatedAt.Format(time.RFC3339)
+							out["updated_at"] = it.UpdatedAt.Format(time.RFC3339)
 							outItems = append(outItems, out)
 						}
 						return map[string]any{"items": outItems, "next_cursor": nextCursor}, nil
@@ -829,8 +820,9 @@ func registerGraphQL(app *fiber.App) {
 					"type":                &graphql.ArgumentConfig{Type: graphql.String},
 					"is_require_hand_in":  &graphql.ArgumentConfig{Type: graphql.Boolean},
 					"self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
-					"deadline":            &graphql.ArgumentConfig{Type: graphql.String},
-					"deadline_meta":       &graphql.ArgumentConfig{Type: graphql.String},
+					"deadline":            &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
+					"deadline_since":      &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
+					"deadline_until":      &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -851,43 +843,57 @@ func registerGraphQL(app *fiber.App) {
 							descPtr = &desc
 						}
 						typ, _ := p.Args["type"].(string)
-						var typPtr *string
-						if strings.TrimSpace(typ) != "" {
-							typPtr = &typ
-						}
+						typ = strings.TrimSpace(typ)
 						irh, _ := p.Args["is_require_hand_in"].(bool)
 						scr, _ := p.Args["self_check_required"].(bool)
 						deadlineStr, _ := p.Args["deadline"].(string)
-						deadlineMeta, _ := p.Args["deadline_meta"].(string)
-						var deadlinePtr *time.Time
-						if strings.TrimSpace(deadlineStr) != "" {
-							if t, err := time.Parse(time.RFC3339, deadlineStr); err == nil {
-								deadlinePtr = &t
-							} else {
-								return nil, fmt.Errorf("invalid deadline")
-							}
+						deadlineStr = strings.TrimSpace(deadlineStr)
+						if deadlineStr == "" {
+							return nil, fmt.Errorf("deadline required")
 						}
-						var metaPtr *string
-						if strings.TrimSpace(deadlineMeta) != "" {
-							v := deadlineMeta
-							metaPtr = &v
+						dt, err := time.Parse("2006-01-02", deadlineStr)
+						if err != nil {
+							return nil, fmt.Errorf("invalid deadline")
 						}
-						rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typPtr, IsRequireHandIn: irh, SelfCheckRequired: scr, Deadline: deadlinePtr, DeadlineMeta: metaPtr}
+						dlSinceStr, _ := p.Args["deadline_since"].(string)
+						dlUntilStr, _ := p.Args["deadline_until"].(string)
+						since := strings.ToUpper(strings.TrimSpace(dlSinceStr))
+						until := strings.ToUpper(strings.TrimSpace(dlUntilStr))
+						// defaults
+						if since == "" {
+							since = "NONE"
+						}
+						if until == "" {
+							until = "NONE"
+						}
+						// validate enums
+						validSince := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true}
+						validUntil := map[string]bool{"NONE": true, "MORNING": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true}
+						if !validSince[since] {
+							return nil, fmt.Errorf("invalid deadline_since")
+						}
+						if !validUntil[until] {
+							return nil, fmt.Errorf("invalid deadline_until")
+						}
+						rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, SelfCheckRequired: scr, Deadline: dateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
 						if err := DB.Create(&rec).Error; err != nil {
 							return nil, fmt.Errorf("db")
 						}
 						// Fire async Teams notification email for Power Automate
 						go sendTeamsNotifyEmailForTask(rec)
-						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "type": rec.Type, "is_require_hand_in": rec.IsRequireHandIn, "self_check_required": rec.SelfCheckRequired}
-						if rec.Deadline != nil {
-							out["deadline"] = rec.Deadline.Format(time.RFC3339)
-						} else {
-							out["deadline"] = nil
-						}
-						if rec.DeadlineMeta != nil {
-							out["deadline_meta"] = *rec.DeadlineMeta
-						} else {
-							out["deadline_meta"] = nil
+						out := map[string]any{
+							"id":                  rec.ID,
+							"title":               rec.Title,
+							"subject_id":          rec.SubjectID,
+							"description":         rec.Description,
+							"type":                rec.Type,
+							"is_require_hand_in":  rec.IsRequireHandIn,
+							"self_check_required": rec.SelfCheckRequired,
+							"deadline":            rec.Deadline.Format("2006-01-02"),
+							"deadline_since":      rec.DeadlineSince,
+							"deadline_until":      rec.DeadlineUntil,
+							"created_at":          rec.CreatedAt.Format(time.RFC3339),
+							"updated_at":          rec.UpdatedAt.Format(time.RFC3339),
 						}
 						return out, nil
 					}
@@ -904,8 +910,9 @@ func registerGraphQL(app *fiber.App) {
 					"type":                &graphql.ArgumentConfig{Type: graphql.String},
 					"is_require_hand_in":  &graphql.ArgumentConfig{Type: graphql.Boolean},
 					"self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
-					"deadline":            &graphql.ArgumentConfig{Type: graphql.String},
-					"deadline_meta":       &graphql.ArgumentConfig{Type: graphql.String},
+					"deadline":            &graphql.ArgumentConfig{Type: graphql.String}, // YYYY-MM-DD
+					"deadline_since":      &graphql.ArgumentConfig{Type: graphql.String},
+					"deadline_until":      &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -937,11 +944,7 @@ func registerGraphQL(app *fiber.App) {
 							}
 						}
 						if v, ok := p.Args["type"].(string); ok {
-							if strings.TrimSpace(v) == "" {
-								rec.Type = nil
-							} else {
-								rec.Type = &v
-							}
+							rec.Type = strings.TrimSpace(v)
 						}
 						if v, ok := p.Args["is_require_hand_in"].(bool); ok {
 							rec.IsRequireHandIn = v
@@ -950,34 +953,51 @@ func registerGraphQL(app *fiber.App) {
 							rec.SelfCheckRequired = v
 						}
 						if v, ok := p.Args["deadline"].(string); ok {
-							if strings.TrimSpace(v) == "" {
-								rec.Deadline = nil
-							} else if t, err := time.Parse(time.RFC3339, v); err == nil {
-								rec.Deadline = &t
-							} else {
-								return nil, fmt.Errorf("invalid deadline")
+							vv := strings.TrimSpace(v)
+							if vv != "" {
+								if t, err := time.Parse("2006-01-02", vv); err == nil {
+									rec.Deadline = dateOnly(t)
+								} else {
+									return nil, fmt.Errorf("invalid deadline")
+								}
 							}
 						}
-						if v, ok := p.Args["deadline_meta"].(string); ok {
-							if strings.TrimSpace(v) == "" {
-								rec.DeadlineMeta = nil
-							} else {
-								rec.DeadlineMeta = &v
+						if v, ok := p.Args["deadline_since"].(string); ok {
+							vv := strings.ToUpper(strings.TrimSpace(v))
+							if vv == "" {
+								vv = "NONE"
 							}
+							if vv != "NONE" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" {
+								return nil, fmt.Errorf("invalid deadline_since")
+							}
+							rec.DeadlineSince = vv
+						}
+						if v, ok := p.Args["deadline_until"].(string); ok {
+							vv := strings.ToUpper(strings.TrimSpace(v))
+							if vv == "" {
+								vv = "NONE"
+							}
+							if vv != "NONE" && vv != "MORNING" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" {
+								return nil, fmt.Errorf("invalid deadline_until")
+							}
+							rec.DeadlineUntil = vv
 						}
 						if err := DB.Save(&rec).Error; err != nil {
 							return nil, fmt.Errorf("db")
 						}
-						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "type": rec.Type, "is_require_hand_in": rec.IsRequireHandIn, "self_check_required": rec.SelfCheckRequired}
-						if rec.Deadline != nil {
-							out["deadline"] = rec.Deadline.Format(time.RFC3339)
-						} else {
-							out["deadline"] = nil
-						}
-						if rec.DeadlineMeta != nil {
-							out["deadline_meta"] = *rec.DeadlineMeta
-						} else {
-							out["deadline_meta"] = nil
+						out := map[string]any{
+							"id":                  rec.ID,
+							"title":               rec.Title,
+							"subject_id":          rec.SubjectID,
+							"description":         rec.Description,
+							"type":                rec.Type,
+							"is_require_hand_in":  rec.IsRequireHandIn,
+							"self_check_required": rec.SelfCheckRequired,
+							"deadline":            rec.Deadline.Format("2006-01-02"),
+							"deadline_since":      rec.DeadlineSince,
+							"deadline_until":      rec.DeadlineUntil,
+							"created_at":          rec.CreatedAt.Format(time.RFC3339),
+							"updated_at":          rec.UpdatedAt.Format(time.RFC3339),
 						}
 						return out, nil
 					}

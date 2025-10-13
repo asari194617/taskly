@@ -306,58 +306,70 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
 }
 
 // Utility to compute a representative RFC3339 moment if needed
-export function rfc3339FromMeta(
+// rfc3339FromMeta removed — server uses date + enums
+
+// Compute deadline_since and deadline_until from date + meta, following the server’s mapping
+export function sinceUntilFromMeta(
   date: string,
   meta: DeadlineMeta | null
-): string | undefined {
-  if (!date || !meta) return undefined;
-  const base = (h: number, m: number) =>
-    new Date(
-      `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`
-    ).toISOString();
+): { deadline_since?: string; deadline_until?: string } {
+  if (!date || !meta) return {};
+  // Map to enums: NONE|MORNING|P1..P6
+  const toEnum = (period: number) => `P${period}`;
   switch (meta.kind) {
-    case "outside":
-      if (meta.slot === "朝") return base(7, 30);
-      if (meta.slot === "昼休み") return base(12, 15);
-      return base(18, 30);
+    case "outside": {
+      if (meta.slot === "朝") {
+        return { deadline_until: "MORNING" };
+      }
+      // 昼休み/放課後は教務コマ外なので範囲は任意。ここでは NONE としておく
+      return { deadline_since: "NONE", deadline_until: "NONE" };
+    }
     case "one": {
-      const map: Record<number, [number, number]> = {
-        1: [9, 0],
-        2: [10, 30],
-        3: [13, 0],
-        4: [14, 30],
-        5: [16, 0],
-        6: [17, 30],
-        7: [19, 0],
-        8: [20, 30],
-      };
-      const t = map[meta.period];
-      return base(t[0], t[1]);
+      const p = Math.min(8, Math.max(1, meta.period));
+      return { deadline_since: toEnum(p), deadline_until: toEnum(p) };
     }
     case "two": {
       const map: Record<string, [number, number]> = {
-        "1,2": [10, 30],
-        "3,4": [14, 30],
-        "5,6": [17, 30],
-        "7,8": [20, 30],
+        "1,2": [1, 2],
+        "3,4": [3, 4],
+        "5,6": [5, 6],
+        "7,8": [7, 8],
       };
-      const t = map[meta.pair];
-      return base(t[0], t[1]);
+      const [s, e] = map[meta.pair];
+      return { deadline_since: toEnum(s), deadline_until: toEnum(e) };
     }
     case "range": {
-      const last = meta.end;
-      const map: Record<number, [number, number]> = {
-        1: [9, 0],
-        2: [10, 30],
-        3: [13, 0],
-        4: [14, 30],
-        5: [16, 0],
-        6: [17, 30],
-        7: [19, 0],
-        8: [20, 30],
-      };
-      const t = map[last];
-      return base(t[0], t[1]);
+      const s = Math.min(8, Math.max(1, meta.start));
+      const e = Math.min(8, Math.max(1, meta.end));
+      const [ss, ee] = s <= e ? [s, e] : [e, s];
+      return { deadline_since: toEnum(ss), deadline_until: toEnum(ee) };
     }
+    default:
+      return {};
   }
+}
+
+// Friendly label for UI from since/until
+export function deriveLabelFromEnums(
+  date: string,
+  since?: string | null,
+  until?: string | null
+): string {
+  const d = date ? new Date(date) : null;
+  const dateStr = d ? d.toLocaleDateString() : "";
+  const norm = (s?: string | null) => (s || "").toUpperCase();
+  const s = norm(since);
+  const u = norm(until);
+  if (u === "MORNING") return `${dateStr} 朝まで`;
+  const toNum = (v: string) =>
+    v.startsWith("P") ? parseInt(v.slice(1), 10) : 0;
+  const ps = toNum(s);
+  const pu = toNum(u);
+  if (pu && ps) {
+    return ps === pu
+      ? `${dateStr} ${pu}限まで`
+      : `${dateStr} ${ps}〜${pu}限まで`;
+  }
+  if (pu) return `${dateStr} ${pu}限まで`;
+  return dateStr ? `${dateStr} まで` : "";
 }

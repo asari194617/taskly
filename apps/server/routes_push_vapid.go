@@ -148,7 +148,8 @@ func pushNotifyScheduler(hhmm string) {
 			tomorrow := dateOnly(time.Now().Add(24 * time.Hour)).Add(-time.Nanosecond)
 			for _, u := range users {
 				var cnt int64
-				_ = DB.Model(&Task{}).Where("added_user_id = ? AND deadline BETWEEN ? AND ?", u.ID, today, tomorrow).Count(&cnt).Error
+				eff := effectiveDeadlineExpr("")
+				_ = DB.Model(&Task{}).Where("added_user_id = ? AND "+eff+" BETWEEN ? AND ?", u.ID, today, tomorrow).Count(&cnt).Error
 				if cnt <= 0 {
 					continue
 				}

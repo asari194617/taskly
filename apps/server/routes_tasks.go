@@ -45,10 +45,11 @@ func registerTasksRoutes(app *fiber.App) {
 		// Build query
 		dbq := DB.Model(&Task{})
 		now := time.Now()
+		eff := effectiveDeadlineExpr("")
 		if overdue {
-			dbq = dbq.Where("deadline IS NOT NULL AND deadline < ?", now)
+			dbq = dbq.Where(eff+" < ?", now)
 		} else {
-			dbq = dbq.Where("deadline IS NULL OR deadline >= ?", now)
+			dbq = dbq.Where(eff+" >= ?", now)
 		}
 		if qstr != "" {
 			like := "%" + qstr + "%"
@@ -59,9 +60,9 @@ func registerTasksRoutes(app *fiber.App) {
 		// For overdue (descending), we page before (deadline, id)
 		if cursorDeadline != nil {
 			if overdue {
-				dbq = dbq.Where("(deadline < ?) OR (deadline = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
+				dbq = dbq.Where("("+eff+" < ?) OR ("+eff+" = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
 			} else {
-				dbq = dbq.Where("(deadline > ?) OR (deadline = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
+				dbq = dbq.Where("("+eff+" > ?) OR ("+eff+" = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
 			}
 		} else if cursorID != 0 {
 			// Fallback if only id is present
@@ -71,12 +72,11 @@ func registerTasksRoutes(app *fiber.App) {
 				dbq = dbq.Where("id > ?", cursorID)
 			}
 		}
-		// Ordering
+		// Ordering by effective deadline
 		if overdue {
-			dbq = dbq.Order("deadline DESC").Order("id DESC")
+			dbq = dbq.Order(eff + " DESC").Order("id DESC")
 		} else {
-			// deadline ASC with NULLS LAST: emulate by ordering by (deadline IS NULL) then deadline ASC
-			dbq = dbq.Order("CASE WHEN deadline IS NULL THEN 1 ELSE 0 END ASC").Order("deadline ASC").Order("id ASC")
+			dbq = dbq.Order(eff + " ASC").Order("id ASC")
 		}
 		var items []Task
 		if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
@@ -86,14 +86,8 @@ func registerTasksRoutes(app *fiber.App) {
 		if len(items) > limit {
 			last := items[limit-1]
 			items = items[:limit]
-			if last.Deadline != nil {
-				nextCursor = map[string]string{
-					"cursor_deadline": last.Deadline.Format(time.RFC3339),
-					"cursor_id":       fmt.Sprintf("%d", last.ID),
-				}
-			} else {
-				nextCursor = map[string]string{"cursor_id": fmt.Sprintf("%d", last.ID)}
-			}
+			ed := effectiveDeadlineTime(last)
+			nextCursor = map[string]string{"cursor_deadline": ed.Format(time.RFC3339), "cursor_id": fmt.Sprintf("%d", last.ID)}
 		}
 		return c.JSON(fiber.Map{"items": items, "next_cursor": nextCursor})
 	})
@@ -109,23 +103,36 @@ func registerTasksRoutes(app *fiber.App) {
 			Title           string  `json:"title"`
 			SubjectID       uint    `json:"subject_id"`
 			Description     *string `json:"description"`
+			Type            *string `json:"type"`
 			IsRequireHandIn *bool   `json:"is_require_hand_in"`
-			Deadline        *string `json:"deadline"`
+			Deadline        string  `json:"deadline"`       // YYYY-MM-DD, required
+			DeadlineSince   *string `json:"deadline_since"` // ENUM: NONE,P1..P6
+			DeadlineUntil   *string `json:"deadline_until"` // ENUM: NONE,MORNING,P1..P6
+			SelfCheck       *bool   `json:"self_check_required"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Title == "" || body.SubjectID == 0 {
+		if err := c.BodyParser(&body); err != nil || body.Title == "" || body.SubjectID == 0 || strings.TrimSpace(body.Deadline) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		var deadlinePtr *time.Time
-		if body.Deadline != nil && *body.Deadline != "" {
-			if t, err := time.Parse(time.RFC3339, *body.Deadline); err == nil {
-				deadlinePtr = &t
-			} else {
-				return c.Status(400).JSON(fiber.Map{"error": "invalid deadline"})
-			}
+		// Parse deadline date
+		dead, err := time.Parse("2006-01-02", body.Deadline)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid deadline"})
 		}
-		rec := Task{AddedUserID: u.ID, Title: body.Title, SubjectID: body.SubjectID, Description: body.Description, Deadline: deadlinePtr}
+		rec := Task{AddedUserID: u.ID, Title: body.Title, SubjectID: body.SubjectID, Description: body.Description, Deadline: dateOnly(dead), DeadlineSince: "NONE", DeadlineUntil: "NONE"}
+		if body.Type != nil {
+			rec.Type = *body.Type
+		}
 		if body.IsRequireHandIn != nil {
 			rec.IsRequireHandIn = *body.IsRequireHandIn
+		}
+		if body.SelfCheck != nil {
+			rec.SelfCheckRequired = *body.SelfCheck
+		}
+		if body.DeadlineSince != nil && strings.TrimSpace(*body.DeadlineSince) != "" {
+			rec.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
+		}
+		if body.DeadlineUntil != nil && strings.TrimSpace(*body.DeadlineUntil) != "" {
+			rec.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
 		}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
@@ -145,8 +152,12 @@ func registerTasksRoutes(app *fiber.App) {
 			Title           *string `json:"title"`
 			SubjectID       *uint   `json:"subject_id"`
 			Description     *string `json:"description"`
+			Type            *string `json:"type"`
 			IsRequireHandIn *bool   `json:"is_require_hand_in"`
-			Deadline        *string `json:"deadline"`
+			SelfCheck       *bool   `json:"self_check_required"`
+			Deadline        *string `json:"deadline"`       // YYYY-MM-DD
+			DeadlineSince   *string `json:"deadline_since"` // ENUM
+			DeadlineUntil   *string `json:"deadline_until"` // ENUM
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -160,17 +171,30 @@ func registerTasksRoutes(app *fiber.App) {
 		if body.Description != nil {
 			rec.Description = body.Description
 		}
+		if body.Type != nil {
+			rec.Type = *body.Type
+		}
 		if body.IsRequireHandIn != nil {
 			rec.IsRequireHandIn = *body.IsRequireHandIn
 		}
+		if body.SelfCheck != nil {
+			rec.SelfCheckRequired = *body.SelfCheck
+		}
 		if body.Deadline != nil {
-			if *body.Deadline == "" {
-				rec.Deadline = nil
-			} else if t, err := time.Parse(time.RFC3339, *body.Deadline); err == nil {
-				rec.Deadline = &t
+			if strings.TrimSpace(*body.Deadline) == "" {
+				return c.Status(400).JSON(fiber.Map{"error": "deadline required"})
+			}
+			if t, err := time.Parse("2006-01-02", *body.Deadline); err == nil {
+				rec.Deadline = dateOnly(t)
 			} else {
 				return c.Status(400).JSON(fiber.Map{"error": "invalid deadline"})
 			}
+		}
+		if body.DeadlineSince != nil {
+			rec.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
+		}
+		if body.DeadlineUntil != nil {
+			rec.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
 		}
 		// enforce permission: update own or explicit
 		if ok, err := checkPermission(u.ID, "tasks", "update", &rec.AddedUserID); err != nil {

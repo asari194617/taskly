@@ -31,6 +31,69 @@ func env(key, def string) string {
 	return def
 }
 
+// ensureDeadlineDateColumn alters tasks.deadline to DATE (from DATETIME) if necessary.
+// This keeps the legacy field date-only, matching current requirements.
+func ensureDeadlineDateColumn() {
+	// Best effort: MySQL syntax (GORM uses MySQL driver in this project).
+	// If tasks table/column doesn't exist yet (fresh DB), SELECT returns 0 rows and we skip.
+	var dt string
+	type res struct{ Cnt int }
+	var r res
+	_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'deadline'").Scan(&r).Error
+	if r.Cnt == 0 {
+		return
+	}
+	if err := DB.Raw("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'deadline'").Scan(&dt).Error; err == nil {
+		if strings.ToLower(strings.TrimSpace(dt)) == "date" {
+			return
+		}
+	}
+	// Alter to DATE NULL
+	if err := DB.Exec("ALTER TABLE tasks MODIFY COLUMN deadline DATE NULL").Error; err != nil {
+		log.Printf("migration warning: alter tasks.deadline to DATE failed: %v", err)
+	}
+}
+
+// ensureTasksSchema verifies the tasks table has expected column data types for the new model.
+// If the table has no rows and types mismatch, it will drop and recreate the table.
+func ensureTasksSchema() {
+	// Check table exists
+	type res struct{ Cnt int }
+	var r res
+	_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks'").Scan(&r).Error
+	if r.Cnt == 0 {
+		return
+	}
+	// Check row count
+	var rowCnt int64
+	_ = DB.Table("tasks").Count(&rowCnt).Error
+	// Read column data types
+	type col struct {
+		ColumnName string
+		DataType   string
+	}
+	var cols []col
+	_ = DB.Raw("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME IN ('deadline','deadline_since','deadline_until')").Scan(&cols).Error
+	exp := map[string]string{"deadline": "date", "deadline_since": "enum", "deadline_until": "enum"}
+	mismatch := false
+	for _, c := range cols {
+		if exp[strings.ToLower(c.ColumnName)] != strings.ToLower(strings.TrimSpace(c.DataType)) {
+			mismatch = true
+		}
+	}
+	if mismatch && rowCnt == 0 {
+		// Drop and recreate tasks table only (safe since no rows)
+		if err := DB.Migrator().DropTable("tasks"); err != nil {
+			log.Printf("migration warning: drop tasks failed: %v", err)
+			return
+		}
+		if err := DB.AutoMigrate(&Task{}); err != nil {
+			log.Printf("migration warning: recreate tasks failed: %v", err)
+			return
+		}
+	}
+}
+
 func ptrTime(t time.Time) *time.Time { return &t }
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
@@ -300,9 +363,12 @@ func buildICSForUser(userID uint) string {
 	b.WriteString("CALSCALE:GREGORIAN" + crlf)
 	b.WriteString("METHOD:PUBLISH" + crlf)
 	var tasks []Task
-	_ = DB.Where("added_user_id = ? AND deadline IS NOT NULL", userID).Order("deadline ASC").Limit(500).Find(&tasks).Error
+	// Order by effective deadline timestamp derived from date + enum
+	eff := effectiveDeadlineExpr("")
+	_ = DB.Where("added_user_id = ?", userID).Order(eff + " ASC").Limit(500).Find(&tasks).Error
 	for _, t := range tasks {
-		if t.Deadline == nil {
+		ed := effectiveDeadlineTime(t)
+		if ed.IsZero() {
 			continue
 		}
 		b.WriteString("BEGIN:VEVENT" + crlf)
@@ -312,8 +378,8 @@ func buildICSForUser(userID uint) string {
 		if t.Description != nil {
 			b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape(*t.Description)))
 		}
-		b.WriteString(fmt.Sprintf("DTSTART:%s\r\n", t.Deadline.UTC().Format("20060102T150405Z")))
-		b.WriteString(fmt.Sprintf("DTEND:%s\r\n", t.Deadline.UTC().Format("20060102T150405Z")))
+		b.WriteString(fmt.Sprintf("DTSTART:%s\r\n", ed.UTC().Format("20060102T150405Z")))
+		b.WriteString(fmt.Sprintf("DTEND:%s\r\n", ed.UTC().Format("20060102T150405Z")))
 		b.WriteString("END:VEVENT" + crlf)
 	}
 	var asgs []struct {
@@ -508,19 +574,128 @@ func smtpSendPlain(to, subject, text string) error {
 	return nil
 }
 
-// Build formatted title for Teams email like: "教科名: **タイトル(1/2 15:04まで)**"
-func buildTeamsTitle(subjectID uint, taskTitle string, deadline *time.Time) string {
+// Build formatted title for Teams email like: "教科名: タイトル(朝まで|X限まで|X〜Y限まで|M/D HH:mmまで)"
+func buildTeamsTitleForTask(t Task) string {
 	var subj Subject
-	_ = DB.First(&subj, subjectID).Error
+	_ = DB.First(&subj, t.SubjectID).Error
 	subjName := subj.Title
-	dl := ""
-	if deadline != nil {
-		dl = deadline.Format("1/2 15:04") + "まで"
+
+	// Build like: "教科: タイトル(M/D 朝まで|N限まで|N〜M限まで|M/Dまで)"
+	dateLabel := t.Deadline.Format("1/2")
+	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
+	if label == "" { // default
+		label = dateLabel + "まで"
+	} else {
+		label = dateLabel + " " + label
 	}
-	if dl != "" {
-		return fmt.Sprintf("%s: **%s(%s)**", subjName, taskTitle, dl)
+	return fmt.Sprintf("%s: %s(%s)", subjName, t.Title, label)
+}
+
+// (removed obsolete meta parsing helpers)
+
+// deriveDeadlineLabelEnum maps enums into symbolic labels like 朝まで or N限/N〜M限まで
+func deriveDeadlineLabelEnum(since, until string) string {
+	sIdx := periodIndex(since)
+	uIdx := periodIndex(until)
+	if strings.EqualFold(until, "MORNING") {
+		return "朝まで"
 	}
-	return fmt.Sprintf("%s: **%s**", subjName, taskTitle)
+	if uIdx > 0 && (sIdx == 0 || sIdx == uIdx) {
+		return fmt.Sprintf("%d限まで", uIdx)
+	}
+	if sIdx > 0 && uIdx > 0 {
+		if sIdx == uIdx {
+			return fmt.Sprintf("%d限まで", uIdx)
+		}
+		if sIdx < uIdx {
+			return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
+		}
+	}
+	return ""
+}
+
+func periodIndex(s string) int {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "P1":
+		return 1
+	case "P2":
+		return 2
+	case "P3":
+		return 3
+	case "P4":
+		return 4
+	case "P5":
+		return 5
+	case "P6":
+		return 6
+	case "P7":
+		return 7
+	case "P8":
+		return 8
+	default:
+		return 0
+	}
+}
+
+// end time of deadline based on enum until
+func endTimeForUntil(until string) (hour, min int) {
+	switch strings.ToUpper(strings.TrimSpace(until)) {
+	case "MORNING":
+		return 7, 59
+	case "P1":
+		return 10, 30
+	case "P2":
+		return 12, 10
+	case "P3":
+		return 14, 30
+	case "P4":
+		return 16, 10
+	case "P5":
+		return 17, 50
+	case "P6":
+		return 19, 30
+	case "P7":
+		return 21, 10
+	case "P8":
+		return 22, 50
+	default:
+		return 23, 59
+	}
+}
+
+// Build SQL expression string for effective deadline timestamp
+func effectiveDeadlineExpr(alias string) string {
+	col := func(name string) string {
+		if alias != "" {
+			return alias + "." + name
+		}
+		return name
+	}
+	// CONCAT(date, ' ', time) cast to datetime
+	return "TIMESTAMP(" + col("deadline") + ", CASE " +
+		"WHEN " + col("deadline_until") + "='MORNING' THEN '07:59:59' " +
+		"WHEN " + col("deadline_until") + "='P1' THEN '10:30:00' " +
+		"WHEN " + col("deadline_until") + "='P2' THEN '12:10:00' " +
+		"WHEN " + col("deadline_until") + "='P3' THEN '14:30:00' " +
+		"WHEN " + col("deadline_until") + "='P4' THEN '16:10:00' " +
+		"WHEN " + col("deadline_until") + "='P5' THEN '17:50:00' " +
+		"WHEN " + col("deadline_until") + "='P6' THEN '19:30:00' " +
+		"WHEN " + col("deadline_until") + "='P7' THEN '21:10:00' " +
+		"WHEN " + col("deadline_until") + "='P8' THEN '22:50:00' " +
+		"ELSE '23:59:59' END)"
+}
+
+// Compute effective deadline timestamp in Go for the given task
+func effectiveDeadlineTime(t Task) time.Time {
+	h, m := endTimeForUntil(t.DeadlineUntil)
+	return time.Date(t.Deadline.Year(), t.Deadline.Month(), t.Deadline.Day(), h, m, 0, 0, t.Deadline.Location())
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // Send Teams notification email for a newly created task
@@ -530,13 +705,13 @@ func sendTeamsNotifyEmailForTask(t Task) {
 		return
 	}
 	subject := "[Taskly]tasks:add"
-	formatted := buildTeamsTitle(t.SubjectID, t.Title, t.Deadline)
+	formatted := buildTeamsTitleForTask(t)
 	desc := ""
 	if t.Description != nil {
 		desc = *t.Description
 	}
 	// JSON body consumed by Power Automate
-	body := fmt.Sprintf(`{"task_id":%d,"title":%q,"description":%q}`, t.ID, formatted, desc)
+	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q}`, fmt.Sprintf("%d", t.ID), formatted, desc)
 	// Fire and forget
 	go func() {
 		_ = smtpSendPlain(to, subject, body)
@@ -704,7 +879,8 @@ func sendDailyTaskDigest() {
 	_ = DB.Where("is_deleted = 0").Find(&users).Error
 	for _, u := range users {
 		var tasks []Task
-		_ = DB.Where("added_user_id = ? AND deadline IS NOT NULL AND deadline BETWEEN ? AND ?", u.ID, start, end).Order("deadline ASC").Find(&tasks).Error
+		eff := effectiveDeadlineExpr("")
+		_ = DB.Where("added_user_id = ? AND "+eff+" BETWEEN ? AND ?", u.ID, start, end).Order(eff + " ASC").Find(&tasks).Error
 		if len(tasks) == 0 {
 			continue
 		}
@@ -712,10 +888,7 @@ func sendDailyTaskDigest() {
 		b.WriteString("<p>期限が近い課題の一覧です。</p>")
 		b.WriteString("<table style=\"width:100%; border-collapse:collapse;\"><thead><tr><th style=\"text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;\">タイトル</th><th style=\"text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;\">期限</th></tr></thead><tbody>")
 		for _, t := range tasks {
-			dl := ""
-			if t.Deadline != nil {
-				dl = t.Deadline.Format("2006-01-02 15:04")
-			}
+			dl := effectiveDeadlineTime(t).Format("2006-01-02 15:04")
 			b.WriteString(fmt.Sprintf("<tr><td style=\"padding:8px; border-bottom:1px solid #f1f5f9;\">%s</td><td style=\"padding:8px; border-bottom:1px solid #f1f5f9; white-space:nowrap;\">%s</td></tr>", icalEscape(t.Title), icalEscape(dl)))
 		}
 		b.WriteString("</tbody></table>")

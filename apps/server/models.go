@@ -131,13 +131,17 @@ type Task struct {
 	Title             string  `gorm:"size:255;not null"`
 	SubjectID         uint    `gorm:"index;not null"`
 	Description       *string `gorm:"type:text"`
-	Type              *string `gorm:"size:32"`
-	IsRequireHandIn   bool    `gorm:"default:false"`
-	SelfCheckRequired bool    `gorm:"default:false"`
-	Deadline          *time.Time
-	DeadlineMeta      *string `gorm:"type:text"`
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	Type              string  `gorm:"size:32;not null;default:''"`
+	IsRequireHandIn   bool    `gorm:"not null;default:0"`
+	SelfCheckRequired bool    `gorm:"not null;default:0"`
+	// Deadline date (required)
+	Deadline time.Time `gorm:"type:date;not null"`
+	// Canonical deadline window enums (relative to Deadline date)
+	// Allowed values: NONE, MORNING (until only), P1..P6
+	DeadlineSince string    `gorm:"type:ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
+	DeadlineUntil string    `gorm:"type:ENUM('NONE','MORNING','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
+	CreatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"`
 }
 
 type ApiActionLog struct {
