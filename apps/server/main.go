@@ -31,9 +31,9 @@ func main() {
 	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321"),
+		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"),
 		AllowCredentials: strings.ToLower(env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
-		AllowHeaders:     "Authorization, Content-Type, X-Client-Platform",
+		AllowHeaders:     "Authorization,authorization, Content-Type,content-type, X-Client-Platform,x-client-platform",
 	}))
 
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })

@@ -24,7 +24,13 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 	})
 	app.Post("/push/test", authRequired, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
-		if err := sendPushToUser(u.ID, map[string]any{"title": "Taskly", "body": "プッシュ通知のテスト"}); err != nil {
+		if err := sendPushToUser(u.ID, map[string]any{
+			"title": "Taskly",
+			"body":  "プッシュ通知のテスト",
+			"data":  map[string]any{"url": "/home"},
+			"icon":  "/icons/icon-192.png",
+			"badge": "/icons/badge-72.png",
+		}); err != nil {
 			log.Printf("push test error: %v", err)
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "send"})
 		}
@@ -36,19 +42,29 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 func getOrInitVAPID() (string, string, error) {
 	var rec WebPushVAPID
 	if err := DB.First(&rec).Error; err == nil && rec.PublicKey != "" && rec.PrivateKey != "" {
-		return rec.PublicKey, rec.PrivateKey, nil
+		// If it looks valid (public long, private short), return
+		if len(rec.PublicKey) >= 60 && len(rec.PrivateKey) <= 60 {
+			return rec.PublicKey, rec.PrivateKey, nil
+		}
+		// Otherwise, regenerate
 	}
-	// Generate new VAPID pair
-	pk, sk, err := webpush.GenerateVAPIDKeys()
+	// Generate new VAPID pair (assume k1=private, k2=public for this library)
+	k1, k2, err := webpush.GenerateVAPIDKeys()
 	if err != nil {
 		return "", "", err
 	}
-	rec = WebPushVAPID{PublicKey: pk, PrivateKey: sk}
+	// Assign with expected sizes: public should be long (~86-88), private short (~43-44)
+	pub, priv := k2, k1
+	// If sizes still look wrong, swap as fallback
+	if len(pub) < len(priv) {
+		pub, priv = priv, pub
+	}
+	rec = WebPushVAPID{PublicKey: pub, PrivateKey: priv}
 	_ = DB.Where("1 = 1").Delete(&WebPushVAPID{})
 	if err := DB.Create(&rec).Error; err != nil {
 		return "", "", err
 	}
-	return pk, sk, nil
+	return pub, priv, nil
 }
 
 // sendPushToUser sends a JSON payload to all subscriptions of the user.
@@ -117,7 +133,13 @@ func pushNotifyScheduler(hhmm string) {
 				if cnt <= 0 {
 					continue
 				}
-				_ = sendPushToUser(u.ID, map[string]any{"title": "今日の課題", "body": fmt.Sprintf("本日締切の課題が%d件あります", cnt), "icon": "/icons/icon-192.png", "badge": "/icons/badge-72.png"})
+				_ = sendPushToUser(u.ID, map[string]any{
+					"title": "今日の課題",
+					"body":  fmt.Sprintf("本日締切の課題が%d件あります", cnt),
+					"data":  map[string]any{"url": "/home"},
+					"icon":  "/icons/icon-192.png",
+					"badge": "/icons/badge-72.png",
+				})
 			}
 		}()
 	}

@@ -95,12 +95,39 @@ export default function SettingsNotifications() {
       }
       if (permission !== "granted") throw new Error("通知が許可されていません");
 
+      // Ensure previous subscription is cleared (especially if server key changed)
+      const existing = await swReg.pushManager.getSubscription();
+      if (existing) {
+        try {
+          await existing.unsubscribe();
+        } catch {}
+      }
       const vapid = await fetchVapidKey();
       const appServerKey = urlB64ToUint8Array(vapid);
-      const sub = await swReg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: appServerKey,
-      });
+      let sub: PushSubscription | null = null;
+      try {
+        sub = await swReg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appServerKey,
+        });
+      } catch (err: any) {
+        // Retry once after forcing unsubscribe, handles InvalidAccessError with stale key
+        if (String(err?.name || err).includes("InvalidAccessError")) {
+          const s2 = await swReg.pushManager.getSubscription();
+          if (s2) {
+            try {
+              await s2.unsubscribe();
+            } catch {}
+          }
+          sub = await swReg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: appServerKey,
+          });
+        } else {
+          throw err;
+        }
+      }
+      if (!sub) throw new Error("subscription failed");
       const key = sub.toJSON() as any;
       const token = localStorage.getItem("api_token") || "";
       const res = await fetch(`${apiBase}/push/subscribe`, {
