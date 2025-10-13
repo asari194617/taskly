@@ -1,0 +1,320 @@
+package main
+
+import (
+	"crypto/tls"
+	"fmt"
+	"log"
+	"net"
+	"net/smtp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
+)
+
+func registerAuthRoutes(app *fiber.App) {
+	// request login code via email
+	app.Post("/auth/request-code", func(c *fiber.Ctx) error {
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := c.BodyParser(&body); err != nil || body.Email == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		}
+		email := strings.ToLower(strings.TrimSpace(body.Email))
+		// cooldown: deny if a code was created within last 60s and not expired
+		var recent LoginCode
+		if err := DB.Where("email = ?", email).Order("id DESC").First(&recent).Error; err == nil {
+			if time.Since(recent.CreatedAt) < 60*time.Second && recent.ConsumedAt == nil {
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests"})
+			}
+		}
+		// generate code
+		code := fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
+		// send email via SMTP synchronously; only store code if send succeeds
+		smtpHost := env("SMTP_HOST", "localhost")
+		smtpPort := env("SMTP_PORT", "25")
+		from := env("SMTP_FROM", "noreply@taskly.local")
+		smtpUser := env("SMTP_USER", from)
+		smtpPass := env("SMTP_PASSWORD", "")
+		// Build RFC5322 message with required headers (From/To/Subject/Date) - HTML email
+		nowRFC := time.Now().Format(time.RFC1123Z)
+		html := buildEmailHTML("ログインコード", fmt.Sprintf("<p>以下の6桁コードを入力してください。</p><div style=\"font-family:ui-monospace, Menlo, Consolas, monospace; font-size:20px; letter-spacing:4px; font-weight:700;\">%s</div><p style=\"color:#666;\">10分以内に入力してください。</p>", code))
+		text := fmt.Sprintf("Your login code is: %s\nIt expires in 10 minutes.\n", code)
+		boundary := fmt.Sprintf("taskly-%d", time.Now().UnixNano())
+		msg := []byte(
+			"From: " + from + "\r\n" +
+				"To: " + body.Email + "\r\n" +
+				"Subject: Taskly Login Code\r\n" +
+				"Date: " + nowRFC + "\r\n" +
+				"MIME-Version: 1.0\r\n" +
+				"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
+				"--" + boundary + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n" +
+				"--" + boundary + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + html + "\r\n" +
+				"--" + boundary + "--\r\n",
+		)
+		var auth smtp.Auth
+		if smtpPass != "" {
+			auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+		}
+		// Use manual client with timeouts to prevent hanging
+		toSec, _ := strconv.Atoi(env("SMTP_TIMEOUT", "60"))
+		if toSec <= 0 {
+			toSec = 60
+		}
+		dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
+		mode := strings.ToLower(strings.TrimSpace(env("SMTP_TLS", ""))) // "starttls" | "smtps" | ""
+		var conn net.Conn
+		var err error
+		if mode == "smtps" || smtpPort == "465" {
+			// Implicit TLS
+			conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost})
+		} else {
+			conn, err = dialer.DialContext(c.Context(), "tcp", smtpHost+":"+smtpPort)
+		}
+		if err != nil {
+			log.Printf("smtp dial error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail connect failed"})
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		cl, err := smtp.NewClient(conn, smtpHost)
+		if err != nil {
+			log.Printf("smtp client error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail client failed"})
+		}
+		defer func() { _ = cl.Quit() }()
+		// STARTTLS if requested
+		if mode == "starttls" {
+			if ok, _ := cl.Extension("STARTTLS"); ok {
+				if err := cl.StartTLS(&tls.Config{ServerName: smtpHost}); err != nil {
+					log.Printf("smtp starttls error: %v", err)
+					return c.Status(502).JSON(fiber.Map{"error": "mail tls failed"})
+				}
+			}
+		}
+		if auth != nil {
+			if ok, _ := cl.Extension("AUTH"); ok {
+				_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+				if err := cl.Auth(auth); err != nil {
+					log.Printf("smtp auth error: %v", err)
+					return c.Status(502).JSON(fiber.Map{"error": "mail auth failed"})
+				}
+			}
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if err := cl.Mail(from); err != nil {
+			log.Printf("smtp mail from error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail from failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if err := cl.Rcpt(body.Email); err != nil {
+			log.Printf("smtp rcpt to error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail rcpt failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		w, err := cl.Data()
+		if err != nil {
+			log.Printf("smtp data start error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail data failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if _, err := w.Write(msg); err != nil {
+			_ = w.Close()
+			log.Printf("smtp data write error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail write failed"})
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+		if err := w.Close(); err != nil {
+			log.Printf("smtp data close error: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "mail finalize failed"})
+		}
+		// store code after successful send
+		exp := time.Now().Add(10 * time.Minute)
+		lc := LoginCode{Email: email, HashedCode: sha256Hex([]byte(code)), ExpiresAt: exp}
+		if err := DB.Create(&lc).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "server"})
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// auth options
+	app.Post("/auth/options", func(c *fiber.Ctx) error {
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := c.BodyParser(&body); err != nil || body.Email == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		}
+		var u User
+		hasUser := DB.Where("email = ?", body.Email).First(&u).Error == nil
+		hasPassword := false
+		if hasUser && u.HashedPassword != nil && *u.HashedPassword != "" {
+			hasPassword = true
+		}
+		totpEnabled := false
+		if hasUser {
+			if ok, _, _ := getActiveTOTP(u.ID); ok {
+				totpEnabled = true
+			}
+		}
+		// passkey presence
+		passkeyEnabled := false
+		if hasUser {
+			var cnt int64
+			_ = DB.Model(&Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
+			passkeyEnabled = cnt > 0
+		}
+		methods := []string{}
+		if hasPassword {
+			methods = append(methods, "password")
+		}
+		if !hasUser || (hasUser && u.EmailCodeAllowed) {
+			methods = append(methods, "email_code")
+		}
+		if totpEnabled {
+			methods = append(methods, "totp", "recovery")
+		}
+		if passkeyEnabled {
+			methods = append(methods, "passkey")
+		}
+		return c.JSON(fiber.Map{"has_password": hasPassword, "totp_enabled": totpEnabled, "passkey_enabled": passkeyEnabled, "email_login_enabled": func() bool {
+			if hasUser {
+				return u.EmailCodeAllowed
+			}
+			return true
+		}(), "methods": methods})
+	})
+
+	// login
+	app.Post("/auth/login", func(c *fiber.Ctx) error {
+		var body struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+			Code     string `json:"code"`
+			Totp     string `json:"totp"`
+			Recovery string `json:"recovery_code"`
+		}
+		if err := c.BodyParser(&body); err != nil || body.Email == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		}
+		// Lookup user or create placeholder
+		var u User
+		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				u = User{Email: body.Email, DisplayName: body.Email}
+				if err := DB.Create(&u).Error; err != nil {
+					return c.Status(500).JSON(fiber.Map{"error": "db"})
+				}
+			} else {
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
+			}
+		}
+		// Blocklist enforcement
+		var cnt int64
+		if err := DB.Model(&Block{}).
+			Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).
+			Count(&cnt).Error; err == nil && cnt > 0 {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
+		}
+		// Primary factor: if password is set, require password; otherwise allow email code
+		reqPassword := (u.HashedPassword != nil && *u.HashedPassword != "")
+		primaryOK := false
+		if reqPassword {
+			if body.Password == "" {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "password required"})
+			}
+			// verify bcrypt password
+			if err := bcrypt.CompareHashAndPassword([]byte(*u.HashedPassword), []byte(body.Password)); err == nil {
+				primaryOK = true
+			} else {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password"})
+			}
+		} else {
+			// Respect user setting for email code login
+			if !u.EmailCodeAllowed {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "email code disabled"})
+			}
+			// verify login code (email magic code) using DB
+			if body.Code == "" {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "code required"})
+			}
+			email := strings.ToLower(strings.TrimSpace(body.Email))
+			var lc LoginCode
+			if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, time.Now()).Order("id DESC").First(&lc).Error; err != nil {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
+			}
+			if lc.HashedCode != sha256Hex([]byte(body.Code)) {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
+			}
+			now := time.Now()
+			_ = DB.Model(&LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+			primaryOK = true
+		}
+		if !primaryOK {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+		}
+		// 2FA enforcement (TOTP or recovery code)
+		if active, secret, _ := getActiveTOTP(u.ID); active {
+			ok := false
+			if body.Totp != "" {
+				if validateTOTP(secret, body.Totp) {
+					ok = true
+				}
+			}
+			if !ok && body.Recovery != "" {
+				if consumeRecoveryCode(u.ID, body.Recovery) {
+					ok = true
+				}
+			}
+			if !ok {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "2fa required"})
+			}
+		}
+		// Create session token (opaque, strong randomness) and store in Redis
+		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
+		if plat == "" {
+			plat = "web"
+		}
+		if !isAllowedPlatform(plat) {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
+		}
+		token := generateSessionToken(u.ID, plat)
+		ttl := time.Hour * 24 * 30
+		if err := RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "session"})
+		}
+		// track user sessions for revocation
+		_ = RDB.SAdd(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), token).Err()
+		_ = RDB.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
+		// Optionally record DB session (hashed)
+		DB.AutoMigrate(&Session{})
+		// Store hash of token and associated user id for DB-fallback validation
+		DB.Create(&Session{UserID: u.ID, ClientPlatform: plat, HashedToken: sha256Hex([]byte(token)), ExpiresAt: ptrTime(time.Now().Add(ttl))})
+
+		// Also provide a JWT if needed (optional)
+		claims := jwt.MapClaims{"sub": u.ID, "exp": time.Now().Add(ttl).Unix()}
+		jwtt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		jwtStr, _ := jwtt.SignedString([]byte(env("JWT_SECRET", "dev")))
+
+		return c.JSON(fiber.Map{"token": token, "jwt": jwtStr})
+	})
+
+	app.Post("/auth/logout", func(c *fiber.Ctx) error {
+		token := parseAuthToken(c.Get("Authorization"))
+		if token != "" {
+			_ = RDB.Del(c.Context(), "session:"+token).Err()
+			// Best-effort: remove DB session record if present (hashed or legacy plain)
+			_ = DB.Where("hashed_token = ? OR hashed_token = ?", sha256Hex([]byte(token)), token).Delete(&Session{}).Error
+			// remove from user_sessions set if we can resolve uid
+			if uidStr, err := RDB.Get(c.Context(), "session:"+token).Result(); err == nil && uidStr != "" {
+				_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%s", uidStr), token).Err()
+			}
+		}
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+}
