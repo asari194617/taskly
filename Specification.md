@@ -15,7 +15,7 @@ A simple, fast class management service.
 - iCal (カレンダーとして購読可能にする)
 - MCP(Model Context Protocol)サーバー
 - Teams (特定のメールアドレスに送信することでPower Automateが実行)
-    - タイトルは`[Taskly]tasks`としてください。
+    - タイトルは`[Taskly]tasks:add`としてください。
     - 本文は下記のようにしてください。タイトルの形式は`教科名: **実験1のレポート提出(○/△ ○○時まで)**`のような形にしてください。descriptionにはtasksテーブルでいう`description`や提出の有無を記載してください。
     
     ```json
@@ -338,6 +338,8 @@ MCPサーバーとして接続するための認証情報を管理する
 - iCalのURLを発行する場合は、URLクエリにtokenを入れたものを発行してください。
 - アプリケーションサーバーとフロントはサブドメインを分けるため、適切なCORSを設定してください。
 - それぞれのサービスは最終的にDockerコンテナにしたいです。
+- タスクを追加する際は、Outlookを介してPower Automateで通知します。送信先メールアドレスは環境変数で設定できるようにしてください。
+  - このタイトルは`[Taskly]tasks:add`としてください。
 
 ## 管理画面
 

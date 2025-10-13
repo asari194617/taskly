@@ -109,6 +109,7 @@ function formatHeadingForDate(d: Date): string {
 export default function TasksList() {
   const [items, setItems] = React.useState<Task[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
   const [newSubjectId, setNewSubjectId] = React.useState("");
@@ -139,7 +140,8 @@ export default function TasksList() {
     }
     Promise.all([
       gql<{ tasks: { items: Task[] } }>(
-        `query{ tasks(limit:20){ items{ id title subject_id deadline deadline_meta } } }`
+        `query($q:String){ tasks(limit:20, q:$q){ items{ id title subject_id deadline deadline_meta } } }`,
+        { q: q || undefined }
       ),
       gql<{ subjects: Subject[] }>(`query{ subjects{ id title } }`),
     ])
@@ -148,7 +150,14 @@ export default function TasksList() {
         setSubjects(s.subjects || []);
       })
       .catch((e) => setError(e?.message || "読み込みに失敗しました"));
-  }, []);
+  }, [q]);
+
+  // debounce search input changes
+  const [qInput, setQInput] = React.useState("");
+  React.useEffect(() => {
+    const id = setTimeout(() => setQ(qInput.trim()), 300);
+    return () => clearTimeout(id);
+  }, [qInput]);
 
   // Keyboard shortcuts: g then n to create; '?' to show help
   React.useEffect(() => {
@@ -521,6 +530,13 @@ export default function TasksList() {
       {/* Toolbar */}
       {items.length > 0 && (
         <div className="flex items-center justify-end">
+          <div className="flex-1">
+            <Input
+              placeholder="課題を検索 (タイトル/説明)"
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+            />
+          </div>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

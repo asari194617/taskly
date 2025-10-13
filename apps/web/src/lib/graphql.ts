@@ -12,6 +12,7 @@ export async function gql<T>(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "X-Client-Platform": "web",
       ...(token
         ? {
             Authorization: token.startsWith("Bearer ")

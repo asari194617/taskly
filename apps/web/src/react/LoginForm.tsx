@@ -38,7 +38,10 @@ export default function LoginForm() {
     try {
       const res = await fetch(`${apiBase}/auth/options`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
         body: JSON.stringify({ email }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -62,7 +65,10 @@ export default function LoginForm() {
     try {
       const res = await fetch(`${apiBase}/auth/request-code`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
         body: JSON.stringify({ email }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -80,7 +86,10 @@ export default function LoginForm() {
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
         body: JSON.stringify({
           email,
           password: password || undefined,
@@ -137,7 +146,10 @@ export default function LoginForm() {
     try {
       const beginRes = await fetch(`${apiBase}/webauthn/login/begin`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
         body: JSON.stringify({ email }),
       });
       if (!beginRes.ok) throw new Error(await beginRes.text());
@@ -172,7 +184,10 @@ export default function LoginForm() {
       };
       const finishRes = await fetch(`${apiBase}/webauthn/login/finish`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
         body: JSON.stringify(payload),
       });
       const data = await finishRes.json();

@@ -22,6 +22,8 @@ const { title = "Taskly" } = Astro.props;
         } catch {}
       })();
     </script>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0f19" />
   </head>
   <body class="min-h-screen">
     <header class="container p-4 flex items-center justify-between">
@@ -70,6 +72,13 @@ const { title = "Taskly" } = Astro.props;
           applyTheme();
         });
       })();
+    </script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
     </script>
   </body>
 </html>
