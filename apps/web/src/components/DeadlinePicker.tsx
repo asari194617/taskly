@@ -1,15 +1,21 @@
 "use client";
 import * as React from "react";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ChevronDown } from "lucide-react";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-
-// NOTE: We avoid shadcn Tabs/Select files since they aren't in repo; we use simple controls to match requested UX.
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type DeadlineMeta =
   | { kind: "none" }
@@ -23,7 +29,7 @@ export type DeadlineMeta =
     };
 
 type Props = {
-  date: string; // yyyy-MM-dd
+  date: string;
   meta: DeadlineMeta | null;
   onChange: (date: string, meta: DeadlineMeta | null) => void;
 };
@@ -34,6 +40,7 @@ const TWO_OPTIONS = ["1,2", "3,4", "5,6", "7,8"] as const;
 
 export function DeadlinePicker({ date, meta, onChange }: Props) {
   const [open, setOpen] = React.useState(false);
+  const [dateOpen, setDateOpen] = React.useState(false);
   const [tab, setTab] = React.useState<"outside" | "one" | "two" | "range">(
     meta?.kind === "outside"
       ? "outside"
@@ -102,13 +109,41 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
       <PopoverContent className="w-96">
         <div className="space-y-3">
           <div>
-            <Label>日付</Label>
-            <Input
-              type="date"
-              value={tmpDate}
-              onChange={(e) => setTmpDate(e.target.value)}
-              className="mt-1 w-44"
-            />
+            <Label htmlFor="dp-date">日付</Label>
+            <Popover open={dateOpen} onOpenChange={setDateOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  id="dp-date"
+                  variant="outline"
+                  className="mt-2 w-48 justify-between font-normal"
+                >
+                  {tmpDate || "日付を選択"}
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto overflow-hidden p-0"
+                align="start"
+              >
+                <Calendar
+                  mode="single"
+                  selected={tmpDate ? new Date(tmpDate) : undefined}
+                  onSelect={(d: Date | undefined) => {
+                    setTmpDate(
+                      d
+                        ? `${d.getFullYear()}-${String(
+                            d.getMonth() + 1
+                          ).padStart(2, "0")}-${String(d.getDate()).padStart(
+                            2,
+                            "0"
+                          )}`
+                        : ""
+                    );
+                    setDateOpen(false);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <button
@@ -151,80 +186,110 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
           {tab === "outside" && (
             <div>
               <Label>時間帯</Label>
-              <select
-                className="mt-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                value={outside}
-                onChange={(e) => setOutside(e.target.value as any)}
-              >
-                {OUTSIDE_SLOTS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1">
+                <Select
+                  value={outside}
+                  onValueChange={(v: string) => setOutside(v as any)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OUTSIDE_SLOTS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
           {tab === "one" && (
             <div>
               <Label>コマ</Label>
-              <select
-                className="mt-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                value={one}
-                onChange={(e) => setOne(parseInt(e.target.value, 10) as any)}
-              >
-                {ONE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}限
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1">
+                <Select
+                  value={String(one)}
+                  onValueChange={(v: string) => setOne(parseInt(v, 10) as any)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ONE_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={String(s)}>
+                        {s}限
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
           {tab === "two" && (
             <div>
               <Label>コマ</Label>
-              <select
-                className="mt-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                value={two}
-                onChange={(e) => setTwo(e.target.value as any)}
-              >
-                {TWO_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}限
-                  </option>
-                ))}
-              </select>
+              <div className="mt-1">
+                <Select
+                  value={two}
+                  onValueChange={(v: string) => setTwo(v as any)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TWO_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}限
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
           {tab === "range" && (
             <div>
               <Label>範囲</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                  value={start}
-                  onChange={(e) =>
-                    setStart(parseInt(e.target.value, 10) as any)
-                  }
-                >
-                  {ONE_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
+              <div className="mt-2 grid grid-cols-4 gap-2">
+                {ONE_OPTIONS.map((s) => {
+                  const selected = s >= start && s <= end;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      className={
+                        "h-9 rounded-md border text-sm px-2 " +
+                        (selected
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background")
+                      }
+                      onClick={() => {
+                        if (start === end) {
+                          if (s < start) setStart(s);
+                          else if (s > start) setEnd(s);
+                          else {
+                            setStart(s);
+                            setEnd(s);
+                          }
+                        } else {
+                          if (s < start) setStart(s);
+                          else if (s > end) setEnd(s);
+                          else {
+                            setStart(s);
+                            setEnd(s);
+                          }
+                        }
+                      }}
+                    >
                       {s}限
-                    </option>
-                  ))}
-                </select>
-                <span>〜</span>
-                <select
-                  className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                  value={end}
-                  onChange={(e) => setEnd(parseInt(e.target.value, 10) as any)}
-                >
-                  {ONE_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}限
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                クリックで開始、もう一度クリックまたは別のコマで終了を設定
               </div>
             </div>
           )}
@@ -246,7 +311,6 @@ export function rfc3339FromMeta(
   meta: DeadlineMeta | null
 ): string | undefined {
   if (!date || !meta) return undefined;
-  // We map to a canonical time; schedule variations can be resolved later server-side if needed
   const base = (h: number, m: number) =>
     new Date(
       `${date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`
@@ -255,7 +319,7 @@ export function rfc3339FromMeta(
     case "outside":
       if (meta.slot === "朝") return base(7, 30);
       if (meta.slot === "昼休み") return base(12, 15);
-      return base(18, 30); // 放課後
+      return base(18, 30);
     case "one": {
       const map: Record<number, [number, number]> = {
         1: [9, 0],

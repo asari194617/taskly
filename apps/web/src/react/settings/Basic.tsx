@@ -19,6 +19,7 @@ import { gql } from "@/lib/graphql";
 
 export default function SettingsBasic() {
   const [displayName, setDisplayName] = React.useState("");
+  const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const { toast } = useToast();
   const token =
@@ -27,10 +28,11 @@ export default function SettingsBasic() {
   React.useEffect(() => {
     async function fetchMe() {
       try {
-        const data = await gql<{ me: { display_name?: string } }>(
-          `query{ me{ display_name } }`
-        );
+        const data = await gql<{
+          me: { display_name?: string; email: string };
+        }>(`query{ me{ display_name email } }`);
         setDisplayName(data.me.display_name || "");
+        setEmail(data.me.email || "");
       } catch {}
     }
     if (token) fetchMe();
@@ -75,6 +77,10 @@ export default function SettingsBasic() {
       <div className="space-y-6">
         <h1 className="text-xl font-semibold">基本設定</h1>
         <Card className="p-4 space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="email">メールアドレス</Label>
+            <Input id="email" value={email} disabled readOnly />
+          </div>
           <div className="space-y-1">
             <Label htmlFor="display_name">表示名</Label>
             <Input

@@ -44,6 +44,11 @@ var (
 	WAuth *webauthn.WebAuthn
 )
 
+// typed context key to avoid collisions
+type ctxKey string
+
+var ctxKeyFiberCtx ctxKey = "fiberCtx"
+
 type User struct {
 	ID               uint    `gorm:"primaryKey"`
 	Email            string  `gorm:"uniqueIndex;size:255;not null"`
@@ -89,6 +94,7 @@ func (u *User) WebAuthnCredentials() []webauthn.Credential {
 
 type Session struct {
 	ID             uint   `gorm:"primaryKey"`
+	UserID         uint   `gorm:"index;not null"`
 	ClientPlatform string `gorm:"size:64;not null"`
 	HashedToken    string `gorm:"size:255;not null"`
 	ExpiresAt      *time.Time
@@ -408,7 +414,7 @@ func main() {
 					"limit":  &graphql.ArgumentConfig{Type: graphql.Int},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -443,7 +449,7 @@ func main() {
 					},
 				}),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -467,7 +473,7 @@ func main() {
 					},
 				})),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -496,7 +502,7 @@ func main() {
 					},
 				})),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -518,7 +524,7 @@ func main() {
 			"subjects": &graphql.Field{
 				Type: graphql.NewList(subjectType),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) { // GraphQLはセッション専用
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -541,7 +547,7 @@ func main() {
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					ctx := p.Context
 					// Fiber context passed via Context
-					if c, ok := ctx.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := ctx.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) { // GraphQLはセッション専用
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -572,7 +578,7 @@ func main() {
 			"authSettings": &graphql.Field{
 				Type: authSettingsType,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) { // GraphQLはセッション専用
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -614,8 +620,8 @@ func main() {
 					"cursor_id":       &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
-						if !userFromSession(c) && !userFromAPIKey(c) {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
 						u := c.Locals("user").(*User)
@@ -732,7 +738,7 @@ func main() {
 					},
 				}),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -760,7 +766,7 @@ func main() {
 			"mcpRevoke": &graphql.Field{
 				Type: graphql.Boolean,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -788,7 +794,7 @@ func main() {
 				})),
 				Args: graphql.FieldConfigArgument{"q": &graphql.ArgumentConfig{Type: graphql.String}, "limit": &graphql.ArgumentConfig{Type: graphql.Int}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -846,7 +852,7 @@ func main() {
 				Type: graphql.Boolean,
 				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "role": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -876,7 +882,7 @@ func main() {
 				Type: graphql.Boolean,
 				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "role": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -902,7 +908,7 @@ func main() {
 				Type: graphql.Boolean,
 				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "reason": &graphql.ArgumentConfig{Type: graphql.String}, "expires_at": &graphql.ArgumentConfig{Type: graphql.String}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -938,7 +944,7 @@ func main() {
 				Type: graphql.Boolean,
 				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -964,7 +970,7 @@ func main() {
 				Type: graphql.Boolean,
 				Args: graphql.FieldConfigArgument{"start": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "end": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "is_business_day": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)}, "notes": &graphql.ArgumentConfig{Type: graphql.String}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -1008,7 +1014,7 @@ func main() {
 			`adminDayshiftCycles`: &graphql.Field{
 				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{Name: "DayShiftCycle", Fields: graphql.Fields{"id": &graphql.Field{Type: graphql.Int}, "begin_date": &graphql.Field{Type: graphql.String}, "finish_date": &graphql.Field{Type: graphql.String}, "description": &graphql.Field{Type: graphql.String}}})),
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1035,7 +1041,7 @@ func main() {
 				Type: graphql.NewObject(graphql.ObjectConfig{Name: "DayShiftCycleCreateResult", Fields: graphql.Fields{"id": &graphql.Field{Type: graphql.Int}}}),
 				Args: graphql.FieldConfigArgument{"begin_date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "finish_date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "description": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1067,7 +1073,7 @@ func main() {
 					"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -1101,7 +1107,7 @@ func main() {
 					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1144,7 +1150,7 @@ func main() {
 					"user2_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1177,7 +1183,7 @@ func main() {
 					"pair_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -1213,7 +1219,7 @@ func main() {
 					"description": &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1263,7 +1269,7 @@ func main() {
 					"description": &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1303,7 +1309,7 @@ func main() {
 					"description": &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1330,7 +1336,7 @@ func main() {
 					"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -1357,7 +1363,7 @@ func main() {
 					"deadline_meta":       &graphql.ArgumentConfig{Type: graphql.String}, // JSON string describing period selection
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1430,7 +1436,7 @@ func main() {
 					"deadline_meta":       &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return nil, fmt.Errorf("unauthorized")
 						}
@@ -1512,7 +1518,7 @@ func main() {
 					"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) {
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -1551,7 +1557,7 @@ func main() {
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					displayName, _ := p.Args["display_name"].(string)
-					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 						if !userFromSession(c) { // GraphQLはセッション専用
 							return false, fmt.Errorf("unauthorized")
 						}
@@ -1858,7 +1864,7 @@ func main() {
 				Schema:         schema,
 				RequestString:  body.Query,
 				VariableValues: body.Variables,
-				Context:        context.WithValue(context.Background(), "fiberCtx", c),
+				Context:        context.WithValue(context.Background(), ctxKeyFiberCtx, c),
 			}
 			result := graphql.Do(params)
 			if len(result.Errors) > 0 {
@@ -2137,8 +2143,8 @@ func main() {
 		}
 		// Optionally record DB session (hashed)
 		DB.AutoMigrate(&Session{})
-		// For brevity, store plain (not recommended) — replace with hash in production
-		DB.Create(&Session{ClientPlatform: "web", HashedToken: token, ExpiresAt: ptrTime(time.Now().Add(ttl))})
+		// Store hash of token and associated user id for DB-fallback validation
+		DB.Create(&Session{UserID: u.ID, ClientPlatform: "web", HashedToken: sha256Hex([]byte(token)), ExpiresAt: ptrTime(time.Now().Add(ttl))})
 
 		// Also provide a JWT if needed (optional)
 		claims := jwt.MapClaims{"sub": u.ID, "exp": time.Now().Add(ttl).Unix()}
@@ -2149,9 +2155,11 @@ func main() {
 	})
 
 	app.Post("/auth/logout", func(c *fiber.Ctx) error {
-		token := c.Get("Authorization")
+		token := parseAuthToken(c.Get("Authorization"))
 		if token != "" {
 			_ = RDB.Del(c.Context(), "session:"+token).Err()
+			// Best-effort: remove DB session record if present (hashed or legacy plain)
+			_ = DB.Where("hashed_token = ? OR hashed_token = ?", sha256Hex([]byte(token)), token).Delete(&Session{}).Error
 		}
 		return c.SendStatus(fiber.StatusNoContent)
 	})
@@ -2343,7 +2351,7 @@ func main() {
 		if err := RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "session"})
 		}
-		DB.Create(&Session{ClientPlatform: "web", HashedToken: token, ExpiresAt: ptrTime(time.Now().Add(ttl))})
+		DB.Create(&Session{UserID: u.ID, ClientPlatform: "web", HashedToken: sha256Hex([]byte(token)), ExpiresAt: ptrTime(time.Now().Add(ttl))})
 		claims := jwt.MapClaims{"sub": u.ID, "exp": time.Now().Add(ttl).Unix()}
 		jwtt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		jwtStr, _ := jwtt.SignedString([]byte(env("JWT_SECRET", "dev")))
@@ -3502,15 +3510,45 @@ func checkPermission(userID uint, target, action string, ownerID *uint) (bool, e
 	}
 }
 
+// parseAuthToken extracts the raw token from Authorization header.
+// Supports formats: "<opaque>" or "Bearer <opaque>" (case-insensitive for Bearer).
+func parseAuthToken(authHeader string) string {
+	s := strings.TrimSpace(authHeader)
+	if s == "" {
+		return ""
+	}
+	parts := strings.SplitN(s, " ", 2)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		return strings.TrimSpace(parts[1])
+	}
+	return s
+}
+
 // Extract user from session token
 func userFromSession(c *fiber.Ctx) bool {
-	token := c.Get("Authorization")
+	raw := c.Get("Authorization")
+	token := parseAuthToken(raw)
 	if token == "" {
 		return false
 	}
+	// Redis-first
 	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
-	if err != nil {
-		return false
+	if err != nil || strings.TrimSpace(uidStr) == "" {
+		// DB fallback: lookup hashed token
+		var sess Session
+		if dberr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&sess).Error; dberr != nil {
+			return false
+		}
+		// hydrate Redis for future requests with a conservative TTL (max 30d or remaining time)
+		ttl := 30 * 24 * time.Hour
+		if sess.ExpiresAt != nil {
+			rem := time.Until(*sess.ExpiresAt)
+			if rem > 0 && rem < ttl {
+				ttl = rem
+			}
+		}
+		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", sess.UserID), ttl).Err()
+		uidStr = fmt.Sprintf("%d", sess.UserID)
 	}
 	var u User
 	if err := DB.First(&u, uidStr).Error; err != nil {

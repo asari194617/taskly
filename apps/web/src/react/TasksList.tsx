@@ -24,7 +24,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Drawer,
@@ -32,7 +31,6 @@ import {
   DrawerDescription,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
 import { Kbd } from "../components/ui/kbd";
@@ -50,6 +48,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertCircle,
   Hourglass,
@@ -145,10 +150,18 @@ export default function TasksList() {
       .catch((e) => setError(e?.message || "読み込みに失敗しました"));
   }, []);
 
-  // Keyboard shortcuts: g then n to create
+  // Keyboard shortcuts: g then n to create; '?' to show help
   React.useEffect(() => {
     let lastG = 0;
     function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.getAttribute("contenteditable") === "true")
+      )
+        return;
       if (e.key.toLowerCase() === "g") {
         lastG = Date.now();
       } else if (e.key.toLowerCase() === "n") {
@@ -156,6 +169,11 @@ export default function TasksList() {
           setCreateOpen(true);
           lastG = 0;
         }
+      } else if (e.key === "?") {
+        toast({
+          title: "ショートカット",
+          description: "g → n: 新規作成 / ?: このヘルプ",
+        });
       }
     }
     window.addEventListener("keydown", onKey);
@@ -432,7 +450,7 @@ export default function TasksList() {
                 />
               </div>
               <div>
-                <Label htmlFor="nt-date">期限（任意）</Label>
+                <Label htmlFor="nt-date">期限</Label>
                 <DeadlinePicker
                   date={newDate}
                   meta={newMeta}
@@ -450,24 +468,34 @@ export default function TasksList() {
                 />
                 <Label htmlFor="nt-req">提出必須</Label>
               </div>
+              <div className="col-span-2 flex items-center gap-2 -mt-2">
+                <Switch
+                  id="nt-scr"
+                  checked={newSelfCheck}
+                  onCheckedChange={setNewSelfCheck}
+                />
+                <Label htmlFor="nt-scr">自己採点が必要</Label>
+              </div>
               <div>
                 <Label htmlFor="nt-type">タイプ</Label>
-                <select
-                  id="nt-type"
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                <Select
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value)}
+                  onValueChange={(v: string) => setNewType(v)}
                 >
-                  <option value="">選択してください</option>
-                  <option>オンライン</option>
-                  <option>対面</option>
-                  <option>小テスト</option>
-                  <option>発表</option>
-                  <option>自習/予習</option>
-                  <option>その他</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="選択してください" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="オンライン">オンライン</SelectItem>
+                    <SelectItem value="対面">対面</SelectItem>
+                    <SelectItem value="小テスト">小テスト</SelectItem>
+                    <SelectItem value="発表">発表</SelectItem>
+                    <SelectItem value="自習/予習">自習/予習</SelectItem>
+                    <SelectItem value="その他">その他</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="col-span-2">
+              <div className="col-span-2 mt-0">
                 <Label htmlFor="nt-desc">説明（任意）</Label>
                 <textarea
                   id="nt-desc"
@@ -477,14 +505,7 @@ export default function TasksList() {
                   onChange={(e) => setNewDesc(e.target.value)}
                 />
               </div>
-              <div className="col-span-2 flex items-center gap-2">
-                <Switch
-                  id="nt-scr"
-                  checked={newSelfCheck}
-                  onCheckedChange={setNewSelfCheck}
-                />
-                <Label htmlFor="nt-scr">自己採点が必要</Label>
-              </div>
+              {/* 自己採点は提出必須の直下に移動済み */}
             </div>
             <Button onClick={createTask} disabled={creating}>
               新規作成
@@ -499,36 +520,29 @@ export default function TasksList() {
     <div className="space-y-6">
       {/* Toolbar */}
       {items.length > 0 && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            <Kbd>g</Kbd> <Kbd>n</Kbd> で新規作成
-          </div>
+        <div className="flex items-center justify-end">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    onClick={() => setCreateOpen(true)}
-                    className="sm:inline-flex hidden"
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> 新規作成
-                  </Button>
-                </DialogTrigger>
+                <Button
+                  size="sm"
+                  onClick={() => setCreateOpen(true)}
+                  className="sm:inline-flex hidden"
+                >
+                  <Plus className="h-4 w-4 mr-1" /> 新規作成
+                </Button>
               </TooltipTrigger>
               <TooltipContent>新しい課題を作成</TooltipContent>
             </Tooltip>
           </TooltipProvider>
           {/* Mobile icon button */}
-          <DialogTrigger asChild>
-            <Button
-              size="icon"
-              className="sm:hidden inline-flex"
-              onClick={() => setCreateOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </DialogTrigger>
+          <Button
+            size="icon"
+            className="sm:hidden inline-flex"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
       )}
 
@@ -564,7 +578,7 @@ export default function TasksList() {
               />
             </div>
             <div>
-              <Label htmlFor="nt-date-2">期限（任意）</Label>
+              <Label htmlFor="nt-date-2">期限</Label>
               <DeadlinePicker
                 date={newDate}
                 meta={newMeta}
@@ -582,24 +596,34 @@ export default function TasksList() {
               />
               <Label htmlFor="nt-req-2">提出必須</Label>
             </div>
+            <div className="col-span-2 flex items-center gap-2 -mt-2">
+              <Switch
+                id="nt-scr-2"
+                checked={newSelfCheck}
+                onCheckedChange={setNewSelfCheck}
+              />
+              <Label htmlFor="nt-scr-2">自己採点が必要</Label>
+            </div>
             <div>
               <Label htmlFor="nt-type-2">タイプ</Label>
-              <select
-                id="nt-type-2"
-                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              <Select
                 value={newType}
-                onChange={(e) => setNewType(e.target.value)}
+                onValueChange={(v: string) => setNewType(v)}
               >
-                <option value="">選択してください</option>
-                <option>オンライン</option>
-                <option>対面</option>
-                <option>小テスト</option>
-                <option>発表</option>
-                <option>自習/予習</option>
-                <option>その他</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="選択してください" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="オンライン">オンライン</SelectItem>
+                  <SelectItem value="対面">対面</SelectItem>
+                  <SelectItem value="小テスト">小テスト</SelectItem>
+                  <SelectItem value="発表">発表</SelectItem>
+                  <SelectItem value="自習/予習">自習/予習</SelectItem>
+                  <SelectItem value="その他">その他</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 mt-0">
               <Label htmlFor="nt-desc-2">説明（任意）</Label>
               <textarea
                 id="nt-desc-2"
@@ -609,14 +633,7 @@ export default function TasksList() {
                 onChange={(e) => setNewDesc(e.target.value)}
               />
             </div>
-            <div className="col-span-2 flex items-center gap-2">
-              <Switch
-                id="nt-scr-2"
-                checked={newSelfCheck}
-                onCheckedChange={setNewSelfCheck}
-              />
-              <Label htmlFor="nt-scr-2">自己採点が必要</Label>
-            </div>
+            {/* 自己採点は提出必須の直下に移動済み */}
           </div>
           <div className="mt-3">
             <Button onClick={createTask} disabled={creating}>
@@ -658,7 +675,7 @@ export default function TasksList() {
               />
             </div>
             <div>
-              <Label>期限（任意）</Label>
+              <Label>期限</Label>
               <DeadlinePicker
                 date={newDate}
                 meta={newMeta}
@@ -669,24 +686,39 @@ export default function TasksList() {
               />
             </div>
             <div className="col-span-2 flex items-center gap-2">
-              <Switch checked={newRequire} onCheckedChange={setNewRequire} />
-              <Label>提出必須</Label>
+              <Switch
+                id="nt-req-m"
+                checked={newRequire}
+                onCheckedChange={setNewRequire}
+              />
+              <Label htmlFor="nt-req-m">提出必須</Label>
+            </div>
+            <div className="col-span-2 flex items-center gap-2 -mt-2">
+              <Switch
+                id="nt-scr-m"
+                checked={newSelfCheck}
+                onCheckedChange={setNewSelfCheck}
+              />
+              <Label htmlFor="nt-scr-m">自己採点が必要</Label>
             </div>
             <div>
               <Label>タイプ</Label>
-              <select
-                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+              <Select
                 value={newType}
-                onChange={(e) => setNewType(e.target.value)}
+                onValueChange={(v: string) => setNewType(v)}
               >
-                <option value="">選択してください</option>
-                <option>オンライン</option>
-                <option>対面</option>
-                <option>小テスト</option>
-                <option>発表</option>
-                <option>自習/予習</option>
-                <option>その他</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="選択してください" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="オンライン">オンライン</SelectItem>
+                  <SelectItem value="対面">対面</SelectItem>
+                  <SelectItem value="小テスト">小テスト</SelectItem>
+                  <SelectItem value="発表">発表</SelectItem>
+                  <SelectItem value="自習/予習">自習/予習</SelectItem>
+                  <SelectItem value="その他">その他</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="col-span-2">
               <Label>説明（任意）</Label>
@@ -697,13 +729,7 @@ export default function TasksList() {
                 onChange={(e) => setNewDesc(e.target.value)}
               />
             </div>
-            <div className="col-span-2 flex items-center gap-2">
-              <Switch
-                checked={newSelfCheck}
-                onCheckedChange={setNewSelfCheck}
-              />
-              <Label>自己採点が必要</Label>
-            </div>
+            {/* 自己採点は提出必須の直下に配置済み */}
             <div className="col-span-2">
               <Button
                 onClick={createTask}
@@ -837,7 +863,7 @@ export default function TasksList() {
                                 </div>
                                 <div>
                                   <Label htmlFor={`ed-date-${t.id}`}>
-                                    期限（任意）
+                                    期限
                                   </Label>
                                   <DeadlinePicker
                                     date={editDate}
@@ -851,19 +877,30 @@ export default function TasksList() {
                               </div>
                               <div>
                                 <Label>タイプ</Label>
-                                <select
-                                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                                <Select
                                   value={editType}
-                                  onChange={(e) => setEditType(e.target.value)}
+                                  onValueChange={(v: string) => setEditType(v)}
                                 >
-                                  <option value="">選択してください</option>
-                                  <option>オンライン</option>
-                                  <option>対面</option>
-                                  <option>小テスト</option>
-                                  <option>発表</option>
-                                  <option>自習/予習</option>
-                                  <option>その他</option>
-                                </select>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="選択してください" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="オンライン">
+                                      オンライン
+                                    </SelectItem>
+                                    <SelectItem value="対面">対面</SelectItem>
+                                    <SelectItem value="小テスト">
+                                      小テスト
+                                    </SelectItem>
+                                    <SelectItem value="発表">発表</SelectItem>
+                                    <SelectItem value="自習/予習">
+                                      自習/予習
+                                    </SelectItem>
+                                    <SelectItem value="その他">
+                                      その他
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                               <div>
                                 <Label>説明（任意）</Label>
@@ -884,7 +921,7 @@ export default function TasksList() {
                                   提出必須
                                 </Label>
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 -mt-2">
                                 <Switch
                                   checked={editSelfCheck}
                                   onCheckedChange={setEditSelfCheck}
