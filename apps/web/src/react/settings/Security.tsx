@@ -6,6 +6,14 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
@@ -23,6 +31,10 @@ export default function SettingsSecurity() {
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
   const [totpCode, setTotpCode] = React.useState<string>("");
+  const [totpOpen, setTotpOpen] = React.useState(false);
+  const [totpStep, setTotpStep] = React.useState<1 | 2>(1);
+  const [recoveryOpen, setRecoveryOpen] = React.useState(false);
+  const [recoveryCodes, setRecoveryCodes] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     if (!token) return;
@@ -55,6 +67,8 @@ export default function SettingsSecurity() {
     );
     setTotpSecret(d.totpSetup.secret);
     setTotpUri(d.totpSetup.otpauth);
+    setTotpStep(1);
+    setTotpOpen(true);
   }
   async function activateTotp() {
     try {
@@ -67,6 +81,7 @@ export default function SettingsSecurity() {
       setTotpSecret("");
       setTotpUri("");
       setTotpCode("");
+      setTotpOpen(false);
     } catch {
       toast({ variant: "destructive", title: "コードが正しくありません" });
     }
@@ -82,16 +97,17 @@ export default function SettingsSecurity() {
     const data = await gql<{ recoveryGenerate: string[] }>(
       `mutation{ recoveryGenerate }`
     );
-    const text = (data.recoveryGenerate as string[]).join("\n");
-    await navigator.clipboard.writeText(text);
-    toast({ title: "リカバリーコードをコピーしました" });
+    setRecoveryCodes(data.recoveryGenerate);
+    setRecoveryOpen(true);
   }
 
   async function registerPasskey() {
     try {
       // Begin via GraphQL and convert fields
-      const beginStr = await gql<string>(`mutation{ webauthnRegisterBegin }`);
-      const options = JSON.parse(beginStr);
+      const resp = await gql<{ webauthnRegisterBegin: string }>(
+        `mutation{ webauthnRegisterBegin }`
+      );
+      const options = JSON.parse(resp.webauthnRegisterBegin);
       if (
         options?.publicKey?.challenge &&
         typeof options.publicKey.challenge === "string"
@@ -178,31 +194,78 @@ export default function SettingsSecurity() {
             </div>
           ) : (
             <div className="space-y-3">
-              {totpSecret ? (
-                <div className="space-y-2">
-                  <div className="text-sm">
-                    シークレット:{" "}
-                    <code className="font-mono">{totpSecret}</code>
-                  </div>
-                  <div className="text-xs text-muted-foreground break-all">
-                    {totpUri}
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <Label htmlFor="totp">認証コード</Label>
-                      <Input
-                        id="totp"
-                        value={totpCode}
-                        onChange={(e) => setTotpCode(e.target.value)}
-                        placeholder="123456"
-                      />
+              <Button onClick={beginTotp}>セットアップを開始</Button>
+              <Dialog open={totpOpen} onOpenChange={setTotpOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>二段階認証をセットアップ</DialogTitle>
+                    <DialogDescription>
+                      認証アプリでQRコードを読み取り、次へ進みます。
+                    </DialogDescription>
+                  </DialogHeader>
+                  {totpStep === 1 ? (
+                    <div className="space-y-3">
+                      <div className="flex justify-center">
+                        {totpUri ? (
+                          <img
+                            alt="TOTP QR"
+                            className="rounded border"
+                            width={200}
+                            height={200}
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                              totpUri
+                            )}`}
+                          />
+                        ) : null}
+                      </div>
+                      <div>
+                        <Label>シークレット</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            readOnly
+                            value={totpSecret}
+                            className="font-mono"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(totpSecret);
+                              toast({ title: "シークレットをコピーしました" });
+                            }}
+                          >
+                            コピー
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button onClick={() => setTotpStep(2)}>次へ</Button>
+                      </div>
                     </div>
-                    <Button onClick={activateTotp}>有効化</Button>
-                  </div>
-                </div>
-              ) : (
-                <Button onClick={beginTotp}>セットアップを開始</Button>
-              )}
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="totp">認証コード</Label>
+                        <Input
+                          id="totp"
+                          value={totpCode}
+                          onChange={(e) => setTotpCode(e.target.value)}
+                          placeholder="123456"
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setTotpStep(1)}
+                        >
+                          戻る
+                        </Button>
+                        <Button onClick={activateTotp}>有効化</Button>
+                      </DialogFooter>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
             </div>
           )}
         </Card>
@@ -218,7 +281,54 @@ export default function SettingsSecurity() {
           <div className="text-sm text-muted-foreground">
             新しいコードを発行すると、以前の未使用コードは無効になります。
           </div>
-          <Button onClick={generateRecovery}>コードを再発行</Button>
+          <Button onClick={generateRecovery}>リカバリーコードを発行</Button>
+          <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>リカバリーコード</DialogTitle>
+                <DialogDescription>
+                  二度と表示できません。必ず記録・保管してください。
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 max-h-64 overflow-auto">
+                {recoveryCodes.map((code, i) => (
+                  <div
+                    key={i}
+                    className="rounded border px-3 py-2 font-mono text-sm flex items-center justify-between"
+                  >
+                    <span>{code}</span>
+                  </div>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(
+                      recoveryCodes.join("\n")
+                    );
+                    toast({ title: "コピーしました" });
+                  }}
+                >
+                  コピー
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const w = window.open("");
+                    if (!w) return;
+                    w.document.write(`<pre>${recoveryCodes.join("\n")}</pre>`);
+                    w.document.close();
+                    w.focus();
+                    w.print();
+                  }}
+                >
+                  印刷
+                </Button>
+                <Button onClick={() => setRecoveryOpen(false)}>閉じる</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </Card>
       </div>
     </SettingsShell>

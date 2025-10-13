@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { gql } from "@/lib/graphql";
+import { toast } from "@/hooks/use-toast";
 
 type IItem = {
   id: number;
@@ -26,31 +28,52 @@ export default function SettingsIcal() {
   const [items, setItems] = React.useState<IItem[]>([]);
   const [desc, setDesc] = React.useState("");
   async function load() {
-    const res = await fetch("/ical/tokens", {
-      headers: { Authorization: token },
-    });
-    if (res.ok) setItems(await res.json());
+    try {
+      const data = await gql<{ icalTokens: IItem[] }>(
+        `query{ icalTokens{ id description url created_at } }`
+      );
+      setItems(data.icalTokens || []);
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "読み込みに失敗しました",
+        description: e?.message,
+      });
+    }
   }
   React.useEffect(() => {
     if (token) load();
   }, [token]);
   async function create() {
-    const res = await fetch("/ical/tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
-      body: JSON.stringify({ description: desc || undefined }),
-    });
-    if (res.ok) {
+    try {
+      await gql<{ icalCreate: { id: number; url: string } }>(
+        `mutation($d:String){ icalCreate(description:$d){ id url } }`,
+        { d: desc || undefined }
+      );
       setDesc("");
       load();
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "作成に失敗しました",
+        description: e?.message,
+      });
     }
   }
   async function revoke(id: number) {
-    const res = await fetch(`/ical/tokens/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: token },
-    });
-    if (res.ok) load();
+    try {
+      await gql<{ icalDelete: boolean }>(
+        `mutation($id:Int!){ icalDelete(id:$id) }`,
+        { id }
+      );
+      load();
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "削除に失敗しました",
+        description: e?.message,
+      });
+    }
   }
   return (
     <SettingsShell>

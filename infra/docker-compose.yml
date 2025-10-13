@@ -40,8 +40,8 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
-  api:
-    build: ../apps/api
+  server:
+    build: ../apps/server
     env_file:
       - ../.env
     depends_on:

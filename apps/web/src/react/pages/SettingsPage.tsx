@@ -2,7 +2,7 @@
 import * as React from "react";
 import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
-import { User, Shield, Bell, Key, Calendar } from "lucide-react";
+import { User, Shield, Bell, Key, Calendar, Boxes } from "lucide-react";
 
 export default function SettingsPage() {
   return (
@@ -66,6 +66,17 @@ export default function SettingsPage() {
                 <div className="font-medium">iCalカレンダー設定</div>
                 <div className="text-sm text-muted-foreground">
                   購読用URLの発行と管理
+                </div>
+              </div>
+            </Card>
+          </a>
+          <a href="/settings/mcp">
+            <Card className="p-4 flex items-start gap-3">
+              <Boxes className="h-5 w-5 mt-0.5" />
+              <div>
+                <div className="font-medium">MCP 設定</div>
+                <div className="text-sm text-muted-foreground">
+                  MCPトークンの発行・無効化、操作履歴
                 </div>
               </div>
             </Card>

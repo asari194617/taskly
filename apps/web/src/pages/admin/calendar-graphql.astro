@@ -1,0 +1,9 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import AdminCalendar from "../../react/admin/Calendar";
+import AdminGuard from "../../components/AdminGuard.astro";
+---
+<Layout title="営業日カレンダー (GraphQL)">
+  <AdminGuard />
+  <AdminCalendar client:load />
+</Layout>

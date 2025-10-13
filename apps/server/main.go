@@ -161,6 +161,14 @@ type ApiActionLog struct {
 	CreatedAt   time.Time
 }
 
+// Generic system/user logs per specification
+type Log struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    *uint     `gorm:"index"`
+	Action    string    `gorm:"size:64;not null"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+}
+
 type TOTPSecret struct {
 	ID        uint   `gorm:"primaryKey"`
 	UserID    uint   `gorm:"uniqueIndex;not null"`
@@ -246,6 +254,15 @@ type IcalKey struct {
 	CreatedAt   time.Time
 }
 
+// MCP integration tokens per user (for MCP server access via user session)
+type MCP struct {
+	ID          uint   `gorm:"primaryKey"`
+	UserID      uint   `gorm:"index"`
+	HashedToken string `gorm:"size:255"`
+	Description *string
+	CreatedAt   time.Time
+}
+
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -314,7 +331,7 @@ func main() {
 	}
 
 	// Auto-migrate core models
-	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{})
+	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{})
 
 	app := fiber.New()
 	app.Use(recover.New())
@@ -330,6 +347,13 @@ func main() {
 	// GraphQL endpoint for application <-> application server traffic
 	// Keep REST for API key based integrations. Minimal initial schema provided.
 	// Reusable Task GraphQL type
+	subjectType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Subject",
+		Fields: graphql.Fields{
+			"id":    &graphql.Field{Type: graphql.Int},
+			"title": &graphql.Field{Type: graphql.String},
+		},
+	})
 	taskType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Task",
 		Fields: graphql.Fields{
@@ -365,6 +389,147 @@ func main() {
 	rootQuery := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Query",
 		Fields: graphql.Fields{
+			"myLogs": &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+					Name: "Log",
+					Fields: graphql.Fields{
+						"action":     &graphql.Field{Type: graphql.String},
+						"created_at": &graphql.Field{Type: graphql.String},
+					},
+				})),
+				Args: graphql.FieldConfigArgument{
+					"prefix": &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":  &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						limit := 100
+						if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 500 {
+							limit = v
+						}
+						q := DB.Model(&Log{}).Where("user_id = ?", u.ID).Order("id DESC").Limit(limit)
+						if pf, ok := p.Args["prefix"].(string); ok && strings.TrimSpace(pf) != "" {
+							q = q.Where("action LIKE ?", strings.TrimSpace(pf)+"%")
+						}
+						var items []Log
+						if err := q.Find(&items).Error; err != nil {
+							return nil, err
+						}
+						out := make([]map[string]any, 0, len(items))
+						for _, it := range items {
+							out = append(out, map[string]any{"action": it.Action, "created_at": it.CreatedAt.Format(time.RFC3339)})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"mcpInfo": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "McpInfo",
+					Fields: graphql.Fields{
+						"enabled":   &graphql.Field{Type: graphql.Boolean},
+						"has_token": &graphql.Field{Type: graphql.Boolean},
+					},
+				}),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						var cnt int64
+						_ = DB.Model(&MCP{}).Where("user_id = ?", u.ID).Count(&cnt).Error
+						enabled := strings.ToLower(env("MCP_ENABLED", "true")) == "true"
+						return map[string]any{"enabled": enabled, "has_token": cnt > 0}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"apiKeys": &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+					Name: "ApiKey",
+					Fields: graphql.Fields{
+						"id":          &graphql.Field{Type: graphql.Int},
+						"description": &graphql.Field{Type: graphql.String},
+						"is_valid":    &graphql.Field{Type: graphql.Boolean},
+						"created_at":  &graphql.Field{Type: graphql.String},
+					},
+				})),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						var keys []APIKey
+						if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&keys).Error; err != nil {
+							return nil, err
+						}
+						out := make([]map[string]any, 0, len(keys))
+						for _, k := range keys {
+							out = append(out, map[string]any{"id": k.ID, "description": k.Description, "is_valid": k.IsValid, "created_at": k.CreatedAt.Format(time.RFC3339)})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"icalTokens": &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+					Name: "IcalToken",
+					Fields: graphql.Fields{
+						"id":          &graphql.Field{Type: graphql.Int},
+						"description": &graphql.Field{Type: graphql.String},
+						"url":         &graphql.Field{Type: graphql.String},
+						"created_at":  &graphql.Field{Type: graphql.String},
+					},
+				})),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						var items []IcalKey
+						if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
+							return nil, err
+						}
+						base := strings.TrimRight(env("ICAL_BASE_URL", env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+						out := make([]map[string]any, 0, len(items))
+						for _, it := range items {
+							out = append(out, map[string]any{"id": it.ID, "description": it.Description, "url": fmt.Sprintf("%s/%s.ics", base, it.Token), "created_at": it.CreatedAt.Format(time.RFC3339)})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"subjects": &graphql.Field{
+				Type: graphql.NewList(subjectType),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) { // GraphQLはセッション専用
+							return nil, fmt.Errorf("unauthorized")
+						}
+						var subs []Subject
+						now := time.Now()
+						if err := DB.Where("expires_at IS NULL OR expires_at > ?", now).Order("id ASC").Find(&subs).Error; err != nil {
+							return nil, err
+						}
+						out := make([]map[string]any, 0, len(subs))
+						for _, s := range subs {
+							out = append(out, map[string]any{"id": s.ID, "title": s.Title})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
 			"me": &graphql.Field{
 				Type: meType,
 				Resolve: func(p graphql.ResolveParams) (any, error) {
@@ -545,6 +710,627 @@ func main() {
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Mutation",
 		Fields: graphql.Fields{
+			"mcpCreate": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "McpCreateResult",
+					Fields: graphql.Fields{
+						"ok":    &graphql.Field{Type: graphql.Boolean},
+						"token": &graphql.Field{Type: graphql.String},
+					},
+				}),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						if strings.ToLower(env("MCP_ENABLED", "true")) != "true" {
+							return nil, fmt.Errorf("disabled")
+						}
+						// generate token and store hashed (re-using API key generator for randomness)
+						plain, hashed, err := generateAPIKey()
+						if err != nil {
+							return nil, fmt.Errorf("gen")
+						}
+						// store only hash; user fetches token via logs/UI if needed (omitted here for brevity)
+						rec := MCP{UserID: u.ID, HashedToken: hashed}
+						_ = DB.Where("user_id = ?", u.ID).Delete(&MCP{}).Error
+						if err := DB.Create(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.create"}).Error
+						return map[string]any{"ok": true, "token": plain}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"mcpRevoke": &graphql.Field{
+				Type: graphql.Boolean,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						if err := DB.Where("user_id = ?", u.ID).Delete(&MCP{}).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: Users list/search
+			"adminUsers": &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+					Name: "AdminUser",
+					Fields: graphql.Fields{
+						"id":           &graphql.Field{Type: graphql.Int},
+						"email":        &graphql.Field{Type: graphql.String},
+						"display_name": &graphql.Field{Type: graphql.String},
+						"roles":        &graphql.Field{Type: graphql.NewList(graphql.String)},
+						"is_blocked":   &graphql.Field{Type: graphql.Boolean},
+					},
+				})),
+				Args: graphql.FieldConfigArgument{"q": &graphql.ArgumentConfig{Type: graphql.String}, "limit": &graphql.ArgumentConfig{Type: graphql.Int}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						qstr, _ := p.Args["q"].(string)
+						limit := 100
+						if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 500 {
+							limit = v
+						}
+						dbq := DB.Model(&User{})
+						if strings.TrimSpace(qstr) != "" {
+							like := "%" + strings.TrimSpace(qstr) + "%"
+							dbq = dbq.Where("email LIKE ? OR display_name LIKE ?", like, like)
+						}
+						var users []User
+						if err := dbq.Order("id DESC").Limit(limit).Find(&users).Error; err != nil {
+							return nil, err
+						}
+						ids := make([]uint, 0, len(users))
+						for _, uu := range users {
+							ids = append(ids, uu.ID)
+						}
+						var roles []RoleUser
+						if len(ids) > 0 {
+							_ = DB.Where("user_id IN ?", ids).Find(&roles).Error
+						}
+						roleMap := map[uint][]string{}
+						for _, r := range roles {
+							roleMap[r.UserID] = append(roleMap[r.UserID], r.Role)
+						}
+						blocked := map[uint]bool{}
+						if len(ids) > 0 {
+							var blks []Block
+							_ = DB.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
+							for _, b := range blks {
+								blocked[b.UserID] = true
+							}
+						}
+						out := make([]map[string]any, 0, len(users))
+						for _, uu := range users {
+							out = append(out, map[string]any{"id": uu.ID, "email": uu.Email, "display_name": uu.DisplayName, "roles": roleMap[uu.ID], "is_blocked": blocked[uu.ID]})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: role add/remove
+			`adminUserAddRole`: &graphql.Field{ // backticks used to avoid accidental formatting issues
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "role": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						uid := uint(p.Args["user_id"].(int))
+						role := strings.ToLower(strings.TrimSpace(p.Args["role"].(string)))
+						if role != "admin" && role != "manager" {
+							return false, fmt.Errorf("invalid role")
+						}
+						var cnt int64
+						_ = DB.Model(&RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
+						if cnt == 0 {
+							_ = DB.Create(&RoleUser{UserID: uid, Role: role}).Error
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.add:%d:%s", uid, role)}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			`adminUserRemoveRole`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "role": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						uid := uint(p.Args["user_id"].(int))
+						role := strings.ToLower(strings.TrimSpace(p.Args["role"].(string)))
+						if err := DB.Where("user_id = ? AND role = ?", uid, role).Delete(&RoleUser{}).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.remove:%d:%s", uid, role)}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: block/unblock
+			`adminUserBlock`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "reason": &graphql.ArgumentConfig{Type: graphql.String}, "expires_at": &graphql.ArgumentConfig{Type: graphql.String}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						uid := uint(p.Args["user_id"].(int))
+						var expPtr *time.Time
+						if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
+							if t, err := time.Parse(time.RFC3339, s); err == nil {
+								expPtr = &t
+							}
+						}
+						var reasonPtr *string
+						if s, ok := p.Args["reason"].(string); ok && strings.TrimSpace(s) != "" {
+							v := s
+							reasonPtr = &v
+						}
+						rec := Block{UserID: uid, Reason: reasonPtr, ExpiresAt: expPtr}
+						if err := DB.Create(&rec).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			`adminUserUnblock`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						uid := uint(p.Args["user_id"].(int))
+						now := time.Now()
+						if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uid, now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: calendar
+			`adminCalendarUpsertRange`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{"start": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "end": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "is_business_day": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)}, "notes": &graphql.ArgumentConfig{Type: graphql.String}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						s := p.Args["start"].(string)
+						e := p.Args["end"].(string)
+						isBiz := p.Args["is_business_day"].(bool)
+						sd, err1 := time.Parse("2006-01-02", s)
+						ed, err2 := time.Parse("2006-01-02", e)
+						if err1 != nil || err2 != nil || sd.After(ed) {
+							return false, fmt.Errorf("invalid dates")
+						}
+						var notes *string
+						if v, ok := p.Args["notes"].(string); ok && strings.TrimSpace(v) != "" {
+							nv := v
+							notes = &nv
+						}
+						for d := sd; !d.After(ed); d = d.Add(24 * time.Hour) {
+							var bc BusinessCalendar
+							if err := DB.Where("date = ?", d.Format("2006-01-02")).First(&bc).Error; err != nil {
+								bc = BusinessCalendar{Date: dateOnly(d), IsBusinessDay: isBiz, Notes: notes}
+								_ = DB.Create(&bc).Error
+							} else {
+								bc.IsBusinessDay = isBiz
+								bc.Notes = notes
+								_ = DB.Save(&bc).Error
+							}
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.calendar.upsert"}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: day shift cycles and pairs
+			`adminDayshiftCycles`: &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{Name: "DayShiftCycle", Fields: graphql.Fields{"id": &graphql.Field{Type: graphql.Int}, "begin_date": &graphql.Field{Type: graphql.String}, "finish_date": &graphql.Field{Type: graphql.String}, "description": &graphql.Field{Type: graphql.String}}})),
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						var items []DayShiftCycle
+						if err := DB.Order("begin_date DESC").Find(&items).Error; err != nil {
+							return nil, err
+						}
+						out := make([]map[string]any, 0, len(items))
+						for _, it := range items {
+							out = append(out, map[string]any{"id": it.ID, "begin_date": it.BeginDate.Format("2006-01-02"), "finish_date": it.FinishDate.Format("2006-01-02"), "description": it.Description})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			`adminDayshiftCreateCycle`: &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{Name: "DayShiftCycleCreateResult", Fields: graphql.Fields{"id": &graphql.Field{Type: graphql.Int}}}),
+				Args: graphql.FieldConfigArgument{"begin_date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "finish_date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, "description": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						bd, err1 := time.Parse("2006-01-02", p.Args["begin_date"].(string))
+						fd, err2 := time.Parse("2006-01-02", p.Args["finish_date"].(string))
+						if err1 != nil || err2 != nil || !bd.Before(fd) {
+							return nil, fmt.Errorf("invalid dates")
+						}
+						desc := p.Args["description"].(string)
+						rec := DayShiftCycle{BeginDate: bd, FinishDate: fd, Description: desc}
+						if err := DB.Create(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.cycle.create"}).Error
+						return map[string]any{"id": rec.ID}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			`adminDayshiftDeleteCycle`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						if err := DB.Delete(&DayShiftCycle{}, p.Args["id"].(int)).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.cycle.delete"}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			`adminDayshiftPairs`: &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+					Name: "DayShiftPair",
+					Fields: graphql.Fields{
+						"id":       &graphql.Field{Type: graphql.Int},
+						"cycle_id": &graphql.Field{Type: graphql.Int},
+						"user1_id": &graphql.Field{Type: graphql.Int},
+						"user2_id": &graphql.Field{Type: graphql.Int},
+						"position": &graphql.Field{Type: graphql.Int},
+					},
+				})),
+				Args: graphql.FieldConfigArgument{
+					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						cid := p.Args["cycle_id"].(int)
+						var pairs []DayShiftCyclePair
+						if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&pairs).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						out := make([]map[string]any, 0, len(pairs))
+						for _, it := range pairs {
+							out = append(out, map[string]any{
+								"id":       it.ID,
+								"cycle_id": it.CycleID,
+								"user1_id": it.User1ID,
+								"user2_id": it.User2ID,
+								"position": it.Position,
+							})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			`adminDayshiftCreatePair`: &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "DayShiftPairCreateResult",
+					Fields: graphql.Fields{
+						"id": &graphql.Field{Type: graphql.Int},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{
+					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"user1_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"user2_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						cid := p.Args["cycle_id"].(int)
+						u1 := p.Args["user1_id"].(int)
+						u2 := p.Args["user2_id"].(int)
+						var max int64
+						_ = DB.Model(&DayShiftCyclePair{}).Where("cycle_id = ?", cid).Select("COALESCE(MAX(position),0)").Scan(&max).Error
+						pos := int(max) + 1
+						rec := DayShiftCyclePair{CycleID: uint(cid), User1ID: uint(u1), User2ID: uint(u2), Position: pos}
+						if err := DB.Create(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.pair.create"}).Error
+						return map[string]any{"id": rec.ID}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			`adminDayshiftDeletePair`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"pair_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						if err := DB.Delete(
+							&DayShiftCyclePair{},
+							"id = ? AND cycle_id = ?",
+							p.Args["pair_id"].(int),
+							p.Args["cycle_id"].(int),
+						).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.pair.delete"}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"apiKeyCreate": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "ApiKeyCreateResult",
+					Fields: graphql.Fields{
+						"id":    &graphql.Field{Type: graphql.Int},
+						"token": &graphql.Field{Type: graphql.String},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{
+					"description": &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						limit, err := apiKeyLimitForUser(u.ID)
+						if err != nil {
+							return nil, err
+						}
+						if limit >= 0 {
+							var cur int64
+							if err := DB.Model(&APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
+								return nil, err
+							}
+							if int(cur) >= limit {
+								return nil, fmt.Errorf("api key limit reached")
+							}
+						}
+						desc, _ := p.Args["description"].(string)
+						var descPtr *string
+						if strings.TrimSpace(desc) != "" {
+							descPtr = &desc
+						}
+						plain, hashed, genErr := generateAPIKey()
+						if genErr != nil {
+							return nil, fmt.Errorf("gen")
+						}
+						rec := APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr}
+						if err := DB.Create(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						return map[string]any{"id": rec.ID, "token": plain}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"apiKeyUpdate": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "ApiKeyUpdateResult",
+					Fields: graphql.Fields{
+						"id":       &graphql.Field{Type: graphql.Int},
+						"is_valid": &graphql.Field{Type: graphql.Boolean},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{
+					"id":          &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"is_valid":    &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"description": &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						id, _ := p.Args["id"].(int)
+						var rec APIKey
+						if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&rec).Error; err != nil {
+							return nil, fmt.Errorf("not found")
+						}
+						if v, ok := p.Args["is_valid"].(bool); ok {
+							rec.IsValid = v
+						}
+						if v, ok := p.Args["description"].(string); ok {
+							if strings.TrimSpace(v) == "" {
+								rec.Description = nil
+							} else {
+								rec.Description = &v
+							}
+						}
+						if err := DB.Save(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						return map[string]any{"id": rec.ID, "is_valid": rec.IsValid}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"icalCreate": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "IcalCreateResult",
+					Fields: graphql.Fields{
+						"id":  &graphql.Field{Type: graphql.Int},
+						"url": &graphql.Field{Type: graphql.String},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{
+					"description": &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						desc, _ := p.Args["description"].(string)
+						var descPtr *string
+						if strings.TrimSpace(desc) != "" {
+							descPtr = &desc
+						}
+						tok := generateIcalToken()
+						rec := IcalKey{UserID: u.ID, Token: tok, Description: descPtr}
+						if err := DB.Create(&rec).Error; err != nil {
+							return nil, fmt.Errorf("db")
+						}
+						base := strings.TrimRight(env("ICAL_BASE_URL", env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+						return map[string]any{"id": rec.ID, "url": fmt.Sprintf("%s/%s.ics", base, rec.Token)}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			"icalDelete": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						id, _ := p.Args["id"].(int)
+						if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&IcalKey{}).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
 			"createTask": &graphql.Field{
 				Type: taskType,
 				Args: graphql.FieldConfigArgument{

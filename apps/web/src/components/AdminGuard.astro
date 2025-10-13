@@ -6,12 +6,16 @@ const apiBase = import.meta.env.PUBLIC_API_URL || 'http://localhost:8080';
   (async () => {
     const token = localStorage.getItem('api_token') || '';
     if (!token) { location.href = '/login'; return; }
-    const res = await fetch(_apiBase + "/users/me", { headers: { 'Authorization': token } });
+    const res = await fetch(_apiBase + "/graphql", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': token } : {}) },
+      body: JSON.stringify({ query: 'query{ me{ id email is_admin is_manager } }' })
+    });
     if(!res.ok){ location.href = '/login'; return; }
-    const me = await res.json();
+    const json = await res.json();
+    const me = json?.data?.me;
     if(!(me && (me.is_admin || me.is_manager))){
       alert('Forbidden');
-      // Keep token; just navigate away
       location.href = '/';
     }
   })();
