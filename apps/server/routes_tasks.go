@@ -130,6 +130,8 @@ func registerTasksRoutes(app *fiber.App) {
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
+		// Asynchronous Teams notification via Outlook/Power Automate email
+		go sendTeamsNotifyEmailForTask(rec)
 		return c.Status(201).JSON(rec)
 	})
 

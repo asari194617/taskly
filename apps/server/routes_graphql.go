@@ -876,6 +876,8 @@ func registerGraphQL(app *fiber.App) {
 						if err := DB.Create(&rec).Error; err != nil {
 							return nil, fmt.Errorf("db")
 						}
+						// Fire async Teams notification email for Power Automate
+						go sendTeamsNotifyEmailForTask(rec)
 						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "type": rec.Type, "is_require_hand_in": rec.IsRequireHandIn, "self_check_required": rec.SelfCheckRequired}
 						if rec.Deadline != nil {
 							out["deadline"] = rec.Deadline.Format(time.RFC3339)

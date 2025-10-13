@@ -431,6 +431,118 @@ func smtpSend(to, subject, text, html string) error {
 	return nil
 }
 
+// SMTP helper to send plain text email (no HTML/multipart)
+func smtpSendPlain(to, subject, text string) error {
+	smtpHost := env("SMTP_HOST", "localhost")
+	smtpPort := env("SMTP_PORT", "25")
+	from := env("SMTP_FROM", "noreply@taskly.local")
+	smtpUser := env("SMTP_USER", from)
+	smtpPass := env("SMTP_PASSWORD", "")
+	nowRFC := time.Now().Format(time.RFC1123Z)
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + to + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"Date: " + nowRFC + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n",
+	)
+	var auth smtp.Auth
+	if smtpPass != "" {
+		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	}
+	toSec, _ := strconv.Atoi(env("SMTP_TIMEOUT", "60"))
+	if toSec <= 0 {
+		toSec = 60
+	}
+	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
+	mode := strings.ToLower(strings.TrimSpace(env("SMTP_TLS", "")))
+	var conn net.Conn
+	var err error
+	if mode == "smtps" || smtpPort == "465" {
+		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost})
+	} else {
+		conn, err = dialer.Dial("tcp", smtpHost+":"+smtpPort)
+	}
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+	cl, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cl.Quit() }()
+	if mode == "starttls" {
+		if ok, _ := cl.Extension("STARTTLS"); ok {
+			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost}); err != nil {
+				return err
+			}
+		}
+	}
+	if auth != nil {
+		if ok, _ := cl.Extension("AUTH"); ok {
+			if err := cl.Auth(auth); err != nil {
+				return err
+			}
+		}
+	}
+	if err := cl.Mail(from); err != nil {
+		return err
+	}
+	if err := cl.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := cl.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		_ = w.Close()
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Build formatted title for Teams email like: "教科名: **タイトル(1/2 15:04まで)**"
+func buildTeamsTitle(subjectID uint, taskTitle string, deadline *time.Time) string {
+	var subj Subject
+	_ = DB.First(&subj, subjectID).Error
+	subjName := subj.Title
+	dl := ""
+	if deadline != nil {
+		dl = deadline.Format("1/2 15:04") + "まで"
+	}
+	if dl != "" {
+		return fmt.Sprintf("%s: **%s(%s)**", subjName, taskTitle, dl)
+	}
+	return fmt.Sprintf("%s: **%s**", subjName, taskTitle)
+}
+
+// Send Teams notification email for a newly created task
+func sendTeamsNotifyEmailForTask(t Task) {
+	to := env("TEAMS_NOTIFY_EMAIL", "")
+	if strings.TrimSpace(to) == "" {
+		return
+	}
+	subject := "[Taskly]tasks:add"
+	formatted := buildTeamsTitle(t.SubjectID, t.Title, t.Deadline)
+	desc := ""
+	if t.Description != nil {
+		desc = *t.Description
+	}
+	// JSON body consumed by Power Automate
+	body := fmt.Sprintf(`{"task_id":%d,"title":%q,"description":%q}`, t.ID, formatted, desc)
+	// Fire and forget
+	go func() {
+		_ = smtpSendPlain(to, subject, body)
+	}()
+}
+
 // small helpers
 func toUint(s string) uint {
 	v, _ := strconv.ParseUint(s, 10, 64)
@@ -526,6 +638,8 @@ func dayShiftScheduler(notifyHHmm string) {
 		go func(ts time.Time) {
 			_ = notifyDayShift(ts)
 			_ = ensureNextCycleIfNearEnd(ts)
+			// Run rotation to ensure assignments are kept in sync
+			_ = performDayShiftRotation(ts)
 		}(time.Now())
 	}
 }
@@ -742,6 +856,7 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
+//lint:ignore U1000 kept for future scheduling logic
 func prevBusinessDay(d time.Time) time.Time {
 	x := d.Add(-24 * time.Hour)
 	for i := 0; i < 10; i++ {
@@ -764,6 +879,7 @@ func nextBusinessDay(d time.Time) time.Time {
 	return time.Time{}
 }
 
+//lint:ignore U1000 used by optional rotation logic
 func listActiveUsers() ([]User, error) {
 	var users []User
 	if err := DB.Where("is_deleted = 0 AND is_day_shift_active = 1").Order("id ASC").Find(&users).Error; err != nil {
@@ -787,6 +903,15 @@ func computePairs(users []User) [][]uint {
 	}
 	return out
 }
+
+// Mark optional helpers as used to satisfy static analysis when rotation is disabled in some builds
+//
+//lint:ignore U1000 used by optional rotation logic
+var (
+	_ = prevBusinessDay
+	_ = listActiveUsers
+	_ = businessDaysBetween
+)
 
 func businessDaysBetween(start time.Time, end time.Time) int {
 	s := dateOnly(start)

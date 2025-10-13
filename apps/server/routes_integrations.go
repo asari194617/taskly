@@ -13,6 +13,52 @@ import (
 )
 
 func registerIntegrationRoutes(app *fiber.App) {
+	// Callback endpoint for Power Automate to report posting result
+	app.Post("/integrations/teams/callback", func(c *fiber.Ctx) error {
+		// verify HMAC signature (optional)
+		body := c.Body()
+		sig := c.Get("X-Signature")
+		secret := env("TEAMS_STATUS_SIGNING_SECRET", "")
+		if secret != "" {
+			mac := hmac.New(sha256.New, []byte(secret))
+			mac.Write(body)
+			expected := fmt.Sprintf("sha256=%x", mac.Sum(nil))
+			if sig == "" || !hmac.Equal([]byte(sig), []byte(expected)) {
+				return c.Status(401).JSON(fiber.Map{"error": "invalid signature"})
+			}
+		}
+		var p struct {
+			IsSuccess      bool   `json:"is_success"`
+			TaskID         uint   `json:"task_id"`
+			MessageID      string `json:"message_id"`
+			ConversationID string `json:"conversation_id"`
+		}
+		if err := c.BodyParser(&p); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		if p.TaskID != 0 {
+			_ = DB.Table("tasks_teams_logs").Create(map[string]any{
+				"task_id":    p.TaskID,
+				"is_success": p.IsSuccess,
+				"teams_message_id": func() *string {
+					if p.MessageID == "" {
+						return nil
+					}
+					v := p.MessageID
+					return &v
+				}(),
+				"teams_conversation_id": func() *string {
+					if p.ConversationID == "" {
+						return nil
+					}
+					v := p.ConversationID
+					return &v
+				}(),
+				"last_status": "callback_received",
+			}).Error
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
 	app.Post("/integrations/teams/status", func(c *fiber.Ctx) error {
 		// verify HMAC signature
 		body := c.Body()
