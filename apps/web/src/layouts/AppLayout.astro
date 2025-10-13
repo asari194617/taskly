@@ -24,7 +24,7 @@ const { title = "Taskly" } = Astro.props;
     </script>
   </head>
   <body class="min-h-screen">
-    <header class="container py-4 flex items-center justify-between">
+    <header class="container p-4 flex items-center justify-between">
       <a href="/" class="font-semibold">Taskly</a>
       <div class="flex items-center gap-2">
         <button id="themeToggle" class="inline-flex items-center justify-center h-9 w-9 rounded-md border bg-background text-foreground hover:bg-accent hover:text-accent-foreground">
@@ -39,7 +39,7 @@ const { title = "Taskly" } = Astro.props;
         <UserMenu client:load />
       </div>
     </header>
-    <main class="container py-4">
+    <main class="container p-4">
       <slot />
     </main>
     <Toaster client:load />

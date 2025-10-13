@@ -11,7 +11,37 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { DateTimePicker } from "@/components/ui/date-time-picker";
+// Replaced DateTimePicker with period-based DeadlinePicker
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import { useMediaQuery } from "@/react/hooks/useMediaQuery";
+import { Kbd } from "../components/ui/kbd";
+import {
+  DeadlinePicker,
+  type DeadlineMeta,
+  rfc3339FromMeta,
+} from "@/components/DeadlinePicker";
+import { Plus, CalendarDays } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,10 +65,41 @@ type Task = {
   title: string;
   subject_id: number;
   deadline?: string | null;
+  deadline_meta?: string | null;
   description?: string | null;
+  type?: string | null;
   is_require_hand_in?: boolean;
+  self_check_required?: boolean;
 };
 type Subject = { id: number; title: string };
+
+// Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
+
+function localDateFromRFC3339(rfc3339?: string | null): string {
+  if (!rfc3339) return "";
+  const d = new Date(rfc3339);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// slotFromRFC3339 removed
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function formatHeadingForDate(d: Date): string {
+  const today = startOfDay(new Date());
+  const diffMs = startOfDay(d).getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "今日";
+  if (diffDays === 1) return "あす";
+  if (diffDays === 2) return "あさって";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}/${m}/${day}`;
+}
 
 export default function TasksList() {
   const [items, setItems] = React.useState<Task[] | null>(null);
@@ -46,14 +107,25 @@ export default function TasksList() {
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
   const [newSubjectId, setNewSubjectId] = React.useState("");
-  const [newDeadline, setNewDeadline] = React.useState(""); // yyyy-MM-ddThh:mm
+  // deadline as date + symbolic meta
+  const [newDate, setNewDate] = React.useState(""); // yyyy-MM-dd
+  const [newMeta, setNewMeta] = React.useState<DeadlineMeta | null>(null);
   const [newRequire, setNewRequire] = React.useState(false);
+  const [newSelfCheck, setNewSelfCheck] = React.useState(false);
+  const [newType, setNewType] = React.useState("");
+  const [newDesc, setNewDesc] = React.useState("");
+  const [createOpen, setCreateOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
   const [editSubjectId, setEditSubjectId] = React.useState("");
-  const [editDeadline, setEditDeadline] = React.useState("");
+  const [editDate, setEditDate] = React.useState("");
+  const [editMeta, setEditMeta] = React.useState<DeadlineMeta | null>(null);
   const [editRequire, setEditRequire] = React.useState(false);
+  const [editSelfCheck, setEditSelfCheck] = React.useState(false);
+  const [editType, setEditType] = React.useState("");
+  const [editDesc, setEditDesc] = React.useState("");
   const [subjects, setSubjects] = React.useState<Subject[]>([]);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
     const token = localStorage.getItem("api_token");
     if (!token) {
@@ -62,7 +134,7 @@ export default function TasksList() {
     }
     Promise.all([
       gql<{ tasks: { items: Task[] } }>(
-        `query{ tasks(limit:20){ items{ id title subject_id deadline } } }`
+        `query{ tasks(limit:20){ items{ id title subject_id deadline deadline_meta } } }`
       ),
       gql<{ subjects: Subject[] }>(`query{ subjects{ id title } }`),
     ])
@@ -71,6 +143,23 @@ export default function TasksList() {
         setSubjects(s.subjects || []);
       })
       .catch((e) => setError(e?.message || "読み込みに失敗しました"));
+  }, []);
+
+  // Keyboard shortcuts: g then n to create
+  React.useEffect(() => {
+    let lastG = 0;
+    function onKey(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === "g") {
+        lastG = Date.now();
+      } else if (e.key.toLowerCase() === "n") {
+        if (Date.now() - lastG < 800) {
+          setCreateOpen(true);
+          lastG = 0;
+        }
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   function SubjectSelect(props: {
@@ -138,23 +227,7 @@ export default function TasksList() {
     );
   }
 
-  function toDatetimeLocalValue(rfc3339?: string | null): string {
-    if (!rfc3339) return "";
-    const d = new Date(rfc3339);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const yyyy = d.getFullYear();
-    const MM = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mm = pad(d.getMinutes());
-    return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
-  }
-  function toRFC3339FromLocal(local: string): string | undefined {
-    if (!local || local.trim() === "") return undefined;
-    // Interpret as local time, convert to UTC ISO
-    const d = new Date(local);
-    return d.toISOString();
-  }
+  // removed old datetime helpers
 
   async function createTask() {
     if (!newTitle.trim() || !newSubjectId.trim()) {
@@ -167,21 +240,30 @@ export default function TasksList() {
     setCreating(true);
     try {
       const res = await gql<{ createTask: Task }>(
-        `mutation($title:String!,$subject_id:Int!,$is:Boolean,$deadline:String){
-          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, deadline:$deadline){ id title subject_id deadline }
+        `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_meta:String,$description:String,$type:String){
+          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_meta:$deadline_meta, description:$description, type:$type){ id title subject_id deadline deadline_meta description type is_require_hand_in self_check_required }
         }`,
         {
           title: newTitle.trim(),
           subject_id: parseInt(newSubjectId, 10),
           is: newRequire,
-          deadline: toRFC3339FromLocal(newDeadline),
+          scr: newSelfCheck,
+          deadline: rfc3339FromMeta(newDate, newMeta),
+          deadline_meta: newMeta ? JSON.stringify(newMeta) : undefined,
+          description: newDesc || undefined,
+          type: newType || undefined,
         }
       );
       setItems((prev) => (prev ? [res.createTask, ...prev] : [res.createTask]));
       setNewTitle("");
       setNewSubjectId("");
-      setNewDeadline("");
+      setNewDate("");
+      setNewMeta(null);
       setNewRequire(false);
+      setNewSelfCheck(false);
+      setNewType("");
+      setNewDesc("");
+      setCreateOpen(false);
       toast({ title: "作成しました" });
     } catch (e: any) {
       toast({
@@ -198,14 +280,25 @@ export default function TasksList() {
     setEditingId(t.id);
     setEditTitle(t.title);
     setEditSubjectId(String(t.subject_id || ""));
-    setEditDeadline(toDatetimeLocalValue(t.deadline));
+    setEditDate(localDateFromRFC3339(t.deadline));
+    try {
+      setEditMeta(
+        t.deadline_meta ? (JSON.parse(t.deadline_meta) as DeadlineMeta) : null
+      );
+    } catch {
+      setEditMeta(null);
+    }
     setEditRequire(!!t.is_require_hand_in);
+    setEditSelfCheck(!!t.self_check_required);
+    setEditType(t.type || "");
+    setEditDesc(t.description || "");
   }
   function cancelEdit() {
     setEditingId(null);
     setEditTitle("");
     setEditSubjectId("");
-    setEditDeadline("");
+    setEditDate("");
+    setEditMeta(null);
     setEditRequire(false);
   }
   async function saveEdit(id: number) {
@@ -218,7 +311,8 @@ export default function TasksList() {
               ...x,
               title: editTitle,
               subject_id: parseInt(editSubjectId || "0", 10) || x.subject_id,
-              deadline: toRFC3339FromLocal(editDeadline) || null,
+              deadline: rfc3339FromMeta(editDate, editMeta) || null,
+              deadline_meta: editMeta ? JSON.stringify(editMeta) : undefined,
               is_require_hand_in: editRequire,
             }
           : x
@@ -226,15 +320,19 @@ export default function TasksList() {
     );
     try {
       await gql<{ updateTask: Task }>(
-        `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$deadline:String){
-          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, deadline:$deadline){ id }
+        `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_meta:String,$description:String,$type:String){
+          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_meta:$deadline_meta, description:$description, type:$type){ id }
         }`,
         {
           id,
           title: editTitle,
           subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
           is: editRequire,
-          deadline: toRFC3339FromLocal(editDeadline),
+          scr: editSelfCheck,
+          deadline: rfc3339FromMeta(editDate, editMeta),
+          deadline_meta: editMeta ? JSON.stringify(editMeta) : undefined,
+          description: editDesc,
+          type: editType,
         }
       );
       toast({ title: "更新しました" });
@@ -334,11 +432,14 @@ export default function TasksList() {
                 />
               </div>
               <div>
-                <Label htmlFor="nt-deadline">期限（任意）</Label>
-                <DateTimePicker
-                  value={newDeadline}
-                  onChange={setNewDeadline}
-                  placeholder="未設定"
+                <Label htmlFor="nt-date">期限（任意）</Label>
+                <DeadlinePicker
+                  date={newDate}
+                  meta={newMeta}
+                  onChange={(d, m) => {
+                    setNewDate(d);
+                    setNewMeta(m);
+                  }}
                 />
               </div>
               <div className="col-span-2 flex items-center gap-2">
@@ -348,6 +449,41 @@ export default function TasksList() {
                   onCheckedChange={setNewRequire}
                 />
                 <Label htmlFor="nt-req">提出必須</Label>
+              </div>
+              <div>
+                <Label htmlFor="nt-type">タイプ</Label>
+                <select
+                  id="nt-type"
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                >
+                  <option value="">選択してください</option>
+                  <option>オンライン</option>
+                  <option>対面</option>
+                  <option>小テスト</option>
+                  <option>発表</option>
+                  <option>自習/予習</option>
+                  <option>その他</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="nt-desc">説明（任意）</Label>
+                <textarea
+                  id="nt-desc"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  rows={3}
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                />
+              </div>
+              <div className="col-span-2 flex items-center gap-2">
+                <Switch
+                  id="nt-scr"
+                  checked={newSelfCheck}
+                  onCheckedChange={setNewSelfCheck}
+                />
+                <Label htmlFor="nt-scr">自己採点が必要</Label>
               </div>
             </div>
             <Button onClick={createTask} disabled={creating}>
@@ -361,142 +497,451 @@ export default function TasksList() {
 
   return (
     <div className="space-y-6">
-      {/* New Task Form */}
-      <div className="rounded-lg border p-4">
-        <div className="text-sm font-medium mb-3">新規作成</div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <Label htmlFor="nt-title-2">タイトル</Label>
-            <Input
-              id="nt-title-2"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="課題のタイトル"
-            />
+      {/* Toolbar */}
+      {items.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            <Kbd>g</Kbd> <Kbd>n</Kbd> で新規作成
           </div>
-          <div>
-            <Label htmlFor="nt-subject-2">サブジェクト</Label>
-            <SubjectSelect
-              value={newSubjectId}
-              onChange={setNewSubjectId}
-              subjects={subjects}
-              placeholder="選択してください"
-            />
-          </div>
-          <div>
-            <Label htmlFor="nt-deadline-2">期限（任意）</Label>
-            <DateTimePicker
-              value={newDeadline}
-              onChange={setNewDeadline}
-              placeholder="未設定"
-            />
-          </div>
-          <div className="col-span-2 flex items-center gap-2">
-            <Switch
-              id="nt-req-2"
-              checked={newRequire}
-              onCheckedChange={setNewRequire}
-            />
-            <Label htmlFor="nt-req-2">提出必須</Label>
-          </div>
-        </div>
-        <div className="mt-3">
-          <Button onClick={createTask} disabled={creating}>
-            新規作成
-          </Button>
-        </div>
-      </div>
-
-      {/* List */}
-      <ul className="space-y-3">
-        {items.map((t) => {
-          const deadline = t.deadline
-            ? new Date(t.deadline).toLocaleString()
-            : "期限なし";
-          const isEditing = editingId === t.id;
-          return (
-            <li
-              key={t.id}
-              className="rounded-lg border p-4 bg-card text-card-foreground"
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    className="sm:inline-flex hidden"
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> 新規作成
+                  </Button>
+                </DialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>新しい課題を作成</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          {/* Mobile icon button */}
+          <DialogTrigger asChild>
+            <Button
+              size="icon"
+              className="sm:hidden inline-flex"
+              onClick={() => setCreateOpen(true)}
             >
-              {isEditing ? (
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor={`ed-title-${t.id}`}>タイトル</Label>
-                    <Input
-                      id={`ed-title-${t.id}`}
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor={`ed-subject-${t.id}`}>サブジェクト</Label>
-                      <SubjectSelect
-                        value={editSubjectId}
-                        onChange={setEditSubjectId}
-                        subjects={subjects}
-                        placeholder="選択してください"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`ed-deadline-${t.id}`}>
-                        期限（任意）
-                      </Label>
-                      <DateTimePicker
-                        value={editDeadline}
-                        onChange={setEditDeadline}
-                        placeholder="未設定"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id={`ed-req-${t.id}`}
-                      checked={editRequire}
-                      onCheckedChange={setEditRequire}
-                    />
-                    <Label htmlFor={`ed-req-${t.id}`}>提出必須</Label>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => saveEdit(t.id)}>
-                      <Save className="h-4 w-4 mr-1" /> 保存
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={cancelEdit}>
-                      <X className="h-4 w-4 mr-1" /> キャンセル
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{t.title}</div>
-                    <div className="text-sm text-muted-foreground">
-                      教科ID: {t.subject_id} / 期限: {deadline}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => beginEdit(t)}
-                    >
-                      <Pencil className="h-4 w-4 mr-1" /> 編集
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => deleteTask(t.id)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" /> 削除
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+        </div>
+      )}
+
+      {/* New Task Form (responsive dialog/drawer) */}
+      <Dialog
+        open={isDesktop && createOpen}
+        onOpenChange={(v: boolean) => setCreateOpen(isDesktop ? v : createOpen)}
+      >
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>新規課題の作成</DialogTitle>
+            <DialogDescription>
+              必要な情報を入力してください。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label htmlFor="nt-title-2">タイトル</Label>
+              <Input
+                id="nt-title-2"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="課題のタイトル"
+              />
+            </div>
+            <div>
+              <Label htmlFor="nt-subject-2">サブジェクト</Label>
+              <SubjectSelect
+                value={newSubjectId}
+                onChange={setNewSubjectId}
+                subjects={subjects}
+                placeholder="選択してください"
+              />
+            </div>
+            <div>
+              <Label htmlFor="nt-date-2">期限（任意）</Label>
+              <DeadlinePicker
+                date={newDate}
+                meta={newMeta}
+                onChange={(d, m) => {
+                  setNewDate(d);
+                  setNewMeta(m);
+                }}
+              />
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <Switch
+                id="nt-req-2"
+                checked={newRequire}
+                onCheckedChange={setNewRequire}
+              />
+              <Label htmlFor="nt-req-2">提出必須</Label>
+            </div>
+            <div>
+              <Label htmlFor="nt-type-2">タイプ</Label>
+              <select
+                id="nt-type-2"
+                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+              >
+                <option value="">選択してください</option>
+                <option>オンライン</option>
+                <option>対面</option>
+                <option>小テスト</option>
+                <option>発表</option>
+                <option>自習/予習</option>
+                <option>その他</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <Label htmlFor="nt-desc-2">説明（任意）</Label>
+              <textarea
+                id="nt-desc-2"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                rows={3}
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+              />
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <Switch
+                id="nt-scr-2"
+                checked={newSelfCheck}
+                onCheckedChange={setNewSelfCheck}
+              />
+              <Label htmlFor="nt-scr-2">自己採点が必要</Label>
+            </div>
+          </div>
+          <div className="mt-3">
+            <Button onClick={createTask} disabled={creating}>
+              新規作成
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Drawer
+        open={!isDesktop && createOpen}
+        onOpenChange={(v: boolean) =>
+          setCreateOpen(!isDesktop ? v : createOpen)
+        }
+      >
+        <DrawerContent>
+          <DrawerHeader className="text-left">
+            <DrawerTitle>新規課題の作成</DrawerTitle>
+            <DrawerDescription>
+              必要な情報を入力してください。
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4 grid grid-cols-2 gap-3">
+            {/* form fields are the same as dialog */}
+            <div className="col-span-2">
+              <Label>タイトル</Label>
+              <Input
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="課題のタイトル"
+              />
+            </div>
+            <div>
+              <Label>サブジェクト</Label>
+              <SubjectSelect
+                value={newSubjectId}
+                onChange={setNewSubjectId}
+                subjects={subjects}
+                placeholder="選択してください"
+              />
+            </div>
+            <div>
+              <Label>期限（任意）</Label>
+              <DeadlinePicker
+                date={newDate}
+                meta={newMeta}
+                onChange={(d, m) => {
+                  setNewDate(d);
+                  setNewMeta(m);
+                }}
+              />
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <Switch checked={newRequire} onCheckedChange={setNewRequire} />
+              <Label>提出必須</Label>
+            </div>
+            <div>
+              <Label>タイプ</Label>
+              <select
+                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+              >
+                <option value="">選択してください</option>
+                <option>オンライン</option>
+                <option>対面</option>
+                <option>小テスト</option>
+                <option>発表</option>
+                <option>自習/予習</option>
+                <option>その他</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <Label>説明（任意）</Label>
+              <textarea
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                rows={3}
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+              />
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <Switch
+                checked={newSelfCheck}
+                onCheckedChange={setNewSelfCheck}
+              />
+              <Label>自己採点が必要</Label>
+            </div>
+            <div className="col-span-2">
+              <Button
+                onClick={createTask}
+                disabled={creating}
+                className="w-full"
+              >
+                作成
+              </Button>
+            </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
+      {/* Grouped List by date headings */}
+      {(() => {
+        const groups: {
+          key: string;
+          sortKey: number;
+          items: Task[];
+          heading: string;
+        }[] = [];
+        const byKey = new Map<
+          string,
+          { key: string; sortKey: number; items: Task[]; heading: string }
+        >();
+        const todayStart = startOfDay(new Date()).getTime();
+        for (const t of items) {
+          if (!t.deadline) {
+            const key = "期限なし";
+            if (!byKey.has(key)) {
+              byKey.set(key, {
+                key,
+                sortKey: Number.MAX_SAFE_INTEGER,
+                items: [],
+                heading: key,
+              });
+            }
+            byKey.get(key)!.items.push(t);
+            continue;
+          }
+          const d = new Date(t.deadline);
+          const sod = startOfDay(d).getTime();
+          const heading = formatHeadingForDate(d);
+          const key = String(sod);
+          if (!byKey.has(key)) {
+            byKey.set(key, { key, sortKey: sod, items: [], heading });
+          }
+          byKey.get(key)!.items.push(t);
+        }
+        for (const g of byKey.values()) groups.push(g);
+        groups.sort((a, b) => a.sortKey - b.sortKey);
+        return (
+          <div className="space-y-6">
+            {groups.map((g) => (
+              <div key={g.key}>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                  {g.heading}
+                </h3>
+                <ul className="space-y-3">
+                  {g.items
+                    .slice()
+                    .sort((a, b) => {
+                      const ta = a.deadline
+                        ? new Date(a.deadline).getTime()
+                        : Number.MAX_SAFE_INTEGER;
+                      const tb = b.deadline
+                        ? new Date(b.deadline).getTime()
+                        : Number.MAX_SAFE_INTEGER;
+                      return ta - tb;
+                    })
+                    .map((t) => {
+                      const deadline = (() => {
+                        if (t.deadline_meta) {
+                          try {
+                            const m = JSON.parse(
+                              t.deadline_meta
+                            ) as DeadlineMeta;
+                            const d = t.deadline ? new Date(t.deadline) : null;
+                            const ds = d ? d.toLocaleDateString() : "";
+                            switch (m.kind) {
+                              case "outside":
+                                return `${ds} ${m.slot}`.trim() || "期限なし";
+                              case "one":
+                                return (
+                                  `${ds} ${m.period}限`.trim() || "期限なし"
+                                );
+                              case "two":
+                                return `${ds} ${m.pair}限`.trim() || "期限なし";
+                              case "range":
+                                return (
+                                  `${ds} ${m.start}限〜${m.end}限`.trim() ||
+                                  "期限なし"
+                                );
+                              default:
+                                return ds || "期限なし";
+                            }
+                          } catch {}
+                        }
+                        return t.deadline
+                          ? new Date(t.deadline).toLocaleDateString()
+                          : "期限なし";
+                      })();
+                      const isEditing = editingId === t.id;
+                      return (
+                        <li
+                          key={t.id}
+                          className="rounded-lg border p-4 bg-card text-card-foreground"
+                        >
+                          {isEditing ? (
+                            <div className="space-y-3">
+                              <div>
+                                <Label htmlFor={`ed-title-${t.id}`}>
+                                  タイトル
+                                </Label>
+                                <Input
+                                  id={`ed-title-${t.id}`}
+                                  value={editTitle}
+                                  onChange={(e) => setEditTitle(e.target.value)}
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label htmlFor={`ed-subject-${t.id}`}>
+                                    サブジェクト
+                                  </Label>
+                                  <SubjectSelect
+                                    value={editSubjectId}
+                                    onChange={setEditSubjectId}
+                                    subjects={subjects}
+                                    placeholder="選択してください"
+                                  />
+                                </div>
+                                <div>
+                                  <Label htmlFor={`ed-date-${t.id}`}>
+                                    期限（任意）
+                                  </Label>
+                                  <DeadlinePicker
+                                    date={editDate}
+                                    meta={editMeta}
+                                    onChange={(d, m) => {
+                                      setEditDate(d);
+                                      setEditMeta(m);
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <Label>タイプ</Label>
+                                <select
+                                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                                  value={editType}
+                                  onChange={(e) => setEditType(e.target.value)}
+                                >
+                                  <option value="">選択してください</option>
+                                  <option>オンライン</option>
+                                  <option>対面</option>
+                                  <option>小テスト</option>
+                                  <option>発表</option>
+                                  <option>自習/予習</option>
+                                  <option>その他</option>
+                                </select>
+                              </div>
+                              <div>
+                                <Label>説明（任意）</Label>
+                                <textarea
+                                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                  rows={3}
+                                  value={editDesc}
+                                  onChange={(e) => setEditDesc(e.target.value)}
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  id={`ed-req-${t.id}`}
+                                  checked={editRequire}
+                                  onCheckedChange={setEditRequire}
+                                />
+                                <Label htmlFor={`ed-req-${t.id}`}>
+                                  提出必須
+                                </Label>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={editSelfCheck}
+                                  onCheckedChange={setEditSelfCheck}
+                                />
+                                <Label>自己採点が必要</Label>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => saveEdit(t.id)}
+                                >
+                                  <Save className="h-4 w-4 mr-1" /> 保存
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={cancelEdit}
+                                >
+                                  <X className="h-4 w-4 mr-1" /> キャンセル
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium">{t.title}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  教科ID: {t.subject_id} / 期限: {deadline}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => beginEdit(t)}
+                                >
+                                  <Pencil className="h-4 w-4 mr-1" /> 編集
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => deleteTask(t.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-1" /> 削除
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

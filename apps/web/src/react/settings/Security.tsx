@@ -13,7 +13,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import { useMediaQuery } from "@/react/hooks/useMediaQuery";
 import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
@@ -35,6 +46,10 @@ export default function SettingsSecurity() {
   const [totpStep, setTotpStep] = React.useState<1 | 2>(1);
   const [recoveryOpen, setRecoveryOpen] = React.useState(false);
   const [recoveryCodes, setRecoveryCodes] = React.useState<string[]>([]);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const [pwOpen, setPwOpen] = React.useState(false);
+  const [pwCurrent, setPwCurrent] = React.useState("");
+  const [pwNext, setPwNext] = React.useState("");
 
   React.useEffect(() => {
     if (!token) return;
@@ -167,6 +182,142 @@ export default function SettingsSecurity() {
     <SettingsShell>
       <div className="space-y-6">
         <h1 className="text-xl font-semibold">セキュリティ設定</h1>
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="font-medium">パスワード</div>
+              <div className="text-sm text-muted-foreground">
+                パスワードの設定・変更を行います。
+              </div>
+            </div>
+            <Dialog
+              open={isDesktop && pwOpen}
+              onOpenChange={(v: boolean) => setPwOpen(isDesktop ? v : pwOpen)}
+            >
+              <DialogTrigger asChild>
+                <Button variant="secondary" onClick={() => setPwOpen(true)}>
+                  設定
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>パスワードの設定</DialogTitle>
+                  <DialogDescription>
+                    現在のパスワード（設定済みの場合）と新しいパスワードを入力してください。
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <div>
+                    <Label>現在のパスワード（任意）</Label>
+                    <Input
+                      type="password"
+                      value={pwCurrent}
+                      onChange={(e) => setPwCurrent(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>新しいパスワード</Label>
+                    <Input
+                      type="password"
+                      value={pwNext}
+                      onChange={(e) => setPwNext(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="secondary" onClick={() => setPwOpen(false)}>
+                    閉じる
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        await gql<{ setPassword: boolean }>(
+                          `mutation($current:String,$next:String!){ setPassword(current:$current, next:$next) }`,
+                          { current: pwCurrent || undefined, next: pwNext }
+                        );
+                        toast({ title: "パスワードを更新しました" });
+                        setPwCurrent("");
+                        setPwNext("");
+                        setPwOpen(false);
+                      } catch (e: any) {
+                        toast({
+                          variant: "destructive",
+                          title: "更新に失敗しました",
+                          description: e?.message,
+                        });
+                      }
+                    }}
+                  >
+                    更新
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Drawer
+              open={!isDesktop && pwOpen}
+              onOpenChange={(v: boolean) => setPwOpen(!isDesktop ? v : pwOpen)}
+            >
+              <DrawerContent>
+                <DrawerHeader className="text-left">
+                  <DrawerTitle>パスワードの設定</DrawerTitle>
+                  <DrawerDescription>
+                    現在のパスワードと新しいパスワードを入力してください。
+                  </DrawerDescription>
+                </DrawerHeader>
+                <div className="px-4 pb-4 space-y-3">
+                  <div>
+                    <Label>現在のパスワード（任意）</Label>
+                    <Input
+                      type="password"
+                      value={pwCurrent}
+                      onChange={(e) => setPwCurrent(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>新しいパスワード</Label>
+                    <Input
+                      type="password"
+                      value={pwNext}
+                      onChange={(e) => setPwNext(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setPwOpen(false)}
+                      className="flex-1"
+                    >
+                      閉じる
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={async () => {
+                        try {
+                          await gql<{ setPassword: boolean }>(
+                            `mutation($current:String,$next:String!){ setPassword(current:$current, next:$next) }`,
+                            { current: pwCurrent || undefined, next: pwNext }
+                          );
+                          toast({ title: "パスワードを更新しました" });
+                          setPwCurrent("");
+                          setPwNext("");
+                          setPwOpen(false);
+                        } catch (e: any) {
+                          toast({
+                            variant: "destructive",
+                            title: "更新に失敗しました",
+                            description: e?.message,
+                          });
+                        }
+                      }}
+                    >
+                      更新
+                    </Button>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
+          </div>
+        </Card>
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>

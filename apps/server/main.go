@@ -141,15 +141,18 @@ type Subject struct {
 }
 
 type Task struct {
-	ID              uint    `gorm:"primaryKey"`
-	AddedUserID     uint    `gorm:"index;not null"`
-	Title           string  `gorm:"size:255;not null"`
-	SubjectID       uint    `gorm:"index;not null"`
-	Description     *string `gorm:"type:text"`
-	IsRequireHandIn bool    `gorm:"default:false"`
-	Deadline        *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                uint    `gorm:"primaryKey"`
+	AddedUserID       uint    `gorm:"index;not null"`
+	Title             string  `gorm:"size:255;not null"`
+	SubjectID         uint    `gorm:"index;not null"`
+	Description       *string `gorm:"type:text"`
+	Type              *string `gorm:"size:32"`
+	IsRequireHandIn   bool    `gorm:"default:false"`
+	SelfCheckRequired bool    `gorm:"default:false"`
+	Deadline          *time.Time
+	DeadlineMeta      *string `gorm:"type:text"`
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type ApiActionLog struct {
@@ -357,14 +360,17 @@ func main() {
 	taskType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Task",
 		Fields: graphql.Fields{
-			"id":                 &graphql.Field{Type: graphql.Int},
-			"title":              &graphql.Field{Type: graphql.String},
-			"subject_id":         &graphql.Field{Type: graphql.Int},
-			"description":        &graphql.Field{Type: graphql.String},
-			"is_require_hand_in": &graphql.Field{Type: graphql.Boolean},
-			"deadline":           &graphql.Field{Type: graphql.String},
-			"created_at":         &graphql.Field{Type: graphql.String},
-			"updated_at":         &graphql.Field{Type: graphql.String},
+			"id":                  &graphql.Field{Type: graphql.Int},
+			"title":               &graphql.Field{Type: graphql.String},
+			"subject_id":          &graphql.Field{Type: graphql.Int},
+			"description":         &graphql.Field{Type: graphql.String},
+			"type":                &graphql.Field{Type: graphql.String},
+			"is_require_hand_in":  &graphql.Field{Type: graphql.Boolean},
+			"self_check_required": &graphql.Field{Type: graphql.Boolean},
+			"deadline":            &graphql.Field{Type: graphql.String},
+			"deadline_meta":       &graphql.Field{Type: graphql.String},
+			"created_at":          &graphql.Field{Type: graphql.String},
+			"updated_at":          &graphql.Field{Type: graphql.String},
 		},
 	})
 	// Me and AuthSettings types
@@ -687,16 +693,23 @@ func main() {
 						outItems := make([]map[string]any, 0, len(items))
 						for _, it := range items {
 							out := map[string]any{
-								"id":                 it.ID,
-								"title":              it.Title,
-								"subject_id":         it.SubjectID,
-								"description":        it.Description,
-								"is_require_hand_in": it.IsRequireHandIn,
+								"id":                  it.ID,
+								"title":               it.Title,
+								"subject_id":          it.SubjectID,
+								"description":         it.Description,
+								"type":                it.Type,
+								"is_require_hand_in":  it.IsRequireHandIn,
+								"self_check_required": it.SelfCheckRequired,
 							}
 							if it.Deadline != nil {
 								out["deadline"] = it.Deadline.Format(time.RFC3339)
 							} else {
 								out["deadline"] = nil
+							}
+							if it.DeadlineMeta != nil {
+								out["deadline_meta"] = *it.DeadlineMeta
+							} else {
+								out["deadline_meta"] = nil
 							}
 							outItems = append(outItems, out)
 						}
@@ -1334,11 +1347,14 @@ func main() {
 			"createTask": &graphql.Field{
 				Type: taskType,
 				Args: graphql.FieldConfigArgument{
-					"title":              &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
-					"subject_id":         &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-					"description":        &graphql.ArgumentConfig{Type: graphql.String},
-					"is_require_hand_in": &graphql.ArgumentConfig{Type: graphql.Boolean},
-					"deadline":           &graphql.ArgumentConfig{Type: graphql.String}, // RFC3339 or empty
+					"title":               &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"subject_id":          &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"description":         &graphql.ArgumentConfig{Type: graphql.String},
+					"type":                &graphql.ArgumentConfig{Type: graphql.String},
+					"is_require_hand_in":  &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"deadline":            &graphql.ArgumentConfig{Type: graphql.String}, // RFC3339 or empty
+					"deadline_meta":       &graphql.ArgumentConfig{Type: graphql.String}, // JSON string describing period selection
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
@@ -1355,11 +1371,18 @@ func main() {
 						subjectID, _ := p.Args["subject_id"].(int)
 						desc, _ := p.Args["description"].(string)
 						var descPtr *string
-						if desc != "" {
+						if strings.TrimSpace(desc) != "" {
 							descPtr = &desc
 						}
+						typ, _ := p.Args["type"].(string)
+						var typPtr *string
+						if strings.TrimSpace(typ) != "" {
+							typPtr = &typ
+						}
 						irh, _ := p.Args["is_require_hand_in"].(bool)
+						scr, _ := p.Args["self_check_required"].(bool)
 						deadlineStr, _ := p.Args["deadline"].(string)
+						deadlineMeta, _ := p.Args["deadline_meta"].(string)
 						var deadlinePtr *time.Time
 						if strings.TrimSpace(deadlineStr) != "" {
 							if t, err := time.Parse(time.RFC3339, deadlineStr); err == nil {
@@ -1368,15 +1391,25 @@ func main() {
 								return nil, fmt.Errorf("invalid deadline")
 							}
 						}
-						rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, IsRequireHandIn: irh, Deadline: deadlinePtr}
+						var metaPtr *string
+						if strings.TrimSpace(deadlineMeta) != "" {
+							v := deadlineMeta
+							metaPtr = &v
+						}
+						rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typPtr, IsRequireHandIn: irh, SelfCheckRequired: scr, Deadline: deadlinePtr, DeadlineMeta: metaPtr}
 						if err := DB.Create(&rec).Error; err != nil {
 							return nil, fmt.Errorf("db")
 						}
-						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "is_require_hand_in": rec.IsRequireHandIn}
+						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "type": rec.Type, "is_require_hand_in": rec.IsRequireHandIn, "self_check_required": rec.SelfCheckRequired}
 						if rec.Deadline != nil {
 							out["deadline"] = rec.Deadline.Format(time.RFC3339)
 						} else {
 							out["deadline"] = nil
+						}
+						if rec.DeadlineMeta != nil {
+							out["deadline_meta"] = *rec.DeadlineMeta
+						} else {
+							out["deadline_meta"] = nil
 						}
 						return out, nil
 					}
@@ -1386,12 +1419,15 @@ func main() {
 			"updateTask": &graphql.Field{
 				Type: taskType,
 				Args: graphql.FieldConfigArgument{
-					"id":                 &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-					"title":              &graphql.ArgumentConfig{Type: graphql.String},
-					"subject_id":         &graphql.ArgumentConfig{Type: graphql.Int},
-					"description":        &graphql.ArgumentConfig{Type: graphql.String},
-					"is_require_hand_in": &graphql.ArgumentConfig{Type: graphql.Boolean},
-					"deadline":           &graphql.ArgumentConfig{Type: graphql.String},
+					"id":                  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+					"title":               &graphql.ArgumentConfig{Type: graphql.String},
+					"subject_id":          &graphql.ArgumentConfig{Type: graphql.Int},
+					"description":         &graphql.ArgumentConfig{Type: graphql.String},
+					"type":                &graphql.ArgumentConfig{Type: graphql.String},
+					"is_require_hand_in":  &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"deadline":            &graphql.ArgumentConfig{Type: graphql.String},
+					"deadline_meta":       &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: func(p graphql.ResolveParams) (any, error) {
 					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
@@ -1422,8 +1458,18 @@ func main() {
 								rec.Description = &v
 							}
 						}
+						if v, ok := p.Args["type"].(string); ok {
+							if strings.TrimSpace(v) == "" {
+								rec.Type = nil
+							} else {
+								rec.Type = &v
+							}
+						}
 						if v, ok := p.Args["is_require_hand_in"].(bool); ok {
 							rec.IsRequireHandIn = v
+						}
+						if v, ok := p.Args["self_check_required"].(bool); ok {
+							rec.SelfCheckRequired = v
 						}
 						if v, ok := p.Args["deadline"].(string); ok {
 							if strings.TrimSpace(v) == "" {
@@ -1434,14 +1480,26 @@ func main() {
 								return nil, fmt.Errorf("invalid deadline")
 							}
 						}
+						if v, ok := p.Args["deadline_meta"].(string); ok {
+							if strings.TrimSpace(v) == "" {
+								rec.DeadlineMeta = nil
+							} else {
+								rec.DeadlineMeta = &v
+							}
+						}
 						if err := DB.Save(&rec).Error; err != nil {
 							return nil, fmt.Errorf("db")
 						}
-						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "is_require_hand_in": rec.IsRequireHandIn}
+						out := map[string]any{"id": rec.ID, "title": rec.Title, "subject_id": rec.SubjectID, "description": rec.Description, "type": rec.Type, "is_require_hand_in": rec.IsRequireHandIn, "self_check_required": rec.SelfCheckRequired}
 						if rec.Deadline != nil {
 							out["deadline"] = rec.Deadline.Format(time.RFC3339)
 						} else {
 							out["deadline"] = nil
+						}
+						if rec.DeadlineMeta != nil {
+							out["deadline_meta"] = *rec.DeadlineMeta
+						} else {
+							out["deadline_meta"] = nil
 						}
 						return out, nil
 					}
@@ -1741,6 +1799,45 @@ func main() {
 							return false, fmt.Errorf("db")
 						}
 						_ = RDB.Del(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Err()
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			"setPassword": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"current": &graphql.ArgumentConfig{Type: graphql.String},
+					"next":    &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value("fiberCtx").(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						curr, _ := p.Args["current"].(string)
+						next, _ := p.Args["next"].(string)
+						if len(strings.TrimSpace(next)) < 8 {
+							return false, fmt.Errorf("password too short")
+						}
+						var fresh User
+						if err := DB.First(&fresh, u.ID).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						if fresh.HashedPassword != nil && *fresh.HashedPassword != "" {
+							if err := bcrypt.CompareHashAndPassword([]byte(*fresh.HashedPassword), []byte(curr)); err != nil {
+								return false, fmt.Errorf("current password invalid")
+							}
+						}
+						hash, err := bcrypt.GenerateFromPassword([]byte(next), bcrypt.DefaultCost)
+						if err != nil {
+							return false, fmt.Errorf("hash")
+						}
+						hs := string(hash)
+						if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
 						return true, nil
 					}
 					return false, fmt.Errorf("context missing")
