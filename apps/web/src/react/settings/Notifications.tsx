@@ -27,6 +27,26 @@ export default function SettingsNotifications() {
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
   const [message, setMessage] = React.useState<string | null>(null);
+  const [dailyEnabled, setDailyEnabled] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
+    // Load push settings
+    (async () => {
+      try {
+        const token = localStorage.getItem("api_token") || "";
+        const res = await fetch(`${apiBase}/settings/push`, {
+          headers: {
+            Authorization: token ? `Bearer ${token}` : "",
+            "X-Client-Platform": "web",
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDailyEnabled(!!data?.daily_enabled);
+        }
+      } catch {}
+    })();
+  }, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -160,6 +180,22 @@ export default function SettingsNotifications() {
     }
   };
 
+  const saveDaily = async (next: boolean) => {
+    setDailyEnabled(next);
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      await fetch(`${apiBase}/settings/push`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ daily_enabled: next }),
+      });
+    } catch {}
+  };
+
   return (
     <SettingsShell>
       <div className="space-y-6">
@@ -167,7 +203,7 @@ export default function SettingsNotifications() {
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-medium">メール通知</div>
+              ブラウザのプッシュ通知を有効にすると、締切やお知らせを受け取れます。
               <div className="text-sm text-muted-foreground">
                 タスクや日直の更新をメールで受け取ります（準備中）。
               </div>
@@ -180,6 +216,18 @@ export default function SettingsNotifications() {
             <div>
               <div className="font-medium">Web Push</div>
               <div className="text-sm text-muted-foreground">
+                <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                  <div>
+                    <div className="text-sm">
+                      毎日のプッシュ通知（朝のダイジェスト）
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      サーバー既定:{" "}
+                      {import.meta.env.PUBLIC_PUSH_DIGEST_TIME || "07:45"}
+                    </div>
+                  </div>
+                  <Switch checked={dailyEnabled} onCheckedChange={saveDaily} />
+                </div>
                 ブラウザのプッシュ通知を有効にすると、締切やお知らせを受け取れます。
               </div>
               {perm === "denied" && (

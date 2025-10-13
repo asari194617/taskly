@@ -16,6 +16,7 @@ type User struct {
 	EmailCodeAllowed bool    `gorm:"default:true"`
 	IsDeleted        bool    `gorm:"default:false"`
 	IsDayShiftActive bool    `gorm:"default:false"`
+	PushDailyEnabled bool    `gorm:"default:true"`
 	CreatedAt        time.Time
 }
 

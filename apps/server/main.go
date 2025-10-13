@@ -33,7 +33,7 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321"),
 		AllowCredentials: strings.ToLower(env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
-		AllowHeaders:     "Authorization, Content-Type",
+		AllowHeaders:     "Authorization, Content-Type, X-Client-Platform",
 	}))
 
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })

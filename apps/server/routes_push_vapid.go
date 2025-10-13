@@ -106,9 +106,9 @@ func pushNotifyScheduler(hhmm string) {
 		}
 		time.Sleep(time.Until(next))
 		go func() {
-			// for each user with subs, send count of tasks due today
+			// for each user with subs and daily push enabled, send count of tasks due today
 			var users []User
-			_ = DB.Where("is_deleted = 0").Find(&users).Error
+			_ = DB.Where("is_deleted = 0 AND push_daily_enabled = 1").Find(&users).Error
 			today := dateOnly(time.Now())
 			tomorrow := dateOnly(time.Now().Add(24 * time.Hour)).Add(-time.Nanosecond)
 			for _, u := range users {
@@ -117,7 +117,7 @@ func pushNotifyScheduler(hhmm string) {
 				if cnt <= 0 {
 					continue
 				}
-				_ = sendPushToUser(u.ID, map[string]any{"title": "今日の課題", "body": fmt.Sprintf("本日締切の課題が%d件あります", cnt)})
+				_ = sendPushToUser(u.ID, map[string]any{"title": "今日の課題", "body": fmt.Sprintf("本日締切の課題が%d件あります", cnt), "icon": "/icons/icon-192.png", "badge": "/icons/badge-72.png"})
 			}
 		}()
 	}

@@ -76,4 +76,27 @@ func registerSettingsRoutes(app *fiber.App) {
 		}
 		return c.SendStatus(204)
 	})
+
+	// Push settings (per-user)
+	app.Get("/settings/push", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var fresh User
+		_ = DB.First(&fresh, u.ID).Error
+		return c.JSON(fiber.Map{
+			"daily_enabled": fresh.PushDailyEnabled,
+		})
+	})
+	app.Post("/settings/push", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var body struct {
+			DailyEnabled *bool `json:"daily_enabled"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		if body.DailyEnabled != nil {
+			_ = DB.Model(&User{}).Where("id = ?", u.ID).Update("push_daily_enabled", *body.DailyEnabled).Error
+		}
+		return c.SendStatus(204)
+	})
 }
