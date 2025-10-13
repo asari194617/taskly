@@ -11,18 +11,19 @@ self.addEventListener("push", (e) => {
   } catch {}
   const title = data.title || "Taskly";
   const body = data.body || "通知があります";
-  const icon = data.icon || "/icons/icon-192.png";
-  const badge = data.badge || "/icons/badge-72.png";
+  const icon = data.icon; // only include when provided
+  const badge = data.badge; // only include when provided
   const tag = data.tag || undefined;
   const dataPayload = data.data || {};
   e.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon,
-      badge,
-      tag,
-      data: dataPayload,
-    })
+    self.registration.showNotification(
+      title,
+      Object.assign(
+        { body, tag, data: dataPayload },
+        icon ? { icon } : {},
+        badge ? { badge } : {}
+      )
+    )
   );
 });
 

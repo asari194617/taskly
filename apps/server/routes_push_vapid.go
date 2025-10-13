@@ -24,17 +24,34 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 	})
 	app.Post("/push/test", authRequired, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
-		if err := sendPushToUser(u.ID, map[string]any{
+		sent, err := sendPushToUser(u.ID, map[string]any{
 			"title": "Taskly",
 			"body":  "プッシュ通知のテスト",
 			"data":  map[string]any{"url": "/home"},
-			"icon":  "/icons/icon-192.png",
-			"badge": "/icons/badge-72.png",
-		}); err != nil {
+		})
+		if err != nil {
 			log.Printf("push test error: %v", err)
 			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "send"})
 		}
-		return c.SendStatus(http.StatusNoContent)
+		return c.JSON(fiber.Map{"sent": sent})
+	})
+
+	// Debug: list current user's subscriptions (masked endpoints)
+	app.Get("/push/subscriptions", authRequired, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var subs []WebPushSubscription
+		if err := DB.Where("user_id = ?", u.ID).Find(&subs).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		out := make([]fiber.Map, 0, len(subs))
+		for _, s := range subs {
+			ep := s.Endpoint
+			if len(ep) > 16 {
+				ep = ep[:8] + "…" + ep[len(ep)-5:]
+			}
+			out = append(out, fiber.Map{"endpoint": ep, "created_at": s.CreatedAt})
+		}
+		return c.JSON(fiber.Map{"count": len(subs), "items": out})
 	})
 }
 
@@ -68,19 +85,20 @@ func getOrInitVAPID() (string, string, error) {
 }
 
 // sendPushToUser sends a JSON payload to all subscriptions of the user.
-func sendPushToUser(uid uint, payload map[string]any) error {
+func sendPushToUser(uid uint, payload map[string]any) (int, error) {
 	// fetch subscriptions
 	var subs []WebPushSubscription
 	_ = DB.Where("user_id = ?", uid).Find(&subs).Error
 	if len(subs) == 0 {
-		return nil
+		return 0, nil
 	}
 	pub, priv, err := getOrInitVAPID()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	// Prepare payload JSON
 	body, _ := json.Marshal(payload)
+	sent := 0
 	for _, s := range subs {
 		sub := &webpush.Subscription{
 			Endpoint: s.Endpoint,
@@ -105,8 +123,9 @@ func sendPushToUser(uid uint, payload map[string]any) error {
 			continue
 		}
 		_ = resp.Body.Close()
+		sent++
 	}
-	return nil
+	return sent, nil
 }
 
 // pushNotifyScheduler: send a compact digest similar to email
@@ -133,12 +152,10 @@ func pushNotifyScheduler(hhmm string) {
 				if cnt <= 0 {
 					continue
 				}
-				_ = sendPushToUser(u.ID, map[string]any{
+				_, _ = sendPushToUser(u.ID, map[string]any{
 					"title": "今日の課題",
 					"body":  fmt.Sprintf("本日締切の課題が%d件あります", cnt),
 					"data":  map[string]any{"url": "/home"},
-					"icon":  "/icons/icon-192.png",
-					"badge": "/icons/badge-72.png",
 				})
 			}
 		}()

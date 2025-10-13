@@ -201,7 +201,37 @@ export default function SettingsNotifications() {
         },
       });
       if (!res.ok) throw new Error("テスト送信に失敗しました");
-      setMessage("テスト通知を送信しました");
+      const data = await res.json().catch(() => ({} as any));
+      const sent = typeof data?.sent === "number" ? data.sent : undefined;
+      if (typeof sent === "number") {
+        setMessage(`テスト通知を送信しました（${sent}件）`);
+        if (sent === 0) {
+          setMessage(
+            "テスト通知を送信しました（0件）。購読が保存されていない可能性があります。Web Pushを一度OFF→ONして再登録してください。"
+          );
+        }
+      } else {
+        setMessage("テスト通知を送信しました");
+      }
+    } catch (e: any) {
+      setMessage(e.message || "エラーが発生しました");
+    }
+  };
+
+  const checkSubscriptions = async () => {
+    setMessage(null);
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      const res = await fetch(`${apiBase}/push/subscriptions`, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+      });
+      if (!res.ok) throw new Error("購読の取得に失敗しました");
+      const data = await res.json();
+      const count = data?.count ?? 0;
+      setMessage(`登録済みの購読: ${count} 件`);
     } catch (e: any) {
       setMessage(e.message || "エラーが発生しました");
     }
@@ -281,6 +311,13 @@ export default function SettingsNotifications() {
               disabled={!pushOn || loading}
             >
               テスト通知を送信
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={checkSubscriptions}
+              disabled={loading}
+            >
+              購読を確認
             </Button>
             {!pushOn && perm !== "granted" && (
               <Button
