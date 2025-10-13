@@ -1,8 +1,11 @@
-"use client"
-import * as React from "react"
-import { cn } from "@/lib/utils"
+"use client";
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-export function Kbd({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {
+export function Kbd({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>) {
   return (
     <kbd
       className={cn(
@@ -11,9 +14,17 @@ export function Kbd({ className, ...props }: React.HTMLAttributes<HTMLSpanElemen
       )}
       {...props}
     />
-  )
+  );
 }
 
-export function KbdGroup({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("inline-flex items-center gap-1", className)} {...props} />
+export function KbdGroup({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("inline-flex items-center gap-1", className)}
+      {...props}
+    />
+  );
 }

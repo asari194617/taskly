@@ -10,11 +10,13 @@ export function useMediaQuery(query: string) {
     if (typeof window === "undefined") return;
     const m = window.matchMedia(query);
     const handler = () => setMatches(m.matches);
-    if (typeof m.addEventListener === "function") m.addEventListener("change", handler);
+    if (typeof m.addEventListener === "function")
+      m.addEventListener("change", handler);
     else (m as any).addListener?.(handler);
     handler();
     return () => {
-      if (typeof m.removeEventListener === "function") m.removeEventListener("change", handler);
+      if (typeof m.removeEventListener === "function")
+        m.removeEventListener("change", handler);
       else (m as any).removeListener?.(handler);
     };
   }, [query]);
