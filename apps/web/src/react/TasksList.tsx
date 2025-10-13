@@ -11,6 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -65,6 +72,71 @@ export default function TasksList() {
       })
       .catch((e) => setError(e?.message || "読み込みに失敗しました"));
   }, []);
+
+  function SubjectSelect(props: {
+    value: string;
+    onChange: (v: string) => void;
+    subjects: Subject[];
+    placeholder?: string;
+  }) {
+    const { value, onChange, subjects, placeholder } = props;
+    const [open, setOpen] = React.useState(false);
+    const [filter, setFilter] = React.useState("");
+    const selected = subjects.find((s) => String(s.id) === value);
+    const filtered = subjects.filter((s) =>
+      s.title.toLowerCase().includes(filter.toLowerCase())
+    );
+    return (
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            type="button"
+            className="w-full justify-between"
+          >
+            <span className="truncate">
+              {selected ? selected.title : placeholder || "選択してください"}
+            </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="h-4 w-4 opacity-60"
+            >
+              <path d="M12 15.5 6 9.5 7.5 8l4.5 4.5L16.5 8 18 9.5z" />
+            </svg>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] p-2">
+          <div className="p-1">
+            <Input
+              placeholder="検索"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
+          <div className="max-h-60 overflow-auto">
+            {filtered.map((s) => (
+              <DropdownMenuItem
+                key={s.id}
+                onClick={() => {
+                  onChange(String(s.id));
+                  setOpen(false);
+                }}
+              >
+                {s.title}
+              </DropdownMenuItem>
+            ))}
+            {filtered.length === 0 && (
+              <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                見つかりませんでした
+              </div>
+            )}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   function toDatetimeLocalValue(rfc3339?: string | null): string {
     if (!rfc3339) return "";
@@ -254,27 +326,19 @@ export default function TasksList() {
               </div>
               <div>
                 <Label htmlFor="nt-subject">サブジェクト</Label>
-                <select
-                  id="nt-subject"
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                <SubjectSelect
                   value={newSubjectId}
-                  onChange={(e) => setNewSubjectId(e.target.value)}
-                >
-                  <option value="">選択してください</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={String(s.id)}>
-                      {s.title}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setNewSubjectId}
+                  subjects={subjects}
+                  placeholder="選択してください"
+                />
               </div>
               <div>
                 <Label htmlFor="nt-deadline">期限（任意）</Label>
-                <Input
-                  id="nt-deadline"
-                  type="datetime-local"
+                <DateTimePicker
                   value={newDeadline}
-                  onChange={(e) => setNewDeadline(e.target.value)}
+                  onChange={setNewDeadline}
+                  placeholder="未設定"
                 />
               </div>
               <div className="col-span-2 flex items-center gap-2">
@@ -311,21 +375,20 @@ export default function TasksList() {
             />
           </div>
           <div>
-            <Label htmlFor="nt-subject-2">サブジェクトID</Label>
-            <Input
-              id="nt-subject-2"
+            <Label htmlFor="nt-subject-2">サブジェクト</Label>
+            <SubjectSelect
               value={newSubjectId}
-              onChange={(e) => setNewSubjectId(e.target.value)}
-              placeholder="例: 1"
+              onChange={setNewSubjectId}
+              subjects={subjects}
+              placeholder="選択してください"
             />
           </div>
           <div>
             <Label htmlFor="nt-deadline-2">期限（任意）</Label>
-            <Input
-              id="nt-deadline-2"
-              type="datetime-local"
+            <DateTimePicker
               value={newDeadline}
-              onChange={(e) => setNewDeadline(e.target.value)}
+              onChange={setNewDeadline}
+              placeholder="未設定"
             />
           </div>
           <div className="col-span-2 flex items-center gap-2">
@@ -369,29 +432,21 @@ export default function TasksList() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label htmlFor={`ed-subject-${t.id}`}>サブジェクト</Label>
-                      <select
-                        id={`ed-subject-${t.id}`}
-                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      <SubjectSelect
                         value={editSubjectId}
-                        onChange={(e) => setEditSubjectId(e.target.value)}
-                      >
-                        <option value="">選択してください</option>
-                        {subjects.map((s) => (
-                          <option key={s.id} value={String(s.id)}>
-                            {s.title}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setEditSubjectId}
+                        subjects={subjects}
+                        placeholder="選択してください"
+                      />
                     </div>
                     <div>
                       <Label htmlFor={`ed-deadline-${t.id}`}>
                         期限（任意）
                       </Label>
-                      <Input
-                        id={`ed-deadline-${t.id}`}
-                        type="datetime-local"
+                      <DateTimePicker
                         value={editDeadline}
-                        onChange={(e) => setEditDeadline(e.target.value)}
+                        onChange={setEditDeadline}
+                        placeholder="未設定"
                       />
                     </div>
                   </div>

@@ -9,6 +9,19 @@ const { title = "Taskly" } = Astro.props;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // set initial theme ASAP to avoid FOUC
+      (function(){
+        try {
+          const mq = window.matchMedia('(prefers-color-scheme: dark)');
+          const stored = localStorage.getItem('theme');
+          const wantDark = stored ? stored === 'dark' : mq.matches;
+          if (wantDark) document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+        } catch {}
+      })();
+    </script>
   </head>
   <body class="min-h-screen">
     <header class="container py-4 flex items-center justify-between">
@@ -45,7 +58,11 @@ const { title = "Taskly" } = Astro.props;
           else { sun?.classList.remove('hidden'); moon?.classList.add('hidden'); }
         }
         applyTheme();
-        mq.addEventListener?.('change', applyTheme);
+        if (typeof mq.addEventListener === 'function') {
+          mq.addEventListener('change', applyTheme);
+        } else if (typeof (mq as any).addListener === 'function') {
+          (mq as any).addListener(applyTheme);
+        }
         btn?.addEventListener('click', () => {
           const nowDark = document.documentElement.classList.contains('dark');
           const next = !nowDark;

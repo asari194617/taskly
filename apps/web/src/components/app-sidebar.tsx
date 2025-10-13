@@ -13,7 +13,15 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { User, Shield, Bell, Key, Calendar, Settings } from "lucide-react";
+import {
+  User,
+  Shield,
+  Bell,
+  Key,
+  Calendar,
+  Settings,
+  Boxes,
+} from "lucide-react";
 
 type MenuItem = {
   href: string;
@@ -27,6 +35,7 @@ const items: MenuItem[] = [
   { href: "/settings/notifications", label: "通知", icon: Bell },
   { href: "/settings/api-keys", label: "APIキー", icon: Key },
   { href: "/settings/ical", label: "iCal", icon: Calendar },
+  { href: "/settings/mcp", label: "MCP", icon: Boxes },
 ];
 
 export function AppSidebar() {
