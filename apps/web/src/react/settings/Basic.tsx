@@ -16,12 +16,24 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
+import { useLang } from "@/react/LanguageProvider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function SettingsBasic() {
   const [displayName, setDisplayName] = React.useState("");
   const [email, setEmail] = React.useState("");
+  const [notificationLang, setNotificationLang] = React.useState<"ja" | "en">(
+    "ja"
+  );
   const [loading, setLoading] = React.useState(false);
   const { toast } = useToast();
+  const { dict } = useLang();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
 
@@ -35,7 +47,29 @@ export default function SettingsBasic() {
         setEmail(data.me.email || "");
       } catch {}
     }
+    async function fetchLang() {
+      try {
+        if (!token) return;
+        const base = getApiBase();
+        const res = await fetch(`${base}/settings/lang`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Client-Platform": "web",
+          },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (
+            json?.notification_lang === "ja" ||
+            json?.notification_lang === "en"
+          ) {
+            setNotificationLang(json.notification_lang);
+          }
+        }
+      } catch {}
+    }
     if (token) fetchMe();
+    if (token) fetchLang();
   }, [token]);
 
   async function save() {
@@ -45,6 +79,19 @@ export default function SettingsBasic() {
         `mutation($name:String!){ updateMe(display_name:$name) }`,
         { name: displayName }
       );
+      // Save notification language via REST
+      try {
+        const base = getApiBase();
+        await fetch(`${base}/settings/lang`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Client-Platform": "web",
+          },
+          body: JSON.stringify({ notification_lang: notificationLang }),
+        });
+      } catch {}
       toast({ title: "保存しました" });
     } catch (e: any) {
       toast({
@@ -88,6 +135,21 @@ export default function SettingsBasic() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
             />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="notification_lang">通知の言語</Label>
+            <Select
+              value={notificationLang}
+              onValueChange={(v: "ja" | "en") => setNotificationLang(v)}
+            >
+              <SelectTrigger id="notification_lang">
+                <SelectValue placeholder="選択" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ja">日本語</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Button onClick={save} disabled={loading}>
             {loading ? "保存中..." : "保存"}

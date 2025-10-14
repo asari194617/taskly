@@ -2,6 +2,8 @@
 import "../styles/globals.css";
 import UserMenu from "../react/UserMenu";
 import { Toaster } from "@/components/ui/toaster";
+import Footer from "../react/Footer";
+import { LanguageProvider } from "../react/LanguageProvider";
 const { title = "Taskly" } = Astro.props;
 ---
 <html lang="ja">
@@ -25,7 +27,7 @@ const { title = "Taskly" } = Astro.props;
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0b0f19" />
   </head>
-  <body class="min-h-screen">
+  <body class="min-h-screen flex flex-col">
     <header class="container p-4 flex items-center justify-between">
       <a href="/" class="font-semibold">Taskly</a>
       <div class="flex items-center gap-2">
@@ -41,10 +43,13 @@ const { title = "Taskly" } = Astro.props;
         <UserMenu client:load />
       </div>
     </header>
-    <main class="container p-4">
-      <slot />
-    </main>
-    <Toaster client:load />
+    <LanguageProvider>
+      <main class="container p-4 flex-1">
+        <slot />
+      </main>
+      <Toaster client:load />
+      <Footer />
+    </LanguageProvider>
     <script>
       (function(){
         const btn = document.getElementById('themeToggle');

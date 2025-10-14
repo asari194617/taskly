@@ -99,4 +99,36 @@ func registerSettingsRoutes(app *fiber.App) {
 		}
 		return c.SendStatus(204)
 	})
+
+	// Language settings (display + notification)
+	app.Get("/settings/lang", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var fresh User
+		_ = DB.First(&fresh, u.ID).Error
+		return c.JSON(fiber.Map{
+			"display_lang":      fresh.DisplayLang,
+			"notification_lang": fresh.NotificationLang,
+		})
+	})
+	app.Post("/settings/lang", authRequired, audit, func(c *fiber.Ctx) error {
+		u := c.Locals("user").(*User)
+		var body struct {
+			NotificationLang *string `json:"notification_lang"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		updates := map[string]any{}
+		if body.NotificationLang != nil {
+			v := strings.ToLower(strings.TrimSpace(*body.NotificationLang))
+			if v != "ja" && v != "en" {
+				return c.Status(400).JSON(fiber.Map{"error": "invalid notification_lang"})
+			}
+			updates["notification_lang"] = v
+		}
+		if len(updates) > 0 {
+			_ = DB.Model(&User{}).Where("id = ?", u.ID).Updates(updates).Error
+		}
+		return c.SendStatus(204)
+	})
 }
