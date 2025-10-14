@@ -33,19 +33,13 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import {
-  ButtonGroup,
-  ButtonGroupSeparator,
-} from "@/components/ui/button-group";
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
-import { Kbd } from "../components/ui/kbd";
 import {
   DeadlinePicker,
   type DeadlineMeta,
   sinceUntilFromMeta,
   deriveLabelFromEnums,
 } from "@/components/DeadlinePicker";
-import { Plus, CalendarDays } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,15 +56,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from "@/components/ui/button-group";
+import {
   AlertCircle,
   Hourglass,
   FileText,
+  Plus,
   Pencil,
   Trash2,
   Save,
   X,
   MoreVertical,
+  Search,
 } from "lucide-react";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 
 type Task = {
   id: number;
@@ -430,142 +436,57 @@ export default function TasksList() {
     );
   }
 
-  if (items.length === 0) {
-    return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <FileText className="h-5 w-5" />
-          </EmptyMedia>
-          <EmptyTitle>課題はありません</EmptyTitle>
-          <EmptyDescription>
-            新しい課題を追加するとここに表示されます。
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <div className="w-full max-w-xl text-left space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Label htmlFor="nt-title">タイトル</Label>
-                <Input
-                  id="nt-title"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="課題のタイトル"
-                />
-              </div>
-              <div>
-                <Label htmlFor="nt-subject">サブジェクト</Label>
-                <SubjectSelect
-                  value={newSubjectId}
-                  onChange={setNewSubjectId}
-                  subjects={subjects}
-                  placeholder="選択してください"
-                />
-              </div>
-              <div>
-                <Label htmlFor="nt-date">期限</Label>
-                <DeadlinePicker
-                  date={newDate}
-                  meta={newMeta}
-                  onChange={(d, m) => {
-                    setNewDate(d);
-                    setNewMeta(m);
-                  }}
-                />
-              </div>
-              <div className="col-span-2 flex items-center gap-2">
-                <Switch
-                  id="nt-req"
-                  checked={newRequire}
-                  onCheckedChange={setNewRequire}
-                />
-                <Label htmlFor="nt-req">提出必須</Label>
-              </div>
-              <div className="col-span-2 flex items-center gap-2 -mt-2">
-                <Switch
-                  id="nt-scr"
-                  checked={newSelfCheck}
-                  onCheckedChange={setNewSelfCheck}
-                />
-                <Label htmlFor="nt-scr">自己採点が必要</Label>
-              </div>
-              <div>
-                <Label htmlFor="nt-type">タイプ</Label>
-                <Select
-                  value={newType}
-                  onValueChange={(v: string) => setNewType(v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="選択してください" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="オンライン">オンライン</SelectItem>
-                    <SelectItem value="対面">対面</SelectItem>
-                    <SelectItem value="小テスト">小テスト</SelectItem>
-                    <SelectItem value="発表">発表</SelectItem>
-                    <SelectItem value="自習/予習">自習/予習</SelectItem>
-                    <SelectItem value="その他">その他</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-2 mt-0">
-                <Label htmlFor="nt-desc">説明（任意）</Label>
-                <textarea
-                  id="nt-desc"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  rows={3}
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                />
-              </div>
-              {/* 自己採点は提出必須の直下に移動済み */}
-            </div>
-            <Button onClick={createTask} disabled={creating}>
-              新規作成
-            </Button>
-          </div>
-        </EmptyContent>
-      </Empty>
-    );
-  }
+  // items が空のときに下部で適切な Empty を出す（ツールバーは常に表示するため early return しない）
 
   return (
     <div className="space-y-6">
       {/* Toolbar */}
-      {items.length > 0 && (
-        <div className="flex items-center justify-end gap-2">
-          <div className="flex-1">
-            <Input
+      <div className="flex items-center justify-end gap-2">
+        <div className="flex-1">
+          <InputGroup>
+            <InputGroupAddon>
+              <Search className="h-4 w-4" />
+            </InputGroupAddon>
+            <InputGroupInput
               placeholder="課題を検索 (タイトル/説明)"
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setQ(qInput.trim());
+                }
+              }}
             />
-          </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  onClick={() => setCreateOpen(true)}
-                  className="sm:inline-flex hidden"
-                >
-                  <Plus className="h-4 w-4 mr-1" /> 新規作成
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>新しい課題を作成</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          {/* Mobile icon button */}
-          <Button
-            size="icon"
-            className="sm:hidden inline-flex"
-            onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton onClick={() => setQ(qInput.trim())}>
+                検索
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
         </div>
-      )}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                onClick={() => setCreateOpen(true)}
+                className="sm:inline-flex hidden"
+              >
+                <Plus className="h-4 w-4 mr-1" /> 新規作成
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>新しい課題を作成</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        {/* Mobile icon button */}
+        <Button
+          size="icon"
+          className="sm:hidden inline-flex"
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
 
       {/* New Task Form (responsive dialog/drawer) */}
       <Dialog
@@ -763,6 +684,118 @@ export default function TasksList() {
           </div>
         </DrawerContent>
       </Drawer>
+      {/* Empty states below toolbar */}
+      {items.length === 0 &&
+        (q ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <FileText className="h-5 w-5" />
+              </EmptyMedia>
+              <EmptyTitle>検索結果がありません</EmptyTitle>
+              <EmptyDescription>
+                条件に一致する課題は見つかりませんでした。
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <FileText className="h-5 w-5" />
+              </EmptyMedia>
+              <EmptyTitle>課題はありません</EmptyTitle>
+              <EmptyDescription>
+                新しい課題を追加するとここに表示されます。
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <div className="w-full max-w-xl text-left space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <Label htmlFor="nt-title">タイトル</Label>
+                    <Input
+                      id="nt-title"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="課題のタイトル"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="nt-subject">サブジェクト</Label>
+                    <SubjectSelect
+                      value={newSubjectId}
+                      onChange={setNewSubjectId}
+                      subjects={subjects}
+                      placeholder="選択してください"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="nt-date">期限</Label>
+                    <DeadlinePicker
+                      date={newDate}
+                      meta={newMeta}
+                      onChange={(d, m) => {
+                        setNewDate(d);
+                        setNewMeta(m);
+                      }}
+                    />
+                  </div>
+                  <div className="col-span-2 flex items-center gap-2">
+                    <Switch
+                      id="nt-req"
+                      checked={newRequire}
+                      onCheckedChange={setNewRequire}
+                    />
+                    <Label htmlFor="nt-req">提出必須</Label>
+                  </div>
+                  <div className="col-span-2 flex items-center gap-2 -mt-2">
+                    <Switch
+                      id="nt-scr"
+                      checked={newSelfCheck}
+                      onCheckedChange={setNewSelfCheck}
+                    />
+                    <Label htmlFor="nt-scr">自己採点が必要</Label>
+                  </div>
+                  <div>
+                    <Label htmlFor="nt-type">タイプ</Label>
+                    <Select
+                      value={newType}
+                      onValueChange={(v: string) => setNewType(v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="選択してください" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="オンライン">オンライン</SelectItem>
+                        <SelectItem value="対面">対面</SelectItem>
+                        <SelectItem value="小テスト">小テスト</SelectItem>
+                        <SelectItem value="発表">発表</SelectItem>
+                        <SelectItem value="自習/予習">自習/予習</SelectItem>
+                        <SelectItem value="その他">その他</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 mt-0">
+                    <Label htmlFor="nt-desc">説明（任意）</Label>
+                    <textarea
+                      id="nt-desc"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      rows={3}
+                      value={newDesc}
+                      onChange={(e) => setNewDesc(e.target.value)}
+                    />
+                  </div>
+                  {/* 自己採点は提出必須の直下に移動済み */}
+                </div>
+                <Button onClick={createTask} disabled={creating}>
+                  新規作成
+                </Button>
+              </div>
+            </EmptyContent>
+          </Empty>
+        ))}
+
       {/* Grouped List by date headings */}
       {(() => {
         const groups: {
@@ -822,18 +855,14 @@ export default function TasksList() {
                     })
                     .map((t) => {
                       const deadline = (() => {
-                        const formatted = t.deadline
-                          ? formatDateYMDSlash(t.deadline)
-                          : null;
+                        if (!t.deadline) return "期限なし";
+                        const dateStr = formatDateYMDSlash(t.deadline);
                         const label = deriveLabelFromEnums(
-                          t.deadline || "",
+                          t.deadline,
                           t.deadline_since,
                           t.deadline_until
                         );
-                        if (formatted) {
-                          return label ? `${formatted} ${label}` : formatted;
-                        }
-                        return "期限なし";
+                        return label ? `${dateStr} ${label}` : dateStr;
                       })();
                       const isEditing = editingId === t.id;
                       return (

@@ -355,21 +355,17 @@ export function deriveLabelFromEnums(
   since?: string | null,
   until?: string | null
 ): string {
-  const d = date ? new Date(date) : null;
-  const dateStr = d ? d.toLocaleDateString() : "";
   const norm = (s?: string | null) => (s || "").toUpperCase();
   const s = norm(since);
   const u = norm(until);
-  if (u === "MORNING") return `${dateStr} 朝まで`;
+  if (u === "MORNING") return `朝まで`;
   const toNum = (v: string) =>
     v.startsWith("P") ? parseInt(v.slice(1), 10) : 0;
   const ps = toNum(s);
   const pu = toNum(u);
   if (pu && ps) {
-    return ps === pu
-      ? `${dateStr} ${pu}限まで`
-      : `${dateStr} ${ps}〜${pu}限まで`;
+    return ps === pu ? `${pu}限まで` : `${ps}〜${pu}限まで`;
   }
-  if (pu) return `${dateStr} ${pu}限まで`;
-  return dateStr ? `${dateStr} まで` : "";
+  if (pu) return `${pu}限まで`;
+  return "";
 }
