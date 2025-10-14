@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 // Replaced DateTimePicker with period-based DeadlinePicker
 import {
   Tooltip,
@@ -32,6 +33,10 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from "@/components/ui/button-group";
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
 import { Kbd } from "../components/ui/kbd";
 import {
@@ -64,6 +69,7 @@ import {
   Trash2,
   Save,
   X,
+  MoreVertical,
 } from "lucide-react";
 
 type Task = {
@@ -137,7 +143,7 @@ export default function TasksList() {
     }
     Promise.all([
       gql<{ tasks: { items: Task[] } }>(
-        `query($q:String){ tasks(limit:20, q:$q){ items{ id title subject_id deadline deadline_since deadline_until } } }`,
+        `query($q:String){ tasks(limit:20, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
         { q: q || undefined }
       ),
       gql<{ subjects: Subject[] }>(`query{ subjects{ id title } }`),
@@ -332,6 +338,9 @@ export default function TasksList() {
               deadline: editDate || null,
               // keep since/until in local state if needed (not shown here)
               is_require_hand_in: editRequire,
+              self_check_required: editSelfCheck,
+              type: editType,
+              description: editDesc,
             }
           : x
       )
@@ -933,26 +942,93 @@ export default function TasksList() {
                           ) : (
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <div className="font-medium">{t.title}</div>
-                                <div className="text-sm text-muted-foreground">
-                                  教科ID: {t.subject_id} / 期限: {deadline}
+                                <div className="mb-1 flex flex-wrap gap-1">
+                                  {t.type && (
+                                    <Badge variant="secondary">{t.type}</Badge>
+                                  )}
+                                  {t.is_require_hand_in && (
+                                    <Badge variant="destructive">
+                                      提出必須
+                                    </Badge>
+                                  )}
+                                  {t.self_check_required && (
+                                    <Badge>自己採点</Badge>
+                                  )}
                                 </div>
+                                <div className="font-medium">{t.title}</div>
+                                {(() => {
+                                  const subj = subjects.find(
+                                    (s) => s.id === t.subject_id
+                                  );
+                                  const subjectTitle = subj
+                                    ? subj.title
+                                    : `教科ID: ${t.subject_id}`;
+                                  return (
+                                    <div className="text-sm text-muted-foreground">
+                                      {subjectTitle} {deadline}
+                                    </div>
+                                  );
+                                })()}
+                                {t.description && (
+                                  <p
+                                    className="text-sm text-muted-foreground mt-1"
+                                    style={{
+                                      display: "-webkit-box",
+                                      WebkitLineClamp: 3,
+                                      WebkitBoxOrient: "vertical",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    {t.description}
+                                  </p>
+                                )}
                               </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => beginEdit(t)}
-                                >
-                                  <Pencil className="h-4 w-4 mr-1" /> 編集
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => deleteTask(t.id)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-1" /> 削除
-                                </Button>
+                              <div className="flex items-center gap-2">
+                                {/* Desktop: grouped buttons */}
+                                <ButtonGroup className="hidden sm:flex">
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => beginEdit(t)}
+                                  >
+                                    <Pencil className="h-4 w-4 mr-1" /> 編集
+                                  </Button>
+                                  <ButtonGroupSeparator />
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => deleteTask(t.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-1" /> 削除
+                                  </Button>
+                                </ButtonGroup>
+                                {/* Mobile: kebab menu */}
+                                <div className="sm:hidden">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        aria-label="アクション"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={() => beginEdit(t)}
+                                      >
+                                        <Pencil className="h-4 w-4 mr-2" /> 編集
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={() => deleteTask(t.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" /> 削除
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
                               </div>
                             </div>
                           )}
