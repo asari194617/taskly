@@ -17,11 +17,37 @@ import {
 import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import { t, type Lang } from "@/lib/i18n";
 
 type Me = { id: number; email: string; display_name?: string | null };
 
 export default function UserMenu() {
   const [me, setMe] = React.useState<Me | null>(null);
+  const [lang, setLang] = React.useState<Lang>("ja");
+
+  // 言語状態を管理
+  React.useEffect(() => {
+    const updateLang = () => {
+      const stored = localStorage.getItem("display_lang") as Lang | null;
+      setLang(stored || "ja");
+    };
+
+    updateLang();
+
+    // 言語変更イベントを監視
+    window.addEventListener("languagechange", updateLang);
+    window.addEventListener("storage", (e) => {
+      if (e.key === "display_lang") {
+        updateLang();
+      }
+    });
+
+    return () => {
+      window.removeEventListener("languagechange", updateLang);
+    };
+  }, []);
+
+  const dict = React.useMemo(() => t(lang), [lang]);
 
   React.useEffect(() => {
     const token =
@@ -33,10 +59,10 @@ export default function UserMenu() {
       .catch(() =>
         toast({
           variant: "destructive",
-          title: "ユーザー情報の取得に失敗しました",
+          title: dict.toast.userInfoFetchError,
         })
       );
-  }, []);
+  }, [dict.toast.userInfoFetchError]);
 
   const logout = async () => {
     try {
@@ -45,7 +71,7 @@ export default function UserMenu() {
     try {
       localStorage.removeItem("api_token");
     } catch {}
-    toast({ title: "ログアウトしました" });
+    toast({ title: dict.toast.loggedOut });
     window.location.href = "/login";
   };
 
@@ -77,26 +103,26 @@ export default function UserMenu() {
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col">
             <span className="text-sm font-medium leading-none">
-              {name || "ユーザー"}
+              {name || dict.common.user}
             </span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <a href="/home">
           <DropdownMenuItem className="cursor-pointer">
-            <HomeIcon className="mr-2 h-4 w-4" /> ホーム
+            <HomeIcon className="mr-2 h-4 w-4" /> {dict.common.home}
           </DropdownMenuItem>
         </a>
         <a href="/settings">
           <DropdownMenuItem className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" /> 設定
+            <Settings className="mr-2 h-4 w-4" /> {dict.common.settings}
           </DropdownMenuItem>
         </a>
         <DropdownMenuItem
           className="text-destructive focus:text-destructive cursor-pointer"
           onClick={logout}
         >
-          <LogOut className="mr-2 h-4 w-4" /> ログアウト
+          <LogOut className="mr-2 h-4 w-4" /> {dict.common.logout}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

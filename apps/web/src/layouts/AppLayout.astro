@@ -1,9 +1,7 @@
 ---
 import "../styles/globals.css";
 import UserMenu from "../react/UserMenu";
-import { Toaster } from "@/components/ui/toaster";
-import Footer from "../react/Footer";
-import { LanguageProvider } from "../react/LanguageProvider";
+import AppShell from "../react/AppShell";
 const { title = "Taskly" } = Astro.props;
 ---
 <html lang="ja">
@@ -43,13 +41,10 @@ const { title = "Taskly" } = Astro.props;
         <UserMenu client:load />
       </div>
     </header>
-    <LanguageProvider>
-      <main class="container p-4 flex-1">
-        <slot />
-      </main>
-      <Toaster client:load />
-      <Footer />
-    </LanguageProvider>
+    <main class="container p-4 flex-1">
+      <slot />
+    </main>
+    <AppShell client:load />
     <script>
       (function(){
         const btn = document.getElementById('themeToggle');

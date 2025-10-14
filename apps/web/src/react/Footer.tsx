@@ -22,66 +22,73 @@ export default function Footer() {
   const [timeStr, setTimeStr] = React.useState<string>(formatJST());
   const { lang, setLang, dict } = useLang();
   const d = dict.common;
-  const SECTIONS: Section[] = [
-    {
-      title: "製品",
-      links: [
-        { title: "ホーム", href: "/" },
-        { title: "設定", href: "/settings" },
-        // { title: "管理", href: "/admin" },
-        // { title: "お問い合わせ", href: "mailto:" },
-      ],
-    },
-    {
-      title: "ドキュメント",
-      links: [
-        { title: "ガイド", href: "/guide" },
-        { title: "API", href: "/docs/api" },
-        { title: "カレンダー", href: "/docs/calendar" },
-        { title: "MCPサーバー", href: "/docs/mcp" },
-      ],
-    },
-    {
-      title: "プラットフォーム",
-      links: [
-        { title: "Web", href: "https://taskly.iy0306.com/" },
-        {
-          title: "iPhone,iPad,Mac",
-          href: "https://taskly.iy0306.com/platform/iphone",
-        },
-        {
-          title: "Android",
-          href: "https://taskly.iy0306.com/platform/android",
-        },
-        {
-          title: "Windows",
-          href: "https://taskly.iy0306.com/platform/windows",
-        },
-      ],
-    },
-    {
-      title: "その他",
-      links: [
-        {
-          title: "利用規約",
-          href: "https://ritzy-lift-e38.notion.site/28ba3874f8c880a783ddf9d39aea1242",
-        },
-        {
-          title: "プライバシーポリシー",
-          href: "https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03",
-        },
-        {
-          title: "セキュリティポリシー",
-          href: "https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f",
-        },
-        {
-          title: "サービスの継続性確保に関する声明",
-          href: "https://ritzy-lift-e38.notion.site/28ba3874f8c8800bac93e03c6dec44c8",
-        },
-        { title: "GitHub", href: "https://github.com/asari194617/taskly" },
-      ],
-    },
-  ];
+
+  console.log("[Footer] Current lang:", lang);
+
+  const SECTIONS: Section[] = React.useMemo(
+    () => [
+      {
+        title: d.products,
+        links: [
+          { title: d.home, href: "/" },
+          { title: d.settings, href: "/settings" },
+          // { title: d.admin, href: "/admin" },
+          // { title: d.contact, href: "mailto:" },
+        ],
+      },
+      {
+        title: d.documentation,
+        links: [
+          { title: d.guide, href: "/guide" },
+          { title: d.api, href: "/docs/api" },
+          { title: d.calendar, href: "/docs/calendar" },
+          { title: d.mcpServer, href: "/docs/mcp" },
+        ],
+      },
+      {
+        title: d.platform,
+        links: [
+          { title: "Web", href: "https://taskly.iy0306.com/" },
+          {
+            title: "iPhone,iPad,Mac",
+            href: "https://taskly.iy0306.com/platform/iphone",
+          },
+          {
+            title: "Android",
+            href: "https://taskly.iy0306.com/platform/android",
+          },
+          {
+            title: "Windows",
+            href: "https://taskly.iy0306.com/platform/windows",
+          },
+        ],
+      },
+      {
+        title: d.other,
+        links: [
+          {
+            title: d.terms,
+            href: "https://ritzy-lift-e38.notion.site/28ba3874f8c880a783ddf9d39aea1242",
+          },
+          {
+            title: d.privacyPolicy,
+            href: "https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03",
+          },
+          {
+            title: d.securityPolicy,
+            href: "https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f",
+          },
+          {
+            title: d.continuityStatement,
+            href: "https://ritzy-lift-e38.notion.site/28ba3874f8c8800bac93e03c6dec44c8",
+          },
+          { title: "GitHub", href: "https://github.com/asari194617/taskly" },
+        ],
+      },
+    ],
+    [d]
+  );
+
   React.useEffect(() => {
     const id = setInterval(() => setTimeStr(formatJST()), 30_000);
     return () => clearInterval(id);
@@ -116,7 +123,13 @@ export default function Footer() {
           <div className="flex items-center gap-2 text-sm">
             <span className="text-foreground/80">{d.language}:</span>
             <div className="min-w-[160px]">
-              <Select value={lang} onValueChange={(v: any) => setLang(v)}>
+              <Select
+                value={lang}
+                onValueChange={(v: any) => {
+                  console.log("[Footer] Select onValueChange:", v);
+                  setLang(v);
+                }}
+              >
                 <SelectTrigger aria-label={d.language}>
                   <SelectValue placeholder={d.language} />
                 </SelectTrigger>
