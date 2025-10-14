@@ -154,7 +154,7 @@ export default function TasksList() {
     }
     Promise.all([
       gql<{ tasks: { items: Task[] } }>(
-        `query($q:String){ tasks(limit:20, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
+        `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
         { q: q || undefined }
       ),
       gql<{ subjects: Subject[] }>(`query{ subjects{ id title } }`),
@@ -172,6 +172,20 @@ export default function TasksList() {
     const id = setTimeout(() => setQ(qInput.trim()), 300);
     return () => clearTimeout(id);
   }, [qInput]);
+
+  // Items to show: by default hide past tasks (deadline before today), but include all when searching
+  const shownItems = React.useMemo(() => {
+    if (!items) return [] as Task[];
+    const searching = q.trim().length > 0;
+    if (searching) return items;
+    const todayStart = startOfDay(new Date()).getTime();
+    return items.filter((t) => {
+      if (!t.deadline) return true;
+      const d = new Date(t.deadline);
+      const sod = startOfDay(d).getTime();
+      return sod >= todayStart;
+    });
+  }, [items, q]);
 
   // Keyboard shortcuts: g then n to create; '?' to show help
   React.useEffect(() => {
@@ -202,6 +216,32 @@ export default function TasksList() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Ctrl+S / Cmd+S to save when editing
+  React.useEffect(() => {
+    function onSaveKey(e: KeyboardEvent) {
+      const isSave =
+        (e.key === "s" || e.key === "S") && (e.metaKey || e.ctrlKey);
+      if (!isSave) return;
+      if (editingId != null) {
+        e.preventDefault();
+        // Avoid duplicate submissions if already saving could be added here
+        saveEdit(editingId);
+      }
+    }
+    window.addEventListener("keydown", onSaveKey);
+    return () => window.removeEventListener("keydown", onSaveKey);
+  }, [
+    editingId,
+    editTitle,
+    editSubjectId,
+    editDate,
+    editMeta,
+    editRequire,
+    editSelfCheck,
+    editType,
+    editDesc,
+  ]);
 
   function SubjectSelect(props: {
     value: string;
@@ -444,9 +484,6 @@ export default function TasksList() {
       <div className="flex items-center justify-end gap-2">
         <div className="flex-1">
           <InputGroup>
-            <InputGroupAddon>
-              <Search className="h-4 w-4" />
-            </InputGroupAddon>
             <InputGroupInput
               placeholder="課題を検索 (タイトル/説明)"
               value={qInput}
@@ -457,10 +494,11 @@ export default function TasksList() {
                 }
               }}
             />
+            <InputGroupAddon>
+              <Search className="h-4 w-4" />
+            </InputGroupAddon>
             <InputGroupAddon align="inline-end">
-              <InputGroupButton onClick={() => setQ(qInput.trim())}>
-                検索
-              </InputGroupButton>
+              {shownItems.length} 件
             </InputGroupAddon>
           </InputGroup>
         </div>
@@ -685,7 +723,7 @@ export default function TasksList() {
         </DrawerContent>
       </Drawer>
       {/* Empty states below toolbar */}
-      {items.length === 0 &&
+      {shownItems.length === 0 &&
         (q ? (
           <Empty className="border">
             <EmptyHeader>
@@ -809,7 +847,7 @@ export default function TasksList() {
           { key: string; sortKey: number; items: Task[]; heading: string }
         >();
         const todayStart = startOfDay(new Date()).getTime();
-        for (const t of items) {
+        for (const t of shownItems) {
           if (!t.deadline) {
             const key = "期限なし";
             if (!byKey.has(key)) {

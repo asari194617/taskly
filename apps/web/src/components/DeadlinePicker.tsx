@@ -252,7 +252,7 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
           {tab === "range" && (
             <div>
               <Label>範囲</Label>
-              <div className="mt-2 grid grid-cols-4 gap-2">
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {ONE_OPTIONS.map((s) => {
                   const selected = s >= start && s <= end;
                   return (
