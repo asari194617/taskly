@@ -109,6 +109,11 @@ function formatHeadingForDate(d: Date): string {
   return `${y}/${m}/${day}`;
 }
 
+function formatDateYMDSlash(s: string): string {
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : s;
+}
+
 export default function TasksList() {
   const [items, setItems] = React.useState<Task[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -529,7 +534,7 @@ export default function TasksList() {
     <div className="space-y-6">
       {/* Toolbar */}
       {items.length > 0 && (
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-2">
           <div className="flex-1">
             <Input
               placeholder="課題を検索 (タイトル/説明)"
@@ -817,14 +822,18 @@ export default function TasksList() {
                     })
                     .map((t) => {
                       const deadline = (() => {
-                        // Prefer symbolic label from since/until
+                        const formatted = t.deadline
+                          ? formatDateYMDSlash(t.deadline)
+                          : null;
                         const label = deriveLabelFromEnums(
                           t.deadline || "",
                           t.deadline_since,
                           t.deadline_until
                         );
-                        if (label) return label;
-                        return t.deadline || "期限なし";
+                        if (formatted) {
+                          return label ? `${formatted} ${label}` : formatted;
+                        }
+                        return "期限なし";
                       })();
                       const isEditing = editingId === t.id;
                       return (
