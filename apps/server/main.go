@@ -25,11 +25,13 @@ func main() {
 	initWebAuthn()
 
 	// Auto-migrate core models
-	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{})
+	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{})
 	// Ensure legacy tasks.deadline column is DATE (not DATETIME)
 	ensureDeadlineDateColumn()
 	// If tasks is empty and schema mismatches new enums/date, drop and recreate safely
 	ensureTasksSchema()
+	// Run pending migrations
+	runMigrations()
 
 	app := fiber.New()
 	app.Use(recover.New())

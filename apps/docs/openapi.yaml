@@ -1,0 +1,1259 @@
+openapi: 3.0.3
+info:
+  title: Taskly API
+  version: 1.0.0
+  description: |
+    REST API for Taskly, implemented with Fiber (Go).
+
+servers:
+  - url: http://api.taskly.iy0306.com
+    description: Local server
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Tasks
+  - name: Settings
+  - name: API Keys
+  - name: Push
+  - name: WebAuthn
+  - name: 2FA
+  - name: Admin - Users
+  - name: Admin - Permissions
+  - name: Admin - DayShift
+  - name: Integrations
+  - name: Calendar
+  - name: GraphQL
+
+components:
+  securitySchemes:
+    SessionToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        Session token issued by POST /auth/login or /webauthn/login/finish.
+        Send as `Authorization: Bearer <token>` for authenticated endpoints.
+  parameters:
+    ClientPlatform:
+      in: header
+      name: X-Client-Platform
+      required: false
+      schema:
+        type: string
+        example: web
+      description: Client platform identifier (e.g., web, ios, android). Required by some auth endpoints.
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    UserMe:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        is_admin:
+          type: boolean
+        is_manager:
+          type: boolean
+    Task:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        subject_id: { type: integer, format: int64 }
+        description: { type: string, nullable: true }
+        type: { type: string }
+        is_require_hand_in: { type: boolean }
+        self_check_required: { type: boolean }
+        deadline: { type: string, description: YYYY-MM-DD }
+        deadline_since:
+          type: string
+          enum: [NONE, P1, P2, P3, P4, P5, P6, P7, P8]
+        deadline_until:
+          type: string
+          enum: [NONE, MORNING, P1, P2, P3, P4, P5, P6, P7, P8]
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    TasksResult:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        next_cursor:
+          type: object
+          nullable: true
+          properties:
+            cursor_deadline: { type: string, format: date-time }
+            cursor_id: { type: string }
+    ApiKey:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        description: { type: string, nullable: true }
+        is_valid: { type: boolean }
+        created_at: { type: string, format: date-time }
+    IcalToken:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        description: { type: string, nullable: true }
+        url: { type: string }
+        created_at: { type: string, format: date-time }
+    Permission:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        target: { type: string }
+        method: { type: string }
+        value: { type: string, nullable: true }
+
+security:
+  - SessionToken: []
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /auth/request-code:
+    post:
+      tags: [Auth]
+      summary: Request login code via email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+              required: [email]
+      responses:
+        "200": { description: Code sent }
+        "400":
+          {
+            description: Invalid body,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "429":
+          {
+            description: Too many requests,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "502":
+          {
+            description: SMTP error,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /auth/options:
+    post:
+      tags: [Auth]
+      summary: Get available auth options for an email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+              required: [email]
+      responses:
+        "200":
+          description: Auth options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  has_password: { type: boolean }
+                  totp_enabled: { type: boolean }
+                  passkey_enabled: { type: boolean }
+                  email_login_enabled: { type: boolean }
+                  methods:
+                    type: array
+                    items:
+                      type: string
+                      enum: [password, email_code, totp, recovery, passkey]
+        "400":
+          {
+            description: Invalid body,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with password or email code (and optional 2FA)
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ClientPlatform"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                code: { type: string, description: 6-digit email code }
+                totp: { type: string }
+                recovery_code: { type: string }
+              required: [email]
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, description: Session token (bearer) }
+                  jwt: { type: string, description: Optional JWT }
+        "400":
+          {
+            description: Bad request,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "401":
+          {
+            description: Unauthorized (missing/invalid factor),
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "403":
+          {
+            description: Blocked,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "500": { description: Server error }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session
+      responses:
+        "204": { description: No content }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserMe"
+    patch:
+      tags: [Users]
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: { type: string }
+      responses:
+        "204": { description: Updated }
+        "400":
+          {
+            description: Invalid body,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "500": { description: DB error }
+    delete:
+      tags: [Users]
+      summary: Soft-delete current user
+      responses:
+        "204": { description: Deleted }
+        "500": { description: DB error }
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks with cursor pagination
+      parameters:
+        - in: query
+          name: overdue
+          schema: { type: boolean }
+          description: When true, lists overdue tasks ordered descending by effective deadline.
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: cursor_deadline
+          schema: { type: string, format: date-time }
+        - in: query
+          name: cursor_id
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TasksResult"
+        "403": { description: Forbidden }
+        "500": { description: DB error }
+    post:
+      tags: [Tasks]
+      summary: Create task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                subject_id: { type: integer }
+                description: { type: string, nullable: true }
+                type: { type: string }
+                is_require_hand_in: { type: boolean }
+                self_check_required: { type: boolean }
+                deadline: { type: string, description: YYYY-MM-DD }
+                deadline_since:
+                  { type: string, enum: [NONE, P1, P2, P3, P4, P5, P6, P7, P8] }
+                deadline_until:
+                  {
+                    type: string,
+                    enum: [NONE, MORNING, P1, P2, P3, P4, P5, P6, P7, P8],
+                  }
+              required: [title, subject_id, deadline]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400":
+          {
+            description: Invalid body,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Error" } },
+              },
+          }
+        "403": { description: Forbidden }
+        "500": { description: DB error }
+
+  /tasks/{id}:
+    patch:
+      tags: [Tasks]
+      summary: Update task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                subject_id: { type: integer }
+                description: { type: string, nullable: true }
+                type: { type: string }
+                is_require_hand_in: { type: boolean }
+                self_check_required: { type: boolean }
+                deadline: { type: string, description: YYYY-MM-DD }
+                deadline_since: { type: string }
+                deadline_until: { type: string }
+      responses:
+        "200":
+          {
+            description: Updated,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Task" } },
+              },
+          }
+        "400": { description: Invalid body }
+        "403": { description: Forbidden }
+        "404": { description: Not found }
+        "500": { description: DB error }
+    delete:
+      tags: [Tasks]
+      summary: Delete task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "400": { description: Invalid id }
+        "403": { description: Forbidden }
+        "404": { description: Not found }
+        "500": { description: DB error }
+
+  /settings/auth:
+    get:
+      tags: [Settings]
+      summary: Get auth settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email_login_enabled: { type: boolean }
+                  has_password: { type: boolean }
+                  totp_enabled: { type: boolean }
+    post:
+      tags: [Settings]
+      summary: Update auth settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email_login_enabled: { type: boolean }
+      responses:
+        "204": { description: Updated }
+        "400": { description: Invalid body }
+
+  /ical/tokens:
+    get:
+      tags: [Settings]
+      summary: List iCal tokens
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IcalToken" }
+    post:
+      tags: [Settings]
+      summary: Create iCal token
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  url: { type: string }
+
+  /ical/tokens/{id}:
+    delete:
+      tags: [Settings]
+      summary: Delete iCal token
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "500": { description: DB error }
+
+  /settings/push:
+    get:
+      tags: [Settings]
+      summary: Get push settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  daily_enabled: { type: boolean }
+    post:
+      tags: [Settings]
+      summary: Update push settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                daily_enabled: { type: boolean }
+      responses:
+        "204": { description: Updated }
+        "400": { description: Invalid body }
+
+  /settings/lang:
+    get:
+      tags: [Settings]
+      summary: Get language settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification_lang:
+                    type: string
+                    enum: [ja, en]
+    post:
+      tags: [Settings]
+      summary: Update language settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notification_lang:
+                  type: string
+                  enum: [ja, en]
+      responses:
+        "204": { description: Updated }
+        "400": { description: Invalid body }
+
+  /apikeys:
+    get:
+      tags: [API Keys]
+      summary: List API keys
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ApiKey" }
+    post:
+      tags: [API Keys]
+      summary: Create API key
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  token: { type: string }
+
+  /apikeys/{id}:
+    patch:
+      tags: [API Keys]
+      summary: Update API key
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_valid: { type: boolean }
+                description: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  is_valid: { type: boolean }
+
+  /push/subscribe:
+    post:
+      tags: [Push]
+      summary: Subscribe to Web Push
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [Endpoint, P256dh, Auth]
+              properties:
+                Endpoint: { type: string }
+                P256dh: { type: string }
+                Auth: { type: string }
+      responses:
+        "204": { description: Saved }
+        "400": { description: Invalid body }
+
+  /push/unsubscribe:
+    post:
+      tags: [Push]
+      summary: Unsubscribe from Web Push
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                Endpoint: { type: string }
+      responses:
+        "204": { description: Removed }
+
+  /push/vapidPublicKey:
+    get:
+      tags: [Push]
+      summary: Get VAPID public key
+      security: []
+      responses:
+        "200":
+          description: Public key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publicKey: { type: string }
+        "500": { description: Server error }
+
+  /push/test:
+    post:
+      tags: [Push]
+      summary: Send a test push to current user
+      responses:
+        "200":
+          description: Result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: integer }
+        "500": { description: Send error }
+
+  /push/subscriptions:
+    get:
+      tags: [Push]
+      summary: List masked subscriptions for current user
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        endpoint: { type: string }
+                        created_at: { type: string, format: date-time }
+
+  /webauthn/register/begin:
+    post:
+      tags: [WebAuthn]
+      summary: Begin WebAuthn registration (passkey)
+      responses:
+        "200": { description: PublicKeyCredentialCreationOptions JSON }
+        "501": { description: Not configured }
+        "500": { description: Server error }
+
+  /webauthn/register/finish:
+    post:
+      tags: [WebAuthn]
+      summary: Finish WebAuthn registration
+      responses:
+        "204": { description: Registered }
+        "400": { description: Finish failed/expired }
+        "501": { description: Not configured }
+        "500": { description: DB error }
+
+  /webauthn/login/begin:
+    post:
+      tags: [WebAuthn]
+      summary: Begin WebAuthn login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+              required: [email]
+      responses:
+        "200": { description: PublicKeyCredentialRequestOptions JSON }
+        "404": { description: User not found }
+        "501": { description: Not configured }
+
+  /webauthn/login/finish:
+    post:
+      tags: [WebAuthn]
+      summary: Finish WebAuthn login
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ClientPlatform"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+              additionalProperties: true
+              required: [email]
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+        "400": { description: Bad request/expired }
+        "401": { description: Invalid passkey }
+        "403": { description: Blocked }
+        "501": { description: Not configured }
+
+  /2fa/totp/setup:
+    post:
+      tags: [2FA]
+      summary: Start TOTP setup
+      responses:
+        "200":
+          description: Secret and otpauth URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  otpauth: { type: string }
+
+  /2fa/totp/activate:
+    post:
+      tags: [2FA]
+      summary: Activate TOTP with code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+              required: [code]
+      responses:
+        "204": { description: Activated }
+        "400": { description: Invalid body/setup expired }
+        "401": { description: Invalid code }
+
+  /2fa/totp/disable:
+    post:
+      tags: [2FA]
+      summary: Disable TOTP
+      responses:
+        "204": { description: Disabled }
+        "404": { description: Not enabled }
+        "500": { description: DB error }
+
+  /2fa/recovery/generate:
+    post:
+      tags: [2FA]
+      summary: Generate recovery codes
+      responses:
+        "200":
+          description: Codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  codes:
+                    type: array
+                    items: { type: string }
+
+  /2fa/recovery/consume:
+    post:
+      tags: [2FA]
+      summary: Consume a recovery code for an email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                code: { type: string }
+              required: [email, code]
+      responses:
+        "204": { description: Consumed }
+        "400": { description: Invalid body }
+        "401": { description: Invalid code }
+        "404": { description: User not found }
+
+  /admin/users:
+    get:
+      tags: [Admin - Users]
+      summary: List users (admin/manager)
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    email: { type: string }
+                    display_name: { type: string }
+                    is_deleted: { type: boolean }
+                    roles:
+                      type: array
+                      items: { type: string }
+                    is_blocked: { type: boolean }
+        "500": { description: DB error }
+
+  /admin/users/{id}/roles:
+    post:
+      tags: [Admin - Users]
+      summary: Add role to user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [admin, manager]
+              required: [role]
+      responses:
+        "201": { description: Created }
+        "400": { description: Invalid body }
+    delete:
+      tags: [Admin - Users]
+      summary: Use DELETE /admin/users/{id}/roles/{role}
+      responses:
+        "405": { description: Use dedicated endpoint }
+
+  /admin/users/{id}/roles/{role}:
+    delete:
+      tags: [Admin - Users]
+      summary: Remove role from user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "500": { description: DB error }
+
+  /admin/users/{id}/block:
+    post:
+      tags: [Admin - Users]
+      summary: Block a user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+                expires_at: { type: string, format: date-time }
+      responses:
+        "201": { description: Created }
+        "400": { description: Invalid body }
+        "500": { description: DB error }
+
+  /admin/users/{id}/unblock:
+    post:
+      tags: [Admin - Users]
+      summary: Unblock a user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Updated }
+        "500": { description: DB error }
+
+  /admin/permissions:
+    get:
+      tags: [Admin - Permissions]
+      summary: List permissions
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Permission" }
+    post:
+      tags: [Admin - Permissions]
+      summary: Create permission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: integer }
+                target: { type: string }
+                method: { type: string }
+                value: { type: string, nullable: true }
+              required: [user_id, target, method]
+      responses:
+        "201":
+          {
+            description: Created,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/Permission" } },
+              },
+          }
+        "400": { description: Invalid body }
+        "500": { description: DB error }
+
+  /admin/permissions/{id}:
+    delete:
+      tags: [Admin - Permissions]
+      summary: Delete permission
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "500": { description: DB error }
+
+  /admin/dayshift/cycles:
+    post:
+      tags: [Admin - DayShift]
+      summary: Create day shift cycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                begin_date: { type: string, description: YYYY-MM-DD }
+                finish_date: { type: string, description: YYYY-MM-DD }
+                description: { type: string }
+              required: [begin_date, finish_date]
+      responses:
+        "201":
+          {
+            description: Created,
+            content: { application/json: { schema: { type: object } } },
+          }
+        "400": { description: Invalid dates/body }
+        "500": { description: DB error }
+
+  /admin/dayshift/cycles/{id}:
+    delete:
+      tags: [Admin - DayShift]
+      summary: Delete day shift cycle
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "500": { description: DB error }
+
+  /admin/calendar/upsert-range:
+    post:
+      tags: [Admin - DayShift]
+      summary: Upsert business calendar range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start: { type: string, description: YYYY-MM-DD }
+                end: { type: string, description: YYYY-MM-DD }
+                is_business_day: { type: boolean }
+                notes: { type: string, nullable: true }
+              required: [start, end, is_business_day]
+      responses:
+        "204": { description: Updated }
+        "400": { description: Invalid body }
+
+  /integrations/teams/callback:
+    post:
+      tags: [Integrations]
+      summary: Power Automate callback for Teams posting result
+      security: []
+      parameters:
+        - in: header
+          name: X-Signature
+          required: false
+          schema: { type: string }
+          description: Optional HMAC signature header (sha256=...)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_success: { type: boolean }
+                task_id: { oneOf: [{ type: integer }, { type: string }] }
+                message_id: { type: string }
+                conversation_id: { type: string }
+      responses:
+        "200": { description: Accepted }
+        "400": { description: Invalid body }
+        "401": { description: Invalid signature }
+
+  /integrations/teams/status:
+    post:
+      tags: [Integrations]
+      summary: Power Automate status endpoint (HMAC optional)
+      security: []
+      parameters:
+        - in: header
+          name: X-Signature
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200": { description: Ok }
+        "401": { description: Invalid signature }
+
+  /integrations/teams/inbound:
+    post:
+      tags: [Integrations]
+      summary: Inbound Teams to create Task (queued)
+      security: []
+      parameters:
+        - in: header
+          name: X-Teams-Secret
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                title: { type: string }
+                description: { type: string }
+                subject_id: { type: integer }
+                status_callback: { type: string, nullable: true }
+              required: [email, title, subject_id]
+      responses:
+        "202": { description: Enqueued }
+        "400": { description: Invalid body }
+        "401": { description: Unauthorized }
+        "404": { description: User not found }
+        "503": { description: Queue full }
+
+  /integrations/dayshift/inbound:
+    post:
+      tags: [Integrations]
+      summary: Inbound dayshift email notice
+      security: []
+      parameters:
+        - in: header
+          name: X-Taskly-Secret
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                content: { type: string }
+                date: { type: string, description: YYYY-MM-DD }
+      responses:
+        "202": { description: Accepted }
+        "400": { description: Invalid body / not a dayshift notice }
+        "401": { description: Unauthorized }
+
+  /ical/{token}.ics:
+    get:
+      tags: [Calendar]
+      summary: Public ICS feed for a token
+      security: []
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: iCalendar feed
+          content:
+            text/calendar:
+              schema:
+                type: string
+        "404": { description: Not found }
+
+  /graphql:
+    post:
+      tags: [GraphQL]
+      summary: GraphQL endpoint
+      description: 'Standard GraphQL over POST. Send {"query": "...", "variables": {...}}.'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query: { type: string }
+                variables: { type: object, additionalProperties: true }
+      responses:
+        "200": { description: GraphQL result }
+        "400": { description: GraphQL error(s) }

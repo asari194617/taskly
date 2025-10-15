@@ -23,8 +23,6 @@ export default function Footer() {
   const { lang, setLang, dict } = useLang();
   const d = dict.common;
 
-  console.log("[Footer] Current lang:", lang);
-
   const SECTIONS: Section[] = React.useMemo(
     () => [
       {
@@ -40,9 +38,9 @@ export default function Footer() {
         title: d.documentation,
         links: [
           { title: d.guide, href: "/guide" },
-          { title: d.api, href: "/docs/api" },
-          { title: d.calendar, href: "/docs/calendar" },
-          { title: d.mcpServer, href: "/docs/mcp" },
+          { title: d.api, href: "https://cdn.taskly.iy0306.com/docs/index.html" },
+          { title: d.calendar, href: "/guide/calendar" },
+          { title: d.mcpServer, href: "/guide/mcp" },
         ],
       },
       {
@@ -51,7 +49,7 @@ export default function Footer() {
           { title: "Web", href: "https://taskly.iy0306.com/" },
           {
             title: "iPhone,iPad,Mac",
-            href: "https://taskly.iy0306.com/platform/iphone",
+            href: "https://taskly.iy0306.com/platform/iphone-ipad-mac",
           },
           {
             title: "Android",

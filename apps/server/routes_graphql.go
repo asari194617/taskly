@@ -22,8 +22,44 @@ func registerGraphQL(app *fiber.App) {
 	subjectType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Subject",
 		Fields: graphql.Fields{
-			"id":    &graphql.Field{Type: graphql.Int},
-			"title": &graphql.Field{Type: graphql.String},
+			"id":      &graphql.Field{Type: graphql.Int},
+			"name_ja": &graphql.Field{Type: graphql.String},
+			"name_en": &graphql.Field{Type: graphql.String},
+			"name": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (any, error) {
+				// Resolve localized name based on current user's notification language
+				var subj Subject
+				if m, ok := p.Source.(map[string]any); ok {
+					if idv, ok2 := m["id"]; ok2 {
+						var idUint uint
+						switch vv := idv.(type) {
+						case int:
+							idUint = uint(vv)
+						case uint:
+							idUint = vv
+						case int64:
+							idUint = uint(vv)
+						case float64:
+							idUint = uint(vv)
+						}
+						_ = DB.First(&subj, idUint).Error
+					}
+				}
+				lang := "ja"
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if u, ok2 := c.Locals("user").(*User); ok2 && strings.TrimSpace(u.NotificationLang) != "" {
+						lang = strings.ToLower(u.NotificationLang)
+					}
+				}
+				if lang == "en" {
+					if subj.NameEn != nil && *subj.NameEn != "" {
+						return *subj.NameEn, nil
+					}
+				}
+				if strings.TrimSpace(subj.NameJa) != "" {
+					return subj.NameJa, nil
+				}
+				return "", nil
+			}},
 		},
 	})
 	taskType := graphql.NewObject(graphql.ObjectConfig{
@@ -222,7 +258,7 @@ func registerGraphQL(app *fiber.App) {
 						}
 						out := make([]map[string]any, 0, len(subs))
 						for _, s := range subs {
-							out = append(out, map[string]any{"id": s.ID, "title": s.Title})
+							out = append(out, map[string]any{"id": s.ID, "name_ja": s.NameJa, "name_en": s.NameEn})
 						}
 						return out, nil
 					}

@@ -16,7 +16,6 @@ type User struct {
 	EmailCodeAllowed bool    `gorm:"default:true"`
 	IsDeleted        bool    `gorm:"default:false"`
 	IsDayShiftActive bool    `gorm:"default:false"`
-	DisplayLang      string  `gorm:"size:5;not null;default:'ja'"`
 	NotificationLang string  `gorm:"size:5;not null;default:'ja'"`
 	PushDailyEnabled bool    `gorm:"default:true"`
 	CreatedAt        time.Time
@@ -121,8 +120,9 @@ type APIKey struct {
 }
 
 type Subject struct {
-	ID        uint   `gorm:"primaryKey"`
-	Title     string `gorm:"size:255;not null"`
+	ID        uint    `gorm:"primaryKey"`
+	NameJa    string  `gorm:"size:255;not null;default:''"`
+	NameEn    *string `gorm:"size:255"`
 	ExpiresAt *time.Time
 	CreatedAt time.Time
 }
@@ -133,7 +133,7 @@ type Task struct {
 	Title             string  `gorm:"size:255;not null"`
 	SubjectID         uint    `gorm:"index;not null"`
 	Description       *string `gorm:"type:text"`
-	Type              string  `gorm:"size:32;not null;default:''"`
+	Type              string  `gorm:"type:ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER');not null;default:'OTHER'"`
 	IsRequireHandIn   bool    `gorm:"not null;default:0"`
 	SelfCheckRequired bool    `gorm:"not null;default:0"`
 	// Deadline date (required)
@@ -255,4 +255,11 @@ type MCP struct {
 	HashedToken string `gorm:"size:255"`
 	Description *string
 	CreatedAt   time.Time
+}
+
+// Migration tracking
+type Migration struct {
+	ID        uint      `gorm:"primaryKey"`
+	Name      string    `gorm:"uniqueIndex;size:255;not null"`
+	AppliedAt time.Time `gorm:"autoCreateTime"`
 }

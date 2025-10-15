@@ -353,19 +353,27 @@ export function sinceUntilFromMeta(
 export function deriveLabelFromEnums(
   date: string,
   since?: string | null,
-  until?: string | null
+  until?: string | null,
+  lang?: "ja" | "en"
 ): string {
+  const l = lang || "ja";
   const norm = (s?: string | null) => (s || "").toUpperCase();
   const s = norm(since);
   const u = norm(until);
-  if (u === "MORNING") return `朝まで`;
+  if (u === "MORNING") return l === "ja" ? `朝まで` : `until morning`;
   const toNum = (v: string) =>
     v.startsWith("P") ? parseInt(v.slice(1), 10) : 0;
   const ps = toNum(s);
   const pu = toNum(u);
   if (pu && ps) {
-    return ps === pu ? `${pu}限まで` : `${ps}〜${pu}限まで`;
+    return ps === pu
+      ? l === "ja"
+        ? `${pu}限まで`
+        : `until period ${pu}`
+      : l === "ja"
+      ? `${ps}〜${pu}限まで`
+      : `period ${ps} to ${pu}`;
   }
-  if (pu) return `${pu}限まで`;
+  if (pu) return l === "ja" ? `${pu}限まで` : `until period ${pu}`;
   return "";
 }

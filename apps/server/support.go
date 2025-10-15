@@ -94,6 +94,89 @@ func ensureTasksSchema() {
 	}
 }
 
+// runMigrations executes SQL migrations from migrations folder if not already applied
+func runMigrations() {
+	type migrationFile struct {
+		name       string
+		statements []string
+	}
+
+	migrations := []migrationFile{
+		{
+			name: "0006_task_type_enum_subject_i18n",
+			statements: []string{
+				"UPDATE tasks SET type = 'ONLINE' WHERE type IN ('Online', 'online', 'ONLINE')",
+				"UPDATE tasks SET type = 'FACE_TO_FACE' WHERE type IN ('Face-to-face', 'face-to-face', 'FACE_TO_FACE', 'Face to Face')",
+				"UPDATE tasks SET type = 'QUIZ' WHERE type IN ('Quiz', 'quiz', 'QUIZ', 'Test', 'test')",
+				"UPDATE tasks SET type = 'PRESENTATION' WHERE type IN ('Presentation', 'presentation', 'PRESENTATION')",
+				"UPDATE tasks SET type = 'SELF_STUDY' WHERE type IN ('Self-study', 'self-study', 'SELF_STUDY', 'Self-study/Preview', 'Preview')",
+				"UPDATE tasks SET type = 'OTHER' WHERE type IN ('Other', 'other', 'OTHER')",
+				"UPDATE tasks SET type = 'ONLINE' WHERE type IN ('オンライン', 'ｵﾝﾗｲﾝ')",
+				"UPDATE tasks SET type = 'FACE_TO_FACE' WHERE type IN ('対面', '対面授業', '授業')",
+				"UPDATE tasks SET type = 'QUIZ' WHERE type IN ('小テスト', '小ﾃｽﾄ', 'テスト', 'ﾃｽﾄ')",
+				"UPDATE tasks SET type = 'PRESENTATION' WHERE type IN ('プレゼン', 'ﾌﾟﾚｾﾞﾝ', 'プレゼンテーション', 'ﾌﾟﾚｾﾞﾝﾃｰｼｮﾝ', '発表')",
+				"UPDATE tasks SET type = 'SELF_STUDY' WHERE type IN ('予習', '自習', '自主学習', '予習・復習', '復習')",
+				"UPDATE tasks SET type = 'OTHER' WHERE type IN ('その他', 'ｿﾉ他')",
+				"DELETE FROM tasks WHERE type NOT IN ('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER')",
+				"ALTER TABLE tasks MODIFY COLUMN type ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER') NOT NULL DEFAULT 'OTHER'",
+				"ALTER TABLE subjects ADD COLUMN name_en VARCHAR(255) NULL",
+			},
+		},
+		{
+			name: "0007_subject_name_ja_backfill",
+			statements: []string{
+				// Add name_ja nullable first (ignore if exists)
+				"ALTER TABLE subjects ADD COLUMN name_ja VARCHAR(255) NULL",
+				// Backfill from legacy title where empty
+				"UPDATE subjects SET name_ja = title WHERE (name_ja IS NULL OR name_ja = '') AND title IS NOT NULL AND title <> ''",
+				// Enforce NOT NULL after backfill
+				"ALTER TABLE subjects MODIFY COLUMN name_ja VARCHAR(255) NOT NULL",
+			},
+		},
+		{
+			name: "0008_subject_drop_title",
+			statements: []string{
+				// Ensure no NULL/empty name_ja before dropping title
+				"UPDATE subjects SET name_ja = title WHERE (name_ja IS NULL OR name_ja = '') AND title IS NOT NULL AND title <> ''",
+				// Drop legacy title column (ignore if already dropped)
+				"ALTER TABLE subjects DROP COLUMN title",
+			},
+		},
+	}
+
+	for _, m := range migrations {
+		// Check if already applied
+		var existing Migration
+		if err := DB.Where("name = ?", m.name).First(&existing).Error; err == nil {
+			continue // Already applied
+		}
+
+		// Execute migration statements one by one
+		log.Printf("Running migration: %s", m.name)
+		failed := false
+		for _, stmt := range m.statements {
+			if err := DB.Exec(stmt).Error; err != nil {
+				// Check if error is about column already existing (safe to ignore)
+				errMsg := err.Error()
+				if strings.Contains(errMsg, "Duplicate column") ||
+					strings.Contains(errMsg, "already exists") ||
+					strings.Contains(errMsg, "1060") { // MySQL error code for duplicate column
+					continue // Safe to ignore
+				}
+				log.Printf("Migration %s statement failed: %v\nStatement: %s", m.name, err, stmt)
+				failed = true
+				break
+			}
+		}
+
+		if !failed {
+			// Record as applied
+			DB.Create(&Migration{Name: m.name})
+			log.Printf("Migration %s applied successfully", m.name)
+		}
+	}
+}
+
 func ptrTime(t time.Time) *time.Time { return &t }
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
@@ -371,10 +454,22 @@ func buildICSForUser(userID uint) string {
 		if ed.IsZero() {
 			continue
 		}
+		var subj Subject
+		_ = DB.First(&subj, t.SubjectID).Error
+		var u User
+		_ = DB.First(&u, t.AddedUserID).Error
+		lang := strings.ToLower(strings.TrimSpace(u.NotificationLang))
+		if lang == "" {
+			lang = "ja"
+		}
+		sName := subj.NameJa
+		if lang == "en" && subj.NameEn != nil && *subj.NameEn != "" {
+			sName = *subj.NameEn
+		}
 		b.WriteString("BEGIN:VEVENT" + crlf)
 		b.WriteString(fmt.Sprintf("UID:tsk-%d@taskly\r\n", t.ID))
 		b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", now))
-		b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", icalEscape("[Task] "+t.Title)))
+		b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", icalEscape("[Task] "+sName+": "+t.Title)))
 		if t.Description != nil {
 			b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape(*t.Description)))
 		}
@@ -578,12 +673,27 @@ func smtpSendPlain(to, subject, text string) error {
 func buildTeamsTitleForTask(t Task) string {
 	var subj Subject
 	_ = DB.First(&subj, t.SubjectID).Error
-	subjName := subj.Title
-
-	// Build like: "教科: タイトル(M/D 朝まで|N限まで|N〜M限まで|M/Dまで)"
+	// Determine preferred language from adding user if available
+	var user User
+	_ = DB.First(&user, t.AddedUserID).Error
+	lang := strings.ToLower(strings.TrimSpace(user.NotificationLang))
+	if lang == "" {
+		lang = "ja"
+	}
+	subjName := ""
+	if lang == "en" {
+		if subj.NameEn != nil && *subj.NameEn != "" {
+			subjName = *subj.NameEn
+		}
+	}
+	if subjName == "" {
+		if strings.TrimSpace(subj.NameJa) != "" {
+			subjName = subj.NameJa
+		}
+	}
 	dateLabel := t.Deadline.Format("1/2")
 	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
-	if label == "" { // default
+	if label == "" {
 		label = dateLabel + "まで"
 	} else {
 		label = dateLabel + " " + label

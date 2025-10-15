@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 // Replaced DateTimePicker with period-based DeadlinePicker
 import {
   Tooltip,
@@ -77,6 +78,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { t, type Lang } from "@/lib/i18n";
 
 type Task = {
   id: number;
@@ -90,7 +92,7 @@ type Task = {
   is_require_hand_in?: boolean;
   self_check_required?: boolean;
 };
-type Subject = { id: number; title: string };
+type Subject = { id: number; name_ja: string; name_en?: string | null };
 
 // Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
 
@@ -102,25 +104,70 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function formatHeadingForDate(d: Date): string {
-  const today = startOfDay(new Date());
-  const diffMs = startOfDay(d).getTime() - today.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "今日";
-  if (diffDays === 1) return "あす";
-  if (diffDays === 2) return "あさって";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}/${m}/${day}`;
-}
-
 function formatDateYMDSlash(s: string): string {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[1]}/${m[2]}/${m[3]}` : s;
 }
 
+function localizeTaskType(
+  type: string | null | undefined,
+  dict: ReturnType<typeof t>["tasks"]
+): string {
+  if (!type) return "";
+  const upper = type.toUpperCase();
+  switch (upper) {
+    case "ONLINE":
+      return dict.typeOnline;
+    case "FACE_TO_FACE":
+      return dict.typeFaceToFace;
+    case "QUIZ":
+      return dict.typeQuiz;
+    case "PRESENTATION":
+      return dict.typePresentation;
+    case "SELF_STUDY":
+      return dict.typeSelfStudy;
+    case "OTHER":
+      return dict.typeOther;
+    default:
+      return type;
+  }
+}
+
 export default function TasksList() {
+  // Language management
+  const [lang, setLang] = React.useState<Lang>("ja");
+  React.useEffect(() => {
+    const updateLang = () => {
+      const stored = localStorage.getItem("display_lang") as Lang | null;
+      setLang(stored || "ja");
+    };
+    updateLang();
+    window.addEventListener("languagechange", updateLang);
+    window.addEventListener("storage", (e) => {
+      if (e.key === "display_lang") updateLang();
+    });
+    return () => {
+      window.removeEventListener("languagechange", updateLang);
+    };
+  }, []);
+  const dict = React.useMemo(() => t(lang), [lang]);
+
+  const formatHeadingForDate = React.useCallback(
+    (d: Date): string => {
+      const today = startOfDay(new Date());
+      const diffMs = startOfDay(d).getTime() - today.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) return dict.tasks.today;
+      if (diffDays === 1) return dict.tasks.tomorrow;
+      if (diffDays === 2) return dict.tasks.dayAfterTomorrow;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}/${m}/${day}`;
+    },
+    [dict.tasks]
+  );
+
   const [items, setItems] = React.useState<Task[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
@@ -157,14 +204,14 @@ export default function TasksList() {
         `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
         { q: q || undefined }
       ),
-      gql<{ subjects: Subject[] }>(`query{ subjects{ id title } }`),
+      gql<{ subjects: Subject[] }>(`query{ subjects{ id name_ja name_en } }`),
     ])
       .then(([t, s]) => {
         setItems(t.tasks.items);
         setSubjects(s.subjects || []);
       })
-      .catch((e) => setError(e?.message || "読み込みに失敗しました"));
-  }, [q]);
+      .catch((e) => setError(e?.message || dict.tasks.loadFailed));
+  }, [q, dict.tasks.loadFailed]);
 
   // debounce search input changes
   const [qInput, setQInput] = React.useState("");
@@ -208,14 +255,14 @@ export default function TasksList() {
         }
       } else if (e.key === "?") {
         toast({
-          title: "ショートカット",
-          description: "g → n: 新規作成 / ?: このヘルプ",
+          title: dict.tasks.shortcutsTitle,
+          description: dict.tasks.shortcutsDesc,
         });
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [dict.tasks]);
 
   // Ctrl+S / Cmd+S to save when editing
   React.useEffect(() => {
@@ -253,9 +300,12 @@ export default function TasksList() {
     const [open, setOpen] = React.useState(false);
     const [filter, setFilter] = React.useState("");
     const selected = subjects.find((s) => String(s.id) === value);
-    const filtered = subjects.filter((s) =>
-      s.title.toLowerCase().includes(filter.toLowerCase())
-    );
+    const filtered = subjects.filter((s) => {
+      const name = lang === "en" && s.name_en ? s.name_en : s.name_ja;
+      return name.toLowerCase().includes(filter.toLowerCase());
+    });
+    const displayName = (s: Subject) =>
+      lang === "en" && s.name_en ? s.name_en : s.name_ja;
     return (
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
@@ -265,7 +315,9 @@ export default function TasksList() {
             className="w-full justify-between"
           >
             <span className="truncate">
-              {selected ? selected.title : placeholder || "選択してください"}
+              {selected
+                ? displayName(selected)
+                : placeholder || dict.tasks.selectPlaceholder}
             </span>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -280,7 +332,7 @@ export default function TasksList() {
         <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] p-2">
           <div className="p-1">
             <Input
-              placeholder="検索"
+              placeholder={dict.common.search}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
@@ -294,12 +346,12 @@ export default function TasksList() {
                   setOpen(false);
                 }}
               >
-                {s.title}
+                {displayName(s)}
               </DropdownMenuItem>
             ))}
             {filtered.length === 0 && (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                見つかりませんでした
+                {dict.tasks.notFound}
               </div>
             )}
           </div>
@@ -314,7 +366,7 @@ export default function TasksList() {
     if (!newTitle.trim() || !newSubjectId.trim() || !newDate.trim()) {
       toast({
         variant: "destructive",
-        title: "タイトル・サブジェクト・期限（日付）は必須です",
+        title: dict.toast.requiredFields,
       });
       return;
     }
@@ -345,11 +397,11 @@ export default function TasksList() {
       setNewType("");
       setNewDesc("");
       setCreateOpen(false);
-      toast({ title: "作成しました" });
+      toast({ title: dict.toast.created });
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "作成に失敗しました",
+        title: dict.toast.createFailed,
         description: e?.message,
       });
     } finally {
@@ -413,14 +465,14 @@ export default function TasksList() {
           type: editType,
         }
       );
-      toast({ title: "更新しました" });
+      toast({ title: dict.toast.updated });
       cancelEdit();
     } catch (e: any) {
       // revert
       setItems(prev);
       toast({
         variant: "destructive",
-        title: "更新に失敗しました",
+        title: dict.toast.updateFailed,
         description: e?.message,
       });
     }
@@ -434,12 +486,12 @@ export default function TasksList() {
         `mutation($id:Int!){ deleteTask(id:$id) }`,
         { id }
       );
-      toast({ title: "削除しました" });
+      toast({ title: dict.toast.deleted });
     } catch (e: any) {
       setItems(prev);
       toast({
         variant: "destructive",
-        title: "削除に失敗しました",
+        title: dict.toast.deleteFailed,
         description: e?.message,
       });
     }
@@ -452,11 +504,13 @@ export default function TasksList() {
           <EmptyMedia variant="icon">
             <AlertCircle className="h-5 w-5" />
           </EmptyMedia>
-          <EmptyTitle>読み込みに失敗しました</EmptyTitle>
+          <EmptyTitle>{dict.tasks.loadFailed}</EmptyTitle>
           <EmptyDescription>{error}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button onClick={() => window.location.reload()}>再読み込み</Button>
+          <Button onClick={() => window.location.reload()}>
+            {dict.common.reload}
+          </Button>
         </EmptyContent>
       </Empty>
     );
@@ -464,15 +518,20 @@ export default function TasksList() {
 
   if (!items) {
     return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Hourglass className="h-5 w-5" />
-          </EmptyMedia>
-          <EmptyTitle>読み込み中</EmptyTitle>
-          <EmptyDescription>課題を取得しています…</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+              <Skeleton className="h-6 w-16" />
+            </div>
+            <Skeleton className="h-4 w-full" />
+          </div>
+        ))}
+      </div>
     );
   }
 
@@ -485,7 +544,7 @@ export default function TasksList() {
         <div className="flex-1">
           <InputGroup>
             <InputGroupInput
-              placeholder="課題を検索 (タイトル/説明)"
+              placeholder={dict.tasks.searchPlaceholder}
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
               onKeyDown={(e) => {
@@ -498,7 +557,7 @@ export default function TasksList() {
               <Search className="h-4 w-4" />
             </InputGroupAddon>
             <InputGroupAddon align="inline-end">
-              {shownItems.length} 件
+              {shownItems.length} {dict.tasks.itemsCount}
             </InputGroupAddon>
           </InputGroup>
         </div>
@@ -510,10 +569,10 @@ export default function TasksList() {
                 onClick={() => setCreateOpen(true)}
                 className="sm:inline-flex hidden"
               >
-                <Plus className="h-4 w-4 mr-1" /> 新規作成
+                <Plus className="h-4 w-4 mr-1" /> {dict.tasks.newTask}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>新しい課題を作成</TooltipContent>
+            <TooltipContent>{dict.tasks.createNewTask}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
         {/* Mobile icon button */}
@@ -533,32 +592,31 @@ export default function TasksList() {
       >
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>新規課題の作成</DialogTitle>
+            <DialogTitle>{dict.tasks.createTaskTitle}</DialogTitle>
             <DialogDescription>
-              必要な情報を入力してください。
+              {dict.tasks.enterRequiredInfo}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <Label htmlFor="nt-title-2">タイトル</Label>
+              <Label htmlFor="nt-title-2">{dict.tasks.title}</Label>
               <Input
                 id="nt-title-2"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="課題のタイトル"
+                placeholder={dict.tasks.titlePlaceholder}
               />
             </div>
             <div>
-              <Label htmlFor="nt-subject-2">サブジェクト</Label>
+              <Label htmlFor="nt-subject-2">{dict.tasks.subject}</Label>
               <SubjectSelect
                 value={newSubjectId}
                 onChange={setNewSubjectId}
                 subjects={subjects}
-                placeholder="選択してください"
               />
             </div>
             <div>
-              <Label htmlFor="nt-date-2">期限</Label>
+              <Label htmlFor="nt-date-2">{dict.tasks.deadline}</Label>
               <DeadlinePicker
                 date={newDate}
                 meta={newMeta}
@@ -574,7 +632,7 @@ export default function TasksList() {
                 checked={newRequire}
                 onCheckedChange={setNewRequire}
               />
-              <Label htmlFor="nt-req-2">提出必須</Label>
+              <Label htmlFor="nt-req-2">{dict.tasks.requireHandIn}</Label>
             </div>
             <div className="col-span-2 flex items-center gap-2 -mt-2">
               <Switch
@@ -582,29 +640,43 @@ export default function TasksList() {
                 checked={newSelfCheck}
                 onCheckedChange={setNewSelfCheck}
               />
-              <Label htmlFor="nt-scr-2">自己採点が必要</Label>
+              <Label htmlFor="nt-scr-2">{dict.tasks.selfCheckRequired}</Label>
             </div>
             <div>
-              <Label htmlFor="nt-type-2">タイプ</Label>
+              <Label htmlFor="nt-type-2">{dict.tasks.type}</Label>
               <Select
                 value={newType}
                 onValueChange={(v: string) => setNewType(v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="選択してください" />
+                  <SelectValue placeholder={dict.tasks.selectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="オンライン">オンライン</SelectItem>
-                  <SelectItem value="対面">対面</SelectItem>
-                  <SelectItem value="小テスト">小テスト</SelectItem>
-                  <SelectItem value="発表">発表</SelectItem>
-                  <SelectItem value="自習/予習">自習/予習</SelectItem>
-                  <SelectItem value="その他">その他</SelectItem>
+                  <SelectItem value={dict.tasks.typeOnline}>
+                    {dict.tasks.typeOnline}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeFaceToFace}>
+                    {dict.tasks.typeFaceToFace}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeQuiz}>
+                    {dict.tasks.typeQuiz}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typePresentation}>
+                    {dict.tasks.typePresentation}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeSelfStudy}>
+                    {dict.tasks.typeSelfStudy}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeOther}>
+                    {dict.tasks.typeOther}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="col-span-2 mt-0">
-              <Label htmlFor="nt-desc-2">説明（任意）</Label>
+              <Label htmlFor="nt-desc-2">
+                {dict.tasks.description} {dict.tasks.optional}
+              </Label>
               <textarea
                 id="nt-desc-2"
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -617,7 +689,7 @@ export default function TasksList() {
           </div>
           <div className="mt-3">
             <Button onClick={createTask} disabled={creating}>
-              新規作成
+              {dict.tasks.create}
             </Button>
           </div>
         </DialogContent>
@@ -630,32 +702,31 @@ export default function TasksList() {
       >
         <DrawerContent>
           <DrawerHeader className="text-left">
-            <DrawerTitle>新規課題の作成</DrawerTitle>
+            <DrawerTitle>{dict.tasks.createTaskTitle}</DrawerTitle>
             <DrawerDescription>
-              必要な情報を入力してください。
+              {dict.tasks.enterRequiredInfo}
             </DrawerDescription>
           </DrawerHeader>
           <div className="px-4 pb-4 grid grid-cols-2 gap-3">
             {/* form fields are the same as dialog */}
             <div className="col-span-2">
-              <Label>タイトル</Label>
+              <Label>{dict.tasks.title}</Label>
               <Input
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="課題のタイトル"
+                placeholder={dict.tasks.titlePlaceholder}
               />
             </div>
             <div>
-              <Label>サブジェクト</Label>
+              <Label>{dict.tasks.subject}</Label>
               <SubjectSelect
                 value={newSubjectId}
                 onChange={setNewSubjectId}
                 subjects={subjects}
-                placeholder="選択してください"
               />
             </div>
             <div>
-              <Label>期限</Label>
+              <Label>{dict.tasks.deadline}</Label>
               <DeadlinePicker
                 date={newDate}
                 meta={newMeta}
@@ -671,7 +742,7 @@ export default function TasksList() {
                 checked={newRequire}
                 onCheckedChange={setNewRequire}
               />
-              <Label htmlFor="nt-req-m">提出必須</Label>
+              <Label htmlFor="nt-req-m">{dict.tasks.requireHandIn}</Label>
             </div>
             <div className="col-span-2 flex items-center gap-2 -mt-2">
               <Switch
@@ -679,29 +750,43 @@ export default function TasksList() {
                 checked={newSelfCheck}
                 onCheckedChange={setNewSelfCheck}
               />
-              <Label htmlFor="nt-scr-m">自己採点が必要</Label>
+              <Label htmlFor="nt-scr-m">{dict.tasks.selfCheckRequired}</Label>
             </div>
             <div>
-              <Label>タイプ</Label>
+              <Label>{dict.tasks.type}</Label>
               <Select
                 value={newType}
                 onValueChange={(v: string) => setNewType(v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="選択してください" />
+                  <SelectValue placeholder={dict.tasks.selectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="オンライン">オンライン</SelectItem>
-                  <SelectItem value="対面">対面</SelectItem>
-                  <SelectItem value="小テスト">小テスト</SelectItem>
-                  <SelectItem value="発表">発表</SelectItem>
-                  <SelectItem value="自習/予習">自習/予習</SelectItem>
-                  <SelectItem value="その他">その他</SelectItem>
+                  <SelectItem value={dict.tasks.typeOnline}>
+                    {dict.tasks.typeOnline}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeFaceToFace}>
+                    {dict.tasks.typeFaceToFace}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeQuiz}>
+                    {dict.tasks.typeQuiz}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typePresentation}>
+                    {dict.tasks.typePresentation}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeSelfStudy}>
+                    {dict.tasks.typeSelfStudy}
+                  </SelectItem>
+                  <SelectItem value={dict.tasks.typeOther}>
+                    {dict.tasks.typeOther}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="col-span-2">
-              <Label>説明（任意）</Label>
+              <Label>
+                {dict.tasks.description} {dict.tasks.optional}
+              </Label>
               <textarea
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 rows={3}
@@ -716,7 +801,7 @@ export default function TasksList() {
                 disabled={creating}
                 className="w-full"
               >
-                作成
+                {dict.tasks.create}
               </Button>
             </div>
           </div>
@@ -730,9 +815,9 @@ export default function TasksList() {
               <EmptyMedia variant="icon">
                 <FileText className="h-5 w-5" />
               </EmptyMedia>
-              <EmptyTitle>検索結果がありません</EmptyTitle>
+              <EmptyTitle>{dict.tasks.noSearchResults}</EmptyTitle>
               <EmptyDescription>
-                条件に一致する課題は見つかりませんでした。
+                {dict.tasks.noSearchResultsDesc}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -742,34 +827,31 @@ export default function TasksList() {
               <EmptyMedia variant="icon">
                 <FileText className="h-5 w-5" />
               </EmptyMedia>
-              <EmptyTitle>課題はありません</EmptyTitle>
-              <EmptyDescription>
-                新しい課題を追加するとここに表示されます。
-              </EmptyDescription>
+              <EmptyTitle>{dict.tasks.noTasks}</EmptyTitle>
+              <EmptyDescription>{dict.tasks.noTasksDesc}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <div className="w-full max-w-xl text-left space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <Label htmlFor="nt-title">タイトル</Label>
+                    <Label htmlFor="nt-title">{dict.tasks.title}</Label>
                     <Input
                       id="nt-title"
                       value={newTitle}
                       onChange={(e) => setNewTitle(e.target.value)}
-                      placeholder="課題のタイトル"
+                      placeholder={dict.tasks.titlePlaceholder}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="nt-subject">サブジェクト</Label>
+                    <Label htmlFor="nt-subject">{dict.tasks.subject}</Label>
                     <SubjectSelect
                       value={newSubjectId}
                       onChange={setNewSubjectId}
                       subjects={subjects}
-                      placeholder="選択してください"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="nt-date">期限</Label>
+                    <Label htmlFor="nt-date">{dict.tasks.deadline}</Label>
                     <DeadlinePicker
                       date={newDate}
                       meta={newMeta}
@@ -785,7 +867,7 @@ export default function TasksList() {
                       checked={newRequire}
                       onCheckedChange={setNewRequire}
                     />
-                    <Label htmlFor="nt-req">提出必須</Label>
+                    <Label htmlFor="nt-req">{dict.tasks.requireHandIn}</Label>
                   </div>
                   <div className="col-span-2 flex items-center gap-2 -mt-2">
                     <Switch
@@ -793,29 +875,47 @@ export default function TasksList() {
                       checked={newSelfCheck}
                       onCheckedChange={setNewSelfCheck}
                     />
-                    <Label htmlFor="nt-scr">自己採点が必要</Label>
+                    <Label htmlFor="nt-scr">
+                      {dict.tasks.selfCheckRequired}
+                    </Label>
                   </div>
                   <div>
-                    <Label htmlFor="nt-type">タイプ</Label>
+                    <Label htmlFor="nt-type">{dict.tasks.type}</Label>
                     <Select
                       value={newType}
                       onValueChange={(v: string) => setNewType(v)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="選択してください" />
+                        <SelectValue
+                          placeholder={dict.tasks.selectPlaceholder}
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="オンライン">オンライン</SelectItem>
-                        <SelectItem value="対面">対面</SelectItem>
-                        <SelectItem value="小テスト">小テスト</SelectItem>
-                        <SelectItem value="発表">発表</SelectItem>
-                        <SelectItem value="自習/予習">自習/予習</SelectItem>
-                        <SelectItem value="その他">その他</SelectItem>
+                        <SelectItem value={dict.tasks.typeOnline}>
+                          {dict.tasks.typeOnline}
+                        </SelectItem>
+                        <SelectItem value={dict.tasks.typeFaceToFace}>
+                          {dict.tasks.typeFaceToFace}
+                        </SelectItem>
+                        <SelectItem value={dict.tasks.typeQuiz}>
+                          {dict.tasks.typeQuiz}
+                        </SelectItem>
+                        <SelectItem value={dict.tasks.typePresentation}>
+                          {dict.tasks.typePresentation}
+                        </SelectItem>
+                        <SelectItem value={dict.tasks.typeSelfStudy}>
+                          {dict.tasks.typeSelfStudy}
+                        </SelectItem>
+                        <SelectItem value={dict.tasks.typeOther}>
+                          {dict.tasks.typeOther}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="col-span-2 mt-0">
-                    <Label htmlFor="nt-desc">説明（任意）</Label>
+                    <Label htmlFor="nt-desc">
+                      {dict.tasks.description} {dict.tasks.optional}
+                    </Label>
                     <textarea
                       id="nt-desc"
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -827,7 +927,7 @@ export default function TasksList() {
                   {/* 自己採点は提出必須の直下に移動済み */}
                 </div>
                 <Button onClick={createTask} disabled={creating}>
-                  新規作成
+                  {dict.tasks.create}
                 </Button>
               </div>
             </EmptyContent>
@@ -849,7 +949,7 @@ export default function TasksList() {
         const todayStart = startOfDay(new Date()).getTime();
         for (const t of shownItems) {
           if (!t.deadline) {
-            const key = "期限なし";
+            const key = dict.tasks.noDeadline;
             if (!byKey.has(key)) {
               byKey.set(key, {
                 key,
@@ -893,12 +993,13 @@ export default function TasksList() {
                     })
                     .map((t) => {
                       const deadline = (() => {
-                        if (!t.deadline) return "期限なし";
+                        if (!t.deadline) return dict.tasks.noDeadline;
                         const dateStr = formatDateYMDSlash(t.deadline);
                         const label = deriveLabelFromEnums(
                           t.deadline,
                           t.deadline_since,
-                          t.deadline_until
+                          t.deadline_until,
+                          lang
                         );
                         return label ? `${dateStr} ${label}` : dateStr;
                       })();
@@ -912,7 +1013,7 @@ export default function TasksList() {
                             <div className="space-y-3">
                               <div>
                                 <Label htmlFor={`ed-title-${t.id}`}>
-                                  タイトル
+                                  {dict.tasks.title}
                                 </Label>
                                 <Input
                                   id={`ed-title-${t.id}`}
@@ -923,18 +1024,17 @@ export default function TasksList() {
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
                                   <Label htmlFor={`ed-subject-${t.id}`}>
-                                    サブジェクト
+                                    {dict.tasks.subject}
                                   </Label>
                                   <SubjectSelect
                                     value={editSubjectId}
                                     onChange={setEditSubjectId}
                                     subjects={subjects}
-                                    placeholder="選択してください"
                                   />
                                 </div>
                                 <div>
                                   <Label htmlFor={`ed-date-${t.id}`}>
-                                    期限
+                                    {dict.tasks.deadline}
                                   </Label>
                                   <DeadlinePicker
                                     date={editDate}
@@ -947,34 +1047,48 @@ export default function TasksList() {
                                 </div>
                               </div>
                               <div>
-                                <Label>タイプ</Label>
+                                <Label>{dict.tasks.type}</Label>
                                 <Select
                                   value={editType}
                                   onValueChange={(v: string) => setEditType(v)}
                                 >
                                   <SelectTrigger>
-                                    <SelectValue placeholder="選択してください" />
+                                    <SelectValue
+                                      placeholder={dict.tasks.selectPlaceholder}
+                                    />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="オンライン">
-                                      オンライン
+                                    <SelectItem value={dict.tasks.typeOnline}>
+                                      {dict.tasks.typeOnline}
                                     </SelectItem>
-                                    <SelectItem value="対面">対面</SelectItem>
-                                    <SelectItem value="小テスト">
-                                      小テスト
+                                    <SelectItem
+                                      value={dict.tasks.typeFaceToFace}
+                                    >
+                                      {dict.tasks.typeFaceToFace}
                                     </SelectItem>
-                                    <SelectItem value="発表">発表</SelectItem>
-                                    <SelectItem value="自習/予習">
-                                      自習/予習
+                                    <SelectItem value={dict.tasks.typeQuiz}>
+                                      {dict.tasks.typeQuiz}
                                     </SelectItem>
-                                    <SelectItem value="その他">
-                                      その他
+                                    <SelectItem
+                                      value={dict.tasks.typePresentation}
+                                    >
+                                      {dict.tasks.typePresentation}
+                                    </SelectItem>
+                                    <SelectItem
+                                      value={dict.tasks.typeSelfStudy}
+                                    >
+                                      {dict.tasks.typeSelfStudy}
+                                    </SelectItem>
+                                    <SelectItem value={dict.tasks.typeOther}>
+                                      {dict.tasks.typeOther}
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
                               <div>
-                                <Label>説明（任意）</Label>
+                                <Label>
+                                  {dict.tasks.description} {dict.tasks.optional}
+                                </Label>
                                 <textarea
                                   className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                                   rows={3}
@@ -989,7 +1103,7 @@ export default function TasksList() {
                                   onCheckedChange={setEditRequire}
                                 />
                                 <Label htmlFor={`ed-req-${t.id}`}>
-                                  提出必須
+                                  {dict.tasks.requireHandIn}
                                 </Label>
                               </div>
                               <div className="flex items-center gap-2 -mt-2">
@@ -997,21 +1111,23 @@ export default function TasksList() {
                                   checked={editSelfCheck}
                                   onCheckedChange={setEditSelfCheck}
                                 />
-                                <Label>自己採点が必要</Label>
+                                <Label>{dict.tasks.selfCheckRequired}</Label>
                               </div>
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
                                   onClick={() => saveEdit(t.id)}
                                 >
-                                  <Save className="h-4 w-4 mr-1" /> 保存
+                                  <Save className="h-4 w-4 mr-1" />{" "}
+                                  {dict.tasks.save}
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="secondary"
                                   onClick={cancelEdit}
                                 >
-                                  <X className="h-4 w-4 mr-1" /> キャンセル
+                                  <X className="h-4 w-4 mr-1" />{" "}
+                                  {dict.tasks.cancel}
                                 </Button>
                               </div>
                             </div>
@@ -1020,15 +1136,17 @@ export default function TasksList() {
                               <div>
                                 <div className="mb-1 flex flex-wrap gap-1">
                                   {t.type && (
-                                    <Badge variant="secondary">{t.type}</Badge>
+                                    <Badge variant="secondary">
+                                      {localizeTaskType(t.type, dict.tasks)}
+                                    </Badge>
                                   )}
                                   {t.is_require_hand_in && (
                                     <Badge variant="destructive">
-                                      提出必須
+                                      {dict.tasks.requireHandIn}
                                     </Badge>
                                   )}
                                   {t.self_check_required && (
-                                    <Badge>自己採点</Badge>
+                                    <Badge>{dict.tasks.selfCheckBadge}</Badge>
                                   )}
                                 </div>
                                 <div className="font-medium">{t.title}</div>
@@ -1037,8 +1155,10 @@ export default function TasksList() {
                                     (s) => s.id === t.subject_id
                                   );
                                   const subjectTitle = subj
-                                    ? subj.title
-                                    : `教科ID: ${t.subject_id}`;
+                                    ? lang === "en" && subj.name_en
+                                      ? subj.name_en
+                                      : subj.name_ja
+                                    : `${dict.tasks.subjectId}: ${t.subject_id}`;
                                   return (
                                     <div className="text-sm text-muted-foreground">
                                       {subjectTitle} {deadline}
@@ -1067,7 +1187,8 @@ export default function TasksList() {
                                     variant="secondary"
                                     onClick={() => beginEdit(t)}
                                   >
-                                    <Pencil className="h-4 w-4 mr-1" /> 編集
+                                    <Pencil className="h-4 w-4 mr-1" />{" "}
+                                    {dict.tasks.edit}
                                   </Button>
                                   <ButtonGroupSeparator />
                                   <Button
@@ -1075,7 +1196,8 @@ export default function TasksList() {
                                     variant="destructive"
                                     onClick={() => deleteTask(t.id)}
                                   >
-                                    <Trash2 className="h-4 w-4 mr-1" /> 削除
+                                    <Trash2 className="h-4 w-4 mr-1" />{" "}
+                                    {dict.tasks.delete}
                                   </Button>
                                 </ButtonGroup>
                                 {/* Mobile: kebab menu */}
@@ -1085,7 +1207,7 @@ export default function TasksList() {
                                       <Button
                                         size="icon"
                                         variant="ghost"
-                                        aria-label="アクション"
+                                        aria-label={dict.tasks.actions}
                                       >
                                         <MoreVertical className="h-4 w-4" />
                                       </Button>
@@ -1094,13 +1216,15 @@ export default function TasksList() {
                                       <DropdownMenuItem
                                         onClick={() => beginEdit(t)}
                                       >
-                                        <Pencil className="h-4 w-4 mr-2" /> 編集
+                                        <Pencil className="h-4 w-4 mr-2" />{" "}
+                                        {dict.tasks.edit}
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         className="text-destructive focus:text-destructive"
                                         onClick={() => deleteTask(t.id)}
                                       >
-                                        <Trash2 className="h-4 w-4 mr-2" /> 削除
+                                        <Trash2 className="h-4 w-4 mr-2" />{" "}
+                                        {dict.tasks.delete}
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
