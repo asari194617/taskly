@@ -46,6 +46,22 @@ const { title = "Taskly" } = Astro.props;
     </main>
     <AppShell client:load />
     <script>
+      // Keep <html lang> in sync with selected language
+      (function(){
+        try {
+          const apply = () => {
+            const lang = localStorage.getItem('display_lang') || 'ja';
+            document.documentElement.setAttribute('lang', lang);
+          };
+          apply();
+          window.addEventListener('languagechange', apply);
+          window.addEventListener('storage', (e) => {
+            if (e.key === 'display_lang') apply();
+          });
+        } catch {}
+      })();
+    </script>
+    <script>
       (function(){
         const btn = document.getElementById('themeToggle');
         const sun = document.getElementById('icon-sun');

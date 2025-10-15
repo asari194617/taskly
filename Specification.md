@@ -11,8 +11,8 @@ A simple, fast class management service.
 - Android
 - Mac
 - Windows
-- API
-- iCal (カレンダーとして購読可能にする)
+- API✅
+- iCal (カレンダーとして購読可能にする)✅
 - MCP(Model Context Protocol)サーバー
 - Teams (特定のメールアドレスに送信することでPower Automateが実行)✅
     - タイトルは`[Taskly]tasks:add`としてください。✅
@@ -59,9 +59,9 @@ A simple, fast class management service.
 - アカウントシステム
     - ログイン✅
     - ログアウト✅
-    - パスワードの設定(デフォルトはメールに送られる6桁の番号で認証)
-    - 表示名の設定(デフォルトはメールアドレス)
-    - アカウント削除 (レコードの削除ではなく`is_deleted`フラグで対応)
+    - パスワードの設定(デフォルトはメールに送られる6桁の番号で認証)✅
+    - 表示名の設定(デフォルトはメールアドレス)✅
+    - アカウント削除 (レコードの削除ではなく`is_deleted`フラグで対応)✅
     - 2段階認証の設定
         - パスキー
         - TOTP
@@ -90,7 +90,7 @@ A simple, fast class management service.
 - CDN: CloudFlare R2 (S3のクライアントを使って管理)✅
 - 明日もやるかどうかの判定: Gemini’s API (毎回文面が異なるため)
 - CI/CD: GitHub Actions (アプリケーションサーバーのみ)
-- DB: MySQL
+- DB: MySQL✅
 // - メール生成: React Email
 - Metrics: Prometheus (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)
 - (APIとiCalとMCPとTeamsを除く)各プラットフォームとアプリケーションサーバーのやりとり: GraphQL

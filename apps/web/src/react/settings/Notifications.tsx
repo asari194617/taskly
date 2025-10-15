@@ -4,6 +4,7 @@ import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { useLang } from "@/react/LanguageProvider";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
@@ -20,6 +21,7 @@ function urlB64ToUint8Array(base64String: string) {
 }
 
 export default function SettingsNotifications() {
+  const { dict } = useLang();
   const [emailOn, setEmailOn] = React.useState(true);
   const [pushOn, setPushOn] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -47,7 +49,6 @@ export default function SettingsNotifications() {
       } catch {}
     })();
   }, []);
-
   React.useEffect(() => {
     let mounted = true;
     (async () => {
@@ -81,11 +82,12 @@ export default function SettingsNotifications() {
     setMessage(null);
     try {
       if (!("serviceWorker" in navigator))
-        throw new Error("Service Worker未対応です");
-      if (!("PushManager" in window)) throw new Error("Push通知未対応です");
+        throw new Error(dict.settingsNotifications.errorSwUnsupported);
+      if (!("PushManager" in window))
+        throw new Error(dict.settingsNotifications.errorPushUnsupported);
       // Ensure SW registered
       const swReg = await navigator.serviceWorker.ready;
-      let permission =
+      let permission: NotificationPermission =
         typeof Notification !== "undefined"
           ? Notification.permission
           : "default";
@@ -93,8 +95,8 @@ export default function SettingsNotifications() {
         permission = await Notification.requestPermission();
         setPerm(permission);
       }
-      if (permission !== "granted") throw new Error("通知が許可されていません");
-
+      if (permission !== "granted")
+        throw new Error(dict.settingsNotifications.errorNotAllowed);
       // Ensure previous subscription is cleared (especially if server key changed)
       const existing = await swReg.pushManager.getSubscription();
       if (existing) {
@@ -143,11 +145,12 @@ export default function SettingsNotifications() {
           Auth: key.keys?.auth,
         }),
       });
-      if (!res.ok) throw new Error("サーバー登録に失敗しました");
+      if (!res.ok)
+        throw new Error(dict.settingsNotifications.errorServerRegister);
       setPushOn(true);
-      setMessage("プッシュ通知を有効化しました");
+      setMessage(dict.settingsNotifications.enabledMsg);
     } catch (e: any) {
-      setMessage(e.message || "エラーが発生しました");
+      setMessage(e.message || dict.settingsNotifications.errorGeneric);
       throw e;
     }
   };
@@ -173,9 +176,9 @@ export default function SettingsNotifications() {
         });
       }
       setPushOn(false);
-      setMessage("プッシュ通知を無効化しました");
+      setMessage(dict.settingsNotifications.disabledMsg);
     } catch (e: any) {
-      setMessage(e.message || "エラーが発生しました");
+      setMessage(e.message || dict.settingsNotifications.errorGeneric);
     }
   };
 
@@ -200,21 +203,20 @@ export default function SettingsNotifications() {
           "X-Client-Platform": "web",
         },
       });
-      if (!res.ok) throw new Error("テスト送信に失敗しました");
+      if (!res.ok) throw new Error(dict.settingsNotifications.errorTestSend);
       const data = await res.json().catch(() => ({} as any));
       const sent = typeof data?.sent === "number" ? data.sent : undefined;
       if (typeof sent === "number") {
-        setMessage(`テスト通知を送信しました（${sent}件）`);
+        const templ = dict.settingsNotifications.testSent;
+        setMessage(templ.replace("{n}", String(sent)));
         if (sent === 0) {
-          setMessage(
-            "テスト通知を送信しました（0件）。購読が保存されていない可能性があります。Web Pushを一度OFF→ONして再登録してください。"
-          );
+          setMessage(dict.settingsNotifications.testSentZeroHint);
         }
       } else {
-        setMessage("テスト通知を送信しました");
+        setMessage(dict.settingsNotifications.sendTest);
       }
     } catch (e: any) {
-      setMessage(e.message || "エラーが発生しました");
+      setMessage(e.message || dict.settingsNotifications.errorGeneric);
     }
   };
 
@@ -228,12 +230,13 @@ export default function SettingsNotifications() {
           "X-Client-Platform": "web",
         },
       });
-      if (!res.ok) throw new Error("購読の取得に失敗しました");
+      if (!res.ok) throw new Error(dict.settingsNotifications.errorFetchSubs);
       const data = await res.json();
       const count = data?.count ?? 0;
-      setMessage(`登録済みの購読: ${count} 件`);
+      const templ = dict.settingsNotifications.subsCount;
+      setMessage(templ.replace("{n}", String(count)));
     } catch (e: any) {
-      setMessage(e.message || "エラーが発生しました");
+      setMessage(e.message || dict.settingsNotifications.errorGeneric);
     }
   };
 
@@ -256,40 +259,39 @@ export default function SettingsNotifications() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">通知設定</h1>
+        <h1 className="text-xl font-semibold">
+          {dict.settingsNotifications.heading}
+        </h1>
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <div>
-              ブラウザのプッシュ通知を有効にすると、締切やお知らせを受け取れます。
-              <div className="text-sm text-muted-foreground">
-                タスクや日直の更新をメールで受け取ります（準備中）。
-              </div>
-            </div>
+            <div>{dict.settingsNotifications.emailDesc}</div>
             <Switch checked={emailOn} onCheckedChange={setEmailOn} />
           </div>
         </Card>
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-medium">Web Push</div>
+              <div className="font-medium">
+                {dict.settingsNotifications.webPush}
+              </div>
               <div className="text-sm text-muted-foreground">
                 <div className="flex items-center justify-between pt-2 border-t border-border/50">
                   <div>
                     <div className="text-sm">
-                      毎日のプッシュ通知（朝のダイジェスト）
+                      {dict.settingsNotifications.daily}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      サーバー既定:{" "}
+                      {dict.settingsNotifications.serverDefault}:{" "}
                       {import.meta.env.PUBLIC_PUSH_DIGEST_TIME || "07:45"}
                     </div>
                   </div>
                   <Switch checked={dailyEnabled} onCheckedChange={saveDaily} />
                 </div>
-                ブラウザのプッシュ通知を有効にすると、締切やお知らせを受け取れます。
+                {dict.settingsNotifications.emailDesc}
               </div>
               {perm === "denied" && (
                 <div className="text-xs text-red-500 mt-1">
-                  通知がブラウザでブロックされています。ブラウザのサイト設定から通知を許可してください。
+                  {dict.settingsNotifications.blocked}
                 </div>
               )}
               {message && (
@@ -310,14 +312,14 @@ export default function SettingsNotifications() {
               onClick={testPush}
               disabled={!pushOn || loading}
             >
-              テスト通知を送信
+              {dict.settingsNotifications.sendTest}
             </Button>
             <Button
               variant="secondary"
               onClick={checkSubscriptions}
               disabled={loading}
             >
-              購読を確認
+              {dict.settingsNotifications.checkSubs}
             </Button>
             {!pushOn && perm !== "granted" && (
               <Button
@@ -325,7 +327,7 @@ export default function SettingsNotifications() {
                 onClick={() => subscribe()}
                 disabled={loading}
               >
-                許可して有効化
+                {dict.settingsNotifications.enableAndAllow}
               </Button>
             )}
           </div>

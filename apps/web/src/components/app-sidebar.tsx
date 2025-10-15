@@ -22,6 +22,7 @@ import {
   Settings,
   Boxes,
 } from "lucide-react";
+import { useLang } from "@/react/LanguageProvider";
 
 type MenuItem = {
   href: string;
@@ -29,17 +30,23 @@ type MenuItem = {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
-const items: MenuItem[] = [
-  { href: "/settings/basic", label: "基本", icon: User },
-  { href: "/settings/security", label: "セキュリティ", icon: Shield },
-  { href: "/settings/notifications", label: "通知", icon: Bell },
-  { href: "/settings/api-keys", label: "APIキー", icon: Key },
-  { href: "/settings/ical", label: "iCal", icon: Calendar },
-  { href: "/settings/mcp", label: "MCP", icon: Boxes },
-];
+function useItems(dict: ReturnType<typeof import("@/lib/i18n").t>) {
+  const d = dict.settings;
+  const items: MenuItem[] = [
+    { href: "/settings/basic", label: d.basic, icon: User },
+    { href: "/settings/security", label: d.security, icon: Shield },
+    { href: "/settings/notifications", label: d.notifications, icon: Bell },
+    { href: "/settings/api-keys", label: "API Key", icon: Key },
+    { href: "/settings/ical", label: "iCal", icon: Calendar },
+    { href: "/settings/mcp", label: "MCP", icon: Boxes },
+  ];
+  return items;
+}
 
 export function AppSidebar() {
   const [path, setPath] = React.useState<string>("/settings");
+  const { dict } = useLang();
+  const items = useItems(dict);
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       setPath(window.location.pathname);
@@ -50,12 +57,12 @@ export function AppSidebar() {
     <Sidebar collapsible="offcanvas">
       <SidebarHeader>
         <div className="px-2 py-1 text-sm font-medium inline-flex items-center gap-2">
-          <Settings className="h-4 w-4" /> 設定
+          <Settings className="h-4 w-4" /> {dict.settings.title}
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>メニュー</SidebarGroupLabel>
+          <SidebarGroupLabel>{dict.common.menu}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (

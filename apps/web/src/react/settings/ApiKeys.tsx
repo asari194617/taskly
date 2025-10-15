@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import { useLang } from "@/react/LanguageProvider";
 
 type ApiKey = {
   id: number;
@@ -31,6 +32,7 @@ type ApiKey = {
 };
 
 export default function SettingsApiKeys() {
+  const { dict } = useLang();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<ApiKey[]>([]);
@@ -91,11 +93,15 @@ export default function SettingsApiKeys() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">APIキー</h1>
+        <h1 className="text-xl font-semibold">
+          {dict.settingsApiKeys.heading}
+        </h1>
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-60 flex-1">
-              <div className="text-sm mb-1">説明（任意）</div>
+              <div className="text-sm mb-1">
+                {dict.settingsApiKeys.descOptional}
+              </div>
               <Input
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
@@ -109,17 +115,17 @@ export default function SettingsApiKeys() {
                     e.preventDefault();
                   }}
                 >
-                  新しいAPIキーを発行
+                  {dict.settingsApiKeys.issueNew}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>APIキーを発行</DialogTitle>
+                  <DialogTitle>{dict.settingsApiKeys.dialogTitle}</DialogTitle>
                 </DialogHeader>
                 {createdToken ? (
                   <div className="space-y-2">
                     <div className="text-sm">
-                      このトークンは一度しか表示されません。必ず保存してください。
+                      {dict.settingsApiKeys.tokenWarn}
                     </div>
                     <code className="block break-all rounded border bg-muted/30 p-2 text-sm">
                       {createdToken}
@@ -130,19 +136,19 @@ export default function SettingsApiKeys() {
                           navigator.clipboard.writeText(createdToken!)
                         }
                       >
-                        コピー
+                        {dict.common.copy}
                       </Button>
                       <Button
                         variant="secondary"
                         onClick={() => setCreatedToken(null)}
                       >
-                        閉じる
+                        {dict.common.close}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <DialogFooter>
-                    <Button onClick={create}>発行する</Button>
+                    <Button onClick={create}>{dict.common.create}</Button>
                   </DialogFooter>
                 )}
               </DialogContent>
@@ -153,11 +159,13 @@ export default function SettingsApiKeys() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>説明</TableHead>
-                <TableHead>状態</TableHead>
-                <TableHead>作成日</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead>{dict.settingsApiKeys.table.id}</TableHead>
+                <TableHead>{dict.settingsApiKeys.table.description}</TableHead>
+                <TableHead>{dict.settingsApiKeys.table.status}</TableHead>
+                <TableHead>{dict.settingsApiKeys.table.createdAt}</TableHead>
+                <TableHead className="text-right">
+                  {dict.settingsApiKeys.table.actions}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -167,7 +175,9 @@ export default function SettingsApiKeys() {
                   <TableCell className="max-w-[300px] truncate">
                     {it.description || "-"}
                   </TableCell>
-                  <TableCell>{it.is_valid ? "有効" : "無効"}</TableCell>
+                  <TableCell>
+                    {it.is_valid ? dict.common.enabled : dict.common.disabled}
+                  </TableCell>
                   <TableCell>
                     {new Date(it.created_at).toLocaleString()}
                   </TableCell>
@@ -176,7 +186,7 @@ export default function SettingsApiKeys() {
                       variant="secondary"
                       onClick={() => toggleValid(it.id, it.is_valid)}
                     >
-                      {it.is_valid ? "無効化" : "有効化"}
+                      {it.is_valid ? dict.common.disable : dict.common.enable}
                     </Button>
                   </TableCell>
                 </TableRow>

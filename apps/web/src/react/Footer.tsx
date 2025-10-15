@@ -38,7 +38,8 @@ export default function Footer() {
         title: d.documentation,
         links: [
           { title: d.guide, href: "/guide" },
-          { title: d.api, href: "https://cdn.taskly.iy0306.com/docs/index.html" },
+          { title: d.api, href: "https://cdn.taskly.iy0306.com/docs/api/index.html" },
+          { title: d.openapiFile, href: "https://cdn.taskly.iy0306.com/docs/api/index.html" },
           { title: d.calendar, href: "/guide/calendar" },
           { title: d.mcpServer, href: "/guide/mcp" },
         ],
@@ -139,8 +140,8 @@ export default function Footer() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
-            <span>Made with❣️ by</span>
+          <div className="flex items-center">
+            <span>Made with❣️ by&nbsp;</span>
             <HoverCard>
               <HoverCardTrigger asChild>
                 <a

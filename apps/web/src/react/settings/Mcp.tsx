@@ -21,11 +21,13 @@ import {
 } from "@/components/ui/dialog";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import { useLang } from "@/react/LanguageProvider";
 
 type McpInfo = { enabled: boolean; has_token: boolean };
 type LogItem = { action: string; created_at: string };
 
 export default function SettingsMcp() {
+  const { dict } = useLang();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [info, setInfo] = React.useState<McpInfo | null>(null);
@@ -41,7 +43,7 @@ export default function SettingsMcp() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "MCP情報の取得に失敗しました",
+        title: dict.toast.userInfoFetchError,
         description: e?.message,
       });
     }
@@ -75,7 +77,7 @@ export default function SettingsMcp() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "作成に失敗しました",
+        title: dict.toast.createFailed,
         description: e?.message,
       });
     }
@@ -83,14 +85,14 @@ export default function SettingsMcp() {
   async function revokeToken() {
     try {
       await gql<{ mcpRevoke: boolean }>(`mutation{ mcpRevoke }`);
-      toast({ title: "トークンを無効化しました" });
+      toast({ title: dict.settingsNotifications.disabledMsg });
       setCreatedToken(null);
       await loadInfo();
       await loadLogs();
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "無効化に失敗しました",
+        title: dict.toast.updateFailed,
         description: e?.message,
       });
     }
@@ -101,21 +103,21 @@ export default function SettingsMcp() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">MCP 設定</h1>
+        <h1 className="text-xl font-semibold">{dict.settingsMcp.heading}</h1>
         <Card className="p-4 space-y-3">
           {disabled ? (
             <div className="text-sm text-muted-foreground">
-              この環境ではMCPが無効化されています。
+              {dict.settingsMcp.disabled}
             </div>
           ) : (
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground">
-                アプリ連携用のMCPトークンを発行・無効化できます。トークンは一度しか表示されません。
+                {dict.settingsMcp.description}
               </div>
               <div className="flex flex-wrap gap-2">
                 {info?.has_token ? (
                   <Button variant="destructive" onClick={revokeToken}>
-                    トークンを無効化
+                    {dict.settingsMcp.revokeToken}
                   </Button>
                 ) : (
                   <Dialog>
@@ -126,17 +128,19 @@ export default function SettingsMcp() {
                           setCreatedToken(null);
                         }}
                       >
-                        トークンを発行
+                        {dict.settingsMcp.issueToken}
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>MCPトークン</DialogTitle>
+                        <DialogTitle>
+                          {dict.settingsMcp.dialogTitle}
+                        </DialogTitle>
                       </DialogHeader>
                       {createdToken ? (
                         <div className="space-y-3">
                           <div className="text-sm">
-                            このトークンは一度しか表示されません。必ず安全な場所に保存してください。
+                            {dict.settingsMcp.tokenWarn}
                           </div>
                           <code className="block break-all rounded border bg-muted/30 p-2 text-sm">
                             {createdToken}
@@ -147,19 +151,21 @@ export default function SettingsMcp() {
                                 navigator.clipboard.writeText(createdToken!)
                               }
                             >
-                              コピー
+                              {dict.common.copy}
                             </Button>
                             <Button
                               variant="secondary"
                               onClick={() => setCreatedToken(null)}
                             >
-                              閉じる
+                              {dict.common.close}
                             </Button>
                           </div>
                         </div>
                       ) : (
                         <DialogFooter>
-                          <Button onClick={createToken}>発行する</Button>
+                          <Button onClick={createToken}>
+                            {dict.settingsMcp.issueToken}
+                          </Button>
                         </DialogFooter>
                       )}
                     </DialogContent>
@@ -171,16 +177,16 @@ export default function SettingsMcp() {
         </Card>
         <Card className="p-0 overflow-x-auto">
           <div className="p-4 flex items-center justify-between">
-            <div className="font-medium">操作履歴</div>
+            <div className="font-medium">{dict.settingsMcp.logs.title}</div>
             <Button variant="secondary" size="sm" onClick={loadLogs}>
-              再読み込み
+              {dict.settingsMcp.logs.reload}
             </Button>
           </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>アクション</TableHead>
-                <TableHead>日時</TableHead>
+                <TableHead>{dict.settingsMcp.logs.action}</TableHead>
+                <TableHead>{dict.settingsMcp.logs.time}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

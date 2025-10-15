@@ -4,24 +4,10 @@ import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
 import { User, Shield, Bell, Key, Calendar, Boxes } from "lucide-react";
 import { t, type Lang } from "@/lib/i18n";
+import { useLang } from "@/react/LanguageProvider";
 
 export default function SettingsPage() {
-  const [lang, setLang] = React.useState<Lang>("ja");
-  React.useEffect(() => {
-    const updateLang = () => {
-      const stored = localStorage.getItem("display_lang") as Lang | null;
-      setLang(stored || "ja");
-    };
-    updateLang();
-    window.addEventListener("languagechange", updateLang);
-    window.addEventListener("storage", (e) => {
-      if (e.key === "display_lang") updateLang();
-    });
-    return () => {
-      window.removeEventListener("languagechange", updateLang);
-    };
-  }, []);
-  const dict = React.useMemo(() => t(lang), [lang]);
+  const { dict } = useLang();
 
   return (
     <SettingsShell>

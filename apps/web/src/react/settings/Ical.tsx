@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import { useLang } from "@/react/LanguageProvider";
 
 type IItem = {
   id: number;
@@ -23,6 +24,7 @@ type IItem = {
 };
 
 export default function SettingsIcal() {
+  const { dict } = useLang();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<IItem[]>([]);
@@ -78,29 +80,33 @@ export default function SettingsIcal() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">iCal</h1>
+        <h1 className="text-xl font-semibold">{dict.settingsIcal.heading}</h1>
         <Card className="p-4 space-y-3">
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-60">
-              <div className="text-sm mb-1">説明（任意）</div>
+              <div className="text-sm mb-1">
+                {dict.settingsIcal.descOptional}
+              </div>
               <Input
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
                 placeholder="例: 個人用"
               />
             </div>
-            <Button onClick={create}>URLを発行</Button>
+            <Button onClick={create}>{dict.settingsIcal.issueUrl}</Button>
           </div>
         </Card>
         <Card className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>説明</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead>作成日</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead>{dict.settingsIcal.table.id}</TableHead>
+                <TableHead>{dict.settingsIcal.table.description}</TableHead>
+                <TableHead>{dict.settingsIcal.table.url}</TableHead>
+                <TableHead>{dict.settingsIcal.table.createdAt}</TableHead>
+                <TableHead className="text-right">
+                  {dict.settingsIcal.table.actions}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -121,10 +127,10 @@ export default function SettingsIcal() {
                       variant="secondary"
                       onClick={() => navigator.clipboard.writeText(it.url)}
                     >
-                      コピー
+                      {dict.common.copy}
                     </Button>
                     <Button variant="destructive" onClick={() => revoke(it.id)}>
-                      削除
+                      {dict.common.delete}
                     </Button>
                   </TableCell>
                 </TableRow>

@@ -122,14 +122,16 @@ export default function SettingsBasic() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">基本設定</h1>
+        <h1 className="text-xl font-semibold">{dict.settingsBasic.heading}</h1>
         <Card className="p-4 space-y-3">
           <div className="space-y-1">
-            <Label htmlFor="email">メールアドレス</Label>
+            <Label htmlFor="email">{dict.settingsBasic.email}</Label>
             <Input id="email" value={email} disabled readOnly />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="display_name">表示名</Label>
+            <Label htmlFor="display_name">
+              {dict.settingsBasic.displayName}
+            </Label>
             <Input
               id="display_name"
               value={displayName}
@@ -137,43 +139,51 @@ export default function SettingsBasic() {
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="notification_lang">通知の言語</Label>
+            <Label htmlFor="notification_lang">
+              {dict.settingsBasic.notificationLang}
+            </Label>
             <Select
               value={notificationLang}
               onValueChange={(v: "ja" | "en") => setNotificationLang(v)}
             >
               <SelectTrigger id="notification_lang">
-                <SelectValue placeholder="選択" />
+                <SelectValue placeholder={dict.tasks.selectPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ja">日本語</SelectItem>
-                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="ja">{dict.common.japanese}</SelectItem>
+                <SelectItem value="en">{dict.common.english}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <Button onClick={save} disabled={loading}>
-            {loading ? "保存中..." : "保存"}
+            {loading ? dict.common.saving : dict.common.save}
           </Button>
         </Card>
         <Card className="p-4 space-y-3 border-destructive/30">
           <div>
-            <div className="font-medium text-destructive">アカウント削除</div>
+            <div className="font-medium text-destructive">
+              {dict.settingsBasic.deleteAccount}
+            </div>
             <div className="text-sm text-muted-foreground">
-              この操作は取り消せません。
+              {dict.settingsBasic.irreversible}
             </div>
           </div>
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="destructive">アカウントを削除</Button>
+              <Button variant="destructive">
+                {dict.settingsBasic.deleteAccount}
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>本当に削除しますか？</DialogTitle>
+                <DialogTitle>
+                  {dict.settingsBasic.deleteConfirmTitle}
+                </DialogTitle>
               </DialogHeader>
               <DialogFooter>
-                <Button variant="secondary">キャンセル</Button>
+                <Button variant="secondary">{dict.common.cancel}</Button>
                 <Button variant="destructive" onClick={deleteAccount}>
-                  削除する
+                  {dict.common.delete}
                 </Button>
               </DialogFooter>
             </DialogContent>

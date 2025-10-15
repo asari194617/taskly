@@ -39,6 +39,19 @@ export const t = (lang: Lang) => ({
     reload: lang === "ja" ? "再読み込み" : "Reload",
     loading: lang === "ja" ? "読み込み中" : "Loading",
     noResults: lang === "ja" ? "結果がありません" : "No results",
+    menu: lang === "ja" ? "メニュー" : "Menu",
+    email: lang === "ja" ? "メールアドレス" : "Email",
+    displayName: lang === "ja" ? "表示名" : "Display name",
+    notificationLanguage:
+      lang === "ja" ? "通知の言語" : "Notification language",
+    copy: lang === "ja" ? "コピー" : "Copy",
+    print: lang === "ja" ? "印刷" : "Print",
+    saving: lang === "ja" ? "保存中..." : "Saving...",
+    enabled: lang === "ja" ? "有効" : "Enabled",
+    disabled: lang === "ja" ? "無効" : "Disabled",
+    enable: lang === "ja" ? "有効化" : "Enable",
+    disable: lang === "ja" ? "無効化" : "Disable",
+    openapiFile: lang === "ja" ? "OpenAPIファイル" : "OpenAPI file",
   },
   home: {
     title: lang === "ja" ? "課題一覧" : "Task List",
@@ -173,5 +186,206 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "MCPトークンの発行・無効化、操作履歴"
         : "Issue/revoke MCP tokens, operation history",
+  },
+  settingsBasic: {
+    heading: lang === "ja" ? "基本設定" : "Basic Settings",
+    email: lang === "ja" ? "メールアドレス" : "Email",
+    displayName: lang === "ja" ? "表示名" : "Display name",
+    notificationLang: lang === "ja" ? "通知の言語" : "Notification language",
+    deleteAccount: lang === "ja" ? "アカウント削除" : "Delete account",
+    irreversible:
+      lang === "ja"
+        ? "この操作は取り消せません。"
+        : "This action cannot be undone.",
+    deleteConfirmTitle:
+      lang === "ja" ? "本当に削除しますか？" : "Are you sure to delete?",
+  },
+  settingsApiKeys: {
+    heading: lang === "ja" ? "APIキー" : "API Keys",
+    descOptional: lang === "ja" ? "説明（任意）" : "Description (optional)",
+    issueNew: lang === "ja" ? "新しいAPIキーを発行" : "Issue new API key",
+    dialogTitle: lang === "ja" ? "APIキーを発行" : "Issue API key",
+    tokenWarn:
+      lang === "ja"
+        ? "このトークンは一度しか表示されません。必ず保存してください。"
+        : "This token will be shown only once. Please store it securely.",
+    table: {
+      id: "ID",
+      description: lang === "ja" ? "説明" : "Description",
+      status: lang === "ja" ? "状態" : "Status",
+      createdAt: lang === "ja" ? "作成日" : "Created at",
+      actions: lang === "ja" ? "操作" : "Actions",
+    },
+  },
+  settingsIcal: {
+    heading: "iCal",
+    descOptional: lang === "ja" ? "説明（任意）" : "Description (optional)",
+    issueUrl: lang === "ja" ? "URLを発行" : "Issue URL",
+    table: {
+      id: "ID",
+      description: lang === "ja" ? "説明" : "Description",
+      url: "URL",
+      createdAt: lang === "ja" ? "作成日" : "Created at",
+      actions: lang === "ja" ? "操作" : "Actions",
+    },
+  },
+  settingsMcp: {
+    heading: lang === "ja" ? "MCP 設定" : "MCP Settings",
+    disabled:
+      lang === "ja"
+        ? "この環境ではMCPが無効化されています。"
+        : "MCP is disabled in this environment.",
+    description:
+      lang === "ja"
+        ? "アプリ連携用のMCPトークンを発行・無効化できます。トークンは一度しか表示されません。"
+        : "You can issue/revoke MCP tokens for integrations. Token is shown only once.",
+    issueToken: lang === "ja" ? "トークンを発行" : "Issue token",
+    revokeToken: lang === "ja" ? "トークンを無効化" : "Revoke token",
+    dialogTitle: lang === "ja" ? "MCPトークン" : "MCP Token",
+    tokenWarn:
+      lang === "ja"
+        ? "このトークンは一度しか表示されません。必ず安全な場所に保存してください。"
+        : "This token will be shown only once. Store it securely.",
+    logs: {
+      title: lang === "ja" ? "操作履歴" : "Activity Logs",
+      action: lang === "ja" ? "アクション" : "Action",
+      time: lang === "ja" ? "日時" : "Time",
+      reload: lang === "ja" ? "再読み込み" : "Reload",
+    },
+  },
+  settingsNotifications: {
+    heading: lang === "ja" ? "通知設定" : "Notification Settings",
+    emailDesc:
+      lang === "ja"
+        ? "タスクや日直の更新をメールで受け取ります（準備中）。"
+        : "Receive updates by email (coming soon).",
+    webPush: lang === "ja" ? "Web Push" : "Web Push",
+    daily:
+      lang === "ja"
+        ? "毎日のプッシュ通知（朝のダイジェスト）"
+        : "Daily push digest",
+    serverDefault: lang === "ja" ? "サーバー既定" : "Server default",
+    sendTest: lang === "ja" ? "テスト通知を送信" : "Send test notification",
+    checkSubs: lang === "ja" ? "購読を確認" : "Check subscriptions",
+    enableAndAllow: lang === "ja" ? "許可して有効化" : "Allow & enable",
+    blocked:
+      lang === "ja"
+        ? "通知がブラウザでブロックされています。ブラウザのサイト設定から通知を許可してください。"
+        : "Notifications are blocked by the browser. Please allow notifications in site settings.",
+    // Messages / Errors
+    errorSwUnsupported:
+      lang === "ja"
+        ? "Service Worker未対応です"
+        : "Service Worker not supported",
+    errorPushUnsupported:
+      lang === "ja" ? "Push通知未対応です" : "Push is not supported",
+    errorNotAllowed:
+      lang === "ja"
+        ? "通知が許可されていません"
+        : "Notifications are not allowed",
+    errorServerRegister:
+      lang === "ja"
+        ? "サーバー登録に失敗しました"
+        : "Failed to register on server",
+    errorTestSend:
+      lang === "ja"
+        ? "テスト送信に失敗しました"
+        : "Failed to send test notification",
+    errorFetchSubs:
+      lang === "ja"
+        ? "購読の取得に失敗しました"
+        : "Failed to fetch subscriptions",
+    errorGeneric: lang === "ja" ? "エラーが発生しました" : "An error occurred",
+    enabledMsg:
+      lang === "ja"
+        ? "プッシュ通知を有効化しました"
+        : "Web push has been enabled",
+    disabledMsg:
+      lang === "ja"
+        ? "プッシュ通知を無効化しました"
+        : "Web push has been disabled",
+    testSent:
+      lang === "ja"
+        ? "テスト通知を送信しました（{n}件）"
+        : "Test notification sent ({n})",
+    testSentZeroHint:
+      lang === "ja"
+        ? "テスト通知を送信しました（0件）。購読が保存されていない可能性があります。Web Pushを一度OFF→ONして再登録してください。"
+        : "Test sent (0). Subscription may not be saved. Toggle Web Push OFF→ON to re-register.",
+    subsCount:
+      lang === "ja"
+        ? "登録済みの購読: {n} 件"
+        : "Registered subscriptions: {n}",
+  },
+  settingsSecurity: {
+    heading: lang === "ja" ? "セキュリティ設定" : "Security Settings",
+    password: {
+      title: lang === "ja" ? "パスワード" : "Password",
+      desc:
+        lang === "ja"
+          ? "パスワードの設定・変更を行います。"
+          : "Set or change your password.",
+      open: lang === "ja" ? "設定" : "Configure",
+      dialogTitle: lang === "ja" ? "パスワードの設定" : "Set password",
+      dialogDesc:
+        lang === "ja"
+          ? "現在のパスワード（設定済みの場合）と新しいパスワードを入力してください。"
+          : "Enter current (if set) and new password.",
+      current:
+        lang === "ja"
+          ? "現在のパスワード（任意）"
+          : "Current password (optional)",
+      next: lang === "ja" ? "新しいパスワード" : "New password",
+      update: lang === "ja" ? "更新" : "Update",
+      close: lang === "ja" ? "閉じる" : "Close",
+    },
+    emailLogin: {
+      title: lang === "ja" ? "メールコードでのログイン" : "Email code login",
+      note:
+        lang === "ja"
+          ? "ONをオフにするには他の認証手段（パスワード/TOTP/パスキー）が必要です。"
+          : "To turn this off, you need another auth method (password/TOTP/passkey).",
+    },
+    totp: {
+      title: "TOTP",
+      enabled: lang === "ja" ? "有効になっています" : "Enabled",
+      disable: lang === "ja" ? "無効化" : "Disable",
+      begin: lang === "ja" ? "セットアップを開始" : "Begin setup",
+      setupTitle: lang === "ja" ? "二段階認証をセットアップ" : "Set up 2FA",
+      setupDesc:
+        lang === "ja"
+          ? "認証アプリでQRコードを読み取り、次へ進みます。"
+          : "Scan QR code with your authenticator app, then continue.",
+      secret: lang === "ja" ? "シークレット" : "Secret",
+      next: lang === "ja" ? "次へ" : "Next",
+      back: lang === "ja" ? "戻る" : "Back",
+      code: lang === "ja" ? "認証コード" : "Verification code",
+      activate: lang === "ja" ? "有効化" : "Activate",
+      codeInvalid: lang === "ja" ? "コードが正しくありません" : "Invalid code",
+    },
+    passkey: {
+      title: lang === "ja" ? "パスキー（Passkey）" : "Passkey",
+      desc:
+        lang === "ja"
+          ? "この端末のパスキーを登録します。"
+          : "Register a passkey on this device.",
+      register: lang === "ja" ? "パスキーを登録" : "Register passkey",
+      registered:
+        lang === "ja" ? "パスキーを登録しました" : "Passkey registered",
+    },
+    recovery: {
+      title: lang === "ja" ? "リカバリーコード" : "Recovery codes",
+      desc:
+        lang === "ja"
+          ? "新しいコードを発行すると、以前の未使用コードは無効になります。"
+          : "Issuing new codes invalidates previous unused codes.",
+      generate:
+        lang === "ja" ? "リカバリーコードを発行" : "Generate recovery codes",
+      dialogTitle: lang === "ja" ? "リカバリーコード" : "Recovery codes",
+      dialogDesc:
+        lang === "ja"
+          ? "二度と表示できません。必ず記録・保管してください。"
+          : "They will not be shown again. Store them securely.",
+    },
   },
 });

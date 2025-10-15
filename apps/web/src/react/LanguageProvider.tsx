@@ -65,10 +65,32 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 export function useLang() {
   const ctx = React.useContext(LangContext);
   if (ctx) return ctx;
-  // Fallback for SSR or when provider not mounted yet
-  return {
-    lang: "ja",
-    setLang: () => {},
-    dict: t("ja"),
-  };
+  // Provider-less fallback: keep lang in local state synced with localStorage & events
+  const [lang, setLangState] = React.useState<Lang>(() => {
+    if (typeof window === "undefined") return "ja";
+    const stored = localStorage.getItem("display_lang");
+    return stored === "en" || stored === "ja" ? (stored as Lang) : "ja";
+  });
+  const dict = React.useMemo(() => t(lang), [lang]);
+  React.useEffect(() => {
+    const update = () => {
+      const stored = localStorage.getItem("display_lang");
+      if (stored === "en" || stored === "ja") setLangState(stored as Lang);
+    };
+    window.addEventListener("languagechange", update);
+    window.addEventListener("storage", (e) => {
+      if (e.key === "display_lang") update();
+    });
+    return () => {
+      window.removeEventListener("languagechange", update);
+    };
+  }, []);
+  const setLang = React.useCallback((l: Lang) => {
+    setLangState(l);
+    try {
+      localStorage.setItem("display_lang", l);
+      window.dispatchEvent(new Event("languagechange"));
+    } catch {}
+  }, []);
+  return { lang, setLang, dict };
 }

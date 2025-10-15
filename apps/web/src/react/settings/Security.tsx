@@ -28,6 +28,7 @@ import { useMediaQuery } from "@/react/hooks/useMediaQuery";
 import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import { useLang } from "@/react/LanguageProvider";
 
 type AuthState = {
   email_login_enabled: boolean;
@@ -36,6 +37,7 @@ type AuthState = {
 };
 
 export default function SettingsSecurity() {
+  const { dict } = useLang();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [auth, setAuth] = React.useState<AuthState | null>(null);
@@ -58,7 +60,7 @@ export default function SettingsSecurity() {
     )
       .then((d) => setAuth(d.authSettings))
       .catch(() =>
-        toast({ variant: "destructive", title: "認証設定の取得に失敗しました" })
+        toast({ variant: "destructive", title: dict.toast.userInfoFetchError })
       );
   }, [token]);
 
@@ -72,7 +74,7 @@ export default function SettingsSecurity() {
       );
     } catch {
       if (prev) setAuth(prev);
-      toast({ variant: "destructive", title: "更新に失敗しました" });
+      toast({ variant: "destructive", title: dict.toast.updateFailed });
     }
   }
 
@@ -91,14 +93,17 @@ export default function SettingsSecurity() {
         `mutation($code:String!){ totpActivate(code:$code) }`,
         { code: totpCode }
       );
-      toast({ title: "TOTPを有効化しました" });
+      toast({ title: dict.settingsSecurity.totp.activate });
       setAuth((s) => (s ? { ...s, totp_enabled: true } : s));
       setTotpSecret("");
       setTotpUri("");
       setTotpCode("");
       setTotpOpen(false);
     } catch {
-      toast({ variant: "destructive", title: "コードが正しくありません" });
+      toast({
+        variant: "destructive",
+        title: dict.settingsSecurity.totp.codeInvalid,
+      });
     }
   }
   async function disableTotp() {
@@ -165,7 +170,7 @@ export default function SettingsSecurity() {
         { input: JSON.stringify(finishPayload) }
       );
       if (finished) {
-        toast({ title: "パスキーを登録しました" });
+        toast({ title: dict.settingsSecurity.passkey.registered });
       } else {
         throw new Error("finish returned false");
       }
@@ -181,13 +186,17 @@ export default function SettingsSecurity() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">セキュリティ設定</h1>
+        <h1 className="text-xl font-semibold">
+          {dict.settingsSecurity.heading}
+        </h1>
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="font-medium">パスワード</div>
+              <div className="font-medium">
+                {dict.settingsSecurity.password.title}
+              </div>
               <div className="text-sm text-muted-foreground">
-                パスワードの設定・変更を行います。
+                {dict.settingsSecurity.password.desc}
               </div>
             </div>
             <Dialog
@@ -196,19 +205,21 @@ export default function SettingsSecurity() {
             >
               <DialogTrigger asChild>
                 <Button variant="secondary" onClick={() => setPwOpen(true)}>
-                  設定
+                  {dict.settingsSecurity.password.open}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>パスワードの設定</DialogTitle>
+                  <DialogTitle>
+                    {dict.settingsSecurity.password.dialogTitle}
+                  </DialogTitle>
                   <DialogDescription>
-                    現在のパスワード（設定済みの場合）と新しいパスワードを入力してください。
+                    {dict.settingsSecurity.password.dialogDesc}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
                   <div>
-                    <Label>現在のパスワード（任意）</Label>
+                    <Label>{dict.settingsSecurity.password.current}</Label>
                     <Input
                       type="password"
                       value={pwCurrent}
@@ -216,7 +227,7 @@ export default function SettingsSecurity() {
                     />
                   </div>
                   <div>
-                    <Label>新しいパスワード</Label>
+                    <Label>{dict.settingsSecurity.password.next}</Label>
                     <Input
                       type="password"
                       value={pwNext}
@@ -226,7 +237,7 @@ export default function SettingsSecurity() {
                 </div>
                 <DialogFooter>
                   <Button variant="secondary" onClick={() => setPwOpen(false)}>
-                    閉じる
+                    {dict.common.close}
                   </Button>
                   <Button
                     onClick={async () => {
@@ -235,20 +246,20 @@ export default function SettingsSecurity() {
                           `mutation($current:String,$next:String!){ setPassword(current:$current, next:$next) }`,
                           { current: pwCurrent || undefined, next: pwNext }
                         );
-                        toast({ title: "パスワードを更新しました" });
+                        toast({ title: dict.toast.updated });
                         setPwCurrent("");
                         setPwNext("");
                         setPwOpen(false);
                       } catch (e: any) {
                         toast({
                           variant: "destructive",
-                          title: "更新に失敗しました",
+                          title: dict.toast.updateFailed,
                           description: e?.message,
                         });
                       }
                     }}
                   >
-                    更新
+                    {dict.settingsSecurity.password.update}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -259,14 +270,16 @@ export default function SettingsSecurity() {
             >
               <DrawerContent>
                 <DrawerHeader className="text-left">
-                  <DrawerTitle>パスワードの設定</DrawerTitle>
+                  <DrawerTitle>
+                    {dict.settingsSecurity.password.dialogTitle}
+                  </DrawerTitle>
                   <DrawerDescription>
-                    現在のパスワードと新しいパスワードを入力してください。
+                    {dict.settingsSecurity.password.dialogDesc}
                   </DrawerDescription>
                 </DrawerHeader>
                 <div className="px-4 pb-4 space-y-3">
                   <div>
-                    <Label>現在のパスワード（任意）</Label>
+                    <Label>{dict.settingsSecurity.password.current}</Label>
                     <Input
                       type="password"
                       value={pwCurrent}
@@ -274,7 +287,7 @@ export default function SettingsSecurity() {
                     />
                   </div>
                   <div>
-                    <Label>新しいパスワード</Label>
+                    <Label>{dict.settingsSecurity.password.next}</Label>
                     <Input
                       type="password"
                       value={pwNext}
@@ -287,7 +300,7 @@ export default function SettingsSecurity() {
                       onClick={() => setPwOpen(false)}
                       className="flex-1"
                     >
-                      閉じる
+                      {dict.common.close}
                     </Button>
                     <Button
                       className="flex-1"
@@ -297,20 +310,20 @@ export default function SettingsSecurity() {
                             `mutation($current:String,$next:String!){ setPassword(current:$current, next:$next) }`,
                             { current: pwCurrent || undefined, next: pwNext }
                           );
-                          toast({ title: "パスワードを更新しました" });
+                          toast({ title: dict.toast.updated });
                           setPwCurrent("");
                           setPwNext("");
                           setPwOpen(false);
                         } catch (e: any) {
                           toast({
                             variant: "destructive",
-                            title: "更新に失敗しました",
+                            title: dict.toast.updateFailed,
                             description: e?.message,
                           });
                         }
                       }}
                     >
-                      更新
+                      {dict.settingsSecurity.password.update}
                     </Button>
                   </div>
                 </div>
@@ -321,9 +334,11 @@ export default function SettingsSecurity() {
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="font-medium">メールコードでのログイン</div>
+              <div className="font-medium">
+                {dict.settingsSecurity.emailLogin.title}
+              </div>
               <div className="text-sm text-muted-foreground">
-                ONをオフにするには他の認証手段（パスワード/TOTP/パスキー）が必要です。
+                {dict.settingsSecurity.emailLogin.note}
               </div>
             </div>
             <Switch
@@ -333,25 +348,29 @@ export default function SettingsSecurity() {
           </div>
         </Card>
         <Card className="p-4 space-y-3">
-          <div className="font-medium">TOTP（二段階認証）</div>
+          <div className="font-medium">{dict.settingsSecurity.totp.title}</div>
           {auth?.totp_enabled ? (
             <div className="flex items-center gap-3">
               <div className="text-sm text-muted-foreground">
-                有効になっています
+                {dict.settingsSecurity.totp.enabled}
               </div>
               <Button variant="secondary" onClick={disableTotp}>
-                無効化
+                {dict.settingsSecurity.totp.disable}
               </Button>
             </div>
           ) : (
             <div className="space-y-3">
-              <Button onClick={beginTotp}>セットアップを開始</Button>
+              <Button onClick={beginTotp}>
+                {dict.settingsSecurity.totp.begin}
+              </Button>
               <Dialog open={totpOpen} onOpenChange={setTotpOpen}>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>二段階認証をセットアップ</DialogTitle>
+                    <DialogTitle>
+                      {dict.settingsSecurity.totp.setupTitle}
+                    </DialogTitle>
                     <DialogDescription>
-                      認証アプリでQRコードを読み取り、次へ進みます。
+                      {dict.settingsSecurity.totp.setupDesc}
                     </DialogDescription>
                   </DialogHeader>
                   {totpStep === 1 ? (
@@ -370,7 +389,7 @@ export default function SettingsSecurity() {
                         ) : null}
                       </div>
                       <div>
-                        <Label>シークレット</Label>
+                        <Label>{dict.settingsSecurity.totp.secret}</Label>
                         <div className="flex items-center gap-2">
                           <Input
                             readOnly
@@ -382,21 +401,25 @@ export default function SettingsSecurity() {
                             variant="secondary"
                             onClick={async () => {
                               await navigator.clipboard.writeText(totpSecret);
-                              toast({ title: "シークレットをコピーしました" });
+                              toast({ title: dict.common.copy });
                             }}
                           >
-                            コピー
+                            {dict.common.copy}
                           </Button>
                         </div>
                       </div>
                       <div className="flex justify-end">
-                        <Button onClick={() => setTotpStep(2)}>次へ</Button>
+                        <Button onClick={() => setTotpStep(2)}>
+                          {dict.settingsSecurity.totp.next}
+                        </Button>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       <div>
-                        <Label htmlFor="totp">認証コード</Label>
+                        <Label htmlFor="totp">
+                          {dict.settingsSecurity.totp.code}
+                        </Label>
                         <Input
                           id="totp"
                           value={totpCode}
@@ -409,9 +432,11 @@ export default function SettingsSecurity() {
                           variant="secondary"
                           onClick={() => setTotpStep(1)}
                         >
-                          戻る
+                          {dict.settingsSecurity.totp.back}
                         </Button>
-                        <Button onClick={activateTotp}>有効化</Button>
+                        <Button onClick={activateTotp}>
+                          {dict.settingsSecurity.totp.activate}
+                        </Button>
                       </DialogFooter>
                     </div>
                   )}
@@ -421,24 +446,34 @@ export default function SettingsSecurity() {
           )}
         </Card>
         <Card className="p-4 space-y-3">
-          <div className="font-medium">パスキー（Passkey）</div>
-          <div className="text-sm text-muted-foreground">
-            この端末のパスキーを登録します。
+          <div className="font-medium">
+            {dict.settingsSecurity.passkey.title}
           </div>
-          <Button onClick={registerPasskey}>パスキーを登録</Button>
+          <div className="text-sm text-muted-foreground">
+            {dict.settingsSecurity.passkey.desc}
+          </div>
+          <Button onClick={registerPasskey}>
+            {dict.settingsSecurity.passkey.register}
+          </Button>
         </Card>
         <Card className="p-4 space-y-3">
-          <div className="font-medium">リカバリーコード</div>
-          <div className="text-sm text-muted-foreground">
-            新しいコードを発行すると、以前の未使用コードは無効になります。
+          <div className="font-medium">
+            {dict.settingsSecurity.recovery.title}
           </div>
-          <Button onClick={generateRecovery}>リカバリーコードを発行</Button>
+          <div className="text-sm text-muted-foreground">
+            {dict.settingsSecurity.recovery.desc}
+          </div>
+          <Button onClick={generateRecovery}>
+            {dict.settingsSecurity.recovery.generate}
+          </Button>
           <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>リカバリーコード</DialogTitle>
+                <DialogTitle>
+                  {dict.settingsSecurity.recovery.dialogTitle}
+                </DialogTitle>
                 <DialogDescription>
-                  二度と表示できません。必ず記録・保管してください。
+                  {dict.settingsSecurity.recovery.dialogDesc}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2 max-h-64 overflow-auto">
@@ -458,10 +493,10 @@ export default function SettingsSecurity() {
                     await navigator.clipboard.writeText(
                       recoveryCodes.join("\n")
                     );
-                    toast({ title: "コピーしました" });
+                    toast({ title: dict.common.copy });
                   }}
                 >
-                  コピー
+                  {dict.common.copy}
                 </Button>
                 <Button
                   variant="secondary"
@@ -474,9 +509,11 @@ export default function SettingsSecurity() {
                     w.print();
                   }}
                 >
-                  印刷
+                  {dict.common.print}
                 </Button>
-                <Button onClick={() => setRecoveryOpen(false)}>閉じる</Button>
+                <Button onClick={() => setRecoveryOpen(false)}>
+                  {dict.common.close}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

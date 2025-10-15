@@ -2,6 +2,12 @@
 import Layout from "../../layouts/AppLayout.astro";
 import SettingsSecurity from "@/react/settings/Security";
 ---
-<Layout title="セキュリティ設定">
+<Layout title="Security">
+  <h1 class="sr-only" data-i18n-key="settingsSecurity.heading">セキュリティ設定</h1>
   <SettingsSecurity client:load />
+  <script>
+    import { updateI18nTexts, watchLanguageChange } from "@/lib/i18n-dom";
+    updateI18nTexts();
+    watchLanguageChange();
+  </script>
 </Layout>
