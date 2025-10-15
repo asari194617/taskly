@@ -51,6 +51,7 @@ services:
         condition: service_started
     ports:
       - "8080:8080"
+      - "9464:9464"
     environment:
       DB_HOST: db
       DB_USER: taskly
