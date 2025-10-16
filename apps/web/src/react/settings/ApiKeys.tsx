@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql";
@@ -38,6 +39,7 @@ export default function SettingsApiKeys() {
   const [items, setItems] = React.useState<ApiKey[]>([]);
   const [desc, setDesc] = React.useState("");
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
 
   async function load() {
     try {
@@ -59,6 +61,8 @@ export default function SettingsApiKeys() {
 
   async function create() {
     try {
+      if (creating) return;
+      setCreating(true);
       const data = await gql<{ apiKeyCreate: { id: number; token: string } }>(
         `mutation($d:String){ apiKeyCreate(description:$d){ id token } }`,
         { d: desc || undefined }
@@ -72,6 +76,8 @@ export default function SettingsApiKeys() {
         title: "発行に失敗しました",
         description: e?.message,
       });
+    } finally {
+      setCreating(false);
     }
   }
   async function toggleValid(id: number, isValid: boolean) {
@@ -108,11 +114,23 @@ export default function SettingsApiKeys() {
                 placeholder="例: CI/CD"
               />
             </div>
-            <Dialog>
+            <Dialog
+              onOpenChange={(open) => {
+                if (open) {
+                  setCreatedToken(null);
+                  setCreating(false);
+                } else {
+                  // reset states when closing
+                  setCreating(false);
+                }
+              }}
+            >
               <DialogTrigger asChild>
                 <Button
-                  onClick={(e) => {
-                    e.preventDefault();
+                  type="button"
+                  onClick={() => {
+                    // One-click: open dialog and immediately create
+                    create();
                   }}
                 >
                   {dict.settingsApiKeys.issueNew}
@@ -138,17 +156,23 @@ export default function SettingsApiKeys() {
                       >
                         {dict.common.copy}
                       </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => setCreatedToken(null)}
-                      >
-                        {dict.common.close}
-                      </Button>
+                      <DialogClose asChild>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setCreatedToken(null)}
+                        >
+                          {dict.common.close}
+                        </Button>
+                      </DialogClose>
                     </div>
                   </div>
                 ) : (
                   <DialogFooter>
-                    <Button onClick={create}>{dict.common.create}</Button>
+                    <Button disabled>
+                      {creating
+                        ? dict.common.loading
+                        : dict.settingsApiKeys.issueNew}
+                    </Button>
                   </DialogFooter>
                 )}
               </DialogContent>

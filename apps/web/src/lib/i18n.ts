@@ -45,6 +45,7 @@ export const t = (lang: Lang) => ({
     notificationLanguage:
       lang === "ja" ? "通知の言語" : "Notification language",
     copy: lang === "ja" ? "コピー" : "Copy",
+    copied: lang === "ja" ? "コピーしました" : "Copied",
     print: lang === "ja" ? "印刷" : "Print",
     saving: lang === "ja" ? "保存中..." : "Saving...",
     enabled: lang === "ja" ? "有効" : "Enabled",

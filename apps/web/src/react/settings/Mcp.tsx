@@ -22,6 +22,12 @@ import {
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type McpInfo = { enabled: boolean; has_token: boolean };
 type LogItem = { action: string; created_at: string };
@@ -33,6 +39,9 @@ export default function SettingsMcp() {
   const [info, setInfo] = React.useState<McpInfo | null>(null);
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
   const [logs, setLogs] = React.useState<LogItem[]>([]);
+  const [creating, setCreating] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const copiedTimerRef = React.useRef<number | null>(null);
 
   async function loadInfo() {
     try {
@@ -68,18 +77,23 @@ export default function SettingsMcp() {
 
   async function createToken() {
     try {
+      if (creating) return;
+      setCreating(true);
       const d = await gql<{ mcpCreate: { ok: boolean; token: string } }>(
         `mutation{ mcpCreate{ ok token } }`
       );
       setCreatedToken(d.mcpCreate.token);
-      await loadInfo();
-      await loadLogs();
+      // Do NOT refresh info here; it would flip has_token to true and unmount the dialog
+      // Keep logs optional to update background activity if desired
+      // await loadLogs();
     } catch (e: any) {
       toast({
         variant: "destructive",
         title: dict.toast.createFailed,
         description: e?.message,
       });
+    } finally {
+      setCreating(false);
     }
   }
   async function revokeToken() {
@@ -120,12 +134,33 @@ export default function SettingsMcp() {
                     {dict.settingsMcp.revokeToken}
                   </Button>
                 ) : (
-                  <Dialog>
+                  <Dialog
+                    onOpenChange={async (open) => {
+                      if (open) {
+                        setCreatedToken(null);
+                        setCreating(false);
+                        setCopied(false);
+                        if (copiedTimerRef.current) {
+                          window.clearTimeout(copiedTimerRef.current);
+                          copiedTimerRef.current = null;
+                        }
+                      } else {
+                        // After closing, refresh info and logs to reflect new state
+                        await loadInfo();
+                        await loadLogs();
+                        setCopied(false);
+                        if (copiedTimerRef.current) {
+                          window.clearTimeout(copiedTimerRef.current);
+                          copiedTimerRef.current = null;
+                        }
+                      }
+                    }}
+                  >
                     <DialogTrigger asChild>
                       <Button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setCreatedToken(null);
+                        onClick={() => {
+                          // One-click: open dialog and immediately create token
+                          createToken();
                         }}
                       >
                         {dict.settingsMcp.issueToken}
@@ -146,13 +181,37 @@ export default function SettingsMcp() {
                             {createdToken}
                           </code>
                           <div className="flex gap-2">
-                            <Button
-                              onClick={() =>
-                                navigator.clipboard.writeText(createdToken!)
-                              }
-                            >
-                              {dict.common.copy}
-                            </Button>
+                            <TooltipProvider delayDuration={100}>
+                              <Tooltip open={copied}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    onClick={async () => {
+                                      try {
+                                        await navigator.clipboard.writeText(
+                                          createdToken!
+                                        );
+                                        setCopied(true);
+                                        if (copiedTimerRef.current) {
+                                          window.clearTimeout(
+                                            copiedTimerRef.current
+                                          );
+                                        }
+                                        copiedTimerRef.current =
+                                          window.setTimeout(
+                                            () => setCopied(false),
+                                            1200
+                                          ) as unknown as number;
+                                      } catch {}
+                                    }}
+                                  >
+                                    {dict.common.copy}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  {dict.common.copied}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <Button
                               variant="secondary"
                               onClick={() => setCreatedToken(null)}
@@ -163,8 +222,10 @@ export default function SettingsMcp() {
                         </div>
                       ) : (
                         <DialogFooter>
-                          <Button onClick={createToken}>
-                            {dict.settingsMcp.issueToken}
+                          <Button disabled>
+                            {creating
+                              ? dict.common.loading
+                              : dict.settingsMcp.issueToken}
                           </Button>
                         </DialogFooter>
                       )}
