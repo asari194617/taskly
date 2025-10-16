@@ -820,6 +820,123 @@ func normalizeTaskType(s string) string {
 	}
 }
 
+// ---- Japanese display helpers for change notifications ----
+func displayTaskTypeJa(e string) string {
+	switch strings.ToUpper(strings.TrimSpace(e)) {
+	case "ONLINE":
+		return "オンライン"
+	case "FACE_TO_FACE":
+		return "対面"
+	case "QUIZ":
+		return "小テスト"
+	case "PRESENTATION":
+		return "発表"
+	case "SELF_STUDY":
+		return "自主学習"
+	default:
+		return "その他"
+	}
+}
+
+func displayBoolJa(b bool) string {
+	if b {
+		return "はい"
+	}
+	return "いいえ"
+}
+
+func displaySinceJa(since string) string {
+	v := strings.ToUpper(strings.TrimSpace(since))
+	switch v {
+	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8":
+		return strings.TrimPrefix(v, "P") + "限"
+	case "NONE", "":
+		return "指定なし"
+	default:
+		return v
+	}
+}
+
+func displayUntilJa(until string) string {
+	v := strings.ToUpper(strings.TrimSpace(until))
+	switch v {
+	case "MORNING":
+		return "朝まで"
+	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8":
+		return strings.TrimPrefix(v, "P") + "限まで"
+	case "NONE", "":
+		return "指定なし"
+	default:
+		return v
+	}
+}
+
+func subjectNameJa(id uint) string {
+	var s Subject
+	if err := DB.First(&s, id).Error; err == nil {
+		if strings.TrimSpace(s.NameJa) != "" {
+			return s.NameJa
+		}
+		if s.NameEn != nil && *s.NameEn != "" {
+			return *s.NameEn
+		}
+	}
+	return fmt.Sprintf("科目ID:%d", id)
+}
+
+func strOrUnsetJa(p *string) string {
+	if p == nil || strings.TrimSpace(*p) == "" {
+		return "（未設定）"
+	}
+	return *p
+}
+
+// Build a Japanese message describing changes between two Task states
+func buildTaskUpdateMessageJa(before Task, after Task) string {
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "課題が更新されました (ID:%d)\n", after.ID)
+	// Title
+	if before.Title != after.Title {
+		fmt.Fprintf(b, "・タイトル: '%s' → '%s'\n", before.Title, after.Title)
+	}
+	// Subject
+	if before.SubjectID != after.SubjectID {
+		fmt.Fprintf(b, "・教科: '%s' → '%s'\n", subjectNameJa(before.SubjectID), subjectNameJa(after.SubjectID))
+	}
+	// Description
+	if (before.Description == nil) != (after.Description == nil) || (before.Description != nil && after.Description != nil && *before.Description != *after.Description) {
+		fmt.Fprintf(b, "・説明: '%s' → '%s'\n", strOrUnsetJa(before.Description), strOrUnsetJa(after.Description))
+	}
+	// Type
+	if !strings.EqualFold(before.Type, after.Type) {
+		fmt.Fprintf(b, "・種別: '%s' → '%s'\n", displayTaskTypeJa(before.Type), displayTaskTypeJa(after.Type))
+	}
+	// Hand-in
+	if before.IsRequireHandIn != after.IsRequireHandIn {
+		fmt.Fprintf(b, "・要提出: %s → %s\n", displayBoolJa(before.IsRequireHandIn), displayBoolJa(after.IsRequireHandIn))
+	}
+	// Self check
+	if before.SelfCheckRequired != after.SelfCheckRequired {
+		fmt.Fprintf(b, "・自己チェック: %s → %s\n", displayBoolJa(before.SelfCheckRequired), displayBoolJa(after.SelfCheckRequired))
+	}
+	// Deadline date
+	if !before.Deadline.Equal(after.Deadline) {
+		fmt.Fprintf(b, "・期限日: %s → %s\n", before.Deadline.Format("2006-01-02"), after.Deadline.Format("2006-01-02"))
+	}
+	// Since / Until
+	if !strings.EqualFold(before.DeadlineSince, after.DeadlineSince) {
+		fmt.Fprintf(b, "・開始限: %s → %s\n", displaySinceJa(before.DeadlineSince), displaySinceJa(after.DeadlineSince))
+	}
+	if !strings.EqualFold(before.DeadlineUntil, after.DeadlineUntil) {
+		fmt.Fprintf(b, "・終了限: %s → %s\n", displayUntilJa(before.DeadlineUntil), displayUntilJa(after.DeadlineUntil))
+	}
+	return b.String()
+}
+
+func buildTaskDeleteMessageJa(t Task) string {
+	return fmt.Sprintf("課題が削除されました: %s (ID:%d)", t.Title, t.ID)
+}
+
 // Build SQL expression string for effective deadline timestamp
 func effectiveDeadlineExpr(alias string) string {
 	col := func(name string) string {
@@ -1214,7 +1331,6 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
-//lint:ignore U1000 kept for future scheduling logic
 func prevBusinessDay(d time.Time) time.Time {
 	x := d.Add(-24 * time.Hour)
 	for i := 0; i < 10; i++ {
@@ -1226,7 +1342,6 @@ func prevBusinessDay(d time.Time) time.Time {
 	return time.Time{}
 }
 
-//lint:ignore U1000 kept for future scheduling logic
 func nextBusinessDay(d time.Time) time.Time {
 	x := d.Add(24 * time.Hour)
 	for i := 0; i < 30; i++ {
@@ -1238,7 +1353,6 @@ func nextBusinessDay(d time.Time) time.Time {
 	return time.Time{}
 }
 
-//lint:ignore U1000 used by optional rotation logic
 func listActiveUsers() ([]User, error) {
 	var users []User
 	if err := DB.Where("is_deleted = 0 AND is_day_shift_active = 1").Order("id ASC").Find(&users).Error; err != nil {
@@ -1264,8 +1378,6 @@ func computePairs(users []User) [][]uint {
 }
 
 // Mark optional helpers as used to satisfy static analysis when rotation is disabled in some builds
-//
-//lint:ignore U1000 used by optional rotation logic
 var (
 	_ = prevBusinessDay
 	_ = nextBusinessDay
@@ -1314,7 +1426,6 @@ func shouldRotateByGemini(subject, body string) bool {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	s := strings.ToUpper(string(b))
-	//lint:ignore S1008 explicit for clarity across linters
 	return strings.Contains(s, "YES")
 }
 

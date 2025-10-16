@@ -148,6 +148,8 @@ func registerTasksRoutes(app *fiber.App) {
 		if err := DB.First(&rec, c.Params("id")).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
+		// Keep a copy for change diff
+		before := rec
 		var body struct {
 			Title           *string `json:"title"`
 			SubjectID       *uint   `json:"subject_id"`
@@ -207,7 +209,8 @@ func registerTasksRoutes(app *fiber.App) {
 		}
 		// Fire Teams reply for update
 		if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
-			go sendTeamsReplyEmail(rec.ID, mid, "updated")
+			msg := buildTaskUpdateMessageJa(before, rec)
+			go sendTeamsReplyEmail(rec.ID, mid, msg)
 		}
 		return c.JSON(rec)
 	})
@@ -240,7 +243,8 @@ func registerTasksRoutes(app *fiber.App) {
 		}
 		// Fire Teams reply for delete
 		if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
-			go sendTeamsReplyEmail(rec.ID, mid, "deleted")
+			msg := buildTaskDeleteMessageJa(rec)
+			go sendTeamsReplyEmail(rec.ID, mid, msg)
 		}
 		return c.SendStatus(204)
 	})

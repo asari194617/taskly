@@ -1123,6 +1123,7 @@ func registerGraphQL(app *fiber.App) {
 						if err := DB.First(&rec, id).Error; err != nil {
 							return nil, fmt.Errorf("not found")
 						}
+						before := rec
 						if okp, err := checkPermission(u.ID, "tasks", "update", &rec.AddedUserID); err != nil {
 							return nil, err
 						} else if !okp {
@@ -1185,7 +1186,8 @@ func registerGraphQL(app *fiber.App) {
 						}
 						// Fire Teams reply for update (if original message exists)
 						if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
-							go sendTeamsReplyEmail(rec.ID, mid, "updated")
+							msg := buildTaskUpdateMessageJa(before, rec)
+							go sendTeamsReplyEmail(rec.ID, mid, msg)
 						}
 						out := map[string]any{
 							"id":                  rec.ID,
@@ -1240,7 +1242,8 @@ func registerGraphQL(app *fiber.App) {
 						}
 						// Fire Teams reply for delete (if original message exists)
 						if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
-							go sendTeamsReplyEmail(rec.ID, mid, "deleted")
+							msg := buildTaskDeleteMessageJa(rec)
+							go sendTeamsReplyEmail(rec.ID, mid, msg)
 						}
 						return true, nil
 					}
