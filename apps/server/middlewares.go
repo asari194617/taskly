@@ -1,6 +1,9 @@
 package main
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -24,6 +27,11 @@ func audit(c *fiber.Ctx) error {
 		}
 		_ = DB.Create(&ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
 	}
+	if err != nil && env("SENTRY_DSN", "") != "" {
+		// best-effort capture
+		// Note: importing sentry here would create circular imports; call via global function
+		captureError(err)
+	}
 	return err
 }
 
@@ -39,4 +47,41 @@ func adminOnly(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 	}
 	return c.Next()
+}
+
+// apiKeyRouteScope restricts what endpoints can be accessed when using X-API-Key
+// Allowed when using API Key:
+// - GET /tasks
+// - POST /tasks
+// - PATCH /tasks/:id (numeric)
+// - DELETE /tasks/:id (numeric)
+// - GET /users/me
+// - PATCH /users/me
+func apiKeyRouteScope(c *fiber.Ctx) error {
+	if c.Get("X-API-Key") == "" {
+		return c.Next()
+	}
+	method := c.Method()
+	path := c.Path()
+	// Normalize path (strip trailing slash)
+	if len(path) > 1 && strings.HasSuffix(path, "/") {
+		path = strings.TrimRight(path, "/")
+	}
+	// Exact matches first
+	if (method == fiber.MethodGet && path == "/tasks") ||
+		(method == fiber.MethodPost && path == "/tasks") ||
+		(method == fiber.MethodGet && path == "/users/me") ||
+		(method == fiber.MethodPatch && path == "/users/me") {
+		return c.Next()
+	}
+	// /tasks/:id numeric for PATCH/DELETE
+	if strings.HasPrefix(path, "/tasks/") && (method == fiber.MethodPatch || method == fiber.MethodDelete) {
+		seg := strings.TrimPrefix(path, "/tasks/")
+		if seg != "" {
+			if _, err := strconv.ParseUint(seg, 10, 64); err == nil {
+				return c.Next()
+			}
+		}
+	}
+	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "api key not allowed for this endpoint"})
 }

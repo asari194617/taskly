@@ -9,6 +9,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pquerna/otp/totp"
 	"gorm.io/gorm"
@@ -91,6 +93,29 @@ func ensureTasksSchema() {
 			log.Printf("migration warning: recreate tasks failed: %v", err)
 			return
 		}
+	}
+}
+
+// ensureTasksTeamsLogsTable creates the tasks_teams_logs table if it does not exist yet.
+// This protects integrations that write to this table even when external SQL migrations are not applied.
+func ensureTasksTeamsLogsTable() {
+	// Create without FK to avoid cross-environment mismatches; add index on task_id
+	const ddl = `CREATE TABLE IF NOT EXISTS tasks_teams_logs (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  task_id BIGINT UNSIGNED NOT NULL,
+  teams_message_id VARCHAR(255) NULL,
+  teams_conversation_id VARCHAR(255) NULL,
+  is_success BOOLEAN NOT NULL DEFAULT FALSE,
+  callback_url TEXT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  last_status VARCHAR(32) NULL,
+  last_error TEXT NULL,
+  last_response_status INT NULL,
+  last_response_body TEXT NULL,
+  INDEX idx_tasks_teams_logs_task_id (task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
+	if err := DB.Exec(ddl).Error; err != nil {
+		log.Printf("migration warning: create tasks_teams_logs failed: %v", err)
 	}
 }
 
@@ -773,6 +798,28 @@ func endTimeForUntil(until string) (hour, min int) {
 	}
 }
 
+// normalizeTaskType converts user-provided or localized labels into canonical enum values.
+// Allowed enums: ONLINE, FACE_TO_FACE, QUIZ, PRESENTATION, SELF_STUDY, OTHER
+func normalizeTaskType(s string) string {
+	v := strings.TrimSpace(strings.ToUpper(s))
+	switch v {
+	case "ONLINE", "ONL", "WEB", "REMOTE", "リモート", "ｵﾝﾗｲﾝ", "オンライン":
+		return "ONLINE"
+	case "FACE_TO_FACE", "F2F", "INPERSON", "IN_PERSON", "対面", "対面授業", "授業":
+		return "FACE_TO_FACE"
+	case "QUIZ", "TEST", "EXAM", "小テスト", "小ﾃｽﾄ", "テスト", "ﾃｽﾄ":
+		return "QUIZ"
+	case "PRESENTATION", "PRESEN", "LT", "発表", "ﾌﾟﾚｾﾞﾝ", "ﾌﾟﾚｾﾞﾝﾃｰｼｮﾝ", "プレゼン", "プレゼンテーション":
+		return "PRESENTATION"
+	case "SELF_STUDY", "SELFSTUDY", "STUDY", "PREVIEW", "予習", "復習", "自習", "自主学習", "予習・復習":
+		return "SELF_STUDY"
+	case "OTHER", "MISC", "その他", "ｿﾉ他":
+		return "OTHER"
+	default:
+		return "OTHER"
+	}
+}
+
 // Build SQL expression string for effective deadline timestamp
 func effectiveDeadlineExpr(alias string) string {
 	col := func(name string) string {
@@ -826,6 +873,34 @@ func sendTeamsNotifyEmailForTask(t Task) {
 	go func() {
 		_ = smtpSendPlain(to, subject, body)
 	}()
+}
+
+// Look up the latest Teams message id for a task from tasks_teams_logs
+func latestTeamsMessageIDForTask(taskID uint) (string, bool) {
+	var row struct {
+		TeamsMessageID *string
+	}
+	err := DB.Table("tasks_teams_logs").
+		Select("teams_message_id").
+		Where("task_id = ? AND teams_message_id IS NOT NULL AND teams_message_id <> ''", taskID).
+		Order("id DESC").
+		Limit(1).
+		Scan(&row).Error
+	if err == nil && row.TeamsMessageID != nil && *row.TeamsMessageID != "" {
+		return *row.TeamsMessageID, true
+	}
+	return "", false
+}
+
+// Send Teams reply email for an existing message (update/delete events)
+func sendTeamsReplyEmail(taskID uint, messageID string, message string) {
+	to := env("TEAMS_NOTIFY_EMAIL", "")
+	if strings.TrimSpace(to) == "" {
+		return
+	}
+	subject := "[Taskly]tasks:reply"
+	body := fmt.Sprintf(`{"message_id":%q,"task_id":%q,"message":%q}`, messageID, fmt.Sprintf("%d", taskID), message)
+	go func() { _ = smtpSendPlain(to, subject, body) }()
 }
 
 // small helpers
@@ -1151,6 +1226,7 @@ func prevBusinessDay(d time.Time) time.Time {
 	return time.Time{}
 }
 
+//lint:ignore U1000 kept for future scheduling logic
 func nextBusinessDay(d time.Time) time.Time {
 	x := d.Add(24 * time.Hour)
 	for i := 0; i < 30; i++ {
@@ -1192,6 +1268,7 @@ func computePairs(users []User) [][]uint {
 //lint:ignore U1000 used by optional rotation logic
 var (
 	_ = prevBusinessDay
+	_ = nextBusinessDay
 	_ = listActiveUsers
 	_ = businessDaysBetween
 )
@@ -1209,4 +1286,136 @@ func businessDaysBetween(start time.Time, end time.Time) int {
 		return cnt - 1
 	}
 	return 0
+}
+
+// Decide whether to rotate day shift based on Gemini API analysis of subject/body
+func shouldRotateByGemini(subject, body string) bool {
+	apiKey := env("GEMINI_API_KEY", "")
+	if apiKey == "" {
+		// Fallback: naive keyword heuristic
+		s := strings.ToLower(subject + "\n" + body)
+		return strings.Contains(s, "延期") || strings.Contains(s, "ずらし") || strings.Contains(s, "変更")
+	}
+	// Minimal HTTP call to Gemini (pseudo for models API)
+	// NOTE: Keep simple and tolerant; on error, default to false to avoid accidental rotation
+	prompt := "Decide if this email asks to delay or reschedule the on-duty day shift. Reply strictly with YES or NO.\nSubject: " + subject + "\nBody: " + body
+	reqBody := fmt.Sprintf(`{"contents":[{"parts":[{"text":%q}]}]}`, prompt)
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey
+	httpClient := &http.Client{Timeout: 8 * time.Second}
+	req, _ := http.NewRequest("POST", url, strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil || resp == nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		return false
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	s := strings.ToUpper(string(b))
+	//lint:ignore S1008 explicit for clarity across linters
+	return strings.Contains(s, "YES")
+}
+
+// Notify Discord with a simple embed indicating day shift rotation occurred
+func notifyDayShiftRotationDiscord(target time.Time) {
+	hook := env("DISCORD_WEBHOOK_URL", "")
+	if hook == "" {
+		return
+	}
+	embed := fmt.Sprintf(`{"embeds":[{"title":"Day Shift Rotation Executed","description":"Rotation processed for %s","color":5814783}]}`, target.Format("2006-01-02"))
+	req, _ := http.NewRequest("POST", hook, strings.NewReader(embed))
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil && resp != nil {
+		_ = resp.Body.Close()
+	}
+}
+
+// Shift all assignments from the next business day after 'start' one business day forward,
+// and ensure today's users are also assigned to that next business day.
+func pushAssignmentsOneDayForward(start time.Time) error {
+	start = dateOnly(start)
+	next := nextBusinessDay(start)
+	if next.IsZero() {
+		return nil
+	}
+	// Load all assignments on/after next within current cycle if any (or for next 60 days)
+	end := next.AddDate(0, 0, 60)
+	if cyc, err := getCurrentCycle(start); err == nil && cyc != nil && cyc.FinishDate.After(next) {
+		end = dateOnly(cyc.FinishDate)
+	}
+	var items []DayShiftAssignment
+	if err := DB.Where("date BETWEEN ? AND ?", next.Format("2006-01-02"), end.Format("2006-01-02")).Order("date ASC").Find(&items).Error; err != nil {
+		return err
+	}
+	// Build map date->assignment
+	amap := map[string]DayShiftAssignment{}
+	for _, it := range items {
+		amap[it.Date.Format("2006-01-02")] = it
+	}
+	// Iterate in reverse to move forward safely
+	for i := len(items) - 1; i >= 0; i-- {
+		cur := items[i]
+		dest := nextBusinessDay(cur.Date)
+		if dest.IsZero() {
+			continue
+		}
+		var destAsg DayShiftAssignment
+		err := DB.Where("date = ?", dest.Format("2006-01-02")).First(&destAsg).Error
+		if err == nil {
+			// merge users into dest, then delete current
+			var curUsers []DayShiftAssignmentUser
+			_ = DB.Where("day_shift_assignments_id = ?", cur.ID).Find(&curUsers).Error
+			// ensure dest exists
+			for _, u := range curUsers {
+				// check existence
+				var cnt int64
+				_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", destAsg.ID, u.UserID).Count(&cnt).Error
+				if cnt == 0 {
+					_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: destAsg.ID, UserID: u.UserID}).Error
+				}
+			}
+			_ = DB.Delete(&DayShiftAssignment{}, cur.ID).Error
+		} else {
+			// move current assignment to dest date
+			_ = DB.Model(&DayShiftAssignment{}).Where("id = ?", cur.ID).Update("date", dateOnly(dest)).Error
+		}
+	}
+	// Copy today's users to next business day as well
+	var today DayShiftAssignment
+	if err := DB.Where("date = ?", start.Format("2006-01-02")).First(&today).Error; err == nil {
+		var todayUsers []DayShiftAssignmentUser
+		_ = DB.Where("day_shift_assignments_id = ?", today.ID).Find(&todayUsers).Error
+		var dest DayShiftAssignment
+		if err := DB.Where("date = ?", next.Format("2006-01-02")).First(&dest).Error; err != nil {
+			cyc, _ := getCurrentCycle(next)
+			dest = DayShiftAssignment{Date: next, Status: "assigned"}
+			if cyc != nil {
+				dest.CycleID = cyc.ID
+			}
+			_ = DB.Create(&dest).Error
+		}
+		for _, u := range todayUsers {
+			var cnt int64
+			_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", dest.ID, u.UserID).Count(&cnt).Error
+			if cnt == 0 {
+				_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: dest.ID, UserID: u.UserID}).Error
+			}
+		}
+	}
+	return nil
+}
+
+// captureError reports error to Sentry if DSN is configured
+func captureError(err error) {
+	if err == nil {
+		return
+	}
+	if env("SENTRY_DSN", "") == "" {
+		return
+	}
+	sentry.CaptureException(err)
 }

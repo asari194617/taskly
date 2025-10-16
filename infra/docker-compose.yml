@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   db:
     image: mysql:8.4
@@ -39,6 +38,7 @@ services:
     build: ../apps/server
     env_file:
       - ../.env
+    # Note: .env values like DB_HOST/PORT are overridden below for in-cluster access
     depends_on:
       db:
         condition: service_healthy
@@ -49,6 +49,7 @@ services:
       - "3064:9464" # Metrics
     environment:
       DB_HOST: db
+      DB_PORT: 3306
       DB_USER: taskly
       DB_PASSWORD: taskly_password
       DB_NAME: taskly

@@ -14,19 +14,16 @@ import (
 )
 
 func registerIntegrationRoutes(app *fiber.App) {
+	// Unified Teams integration secret header verification helper
+	requireTeamsSecret := func(c *fiber.Ctx) bool {
+		sec := c.Get("x-teams-integration-secret")
+		return sec != "" && sec == env("TEAMS_INTEGRATION_SECRET", "change_me")
+	}
+
 	// Callback endpoint for Power Automate to report posting result
 	app.Post("/integrations/teams/callback", func(c *fiber.Ctx) error {
-		// verify HMAC signature (optional)
-		body := c.Body()
-		sig := c.Get("X-Signature")
-		secret := env("TEAMS_STATUS_SIGNING_SECRET", "")
-		if secret != "" {
-			mac := hmac.New(sha256.New, []byte(secret))
-			mac.Write(body)
-			expected := fmt.Sprintf("sha256=%x", mac.Sum(nil))
-			if sig == "" || !hmac.Equal([]byte(sig), []byte(expected)) {
-				return c.Status(401).JSON(fiber.Map{"error": "invalid signature"})
-			}
+		if !requireTeamsSecret(c) {
+			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		// Accept task_id as string or number
 		var raw map[string]any
@@ -86,17 +83,8 @@ func registerIntegrationRoutes(app *fiber.App) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 	app.Post("/integrations/teams/status", func(c *fiber.Ctx) error {
-		// verify HMAC signature
-		body := c.Body()
-		sig := c.Get("X-Signature")
-		secret := env("TEAMS_STATUS_SIGNING_SECRET", "")
-		if secret != "" {
-			mac := hmac.New(sha256.New, []byte(secret))
-			mac.Write(body)
-			expected := fmt.Sprintf("sha256=%x", mac.Sum(nil))
-			if sig == "" || !hmac.Equal([]byte(sig), []byte(expected)) {
-				return c.Status(401).JSON(fiber.Map{"error": "invalid signature"})
-			}
+		if !requireTeamsSecret(c) {
+			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		// store minimal log; accept task_id string or number
 		var raw map[string]any
@@ -195,7 +183,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			if callback != nil && *callback != "" {
 				cbURL := *callback
 				payload := fmt.Sprintf(`{"is_success":%t,"task_id":%d}`, isSuccess, rec.ID)
-				secret := env("TEAMS_STATUS_SIGNING_SECRET", "")
+				secret := env("TEAMS_INTEGRATION_SECRET", "")
 				// HMAC signature
 				var sig string
 				if secret != "" {
@@ -243,9 +231,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 	}()
 
 	app.Post("/integrations/teams/inbound", func(c *fiber.Ctx) error {
-		// Verify shared secret header
-		secret := c.Get("X-Teams-Secret")
-		if secret == "" || secret != env("TEAMS_CALLBACK_ENDPOINT_SECRET", "change_me") {
+		if !requireTeamsSecret(c) {
 			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		var body struct {
@@ -283,31 +269,25 @@ func registerIntegrationRoutes(app *fiber.App) {
 
 	// Inbound endpoint to mark day shift unfulfilled when an email about 日直 is received via Power Automate
 	app.Post("/integrations/dayshift/inbound", func(c *fiber.Ctx) error {
-		secret := c.Get("X-Taskly-Secret")
-		if secret == "" || secret != env("DAYSHIFT_INBOUND_SECRET", "change_me") {
+		if !requireTeamsSecret(c) {
 			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		var body struct {
-			Title   string  `json:"title"`
-			Content string  `json:"content"`
-			Date    *string `json:"date"`
+			Subject string `json:"subject"`
+			Body    string `json:"body"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		if !strings.Contains(body.Title+" "+body.Content, "日直") {
+		if !strings.Contains(body.Subject+" "+body.Body, "日直") {
 			return c.Status(400).JSON(fiber.Map{"error": "not a dayshift notice"})
 		}
-		var target time.Time
-		if body.Date != nil && *body.Date != "" {
-			if t, err := time.Parse("2006-01-02", *body.Date); err == nil {
-				target = t
-			} else {
-				target = dateOnly(time.Now())
-			}
-		} else {
-			target = dateOnly(time.Now())
+		// Use Gemini to decide whether to execute rotation/delay
+		doRotate := shouldRotateByGemini(body.Subject, body.Body)
+		if !doRotate {
+			return c.Status(202).JSON(fiber.Map{"ok": true, "rotated": false})
 		}
+		target := dateOnly(time.Now())
 		var asg DayShiftAssignment
 		if err := DB.Where("date = ?", target.Format("2006-01-02")).First(&asg).Error; err != nil {
 			// create if missing within current cycle if any
@@ -324,6 +304,12 @@ func registerIntegrationRoutes(app *fiber.App) {
 			asg.Status = "unfulfilled"
 			_ = DB.Save(&asg).Error
 		}
-		return c.SendStatus(202)
+		// Shift today's users to next business day and push rest by one day
+		if err := performDayShiftRotation(target); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "rotation"})
+		}
+		// Notify Discord via embeds
+		notifyDayShiftRotationDiscord(target)
+		return c.Status(202).JSON(fiber.Map{"ok": true, "rotated": true})
 	})
 }

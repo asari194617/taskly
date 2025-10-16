@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"strings"
+	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -30,17 +32,29 @@ func main() {
 	ensureDeadlineDateColumn()
 	// If tasks is empty and schema mismatches new enums/date, drop and recreate safely
 	ensureTasksSchema()
+	// Ensure integrations logging table exists even if SQL migrations aren't run externally
+	ensureTasksTeamsLogsTable()
 	// Run pending migrations
 	runMigrations()
 
+	// Sentry initialization (optional)
+	if dsn := env("SENTRY_DSN", ""); dsn != "" {
+		_ = sentry.Init(sentry.ClientOptions{Dsn: dsn, TracesSampleRate: 0.1})
+		defer sentry.Flush(2 * time.Second)
+	}
+
 	app := fiber.New()
 	app.Use(recover.New())
+	// Minimal capture for unhandled panics is covered by recover(); capture explicit errors in handlers where needed.
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"),
 		AllowCredentials: strings.ToLower(env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
-		AllowHeaders:     "Authorization,authorization, Content-Type,content-type, X-Client-Platform,x-client-platform",
+		AllowHeaders:     "Authorization,authorization, Content-Type,content-type, X-Client-Platform,x-client-platform, X-API-Key,x-api-key",
 	}))
+
+	// Restrict API key accessible endpoints
+	app.Use(apiKeyRouteScope)
 
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	// GraphQL routes

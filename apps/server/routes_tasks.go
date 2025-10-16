@@ -120,7 +120,7 @@ func registerTasksRoutes(app *fiber.App) {
 		}
 		rec := Task{AddedUserID: u.ID, Title: body.Title, SubjectID: body.SubjectID, Description: body.Description, Deadline: dateOnly(dead), DeadlineSince: "NONE", DeadlineUntil: "NONE"}
 		if body.Type != nil {
-			rec.Type = *body.Type
+			rec.Type = normalizeTaskType(*body.Type)
 		}
 		if body.IsRequireHandIn != nil {
 			rec.IsRequireHandIn = *body.IsRequireHandIn
@@ -172,7 +172,7 @@ func registerTasksRoutes(app *fiber.App) {
 			rec.Description = body.Description
 		}
 		if body.Type != nil {
-			rec.Type = *body.Type
+			rec.Type = normalizeTaskType(*body.Type)
 		}
 		if body.IsRequireHandIn != nil {
 			rec.IsRequireHandIn = *body.IsRequireHandIn
@@ -205,6 +205,10 @@ func registerTasksRoutes(app *fiber.App) {
 		if err := DB.Save(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
+		// Fire Teams reply for update
+		if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
+			go sendTeamsReplyEmail(rec.ID, mid, "updated")
+		}
 		return c.JSON(rec)
 	})
 
@@ -233,6 +237,10 @@ func registerTasksRoutes(app *fiber.App) {
 		}
 		if err := DB.Delete(&Task{}, rec.ID).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		// Fire Teams reply for delete
+		if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
+			go sendTeamsReplyEmail(rec.ID, mid, "deleted")
 		}
 		return c.SendStatus(204)
 	})

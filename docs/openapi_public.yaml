@@ -1,0 +1,201 @@
+openapi: 3.0.3
+info:
+  title: Taskly Public API
+  version: 1.0.0
+  description: Public REST surface accessible with an API key. All requests must include the X-API-Key header.
+servers:
+  - url: http://localhost:3063
+    description: Local server
+security:
+  - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        added_user_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subject_id:
+          type: integer
+          format: int64
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [ONLINE, FACE_TO_FACE, QUIZ, PRESENTATION, SELF_STUDY, OTHER]
+        is_require_hand_in:
+          type: boolean
+        self_check_required:
+          type: boolean
+        deadline:
+          type: string
+          format: date
+        deadline_since:
+          type: string
+        deadline_until:
+          type: string
+    UserMe:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        display_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        is_admin:
+          type: boolean
+        is_manager:
+          type: boolean
+paths:
+  /tasks:
+    get:
+      summary: List tasks with pagination
+      parameters:
+        - in: query
+          name: overdue
+          schema:
+            type: boolean
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: cursor_deadline
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: cursor_id
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+                  next_cursor:
+                    type: object
+                    additionalProperties:
+                      type: string
+    post:
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, subject_id, deadline]
+              properties:
+                title: { type: string }
+                subject_id: { type: integer }
+                description: { type: string, nullable: true }
+                type: { type: string }
+                is_require_hand_in: { type: boolean }
+                self_check_required: { type: boolean }
+                deadline: { type: string, format: date }
+                deadline_since: { type: string }
+                deadline_until: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /tasks/{id}:
+    patch:
+      summary: Update a task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, nullable: true }
+                subject_id: { type: integer, nullable: true }
+                description: { type: string, nullable: true }
+                type: { type: string, nullable: true }
+                is_require_hand_in: { type: boolean, nullable: true }
+                self_check_required: { type: boolean, nullable: true }
+                deadline: { type: string, format: date, nullable: true }
+                deadline_since: { type: string, nullable: true }
+                deadline_until: { type: string, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      summary: Delete a task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: No Content
+  /users/me:
+    get:
+      summary: Get current user profile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserMe"
+    patch:
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name:
+                  type: string
+      responses:
+        "204":
+          description: No Content

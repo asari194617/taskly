@@ -6,7 +6,7 @@ info:
 servers:
   - url: https://api.taskly.local
     description: Production
-  - url: http://localhost:8080
+  - url: http://localhost:3063
     description: Local
 tags:
   - name: auth

@@ -7,7 +7,7 @@ export async function gql<T>(
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const base =
-    (import.meta as any).env?.PUBLIC_API_URL || "http://localhost:8080";
+    (import.meta as any).env?.PUBLIC_API_URL || "http://localhost:3063";
   const res = await fetch(`${base}/graphql`, {
     method: "POST",
     headers: {

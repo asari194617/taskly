@@ -8,7 +8,7 @@ import { useLang } from "@/react/LanguageProvider";
 import { toast } from "@/hooks/use-toast";
 
 const apiBase =
-  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
+  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
 
 function urlB64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);

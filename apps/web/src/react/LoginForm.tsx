@@ -12,7 +12,7 @@ import { Modal } from "../components/ui/modal";
 import { gql } from "../lib/graphql";
 
 const apiBase =
-  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
+  (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
 
 export default function LoginForm() {
   const [email, setEmail] = React.useState("");

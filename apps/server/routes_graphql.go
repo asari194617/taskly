@@ -1041,7 +1041,7 @@ func registerGraphQL(app *fiber.App) {
 							descPtr = &desc
 						}
 						typ, _ := p.Args["type"].(string)
-						typ = strings.TrimSpace(typ)
+						typ = normalizeTaskType(typ)
 						irh, _ := p.Args["is_require_hand_in"].(bool)
 						scr, _ := p.Args["self_check_required"].(bool)
 						deadlineStr, _ := p.Args["deadline"].(string)
@@ -1142,7 +1142,7 @@ func registerGraphQL(app *fiber.App) {
 							}
 						}
 						if v, ok := p.Args["type"].(string); ok {
-							rec.Type = strings.TrimSpace(v)
+							rec.Type = normalizeTaskType(v)
 						}
 						if v, ok := p.Args["is_require_hand_in"].(bool); ok {
 							rec.IsRequireHandIn = v
@@ -1182,6 +1182,10 @@ func registerGraphQL(app *fiber.App) {
 						}
 						if err := DB.Save(&rec).Error; err != nil {
 							return nil, fmt.Errorf("db")
+						}
+						// Fire Teams reply for update (if original message exists)
+						if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
+							go sendTeamsReplyEmail(rec.ID, mid, "updated")
 						}
 						out := map[string]any{
 							"id":                  rec.ID,
@@ -1233,6 +1237,10 @@ func registerGraphQL(app *fiber.App) {
 						}
 						if err := DB.Delete(&Task{}, rec.ID).Error; err != nil {
 							return false, fmt.Errorf("db")
+						}
+						// Fire Teams reply for delete (if original message exists)
+						if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
+							go sendTeamsReplyEmail(rec.ID, mid, "deleted")
 						}
 						return true, nil
 					}
