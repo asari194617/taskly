@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -1402,21 +1403,24 @@ func businessDaysBetween(start time.Time, end time.Time) int {
 
 // Decide whether to rotate day shift based on Gemini API analysis of subject/body
 func shouldRotateByGemini(subject, body string) bool {
+	// 1) Strong heuristic first (Japanese keywords)
+	s := strings.ToLower(subject + "\n" + body)
+	if shouldRotateHeuristic(s) {
+		return true
+	}
+	// 2) If Gemini API key is configured, ask the model; parse JSON result safely
 	apiKey := env("GEMINI_API_KEY", "")
 	if apiKey == "" {
-		// Fallback: naive keyword heuristic
-		s := strings.ToLower(subject + "\n" + body)
-		return strings.Contains(s, "延期") || strings.Contains(s, "ずらし") || strings.Contains(s, "変更")
+		// No API key and heuristic didn't match → do not rotate
+		return false
 	}
-	// Minimal HTTP call to Gemini (pseudo for models API)
-	// NOTE: Keep simple and tolerant; on error, default to false to avoid accidental rotation
-	prompt := "Decide if this email asks to delay or reschedule the on-duty day shift. Reply strictly with YES or NO.\nSubject: " + subject + "\nBody: " + body
+	prompt := "以下のメール内容が『当日日直の延期・振替・順延・スライド（＝日直をずらす）』を求めているか判定してください。回答は YES または NO のみ。\nSubject: " + subject + "\nBody: " + body
 	reqBody := fmt.Sprintf(`{"contents":[{"parts":[{"text":%q}]}]}`, prompt)
 	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey
-	httpClient := &http.Client{Timeout: 8 * time.Second}
+	client := &http.Client{Timeout: 8 * time.Second}
 	req, _ := http.NewRequest("POST", url, strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil || resp == nil {
 		if resp != nil {
 			_ = resp.Body.Close()
@@ -1424,9 +1428,52 @@ func shouldRotateByGemini(subject, body string) bool {
 		return false
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	s := strings.ToUpper(string(b))
-	return strings.Contains(s, "YES")
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var gr struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(bodyBytes, &gr); err == nil {
+		var b strings.Builder
+		for _, c := range gr.Candidates {
+			for _, p := range c.Content.Parts {
+				b.WriteString(p.Text)
+				b.WriteString("\n")
+			}
+		}
+		ans := strings.ToUpper(b.String())
+		if strings.Contains(ans, "YES") || strings.Contains(ans, "ＹＥＳ") || strings.Contains(ans, "はい") {
+			return true
+		}
+		if strings.Contains(ans, "NO") || strings.Contains(ans, "ＮＯ") || strings.Contains(ans, "いいえ") {
+			return false
+		}
+	}
+	// 3) Fallback: if model response ambiguous, rely on heuristic again
+	return shouldRotateHeuristic(s)
+}
+
+// shouldRotateHeuristic detects Japanese phrases that imply postponing/rescheduling day shift
+func shouldRotateHeuristic(s string) bool {
+	// Normalize (remove spaces)
+	s = strings.ReplaceAll(s, " ", "")
+	// Positive signals
+	positives := []string{
+		"延期", "順延", "日程変更", "変更します", "変更したい", "変更を希望", "スライド", "ずらし", "ずらせ", "ずらしたい",
+		"振替", "振り替え", "別日に", "後ろ倒し", "先送り", "移動したい", "日直を変", "交代をお願い", "交代したい",
+		"日直変更", "日直ずらし", "日直延期", "都合が悪いので", "本日の日直を延期", "今日の", "日直を延期",
+	}
+	for _, kw := range positives {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // Notify Discord with a simple embed indicating day shift rotation occurred
@@ -1462,11 +1509,6 @@ func pushAssignmentsOneDayForward(start time.Time) error {
 	if err := DB.Where("date BETWEEN ? AND ?", next.Format("2006-01-02"), end.Format("2006-01-02")).Order("date ASC").Find(&items).Error; err != nil {
 		return err
 	}
-	// Build map date->assignment
-	amap := map[string]DayShiftAssignment{}
-	for _, it := range items {
-		amap[it.Date.Format("2006-01-02")] = it
-	}
 	// Iterate in reverse to move forward safely
 	for i := len(items) - 1; i >= 0; i-- {
 		cur := items[i]
@@ -1477,12 +1519,9 @@ func pushAssignmentsOneDayForward(start time.Time) error {
 		var destAsg DayShiftAssignment
 		err := DB.Where("date = ?", dest.Format("2006-01-02")).First(&destAsg).Error
 		if err == nil {
-			// merge users into dest, then delete current
 			var curUsers []DayShiftAssignmentUser
 			_ = DB.Where("day_shift_assignments_id = ?", cur.ID).Find(&curUsers).Error
-			// ensure dest exists
 			for _, u := range curUsers {
-				// check existence
 				var cnt int64
 				_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", destAsg.ID, u.UserID).Count(&cnt).Error
 				if cnt == 0 {
@@ -1491,7 +1530,6 @@ func pushAssignmentsOneDayForward(start time.Time) error {
 			}
 			_ = DB.Delete(&DayShiftAssignment{}, cur.ID).Error
 		} else {
-			// move current assignment to dest date
 			_ = DB.Model(&DayShiftAssignment{}).Where("id = ?", cur.ID).Update("date", dateOnly(dest)).Error
 		}
 	}
