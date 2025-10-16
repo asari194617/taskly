@@ -36,9 +36,9 @@ function useItems(dict: ReturnType<typeof import("@/lib/i18n").t>) {
     { href: "/settings/basic", label: d.basic, icon: User },
     { href: "/settings/security", label: d.security, icon: Shield },
     { href: "/settings/notifications", label: d.notifications, icon: Bell },
-    { href: "/settings/api-keys", label: "API Key", icon: Key },
-    { href: "/settings/ical", label: "iCal", icon: Calendar },
-    { href: "/settings/mcp", label: "MCP", icon: Boxes },
+    { href: "/settings/api-keys", label: d.apiKeys, icon: Key },
+    { href: "/settings/ical", label: d.ical, icon: Calendar },
+    { href: "/settings/mcp", label: d.mcp, icon: Boxes },
   ];
   return items;
 }

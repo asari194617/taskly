@@ -8,7 +8,7 @@ services:
       MYSQL_USER: taskly
       MYSQL_PASSWORD: taskly_password
     ports:
-      - "3306:3306"
+      - "3060:3306" # MySQL
     command:
       [
         "--sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
@@ -23,23 +23,18 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "3061:6379" # Redis
     volumes:
       - redis-data:/data
   postfix:
     build: ./docker/postfix
     container_name: taskly-postfix
     ports:
-      - "25:25"
+      - "3062:25" # SMTP
     environment:
       - MYNETWORKS=0.0.0.0/0
       - RELAY_NETWORKS=:0.0.0.0/0
-  prometheus:
-    image: prom/prometheus
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
+  # prometheus removed per infra cleanup
   server:
     build: ../apps/server
     env_file:
@@ -50,8 +45,8 @@ services:
       redis:
         condition: service_started
     ports:
-      - "8080:8080"
-      - "9464:9464"
+      - "3063:8080" # API
+      - "3064:9464" # Metrics
     environment:
       DB_HOST: db
       DB_USER: taskly

@@ -17,6 +17,8 @@ type User struct {
 	IsDeleted        bool    `gorm:"default:false"`
 	IsDayShiftActive bool    `gorm:"default:false"`
 	NotificationLang string  `gorm:"size:5;not null;default:'ja'"`
+	IsRegistered     bool    `gorm:"default:false"`
+	IsAgreedPolicies bool    `gorm:"default:false"`
 	PushDailyEnabled bool    `gorm:"default:true"`
 	CreatedAt        time.Time
 }

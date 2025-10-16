@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type IItem = {
   id: number;
@@ -81,6 +82,10 @@ export default function SettingsIcal() {
     <SettingsShell>
       <div className="space-y-6">
         <h1 className="text-xl font-semibold">{dict.settingsIcal.heading}</h1>
+        <Alert>
+          <AlertTitle>{dict.common.warning}</AlertTitle>
+          <AlertDescription>{dict.settingsIcal.shareWarning}</AlertDescription>
+        </Alert>
         <Card className="p-4 space-y-3">
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-60">

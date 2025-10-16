@@ -6,4 +6,9 @@ import LoginForm from "../react/LoginForm";
   <div class="mx-auto max-w-md">
     <LoginForm client:load />
   </div>
+  <script>
+    import { redirectIfAuthed } from "@/lib/auth-guard";
+    // If already logged in, send user to next or /home
+    redirectIfAuthed("/home");
+  </script>
 </Layout>

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type ApiKey = {
   id: number;
@@ -102,6 +103,12 @@ export default function SettingsApiKeys() {
         <h1 className="text-xl font-semibold">
           {dict.settingsApiKeys.heading}
         </h1>
+        <Alert>
+          <AlertTitle>{dict.common.warning}</AlertTitle>
+          <AlertDescription>
+            {dict.settingsApiKeys.shareWarning}
+          </AlertDescription>
+        </Alert>
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-60 flex-1">

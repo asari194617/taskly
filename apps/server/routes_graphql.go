@@ -82,11 +82,13 @@ func registerGraphQL(app *fiber.App) {
 	meType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Me",
 		Fields: graphql.Fields{
-			"id":           &graphql.Field{Type: graphql.Int},
-			"email":        &graphql.Field{Type: graphql.String},
-			"display_name": &graphql.Field{Type: graphql.String},
-			"is_admin":     &graphql.Field{Type: graphql.Boolean},
-			"is_manager":   &graphql.Field{Type: graphql.Boolean},
+			"id":                 &graphql.Field{Type: graphql.Int},
+			"email":              &graphql.Field{Type: graphql.String},
+			"display_name":       &graphql.Field{Type: graphql.String},
+			"is_admin":           &graphql.Field{Type: graphql.Boolean},
+			"is_manager":         &graphql.Field{Type: graphql.Boolean},
+			"is_registered":      &graphql.Field{Type: graphql.Boolean},
+			"is_agreed_policies": &graphql.Field{Type: graphql.Boolean},
 		},
 	})
 	authSettingsType := graphql.NewObject(graphql.ObjectConfig{
@@ -286,11 +288,13 @@ func registerGraphQL(app *fiber.App) {
 							}
 						}
 						return map[string]any{
-							"id":           u.ID,
-							"email":        u.Email,
-							"display_name": u.DisplayName,
-							"is_admin":     isAdmin,
-							"is_manager":   isManager,
+							"id":                 u.ID,
+							"email":              u.Email,
+							"display_name":       u.DisplayName,
+							"is_admin":           isAdmin,
+							"is_manager":         isManager,
+							"is_registered":      u.IsRegistered,
+							"is_agreed_policies": u.IsAgreedPolicies,
 						}, nil
 					}
 					return nil, fmt.Errorf("context missing")
@@ -441,6 +445,22 @@ func registerGraphQL(app *fiber.App) {
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Mutation",
 		Fields: graphql.Fields{
+			"agreePolicies": &graphql.Field{
+				Type: graphql.Boolean,
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("is_agreed_policies", true).Error; err != nil {
+							return false, err
+						}
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
 			"mcpCreate": &graphql.Field{
 				Type: graphql.NewObject(graphql.ObjectConfig{
 					Name: "McpCreateResult",

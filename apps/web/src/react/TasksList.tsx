@@ -169,6 +169,8 @@ export default function TasksList() {
   );
 
   const [items, setItems] = React.useState<Task[] | null>(null);
+  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [isManager, setIsManager] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -205,10 +207,15 @@ export default function TasksList() {
         { q: q || undefined }
       ),
       gql<{ subjects: Subject[] }>(`query{ subjects{ id name_ja name_en } }`),
+      gql<{ me: { is_admin: boolean; is_manager: boolean } }>(
+        `query{ me{ is_admin is_manager } }`
+      ),
     ])
-      .then(([t, s]) => {
+      .then(([t, s, me]) => {
         setItems(t.tasks.items);
         setSubjects(s.subjects || []);
+        setIsAdmin(!!me?.me?.is_admin);
+        setIsManager(!!me?.me?.is_manager);
       })
       .catch((e) => setError(e?.message || dict.tasks.loadFailed));
   }, [q, dict.tasks.loadFailed]);
@@ -1191,14 +1198,16 @@ export default function TasksList() {
                                     {dict.tasks.edit}
                                   </Button>
                                   <ButtonGroupSeparator />
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => deleteTask(t.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-1" />{" "}
-                                    {dict.tasks.delete}
-                                  </Button>
+                                  {(isAdmin || isManager) && (
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => deleteTask(t.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-1" />{" "}
+                                      {dict.tasks.delete}
+                                    </Button>
+                                  )}
                                 </ButtonGroup>
                                 {/* Mobile: kebab menu */}
                                 <div className="sm:hidden">
@@ -1219,13 +1228,15 @@ export default function TasksList() {
                                         <Pencil className="h-4 w-4 mr-2" />{" "}
                                         {dict.tasks.edit}
                                       </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        className="text-destructive focus:text-destructive"
-                                        onClick={() => deleteTask(t.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />{" "}
-                                        {dict.tasks.delete}
-                                      </DropdownMenuItem>
+                                      {(isAdmin || isManager) && (
+                                        <DropdownMenuItem
+                                          className="text-destructive focus:text-destructive"
+                                          onClick={() => deleteTask(t.id)}
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-2" />{" "}
+                                          {dict.tasks.delete}
+                                        </DropdownMenuItem>
+                                      )}
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </div>

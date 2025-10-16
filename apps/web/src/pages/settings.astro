@@ -4,4 +4,8 @@ import SettingsPage from "@/react/pages/SettingsPage";
 ---
 <Layout title="Settings">
   <SettingsPage client:load />
+  <script>
+    import { requireAuth } from "@/lib/auth-guard";
+    requireAuth();
+  </script>
 </Layout>

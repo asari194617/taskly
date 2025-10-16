@@ -291,6 +291,10 @@ func registerAuthRoutes(app *fiber.App) {
 		// track user sessions for revocation
 		_ = RDB.SAdd(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), token).Err()
 		_ = RDB.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
+		// Mark user as registered upon first successful login
+		if !u.IsRegistered {
+			_ = DB.Model(&User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
+		}
 		// Optionally record DB session (hashed)
 		DB.AutoMigrate(&Session{})
 		// Store hash of token and associated user id for DB-fallback validation

@@ -22,6 +22,7 @@ import {
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Tooltip,
   TooltipContent,
@@ -118,6 +119,10 @@ export default function SettingsMcp() {
     <SettingsShell>
       <div className="space-y-6">
         <h1 className="text-xl font-semibold">{dict.settingsMcp.heading}</h1>
+        <Alert>
+          <AlertTitle>{dict.common.warning}</AlertTitle>
+          <AlertDescription>{dict.settingsMcp.shareWarning}</AlertDescription>
+        </Alert>
         <Card className="p-4 space-y-3">
           {disabled ? (
             <div className="text-sm text-muted-foreground">

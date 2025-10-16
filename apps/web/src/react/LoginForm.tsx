@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Modal } from "../components/ui/modal";
+import { gql } from "../lib/graphql";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
@@ -29,6 +30,18 @@ export default function LoginForm() {
   const [message, setMessage] = React.useState<string | null>(null);
   const [step, setStep] = React.useState<"email" | "verify">("email");
   const [blocked, setBlocked] = React.useState<string | null>(null);
+
+  // Determine post-login redirect target
+  const getRedirectTarget = React.useCallback(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const raw = params.get("next") || "";
+      const safe = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
+      return safe || "/home";
+    } catch {
+      return "/home";
+    }
+  }, []);
 
   const discover = async () => {
     setMessage(null);
@@ -57,6 +70,22 @@ export default function LoginForm() {
     } catch (_err) {
       setMessage("認証方式の取得に失敗しました");
     }
+  };
+
+  const postLoginRedirect = async () => {
+    const target = getRedirectTarget();
+    try {
+      const res = await gql<{ me: { is_agreed_policies: boolean } }>(
+        "query{ me{ is_agreed_policies } }"
+      );
+      if (!res.me?.is_agreed_policies) {
+        window.location.replace(`/consent?next=${encodeURIComponent(target)}`);
+        return;
+      }
+    } catch {
+      // ignore and fallback to normal redirect
+    }
+    window.location.replace(target);
   };
 
   const requestCode = async () => {
@@ -111,8 +140,8 @@ export default function LoginForm() {
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         setMessage("ログインしました");
-        // redirect to top, which will send to /home if logged in
-        window.location.href = "/";
+        // Redirect immediately to consent if not agreed; else to target/home
+        await postLoginRedirect();
       } else {
         setMessage("予期せぬレスポンスです");
       }
@@ -195,6 +224,8 @@ export default function LoginForm() {
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         setMessage("ログインしました（パスキー）");
+        // redirect after passkey login with consent check
+        await postLoginRedirect();
       } else {
         setMessage("予期せぬレスポンスです");
       }

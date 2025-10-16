@@ -2,15 +2,45 @@
 import Layout from "../layouts/AppLayout.astro";
 ---
 <Layout title="Taskly">
-  <div class="mx-auto max-w-3xl space-y-6">
-    <div class="space-y-2">
-      <h1 class="text-3xl font-bold tracking-tight">Taskly</h1>
-      <p class="text-muted-foreground">シンプルで高速なクラス管理サービス。課題の管理、日直の通知、APIキーやiCalなどをサポートします。</p>
+  <div class="mx-auto max-w-5xl space-y-10">
+    <!-- Hero -->
+    <div class="space-y-3">
+      <h1 class="text-3xl md:text-4xl font-bold tracking-tight" data-i18n-key="landing.hero.title">Taskly</h1>
+      <p class="text-muted-foreground" data-i18n-key="landing.hero.tagline">
+        シンプルで高速なクラス管理サービス。課題の管理、日直の通知、APIキーやiCalなどをサポートします。
+      </p>
+      <div class="flex items-center gap-3 pt-1">
+        <a href="/login" data-i18n-key="landing.hero.loginCta" class="inline-flex items-center justify-center h-10 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90">ログイン</a>
+        <a href="/settings" data-i18n-key="landing.hero.settingsCta" class="inline-flex items-center justify-center h-10 px-4 rounded-md border bg-background hover:bg-accent hover:text-accent-foreground">設定</a>
+      </div>
     </div>
-    <div class="flex items-center gap-3">
-      <a href="/login" class="inline-flex items-center justify-center h-10 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90">ログイン</a>
-      <a href="/settings" class="inline-flex items-center justify-center h-10 px-4 rounded-md border bg-background hover:bg-accent hover:text-accent-foreground">設定</a>
-    </div>
+
+    <!-- Features -->
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold" data-i18n-key="landing.features.title">主な機能</h2>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="rounded-lg border p-4 bg-card">
+          <div class="font-medium" data-i18n-key="landing.features.fast.title">高速な課題管理</div>
+          <p class="text-sm text-muted-foreground mt-1" data-i18n-key="landing.features.fast.desc">締切順の一覧、クイック作成、自己採点のフラグなど。</p>
+        </div>
+        <div class="rounded-lg border p-4 bg-card">
+          <div class="font-medium" data-i18n-key="landing.features.push.title">朝のプッシュ通知</div>
+          <p class="text-sm text-muted-foreground mt-1" data-i18n-key="landing.features.push.desc">毎朝のダイジェストやテスト通知をサポート。</p>
+        </div>
+        <div class="rounded-lg border p-4 bg-card">
+          <div class="font-medium" data-i18n-key="landing.features.api.title">APIキー</div>
+          <p class="text-sm text-muted-foreground mt-1" data-i18n-key="landing.features.api.desc">CI/CDや外部連携に使えるAPIキーを発行。</p>
+        </div>
+        <div class="rounded-lg border p-4 bg-card">
+          <div class="font-medium" data-i18n-key="landing.features.ical.title">iCalカレンダー</div>
+          <p class="text-sm text-muted-foreground mt-1" data-i18n-key="landing.features.ical.desc">購読URLで予定表アプリと同期。</p>
+        </div>
+        <div class="rounded-lg border p-4 bg-card">
+          <div class="font-medium" data-i18n-key="landing.features.security.title">セキュリティ</div>
+          <p class="text-sm text-muted-foreground mt-1" data-i18n-key="landing.features.security.desc">パスキー/TOTP/メールコード、リカバリーコードに対応。</p>
+        </div>
+      </div>
+    </section>
   </div>
   <script>
     // If already logged in, go to /home
@@ -18,5 +48,10 @@ import Layout from "../layouts/AppLayout.astro";
       const tok = localStorage.getItem('api_token');
       if(tok){ window.location.replace('/home'); }
     })();
+  </script>
+  <script>
+    import { updateI18nTexts, watchLanguageChange } from "@/lib/i18n-dom";
+    updateI18nTexts();
+    watchLanguageChange();
   </script>
 </Layout>

@@ -53,11 +53,61 @@ export const t = (lang: Lang) => ({
     enable: lang === "ja" ? "有効化" : "Enable",
     disable: lang === "ja" ? "無効化" : "Disable",
     openapiFile: lang === "ja" ? "OpenAPIファイル" : "OpenAPI file",
+    warning: lang === "ja" ? "注意" : "Warning",
   },
   home: {
     title: lang === "ja" ? "課題一覧" : "Task List",
     description:
       lang === "ja" ? "期限が近い順に表示します。" : "Sorted by deadline.",
+  },
+  landing: {
+    hero: {
+      title: "Taskly",
+      tagline:
+        lang === "ja"
+          ? "シンプルで高速なクラス管理サービス。課題の管理、日直の通知、APIキーやiCalなどをサポートします。"
+          : "Simple and fast class management. Manage tasks, morning digest notifications, API keys, iCal, and more.",
+      loginCta: lang === "ja" ? "ログイン" : "Log in",
+      settingsCta: lang === "ja" ? "設定" : "Settings",
+    },
+    features: {
+      title: lang === "ja" ? "主な機能" : "Key features",
+      fast: {
+        title: lang === "ja" ? "高速な課題管理" : "Fast task management",
+        desc:
+          lang === "ja"
+            ? "締切順の一覧、クイック作成、自己採点のフラグなど。"
+            : "Deadline-first list, quick create, self-check flags, and more.",
+      },
+      push: {
+        title: lang === "ja" ? "朝のプッシュ通知" : "Morning push digest",
+        desc:
+          lang === "ja"
+            ? "毎朝のダイジェストやテスト通知をサポート。"
+            : "Daily digest and test notifications.",
+      },
+      api: {
+        title: "APIキー",
+        desc:
+          lang === "ja"
+            ? "CI/CDや外部連携に使えるAPIキーを発行。"
+            : "Issue API keys for CI/CD and integrations.",
+      },
+      ical: {
+        title: "iCal",
+        desc:
+          lang === "ja"
+            ? "購読URLで予定表アプリと同期。"
+            : "Subscribe via URL and sync with calendar apps.",
+      },
+      security: {
+        title: lang === "ja" ? "セキュリティ" : "Security",
+        desc:
+          lang === "ja"
+            ? "パスキー/TOTP/メールコード、リカバリーコードに対応。"
+            : "Passkey/TOTP/email codes and recovery codes.",
+      },
+    },
   },
   tasks: {
     title: lang === "ja" ? "タイトル" : "Title",
@@ -210,6 +260,10 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "このトークンは一度しか表示されません。必ず保存してください。"
         : "This token will be shown only once. Please store it securely.",
+    shareWarning:
+      lang === "ja"
+        ? "APIキーは他人と共有しないでください。パスワードと同様に安全に保管してください。"
+        : "Never share your API keys. Treat them like passwords and store them securely.",
     table: {
       id: "ID",
       description: lang === "ja" ? "説明" : "Description",
@@ -222,6 +276,10 @@ export const t = (lang: Lang) => ({
     heading: "iCal",
     descOptional: lang === "ja" ? "説明（任意）" : "Description (optional)",
     issueUrl: lang === "ja" ? "URLを発行" : "Issue URL",
+    shareWarning:
+      lang === "ja"
+        ? "iCal購読URLは第三者に知られると予定を閲覧されます。URLは機密情報として扱い、公開しないでください。"
+        : "If someone gets your iCal URL, they can view your calendar. Treat it as a secret and do not share it.",
     table: {
       id: "ID",
       description: lang === "ja" ? "説明" : "Description",
@@ -247,6 +305,10 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "このトークンは一度しか表示されません。必ず安全な場所に保存してください。"
         : "This token will be shown only once. Store it securely.",
+    shareWarning:
+      lang === "ja"
+        ? "MCPトークンは第三者に共有しないでください。アプリへの完全なアクセス権を与える可能性があります。"
+        : "Do not share MCP tokens. They may grant full access to your app.",
     logs: {
       title: lang === "ja" ? "操作履歴" : "Activity Logs",
       action: lang === "ja" ? "アクション" : "Action",

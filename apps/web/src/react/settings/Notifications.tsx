@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useLang } from "@/react/LanguageProvider";
+import { toast } from "@/hooks/use-toast";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:8080";
@@ -28,7 +29,6 @@ export default function SettingsNotifications() {
   const [perm, setPerm] = React.useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
-  const [message, setMessage] = React.useState<string | null>(null);
   const [dailyEnabled, setDailyEnabled] = React.useState<boolean>(true);
 
   React.useEffect(() => {
@@ -79,7 +79,6 @@ export default function SettingsNotifications() {
   };
 
   const subscribe = async () => {
-    setMessage(null);
     try {
       if (!("serviceWorker" in navigator))
         throw new Error(dict.settingsNotifications.errorSwUnsupported);
@@ -148,15 +147,17 @@ export default function SettingsNotifications() {
       if (!res.ok)
         throw new Error(dict.settingsNotifications.errorServerRegister);
       setPushOn(true);
-      setMessage(dict.settingsNotifications.enabledMsg);
+      toast({ title: dict.settingsNotifications.enabledMsg });
     } catch (e: any) {
-      setMessage(e.message || dict.settingsNotifications.errorGeneric);
+      toast({
+        variant: "destructive",
+        title: e.message || dict.settingsNotifications.errorGeneric,
+      });
       throw e;
     }
   };
 
   const unsubscribe = async () => {
-    setMessage(null);
     try {
       if (!("serviceWorker" in navigator)) return;
       const reg = await navigator.serviceWorker.ready;
@@ -176,9 +177,12 @@ export default function SettingsNotifications() {
         });
       }
       setPushOn(false);
-      setMessage(dict.settingsNotifications.disabledMsg);
+      toast({ title: dict.settingsNotifications.disabledMsg });
     } catch (e: any) {
-      setMessage(e.message || dict.settingsNotifications.errorGeneric);
+      toast({
+        variant: "destructive",
+        title: e.message || dict.settingsNotifications.errorGeneric,
+      });
     }
   };
 
@@ -193,7 +197,6 @@ export default function SettingsNotifications() {
   };
 
   const testPush = async () => {
-    setMessage(null);
     try {
       const token = localStorage.getItem("api_token") || "";
       const res = await fetch(`${apiBase}/push/test`, {
@@ -208,37 +211,22 @@ export default function SettingsNotifications() {
       const sent = typeof data?.sent === "number" ? data.sent : undefined;
       if (typeof sent === "number") {
         const templ = dict.settingsNotifications.testSent;
-        setMessage(templ.replace("{n}", String(sent)));
+        toast({ title: templ.replace("{n}", String(sent)) });
         if (sent === 0) {
-          setMessage(dict.settingsNotifications.testSentZeroHint);
+          toast({ title: dict.settingsNotifications.testSentZeroHint });
         }
       } else {
-        setMessage(dict.settingsNotifications.sendTest);
+        toast({ title: dict.settingsNotifications.sendTest });
       }
     } catch (e: any) {
-      setMessage(e.message || dict.settingsNotifications.errorGeneric);
+      toast({
+        variant: "destructive",
+        title: e.message || dict.settingsNotifications.errorGeneric,
+      });
     }
   };
 
-  const checkSubscriptions = async () => {
-    setMessage(null);
-    try {
-      const token = localStorage.getItem("api_token") || "";
-      const res = await fetch(`${apiBase}/push/subscriptions`, {
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-          "X-Client-Platform": "web",
-        },
-      });
-      if (!res.ok) throw new Error(dict.settingsNotifications.errorFetchSubs);
-      const data = await res.json();
-      const count = data?.count ?? 0;
-      const templ = dict.settingsNotifications.subsCount;
-      setMessage(templ.replace("{n}", String(count)));
-    } catch (e: any) {
-      setMessage(e.message || dict.settingsNotifications.errorGeneric);
-    }
-  };
+  // Removed "check subscriptions" from UI for simplicity.
 
   const saveDaily = async (next: boolean) => {
     setDailyEnabled(next);
@@ -270,7 +258,7 @@ export default function SettingsNotifications() {
         </Card>
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="space-y-6">
               <div className="font-medium">
                 {dict.settingsNotifications.webPush}
               </div>
@@ -294,11 +282,6 @@ export default function SettingsNotifications() {
                   {dict.settingsNotifications.blocked}
                 </div>
               )}
-              {message && (
-                <div className="text-xs text-muted-foreground mt-1">
-                  {message}
-                </div>
-              )}
             </div>
             <Switch
               checked={pushOn}
@@ -314,22 +297,6 @@ export default function SettingsNotifications() {
             >
               {dict.settingsNotifications.sendTest}
             </Button>
-            <Button
-              variant="secondary"
-              onClick={checkSubscriptions}
-              disabled={loading}
-            >
-              {dict.settingsNotifications.checkSubs}
-            </Button>
-            {!pushOn && perm !== "granted" && (
-              <Button
-                variant="secondary"
-                onClick={() => subscribe()}
-                disabled={loading}
-              >
-                {dict.settingsNotifications.enableAndAllow}
-              </Button>
-            )}
           </div>
         </Card>
       </div>

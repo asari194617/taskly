@@ -16,6 +16,9 @@ import TasksList from "../react/TasksList";
 
 <script>
   import { updateI18nTexts, watchLanguageChange } from "@/lib/i18n-dom";
+  import { requireAuth } from "@/lib/auth-guard";
+  // Protect this page
+  requireAuth();
   
   // 初回ロード時に更新
   updateI18nTexts();

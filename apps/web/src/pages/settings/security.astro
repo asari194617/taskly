@@ -7,6 +7,8 @@ import SettingsSecurity from "@/react/settings/Security";
   <SettingsSecurity client:load />
   <script>
     import { updateI18nTexts, watchLanguageChange } from "@/lib/i18n-dom";
+    import { requireAuth } from "@/lib/auth-guard";
+    requireAuth();
     updateI18nTexts();
     watchLanguageChange();
   </script>
