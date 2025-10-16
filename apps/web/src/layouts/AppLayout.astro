@@ -2,14 +2,45 @@
 import "../styles/globals.css";
 import UserMenu from "../react/UserMenu";
 import AppShell from "../react/AppShell";
-const { title = "Taskly" } = Astro.props;
+const {
+  title = "Taskly",
+  description = "シンプルなタスク管理・通知サービス",
+} = Astro.props;
+const siteName = "Taskly";
+const ogImage = "https://cdn.taskly.iy0306.com/assets/thumbnail-dark.webp";
+const faviconUrl = "https://cdn.taskly.iy0306.com/assets/favicon.webp";
+const appleTouchIconUrl = "https://cdn.taskly.iy0306.com/assets/apple-touch-icon.png";
+const canonical = typeof Astro.url !== 'undefined' ? Astro.url.toString() : undefined;
 ---
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <meta name="description" content={description} />
     <meta name="color-scheme" content="light dark" />
+    
+    <!-- Icons -->
+    <link rel="icon" href={faviconUrl} type="image/webp" />
+    <link rel="apple-touch-icon" href={appleTouchIconUrl} />
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/webp" />
+    <meta property="og:locale" content="ja_JP" />
+    {canonical && <meta property="og:url" content={canonical} />}
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    
+    {canonical && <link rel="canonical" href={canonical} />}
     <script>
       // set initial theme ASAP to avoid FOUC
       (function(){
