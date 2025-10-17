@@ -7,10 +7,13 @@ import (
 	"net"
 	"net/http"
 
+	mysql_driver "github.com/go-sql-driver/mysql"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/driver/mysql"
+	sqltrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/database/sql"
+	gormtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorm.io/gorm.v1"
+	gorm_mysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +25,11 @@ func mustInitDB() *gorm.DB {
 		env("DB_HOST", "127.0.0.1"),
 		env("DB_PORT", "3306"),
 		env("DB_NAME", "taskly"))
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	// Register MySQL driver for Datadog tracing
+	dbService := env("DD_DB_SERVICE", env("DD_SERVICE", "taskly-server")+"-db")
+	sqltrace.Register("mysql", &mysql_driver.MySQLDriver{}, sqltrace.WithServiceName(dbService))
+	// Open traced GORM DB
+	db, err := gormtrace.Open(gorm_mysql.Open(dsn), &gorm.Config{}, gormtrace.WithServiceName(dbService))
 	if err != nil {
 		log.Fatalf("db open: %v", err)
 	}

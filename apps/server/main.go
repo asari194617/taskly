@@ -13,6 +13,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	fibertrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gofiber/fiber.v2"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	ddprofiler "gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
 // Globals moved to globals.go
@@ -22,6 +25,31 @@ import (
 // ptrTime moved to support.go
 
 func main() {
+	// Start Datadog tracer (reads most settings from env; override agent addr explicitly if provided)
+	serviceName := env("DD_SERVICE", "taskly-server")
+	envName := env("DD_ENV", env("SENTRY_ENVIRONMENT", env("NODE_ENV", "development")))
+	version := env("DD_VERSION", env("SENTRY_RELEASE", ""))
+	agentHost := env("DD_AGENT_HOST", "127.0.0.1")
+	agentPort := env("DD_TRACE_AGENT_PORT", "8126")
+	tracer.Start(
+		tracer.WithService(serviceName),
+		tracer.WithEnv(envName),
+		tracer.WithServiceVersion(version),
+		tracer.WithAgentAddr(agentHost+":"+agentPort),
+		tracer.WithRuntimeMetrics(),
+	)
+	defer tracer.Stop()
+
+	// Optional: Start Datadog profiler when enabled
+	if strings.ToLower(env("DD_PROFILING_ENABLED", "false")) == "true" {
+		_ = ddprofiler.Start(
+			ddprofiler.WithService(serviceName),
+			ddprofiler.WithEnv(envName),
+			ddprofiler.WithVersion(version),
+		)
+		defer ddprofiler.Stop()
+	}
+
 	DB = mustInitDB()
 	RDB = mustInitRedis()
 	metricsServer(env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
@@ -104,6 +132,12 @@ func main() {
 			return c.Status(status).JSON(fiber.Map{"error": err.Error()})
 		},
 	})
+
+	// Trace inbound HTTP requests with Datadog (must be registered early)
+	app.Use(fibertrace.Middleware(
+		fibertrace.WithServiceName(serviceName),
+		fibertrace.WithSpanOptions(),
+	))
 
 	// Capture panics and attach request context to Sentry
 	app.Use(sentryfiber.New(sentryfiber.Options{
