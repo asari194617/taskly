@@ -59,13 +59,14 @@ services:
   airflow-webserver:
     build: ./airflow
     container_name: taskly-airflow-web
+    env_file:
+      - ../.env
     depends_on:
       - db
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
-      - AIRFLOW__CORE__FERNET_KEY=please_change_me
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
       - DB_HOST=db
       - DB_PORT=3306
@@ -79,46 +80,22 @@ services:
     ports:
       - "3065:8080"
     volumes:
+      - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
       - ..:/workspace
-    command: bash -lc "airflow db init && airflow users create --username admin --password admin --firstname A --lastname D --role Admin --email admin@example.com || true && airflow webserver"
-
-  airflow-scheduler:
-    build: ./airflow
-    container_name: taskly-airflow-sch
-    depends_on:
-      - airflow-webserver
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
-      - DB_HOST=db
-      - DB_PORT=3306
-      - DB_USER=taskly
-      - DB_PASSWORD=taskly_password
-      - DB_NAME=taskly
-      - SMTP_HOST=postfix
-      - SMTP_PORT=25
-      - SMTP_FROM=noreply@taskly.local
-      - WEB_URL=http://localhost:3063
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ..:/workspace
-    command: bash -lc "airflow scheduler"
-
-  airflow-triggerer:
-    build: ./airflow
-    container_name: taskly-airflow-trg
-    depends_on:
-      - airflow-webserver
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ..:/workspace
-    command: bash -lc "airflow triggerer"
+    command: |
+      bash -lc ' 
+        if [ -z "${AIRFLOW__CORE__FERNET_KEY:-}" ]; then 
+          export AIRFLOW__CORE__FERNET_KEY="$(python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")"; 
+        fi; 
+        # Clean potential stale pid files
+        rm -f /opt/airflow/airflow-webserver.pid /opt/airflow/airflow-scheduler.pid; 
+        airflow db migrate && \
+        airflow users create --username admin --password admin --firstname A --lastname D --role Admin --email admin@example.com || true; \
+        (airflow scheduler &) ; \
+        exec airflow webserver 
+      '
 volumes:
   db-data:
   redis-data:
+  airflow-data:

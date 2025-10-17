@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -39,13 +42,78 @@ func main() {
 
 	// Sentry initialization (optional)
 	if dsn := env("SENTRY_DSN", ""); dsn != "" {
-		_ = sentry.Init(sentry.ClientOptions{Dsn: dsn, TracesSampleRate: 0.1})
+		_ = sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			TracesSampleRate: 0.1,
+			Environment:      env("SENTRY_ENVIRONMENT", env("NODE_ENV", "development")),
+			Release:          env("SENTRY_RELEASE", ""),
+		})
+		// Add helpful tags and emit a startup log
+		sentry.ConfigureScope(func(scope *sentry.Scope) {
+			scope.SetTag("service", "taskly-server")
+			scope.SetTag("port", env("API_PORT", "8080"))
+		})
+		sentry.CaptureMessage("Taskly server starting")
 		defer sentry.Flush(2 * time.Second)
 	}
 
-	app := fiber.New()
+	// Centralized error handler to send all errors to Sentry with request/user context
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			// Derive status code (default 500)
+			status := fiber.StatusInternalServerError
+			var fe *fiber.Error
+			if errors.As(err, &fe) {
+				status = fe.Code
+			}
+
+			// Get Sentry hub from Fiber context (set by Sentry middleware)
+			hub := sentryfiber.GetHubFromContext(c)
+			if hub == nil {
+				hub = sentry.CurrentHub()
+			}
+			if hub != nil && status >= 500 { // only report server-side errors
+				hub.WithScope(func(scope *sentry.Scope) {
+					// Basic request metadata
+					if r := c.Route(); r != nil {
+						scope.SetTag("route", r.Path)
+					}
+					scope.SetTag("method", c.Method())
+					scope.SetTag("url", string(c.OriginalURL()))
+					scope.SetContext("request", map[string]any{
+						"query": c.Queries(),
+						"ip":    c.IP(),
+					})
+					// Attach user when available
+					if u, ok := c.Locals("user").(*User); ok && u != nil {
+						scope.SetUser(sentry.User{
+							ID:       fmt.Sprintf("%v", u.ID),
+							Email:    u.Email,
+							Username: u.DisplayName,
+						})
+					}
+					scope.SetLevel(sentry.LevelError)
+				})
+				hub.CaptureException(err)
+			}
+
+			// Send sanitized error response
+			if status >= 500 {
+				return c.Status(status).JSON(fiber.Map{"error": "internal error"})
+			}
+			return c.Status(status).JSON(fiber.Map{"error": err.Error()})
+		},
+	})
+
+	// Capture panics and attach request context to Sentry
+	app.Use(sentryfiber.New(sentryfiber.Options{
+		Repanic:         true,            // let Fiber recover middleware handle the response
+		WaitForDelivery: false,           // don't block requests on delivery
+		Timeout:         2 * time.Second, // used only when WaitForDelivery is true
+	}))
+
+	// Keep recover after Sentry so panics are reported then gracefully recovered
 	app.Use(recover.New())
-	// Minimal capture for unhandled panics is covered by recover(); capture explicit errors in handlers where needed.
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"),

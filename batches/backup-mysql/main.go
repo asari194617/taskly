@@ -16,6 +16,10 @@ import (
 
 func main() {
 	backupDir := valueOr(os.Getenv("BACKUP_DIR"), os.TempDir())
+	// Ensure the backup directory exists to avoid file creation failures
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		log.Fatal(err)
+	}
 	file := filepath.Join(backupDir, fmt.Sprintf("backup-%s.sql.gz", time.Now().Format("20060102-150405")))
 	if err := runDump(file); err != nil {
 		log.Fatal(err)
@@ -37,7 +41,18 @@ func runDump(outFile string) error {
 	pass := os.Getenv("DB_PASSWORD")
 	name := os.Getenv("DB_NAME")
 
-	args := []string{fmt.Sprintf("-h%s", host), fmt.Sprintf("-P%s", port), fmt.Sprintf("-u%s", user), fmt.Sprintf("-p%s", pass), name}
+	args := []string{
+		fmt.Sprintf("-h%s", host),
+		fmt.Sprintf("-P%s", port),
+		fmt.Sprintf("-u%s", user),
+		fmt.Sprintf("-p%s", pass),
+		// safer defaults for production-ish dumps without elevated privileges
+		"--single-transaction",
+		"--quick",
+		"--skip-lock-tables",
+		"--no-tablespaces",
+		name,
+	}
 	cmd := exec.Command("mysqldump", args...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -62,13 +77,15 @@ func runDump(outFile string) error {
 func uploadAndPrune(localFile string) error {
 	host := valueOr(os.Getenv("FTP_HOST"), "")
 	if host == "" {
-		return fmt.Errorf("FTP_HOST missing")
+		log.Printf("FTP_HOST missing; skipping upload and prune for %s", localFile)
+		return nil
 	}
 	port := valueOr(os.Getenv("FTP_PORT"), "21")
 	user := os.Getenv("FTP_USER")
 	pass := os.Getenv("FTP_PASSWORD")
 	dir := valueOr(os.Getenv("FTP_DIR"), "/backups")
 
+	log.Printf("Connecting FTP %s:%s ...", host, port)
 	c, err := ftp.Dial(fmt.Sprintf("%s:%s", host, port), ftp.DialWithTimeout(10*time.Second))
 	if err != nil {
 		return err
@@ -88,9 +105,11 @@ func uploadAndPrune(localFile string) error {
 	}
 	defer lf.Close()
 	base := filepath.Base(localFile)
+	log.Printf("Uploading %s to ftp://%s:%s%s/%s ...", localFile, host, port, dir, base)
 	if err := c.Stor(base, lf); err != nil {
 		return err
 	}
+	log.Printf("Uploaded %s to ftp://%s:%s%s/%s", base, host, port, dir, base)
 
 	// prune older than 7 days
 	entries, err := c.List("")

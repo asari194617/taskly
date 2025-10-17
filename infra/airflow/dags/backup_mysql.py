@@ -1,6 +1,7 @@
 from datetime import datetime
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+import os
 
 with DAG(
     dag_id="backup_mysql",
@@ -15,15 +16,24 @@ with DAG(
         task_id="run_backup",
         bash_command="cd /workspace/batches/backup-mysql && go run .",
         env={
-            "DB_HOST": "${DB_HOST}",
-            "DB_PORT": "${DB_PORT}",
-            "DB_USER": "${DB_USER}",
-            "DB_PASSWORD": "${DB_PASSWORD}",
-            "DB_NAME": "${DB_NAME}",
-            "FTP_HOST": "${FTP_HOST}",
-            "FTP_PORT": "${FTP_PORT}",
-            "FTP_USER": "${FTP_USER}",
-            "FTP_PASSWORD": "${FTP_PASSWORD}",
-            "FTP_DIR": "${FTP_DIR}",
+            # Ensure Go can resolve module cache during task runs
+            "GOPATH": "/home/airflow/go",
+            "GOMODCACHE": "/home/airflow/go/pkg/mod",
+            "GOCACHE": "/home/airflow/.cache/go-build",
+            "PATH": "/usr/local/go/bin:/home/airflow/go/bin:/usr/lib/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            # DB connection for mysqldump (explicit constants to avoid localhost fallback)
+            "DB_HOST": "db",
+            "DB_PORT": "3306",
+            "DB_USER": "taskly",
+            "DB_PASSWORD": "taskly_password",
+            "DB_NAME": "taskly",
+            # Persist backups under airflow-data volume
+            "BACKUP_DIR": "/opt/airflow/backups",
+            # FTP credentials (forward from container env)
+            "FTP_HOST": os.environ.get("FTP_HOST", ""),
+            "FTP_PORT": os.environ.get("FTP_PORT", "21"),
+            "FTP_USER": os.environ.get("FTP_USER", ""),
+            "FTP_PASSWORD": os.environ.get("FTP_PASSWORD", ""),
+            "FTP_DIR": os.environ.get("FTP_DIR", "/backups"),
         },
     )

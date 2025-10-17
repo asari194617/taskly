@@ -1,23 +1,8 @@
-#!/bin/sh#!/usr/bin/env bash
+#!/usr/bin/env sh
+set -euo pipefail
 
-set -euset -euo pipefail
+# Start cron daemon (busybox crond backgrounds itself without -f)
+crond -l 8
 
-
-
-# Start cron in background for backups# Start cron in background
-
-crondcrond -f -l 8 &
-
-CRON_PID=$!
-
-# Start the API server
-
-exec /app/api# Start API in foreground
-/app/api &
-API_PID=$!
-
-# Wait on both; if API exits, exit container
-wait ${API_PID}
-# If API exits, kill cron gracefully
-kill ${CRON_PID} || true
-wait ${CRON_PID} || true
+# Start the API server in the foreground
+exec /app/api
