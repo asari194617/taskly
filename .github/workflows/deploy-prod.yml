@@ -47,6 +47,13 @@ jobs:
           else
             ssh-add ~/.ssh/id_rsa
           fi
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+
+      - name: Verify SSH connectivity
+        run: |
+          set -eux
+          ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" true
 
       - name: Rsync repository to server
         run: |
