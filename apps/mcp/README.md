@@ -19,7 +19,7 @@ Build & Run (Docker)
 - Port: 3066 (exposed)
 - Environment (in compose)
   - MCP_HOST=0.0.0.0, MCP_PORT=3066
-  - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+  - DB_HOST, DB_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 
 Local development
 

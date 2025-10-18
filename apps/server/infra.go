@@ -20,11 +20,11 @@ import (
 // mustInitDB opens a MySQL connection using env() variables and migrates the base model.
 func mustInitDB() *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4,utf8",
-		env("DB_USER", "taskly"),
-		env("DB_PASSWORD", "taskly_password"),
+		env("MYSQL_USER", "taskly"),
+		env("MYSQL_PASSWORD", "taskly_password"),
 		env("DB_HOST", "127.0.0.1"),
 		env("DB_PORT", "3306"),
-		env("DB_NAME", "taskly"))
+		env("MYSQL_DATABASE", "taskly"))
 	// Register MySQL driver for Datadog tracing
 	dbService := env("DD_DB_SERVICE", env("DD_SERVICE", "taskly-server")+"-db")
 	sqltrace.Register("mysql", &mysql_driver.MySQLDriver{}, sqltrace.WithServiceName(dbService))

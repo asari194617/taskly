@@ -1,0 +1,75 @@
+name: deploy-prod
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "apps/server/**"
+      - "apps/mcp/**"
+      - "batches/**"
+      - "infra/**"
+      - ".github/workflows/deploy-prod.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
+      PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
+      PROD_WORKDIR: ${{ secrets.PROD_WORKDIR }}
+      PROD_ENV: ${{ secrets.PROD_ENV }}
+      PROD_COMPOSE_PROFILES: ${{ secrets.PROD_COMPOSE_PROFILES }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare SSH (agent + key)
+        run: |
+          set -eux
+          install -m 700 -d ~/.ssh
+          printf "%s" "$PROD_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          eval "$(ssh-agent -s)"
+          if [ -n "${PROD_SSH_PASSPHRASE:-}" ]; then \
+            printf '#!/usr/bin/env bash\necho "%s"\n' "$PROD_SSH_PASSPHRASE" > /tmp/ssh_askpass.sh; \
+            chmod +x /tmp/ssh_askpass.sh; \
+            SSH_ASKPASS=/tmp/ssh_askpass.sh setsid -w ssh-add ~/.ssh/id_rsa < /dev/null; \
+          else \
+            ssh-add ~/.ssh/id_rsa; \
+          fi
+
+      - name: Rsync repository to server
+        run: |
+          set -eux
+          test -n "$PROD_WORKDIR"
+          rsync -az --delete --exclude ".git" -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
+
+      - name: Upload .env if provided
+        if: env.PROD_ENV != ''
+        run: |
+          set -eu
+          tmpenv=$(mktemp)
+          printf "%s" "$PROD_ENV" > "$tmpenv"
+          scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/.env"
+          rm -f "$tmpenv"
+
+      - name: Remote deploy
+        run: |
+          set -eux
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" bash -lc "'
+            set -euxo pipefail
+            cd "$PROD_WORKDIR"
+            export COMPOSE_PROFILES=${PROD_COMPOSE_PROFILES:-}
+            compose_files=(-f infra/docker-compose.yml)
+            if [ -f infra/docker-compose.batches.yml ]; then compose_files+=( -f infra/docker-compose.batches.yml ); fi
+            docker compose "${compose_files[@]}" up -d --build --force-recreate --remove-orphans
+          '"
+
+      - name: Summary
+        run: |
+          echo "Deployed to $PROD_HOST:$PROD_WORKDIR"

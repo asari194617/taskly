@@ -28,9 +28,9 @@ function cfgFromEnv(): Cfg {
     db: {
       host: env("DB_HOST", "127.0.0.1"),
       port: Number(env("DB_PORT", "3306")),
-      user: env("DB_USER", "root"),
-      password: env("DB_PASSWORD", ""),
-      database: env("DB_NAME", "taskly"),
+      user: env("MYSQL_USER", "root"),
+      password: env("MYSQL_PASSWORD", ""),
+      database: env("MYSQL_DATABASE", "taskly"),
     },
   };
 }

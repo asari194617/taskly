@@ -28,9 +28,9 @@ with DAG(
         env={
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
-            "DB_USER": os.environ.get("DB_USER", "taskly"),
-            "DB_PASSWORD": os.environ.get("DB_PASSWORD", "taskly_password"),
-            "DB_NAME": os.environ.get("DB_NAME", "taskly"),
+            "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
+            "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
+            "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
             "TIMEZONE": "Asia/Tokyo",
         },
     )
@@ -41,9 +41,9 @@ with DAG(
         env={
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
-            "DB_USER": os.environ.get("DB_USER", "taskly"),
-            "DB_PASSWORD": os.environ.get("DB_PASSWORD", "taskly_password"),
-            "DB_NAME": os.environ.get("DB_NAME", "taskly"),
+            "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
+            "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
+            "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
             "SMTP_HOST": os.environ.get("SMTP_HOST", "postfix"),
             "SMTP_PORT": os.environ.get("SMTP_PORT", "25"),
             "SMTP_FROM": os.environ.get("SMTP_FROM", "noreply@taskly.local"),

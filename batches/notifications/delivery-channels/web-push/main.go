@@ -28,7 +28,7 @@ type WebPushSubscription struct {
 }
 
 func main() {
-	dsn := os.Getenv("DB_USER") + ":" + os.Getenv("DB_PASSWORD") + "@tcp(" + hostPort(os.Getenv("DB_HOST"), os.Getenv("DB_PORT")) + ")/" + os.Getenv("DB_NAME") + "?parseTime=true&charset=utf8mb4&loc=Local"
+	dsn := os.Getenv("MYSQL_USER") + ":" + os.Getenv("MYSQL_PASSWORD") + "@tcp(" + hostPort(os.Getenv("DB_HOST"), os.Getenv("DB_PORT")) + ")/" + os.Getenv("MYSQL_DATABASE") + "?parseTime=true&charset=utf8mb4&loc=Local"
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)

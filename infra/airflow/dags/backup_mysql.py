@@ -27,9 +27,9 @@ with DAG(
             # DB connection for mysqldump (explicit constants to avoid localhost fallback)
             "DB_HOST": "db",
             "DB_PORT": "3306",
-            "DB_USER": "taskly",
-            "DB_PASSWORD": "taskly_password",
-            "DB_NAME": "taskly",
+            "MYSQL_USER": "taskly",
+            "MYSQL_PASSWORD": "taskly_password",
+            "MYSQL_DATABASE": "taskly",
             # Persist backups under airflow-data volume
             "BACKUP_DIR": "/opt/airflow/backups",
             # FTP credentials (forward from container env)

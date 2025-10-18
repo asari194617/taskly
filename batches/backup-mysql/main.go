@@ -37,9 +37,9 @@ func main() {
 func runDump(outFile string) error {
 	host := valueOr(os.Getenv("DB_HOST"), "localhost")
 	port := valueOr(os.Getenv("DB_PORT"), "3306")
-	user := os.Getenv("DB_USER")
-	pass := os.Getenv("DB_PASSWORD")
-	name := os.Getenv("DB_NAME")
+	user := os.Getenv("MYSQL_USER")
+	pass := os.Getenv("MYSQL_PASSWORD")
+	name := os.Getenv("MYSQL_DATABASE")
 
 	args := []string{
 		fmt.Sprintf("-h%s", host),

@@ -1,11 +1,9 @@
 services:
   db:
     image: mysql:8.4
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: taskly
-      MYSQL_USER: taskly
-      MYSQL_PASSWORD: taskly_password
+    env_file:
+      - ../.env
+    environment: {}
     ports:
       - "3060:3306" # MySQL
     command:
@@ -33,12 +31,10 @@ services:
     environment:
       - MYNETWORKS=0.0.0.0/0
       - RELAY_NETWORKS=:0.0.0.0/0
-  # prometheus removed per infra cleanup
   server:
     build: ../apps/server
     env_file:
       - ../.env
-    # Note: .env values like DB_HOST/PORT are overridden below for in-cluster access
     depends_on:
       db:
         condition: service_healthy
@@ -47,14 +43,7 @@ services:
     ports:
       - "3063:8080" # API
       - "3064:9464" # Metrics
-    environment:
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_USER: taskly
-      DB_PASSWORD: taskly_password
-      DB_NAME: taskly
-      REDIS_ADDR: redis:6379
-      METRICS_BIND_ADDR: 0.0.0.0:9464
+    environment: {}
   # web and mcp can be added later
   mcp:
     build: ../apps/mcp
@@ -64,14 +53,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      MCP_HOST: 0.0.0.0
-      MCP_PORT: "3066"
-      DB_HOST: db
-      DB_PORT: "3306"
-      DB_USER: taskly
-      DB_PASSWORD: taskly_password
-      DB_NAME: taskly
+    environment: {}
     networks:
       - default
       - proxy
@@ -101,19 +83,10 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
-      DD_ENV: development
       DD_TRACE_AGENT_PORT: "8126"
       DD_AGENT_HOST: ${DD_AGENT_HOST:-host.docker.internal}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
-      DB_HOST: db
-      DB_PORT: "3306"
-      DB_USER: taskly
-      DB_PASSWORD: taskly_password
-      DB_NAME: taskly
-      SMTP_HOST: postfix
-      SMTP_PORT: "25"
-      SMTP_FROM: noreply@taskly.local
       WEB_URL: http://localhost:3063
     ports:
       - "3065:8080"
@@ -172,19 +145,10 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
-      DD_ENV: development
       DD_TRACE_AGENT_PORT: "8126"
       DD_AGENT_HOST: ${DD_AGENT_HOST:-host.docker.internal}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
-      DB_HOST: db
-      DB_PORT: "3306"
-      DB_USER: taskly
-      DB_PASSWORD: taskly_password
-      DB_NAME: taskly
-      SMTP_HOST: postfix
-      SMTP_PORT: "25"
-      SMTP_FROM: noreply@taskly.local
       WEB_URL: http://localhost:3063
     volumes:
       - airflow-data:/opt/airflow

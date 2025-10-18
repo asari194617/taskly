@@ -8,11 +8,11 @@ DB_HOST=${DB_HOST:-localhost}# Required envs:
 
 DB_PORT=${DB_PORT:-3306}# MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
 
-DB_USER=${DB_USER:-root}# FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_DIR (e.g., /backups)
+MYSQL_USER=${MYSQL_USER:-root}# FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_DIR (e.g., /backups)
 
-DB_PASSWORD=${DB_PASSWORD:-}# BACKUP_RETENTION_DAYS (default 7)
+MYSQL_PASSWORD=${MYSQL_PASSWORD:-}# BACKUP_RETENTION_DAYS (default 7)
 
-DB_NAME=${DB_NAME:-taskly}# Optional: MYSQLDUMP_EXTRA_OPTS
+MYSQL_DATABASE=${MYSQL_DATABASE:-taskly}# Optional: MYSQLDUMP_EXTRA_OPTS
 
 
 
@@ -30,7 +30,7 @@ OUT_FILE="$OUT_DIR/backup-$STAMP.sql.gz"BACKUP_PATH="${TMP_DIR}/${BACKUP_NAME}"
 
 # Requires mariadb-client in image (installed in Dockerfile)if [[ -z "${MYSQL_HOST:-}" || -z "${MYSQL_USER:-}" || -z "${MYSQL_PASSWORD:-}" || -z "${MYSQL_DATABASE:-}" ]]; then
 
-mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" | gzip > "$OUT_FILE"  echo "[backup] Missing MySQL envs" >&2
+mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" | gzip > "$OUT_FILE"  echo "[backup] Missing MySQL envs" >&2
 
 chmod 600 "$OUT_FILE"  exit 1
 
