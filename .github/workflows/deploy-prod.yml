@@ -27,21 +27,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare SSH (agent + key)
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+          ssh-passphrase: ${{ secrets.PROD_SSH_PASSPHRASE }}
+
+      - name: Setup known_hosts
         run: |
           set -eux
           install -m 700 -d ~/.ssh
-          printf "%s" "$PROD_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          eval "$(ssh-agent -s)"
-          if [ -n "${PROD_SSH_PASSPHRASE:-}" ]; then \
-            printf '#!/usr/bin/env bash\necho "%s"\n' "$PROD_SSH_PASSPHRASE" > /tmp/ssh_askpass.sh; \
-            chmod +x /tmp/ssh_askpass.sh; \
-            SSH_ASKPASS=/tmp/ssh_askpass.sh setsid -w ssh-add ~/.ssh/id_rsa < /dev/null; \
-          else \
-            ssh-add ~/.ssh/id_rsa; \
-          fi
 
       - name: Rsync repository to server
         run: |
