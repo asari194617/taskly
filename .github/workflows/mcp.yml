@@ -2,6 +2,8 @@ name: mcp-ci
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - "apps/mcp/**"
       - ".github/workflows/mcp.yml"

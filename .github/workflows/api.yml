@@ -2,6 +2,8 @@ name: api-ci
 
 on:
   push:
+    branches:
+      - "**"
     paths:
       - "apps/api/**"
       - ".github/workflows/api.yml"

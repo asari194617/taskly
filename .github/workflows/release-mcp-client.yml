@@ -20,14 +20,15 @@ jobs:
       - name: Build stdio and package (linux/windows)
         run: |
           set -eux
-          npm -C apps/mcp ci
+          npm -C apps/mcp ci || npm -C apps/mcp install
           npm -C apps/mcp run build
-          npm -C apps/mcp i -D pkg
+          npm i -g pkg@5.8.1
+          pkg --version
           mkdir -p artifacts
           test -f apps/mcp/dist/stdio.js
-          npx pkg apps/mcp/dist/stdio.js --targets node20-linux-x64   --output artifacts/taskly-mcp-linux-amd64
-          npx pkg apps/mcp/dist/stdio.js --targets node20-linux-arm64 --output artifacts/taskly-mcp-linux-arm64
-          npx pkg apps/mcp/dist/stdio.js --targets node20-win-x64     --output artifacts/taskly-mcp-windows-amd64.exe
+          pkg apps/mcp/dist/stdio.js --targets node20-linux-x64   --public-packages "*" --output artifacts/taskly-mcp-linux-amd64
+          pkg apps/mcp/dist/stdio.js --targets node20-linux-arm64 --public-packages "*" --output artifacts/taskly-mcp-linux-arm64
+          pkg apps/mcp/dist/stdio.js --targets node20-win-x64     --public-packages "*" --output artifacts/taskly-mcp-windows-amd64.exe
           ls -la artifacts
 
       - name: Upload build artifacts (linux/windows)
@@ -49,13 +50,14 @@ jobs:
       - name: Build stdio and package (macos)
         run: |
           set -eux
-          npm -C apps/mcp ci
+          npm -C apps/mcp ci || npm -C apps/mcp install
           npm -C apps/mcp run build
-          npm -C apps/mcp i -D pkg
+          npm i -g pkg@5.8.1
+          pkg --version
           mkdir -p artifacts
           test -f apps/mcp/dist/stdio.js
-          npx pkg apps/mcp/dist/stdio.js --targets node20-macos-x64   --output artifacts/taskly-mcp-darwin-amd64
-          npx pkg apps/mcp/dist/stdio.js --targets node20-macos-arm64 --output artifacts/taskly-mcp-darwin-arm64
+          pkg apps/mcp/dist/stdio.js --targets node20-macos-x64   --public-packages "*" --output artifacts/taskly-mcp-darwin-amd64
+          pkg apps/mcp/dist/stdio.js --targets node20-macos-arm64 --public-packages "*" --output artifacts/taskly-mcp-darwin-arm64
           ls -la artifacts
 
       - name: Upload build artifacts (macos)
