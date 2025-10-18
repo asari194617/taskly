@@ -17,3 +17,10 @@
 - ベース: `https://cdn.taskly.iy0306.com/docs/mcp/clients`
 - 最新: `.../latest.json`, `.../install.sh`, `.../install.ps1`
 - バージョン別: `.../<tag>/taskly-mcp-<os>-<arch>`, `.../<tag>/checksums.txt`
+
+## Agent モード運用（方針）
+
+- 本リポジトリは Gemini の Agent モード利用を前提（推奨）とします。
+- リポジトリ直下の `GEMINI.md` に、エージェントの基本方針（Taskly MCP ツール優先・破壊的操作は確認）を記載済み。
+- ユーザー案内は `mcp-docs.md` を参照（Agent モードの有効化手順を含む）。
+- CI/配信側に Agent モード固有の設定は不要です（クライアント側の設定のみ）。

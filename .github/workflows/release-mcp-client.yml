@@ -7,13 +7,8 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build-upload:
+  build-linux-win:
     runs-on: ubuntu-latest
-    env:
-      R2_BUCKET: ${{ secrets.R2_BUCKET }}
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,18 +17,70 @@ jobs:
         with:
           node-version: 20
 
-      - name: Build stdio and package
+      - name: Build stdio and package (linux/windows)
         run: |
           set -eux
           npm -C apps/mcp ci
           npm -C apps/mcp run build
           npm -C apps/mcp i -D pkg
           mkdir -p artifacts
+          test -f apps/mcp/dist/stdio.js
           npx pkg apps/mcp/dist/stdio.js --targets node20-linux-x64   --output artifacts/taskly-mcp-linux-amd64
           npx pkg apps/mcp/dist/stdio.js --targets node20-linux-arm64 --output artifacts/taskly-mcp-linux-arm64
+          npx pkg apps/mcp/dist/stdio.js --targets node20-win-x64     --output artifacts/taskly-mcp-windows-amd64.exe
+          ls -la artifacts
+
+      - name: Upload build artifacts (linux/windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-linux-win
+          path: artifacts/*
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build stdio and package (macos)
+        run: |
+          set -eux
+          npm -C apps/mcp ci
+          npm -C apps/mcp run build
+          npm -C apps/mcp i -D pkg
+          mkdir -p artifacts
+          test -f apps/mcp/dist/stdio.js
           npx pkg apps/mcp/dist/stdio.js --targets node20-macos-x64   --output artifacts/taskly-mcp-darwin-amd64
           npx pkg apps/mcp/dist/stdio.js --targets node20-macos-arm64 --output artifacts/taskly-mcp-darwin-arm64
-          npx pkg apps/mcp/dist/stdio.js --targets node20-win-x64     --output artifacts/taskly-mcp-windows-amd64.exe
+          ls -la artifacts
+
+      - name: Upload build artifacts (macos)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-macos
+          path: artifacts/*
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build-linux-win, build-macos]
+    env:
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Generate checksums
         run: |
@@ -49,12 +96,24 @@ jobs:
           cp -v artifacts/* upload/docs/mcp/clients/${TAG}/
           cp -v apps/mcp-client-files/install.sh upload/docs/mcp/clients/
           cp -v apps/mcp-client-files/install.ps1 upload/docs/mcp/clients/
+          cp -v apps/mcp-client-files/README.md upload/docs/mcp/clients/
+          cp -v apps/mcp-client-files/LICENSE upload/docs/mcp/clients/
           echo "{\"tag\":\"${TAG}\"}" > upload/docs/mcp/clients/latest.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install AWS CLI
+        run: |
+          set -eux
+          python -m pip install --upgrade pip
+          python -m pip install awscli
 
       - name: Upload to Cloudflare R2
         run: |
           set -eux
-          pipx install awscli
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           aws s3 cp --recursive upload/docs/mcp/clients s3://${R2_BUCKET}/docs/mcp/clients --endpoint-url "$ENDPOINT" --no-progress
 
