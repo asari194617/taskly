@@ -36,10 +36,9 @@ jobs:
           ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
           eval "$(ssh-agent -s)"
           if [ -n "${PROD_SSH_PASSPHRASE:-}" ]; then
-            cat > /tmp/ssh_askpass.sh <<'EOSH'
-            #!/usr/bin/env bash
-            printf "%s" "$PROD_SSH_PASSPHRASE"
-            EOSH
+            : > /tmp/ssh_askpass.sh
+            echo '#!/usr/bin/env sh' >> /tmp/ssh_askpass.sh
+            echo 'echo "$PROD_SSH_PASSPHRASE"' >> /tmp/ssh_askpass.sh
             chmod +x /tmp/ssh_askpass.sh
             export SSH_ASKPASS=/tmp/ssh_askpass.sh
             export SSH_ASKPASS_REQUIRE=force
