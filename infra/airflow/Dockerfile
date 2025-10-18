@@ -9,7 +9,7 @@ RUN apt-get update && \
 ENV GOPATH=/home/airflow/go \
     GOMODCACHE=/home/airflow/go/pkg/mod \
     GOCACHE=/home/airflow/.cache/go-build \
-    PATH="/usr/local/go/bin:/home/airflow/go/bin:/usr/lib/go/bin:${PATH}"
+    PATH="/usr/local/go/bin:/home/airflow/go/bin:/usr/lib/go/bin:/usr/local/bin:/home/airflow/.local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 RUN mkdir -p /home/airflow/go/bin /home/airflow/go/pkg/mod /home/airflow/.cache/go-build && \
     chown -R airflow:root /home/airflow/go /home/airflow/.cache
@@ -30,3 +30,12 @@ RUN set -eux; \
         ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 
 USER airflow
+
+# Python deps for integrations: Sentry, Datadog tracer, Discord provider
+# IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
+ARG AIRFLOW_VERSION=2.9.2
+ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.11.txt"
+RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
+    sentry-sdk \
+    ddtrace \
+    apache-airflow-providers-discord

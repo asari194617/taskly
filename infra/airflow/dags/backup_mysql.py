@@ -1,5 +1,6 @@
 from datetime import datetime
 from airflow import DAG
+from common import discord_failure_callback, discord_success_callback
 from airflow.operators.bash import BashOperator
 import os
 
@@ -10,6 +11,8 @@ with DAG(
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["taskly"],
+    on_failure_callback=discord_failure_callback,
+    on_success_callback=discord_success_callback,
 ) as dag:
 
     run_backup = BashOperator(

@@ -64,37 +64,79 @@ services:
     depends_on:
       - db
     environment:
-      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
-      - DB_HOST=db
-      - DB_PORT=3306
-      - DB_USER=taskly
-      - DB_PASSWORD=taskly_password
-      - DB_NAME=taskly
-      - SMTP_HOST=postfix
-      - SMTP_PORT=25
-      - SMTP_FROM=noreply@taskly.local
-      - WEB_URL=http://localhost:3063
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      # Datadog APM and Sentry config (enable via env file or override here)
+      DD_SERVICE: taskly-airflow
+      DD_ENV: development
+      DD_TRACE_AGENT_PORT: "8126"
+      DD_AGENT_HOST: ${DD_AGENT_HOST:-host.docker.internal}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: taskly
+      DB_PASSWORD: taskly_password
+      DB_NAME: taskly
+      SMTP_HOST: postfix
+      SMTP_PORT: "25"
+      SMTP_FROM: noreply@taskly.local
+      WEB_URL: http://localhost:3063
     ports:
       - "3065:8080"
     volumes:
       - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
       - ..:/workspace
-    command: |
-      bash -lc ' 
-        if [ -z "${AIRFLOW__CORE__FERNET_KEY:-}" ]; then 
-          export AIRFLOW__CORE__FERNET_KEY="$(python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")"; 
-        fi; 
-        # Clean potential stale pid files
-        rm -f /opt/airflow/airflow-webserver.pid /opt/airflow/airflow-scheduler.pid; 
-        airflow db migrate && \
-        airflow users create --username admin --password admin --firstname A --lastname D --role Admin --email admin@example.com || true; \
-        (airflow scheduler &) ; \
-        exec airflow webserver 
-      '
+    # Clean stale PID then start webserver
+    command:
+      [
+        "bash",
+        "-lc",
+        "rm -f /opt/airflow/airflow-webserver.pid; exec airflow webserver",
+      ]
+
+  airflow-scheduler:
+    build: ./airflow
+    container_name: taskly-airflow-scheduler
+    env_file:
+      - ../.env
+    depends_on:
+      - db
+      - airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      # Datadog APM and Sentry config (enable via env file or override here)
+      DD_SERVICE: taskly-airflow
+      DD_ENV: development
+      DD_TRACE_AGENT_PORT: "8126"
+      DD_AGENT_HOST: ${DD_AGENT_HOST:-host.docker.internal}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: taskly
+      DB_PASSWORD: taskly_password
+      DB_NAME: taskly
+      SMTP_HOST: postfix
+      SMTP_PORT: "25"
+      SMTP_FROM: noreply@taskly.local
+      WEB_URL: http://localhost:3063
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags
+      - ..:/workspace
+    # Clean stale PID then start scheduler
+    command:
+      [
+        "bash",
+        "-lc",
+        "rm -f /opt/airflow/airflow-scheduler.pid; exec airflow scheduler",
+      ]
 volumes:
   db-data:
   redis-data:
