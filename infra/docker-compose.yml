@@ -56,6 +56,37 @@ services:
       REDIS_ADDR: redis:6379
       METRICS_BIND_ADDR: 0.0.0.0:9464
   # web and mcp can be added later
+  mcp:
+    build: ../apps/mcp
+    container_name: taskly-mcp
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "3066"
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: taskly
+      DB_PASSWORD: taskly_password
+      DB_NAME: taskly
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.taskly-mcp.rule=Host(`${MCP_DOMAIN}`)"
+      - "traefik.http.routers.taskly-mcp.entrypoints=websecure"
+      - "traefik.http.routers.taskly-mcp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.taskly-mcp.loadbalancer.server.port=3066"
+      # optional basic rate limiting
+      - "traefik.http.middlewares.mcp-ratelimit.ratelimit.average=20"
+      - "traefik.http.middlewares.mcp-ratelimit.ratelimit.burst=40"
+      - "traefik.http.routers.taskly-mcp.middlewares=mcp-ratelimit@docker"
+    ports:
+      - "3066:3066"
   airflow-webserver:
     build: ./airflow
     container_name: taskly-airflow-web
@@ -97,6 +128,35 @@ services:
         "-lc",
         "rm -f /opt/airflow/airflow-webserver.pid; exec airflow webserver",
       ]
+
+  traefik:
+    image: traefik:2.11
+    container_name: taskly-traefik
+    profiles: ["edge"]
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-letsencrypt:/letsencrypt
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # redirect all http to https
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
 
   airflow-scheduler:
     build: ./airflow
@@ -141,3 +201,8 @@ volumes:
   db-data:
   redis-data:
   airflow-data:
+  traefik-letsencrypt:
+
+networks:
+  proxy:
+    driver: bridge

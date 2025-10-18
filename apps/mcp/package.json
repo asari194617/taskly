@@ -4,10 +4,24 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p .",
-    "start": "node dist/index.js"
+    "dev": "node --watch dist/index.js",
+    "start": "node dist/index.js",
+    "start:stdio": "node dist/stdio.js",
+    "link": "npm link"
   },
-  "dependencies": {},
+  "bin": {
+    "taskly-mcp": "bin/taskly-mcp"
+  },
+  "dependencies": {
+    "fastify": "4.28.1",
+    "fastify-plugin": "4.5.1",
+    "mysql2": "3.11.3",
+    "@modelcontextprotocol/sdk": "0.4.0",
+    "zod": "3.23.8",
+    "undici": "6.19.8"
+  },
   "devDependencies": {
+    "@types/node": "20.12.12",
     "typescript": "5.6.3"
   }
 }

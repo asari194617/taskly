@@ -1,0 +1,63 @@
+name: release-mcp-client
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  build-upload:
+    runs-on: ubuntu-latest
+    env:
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build stdio and package
+        run: |
+          set -eux
+          npm -C apps/mcp ci
+          npm -C apps/mcp run build
+          npm -C apps/mcp i -D pkg
+          mkdir -p artifacts
+          npx pkg apps/mcp/dist/stdio.js --targets node20-linux-x64   --output artifacts/taskly-mcp-linux-amd64
+          npx pkg apps/mcp/dist/stdio.js --targets node20-linux-arm64 --output artifacts/taskly-mcp-linux-arm64
+          npx pkg apps/mcp/dist/stdio.js --targets node20-macos-x64   --output artifacts/taskly-mcp-darwin-amd64
+          npx pkg apps/mcp/dist/stdio.js --targets node20-macos-arm64 --output artifacts/taskly-mcp-darwin-arm64
+          npx pkg apps/mcp/dist/stdio.js --targets node20-win-x64     --output artifacts/taskly-mcp-windows-amd64.exe
+
+      - name: Generate checksums
+        run: |
+          set -eux
+          cd artifacts
+          sha256sum * > checksums.txt
+
+      - name: Prepare upload tree
+        run: |
+          set -eux
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p upload/docs/mcp/clients/${TAG}
+          cp -v artifacts/* upload/docs/mcp/clients/${TAG}/
+          cp -v apps/mcp-client-files/install.sh upload/docs/mcp/clients/
+          cp -v apps/mcp-client-files/install.ps1 upload/docs/mcp/clients/
+          echo "{\"tag\":\"${TAG}\"}" > upload/docs/mcp/clients/latest.json
+
+      - name: Upload to Cloudflare R2
+        run: |
+          set -eux
+          pipx install awscli
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp --recursive upload/docs/mcp/clients s3://${R2_BUCKET}/docs/mcp/clients --endpoint-url "$ENDPOINT" --no-progress
+
+      - name: Summary
+        run: |
+          echo "Published ${GITHUB_REF_NAME} to R2 path docs/mcp/clients/${GITHUB_REF_NAME}/"
