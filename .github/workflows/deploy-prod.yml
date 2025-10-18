@@ -73,14 +73,10 @@ jobs:
       - name: Remote deploy
         run: |
           set -eux
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" bash -lc "'
-            set -euxo pipefail
-            cd "$PROD_WORKDIR"
-            export COMPOSE_PROFILES=${PROD_COMPOSE_PROFILES:-}
-            compose_files=(-f infra/docker-compose.yml)
-            if [ -f infra/docker-compose.batches.yml ]; then compose_files+=( -f infra/docker-compose.batches.yml ); fi
-            docker compose "${compose_files[@]}" up -d --build --force-recreate --remove-orphans
-          '"
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" bash -lc "set -euxo pipefail; \
+            cd \"$PROD_WORKDIR/infra\"; \
+            export COMPOSE_PROFILES=\"${PROD_COMPOSE_PROFILES:-}\"; \
+            docker compose up -d --build --force-recreate --remove-orphans"
 
       - name: Summary
         run: |
