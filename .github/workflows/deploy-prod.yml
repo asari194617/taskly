@@ -77,6 +77,7 @@ jobs:
             cd \"$PROD_WORKDIR/infra\"; \
             export COMPOSE_PROFILES=\"${PROD_COMPOSE_PROFILES:-}\"; \
             docker compose up -d --build --force-recreate --remove-orphans"
+        working-directory: infra
 
       - name: Summary
         run: |
