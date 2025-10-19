@@ -137,6 +137,13 @@ func runMigrations() {
 
 	migrations := []migrationFile{
 		{
+			name: "0010_business_calendar_date_index",
+			statements: []string{
+				// Create index if missing. MySQL 8 supports IF NOT EXISTS for indexes from 8.0.13+, but safer to try and ignore duplicate errors.
+				"CREATE INDEX idx_business_calendar_date ON business_calendar(date)",
+			},
+		},
+		{
 			name: "0006_task_type_enum_subject_i18n",
 			statements: []string{
 				"UPDATE tasks SET type = 'ONLINE' WHERE type IN ('Online', 'online', 'ONLINE')",
@@ -203,7 +210,9 @@ func runMigrations() {
 					strings.Contains(errMsg, "already exists") ||
 					strings.Contains(errMsg, "1060") || // MySQL error code for duplicate column
 					strings.Contains(errMsg, "Unknown column") ||
-					strings.Contains(errMsg, "1054") { // Unknown column
+					strings.Contains(errMsg, "1054") || // Unknown column
+					strings.Contains(errMsg, "Duplicate key name") || // duplicate index name
+					strings.Contains(errMsg, "1061") { // MySQL error code for duplicate key name
 					continue // Safe to ignore
 				}
 				log.Printf("Migration %s statement failed: %v\nStatement: %s", m.name, err, stmt)

@@ -16,6 +16,8 @@
         body: JSON.stringify({ query: 'query{ me{ id email is_admin is_manager } }' })
       });
       if(!res.ok){
+        // Tokenが無効/期限切れの可能性が高いので破棄してログインへ
+        try { localStorage.removeItem('api_token'); } catch {}
         const next = encodeURIComponent(location.pathname + location.search + location.hash);
         location.href = `/login?next=${next}`;
         return;
@@ -28,6 +30,7 @@
       }
     } catch (e) {
       // Network or runtime error: treat as unauthenticated
+      try { localStorage.removeItem('api_token'); } catch {}
       const next = encodeURIComponent(location.pathname + location.search + location.hash);
       location.href = `/login?next=${next}`;
     }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,17 @@ import (
 // registerGraphQL builds the schema and mounts the /graphql endpoint.
 func registerGraphQL(app *fiber.App) {
 	// Types
+	// Admin user list item type
+	adminUserType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "AdminUser",
+		Fields: graphql.Fields{
+			"id":           &graphql.Field{Type: graphql.Int},
+			"email":        &graphql.Field{Type: graphql.String},
+			"display_name": &graphql.Field{Type: graphql.String},
+			"roles":        &graphql.Field{Type: graphql.NewList(graphql.String)},
+			"is_blocked":   &graphql.Field{Type: graphql.Boolean},
+		},
+	})
 	subjectType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Subject",
 		Fields: graphql.Fields{
@@ -138,6 +150,219 @@ func registerGraphQL(app *fiber.App) {
 	rootQuery := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Query",
 		Fields: graphql.Fields{
+			// Admin: business calendar paginated list with filters
+			"adminCalendarList": &graphql.Field{
+				Type: graphql.NewObject(graphql.ObjectConfig{
+					Name: "BusinessCalendarList",
+					Fields: graphql.Fields{
+						"items":     &graphql.Field{Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{Name: "BusinessCalendarEntry2", Fields: graphql.Fields{"date": &graphql.Field{Type: graphql.String}, "is_business_day": &graphql.Field{Type: graphql.Boolean}, "notes": &graphql.Field{Type: graphql.String}}}))},
+						"page":      &graphql.Field{Type: graphql.Int},
+						"page_size": &graphql.Field{Type: graphql.Int},
+						"total":     &graphql.Field{Type: graphql.Int},
+						"has_next":  &graphql.Field{Type: graphql.Boolean},
+						"has_prev":  &graphql.Field{Type: graphql.Boolean},
+					},
+				}),
+				Args: graphql.FieldConfigArgument{
+					"page":         &graphql.ArgumentConfig{Type: graphql.Int},
+					"page_size":    &graphql.ArgumentConfig{Type: graphql.Int},
+					"include_past": &graphql.ArgumentConfig{Type: graphql.Boolean},
+					"order":        &graphql.ArgumentConfig{Type: graphql.String}, // "asc" | "desc"
+					"q":            &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						page := 1
+						if v, ok := p.Args["page"].(int); ok && v > 0 {
+							page = v
+						}
+						pageSize := 30
+						if v, ok := p.Args["page_size"].(int); ok && v > 0 && v <= 200 {
+							pageSize = v
+						}
+						includePast, _ := p.Args["include_past"].(bool)
+						order := strings.ToLower(strings.TrimSpace(fmt.Sprint(p.Args["order"])))
+						if order != "desc" {
+							order = "asc"
+						}
+						qstr, _ := p.Args["q"].(string)
+						qstr = strings.TrimSpace(qstr)
+
+						dbq := DB.Model(&BusinessCalendar{})
+						today := time.Now()
+						todayDate := dateOnly(today)
+						if !includePast {
+							dbq = dbq.Where("date >= ?", todayDate)
+						}
+						if qstr != "" {
+							// Optimize date-only search: if q looks like YYYY-MM-DD, filter by date equality to use index
+							if regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`).MatchString(qstr) {
+								dbq = dbq.Where("date = ?", qstr)
+							} else {
+								like := "%" + qstr + "%"
+								dbq = dbq.Where("notes LIKE ? OR DATE_FORMAT(date,'%Y-%m-%d') LIKE ?", like, like)
+							}
+						}
+						var total int64
+						if err := dbq.Count(&total).Error; err != nil {
+							return nil, err
+						}
+						if order == "asc" {
+							dbq = dbq.Order("date ASC")
+						} else {
+							dbq = dbq.Order("date DESC")
+						}
+						var rows []BusinessCalendar
+						if err := dbq.Offset((page - 1) * pageSize).Limit(pageSize).Find(&rows).Error; err != nil {
+							return nil, err
+						}
+						items := make([]map[string]any, 0, len(rows))
+						for _, it := range rows {
+							var notes string
+							if it.Notes != nil {
+								notes = *it.Notes
+							}
+							items = append(items, map[string]any{
+								"date":            it.Date.Format("2006-01-02"),
+								"is_business_day": it.IsBusinessDay,
+								"notes":           notes,
+							})
+						}
+						hasPrev := page > 1
+						hasNext := int64(page*pageSize) < total
+						return map[string]any{
+							"items":     items,
+							"page":      page,
+							"page_size": pageSize,
+							"total":     int(total),
+							"has_prev":  hasPrev,
+							"has_next":  hasNext,
+						}, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: business calendar entries by date range
+			"adminCalendarRange": &graphql.Field{
+				Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
+					Name:   "BusinessCalendarEntry",
+					Fields: graphql.Fields{"date": &graphql.Field{Type: graphql.String}, "is_business_day": &graphql.Field{Type: graphql.Boolean}, "notes": &graphql.Field{Type: graphql.String}},
+				})),
+				Args: graphql.FieldConfigArgument{
+					"start": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"end":   &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						s := strings.TrimSpace(p.Args["start"].(string))
+						e := strings.TrimSpace(p.Args["end"].(string))
+						sd, err1 := time.Parse("2006-01-02", s)
+						ed, err2 := time.Parse("2006-01-02", e)
+						if err1 != nil || err2 != nil || sd.After(ed) {
+							return nil, fmt.Errorf("invalid dates")
+						}
+						var items []BusinessCalendar
+						if err := DB.Where("date >= ? AND date <= ?", sd, ed).Order("date ASC").Find(&items).Error; err != nil {
+							return nil, err
+						}
+						out := make([]map[string]any, 0, len(items))
+						for _, it := range items {
+							var notes string
+							if it.Notes != nil {
+								notes = *it.Notes
+							}
+							out = append(out, map[string]any{
+								"date":            it.Date.Format("2006-01-02"),
+								"is_business_day": it.IsBusinessDay,
+								"notes":           notes,
+							})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
+			// Admin: users listing with roles and block status
+			"adminUsers": &graphql.Field{
+				Type: graphql.NewList(adminUserType),
+				Args: graphql.FieldConfigArgument{
+					"q": &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return nil, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return nil, fmt.Errorf("forbidden")
+						}
+						qstr, _ := p.Args["q"].(string)
+						qstr = strings.TrimSpace(qstr)
+						dbq := DB.Model(&User{})
+						if qstr != "" {
+							like := "%" + qstr + "%"
+							dbq = dbq.Where("email LIKE ? OR display_name LIKE ?", like, like)
+						}
+						var users []User
+						if err := dbq.Order("id DESC").Limit(100).Find(&users).Error; err != nil {
+							return nil, err
+						}
+						ids := make([]uint, 0, len(users))
+						for _, uu := range users {
+							ids = append(ids, uu.ID)
+						}
+						roleMap := map[uint][]string{}
+						if len(ids) > 0 {
+							var roles []RoleUser
+							_ = DB.Where("user_id IN ?", ids).Find(&roles).Error
+							for _, r := range roles {
+								roleMap[r.UserID] = append(roleMap[r.UserID], r.Role)
+							}
+						}
+						blocked := map[uint]bool{}
+						if len(ids) > 0 {
+							var blks []Block
+							_ = DB.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
+							for _, b := range blks {
+								blocked[b.UserID] = true
+							}
+						}
+						out := make([]map[string]any, 0, len(users))
+						for _, it := range users {
+							out = append(out, map[string]any{
+								"id":           it.ID,
+								"email":        it.Email,
+								"display_name": it.DisplayName,
+								"roles":        roleMap[it.ID],
+								"is_blocked":   blocked[it.ID],
+							})
+						}
+						return out, nil
+					}
+					return nil, fmt.Errorf("context missing")
+				},
+			},
 			// Settings: API Keys
 			"apiKeys": &graphql.Field{
 				Type: graphql.NewList(apiKeyType),
@@ -665,6 +890,36 @@ func registerGraphQL(app *fiber.App) {
 							}
 						}
 						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.calendar.upsert"}).Error
+						return true, nil
+					}
+					return false, fmt.Errorf("context missing")
+				},
+			},
+			// Delete a single business calendar entry by date (YYYY-MM-DD)
+			`adminCalendarDelete`: &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: func(p graphql.ResolveParams) (any, error) {
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						if !userFromSession(c) {
+							return false, fmt.Errorf("unauthorized")
+						}
+						u := c.Locals("user").(*User)
+						isAdmin, _ := userHasRole(u.ID, "admin")
+						isManager, _ := userHasRole(u.ID, "manager")
+						if !(isAdmin || isManager) {
+							return false, fmt.Errorf("forbidden")
+						}
+						ds := strings.TrimSpace(p.Args["date"].(string))
+						if _, err := time.Parse("2006-01-02", ds); err != nil {
+							return false, fmt.Errorf("invalid date")
+						}
+						if err := DB.Where("date = ?", ds).Delete(&BusinessCalendar{}).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.calendar.delete"}).Error
 						return true, nil
 					}
 					return false, fmt.Errorf("context missing")

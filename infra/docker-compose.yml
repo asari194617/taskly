@@ -51,7 +51,9 @@ services:
     ports:
       - "3063:8080" # API
       - "3064:9464" # Metrics
-    environment: {}
+    environment:
+      # コンテナ間通信では localhost:3061 ではなく、サービス名:ポート を利用する
+      REDIS_ADDR: redis:6379
   # web and mcp can be added later
   mcp:
     build: ../apps/mcp

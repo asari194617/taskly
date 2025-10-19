@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/table";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreVertical } from "lucide-react";
 
 type AUser = {
   id: number;
@@ -175,43 +182,68 @@ export default function AdminUsers() {
                     {(u.roles || []).join(", ")}
                   </TableCell>
                   <TableCell>{u.is_blocked ? "Yes" : "No"}</TableCell>
-                  <TableCell className="text-right flex gap-2 justify-end">
-                    <Button
-                      variant="secondary"
-                      onClick={() => addRole(u.id, "admin")}
-                    >
-                      Admin付与
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => addRole(u.id, "manager")}
-                    >
-                      Manager付与
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => removeRole(u.id, "admin")}
-                    >
-                      Admin削除
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => removeRole(u.id, "manager")}
-                    >
-                      Manager削除
-                    </Button>
-                    {u.is_blocked ? (
-                      <Button onClick={() => unblockUser(u.id)}>
-                        ブロック解除
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="destructive"
-                        onClick={() => blockUser(u.id)}
-                      >
-                        ブロック
-                      </Button>
-                    )}
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" aria-label="操作">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {(() => {
+                          const roles = u.roles || [];
+                          const hasAdmin = roles.includes("admin");
+                          const hasManager = roles.includes("manager");
+                          return (
+                            <>
+                              {/* Admin role toggle */}
+                              {hasAdmin ? (
+                                <DropdownMenuItem
+                                  onClick={() => removeRole(u.id, "admin")}
+                                >
+                                  Admin削除
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => addRole(u.id, "admin")}
+                                >
+                                  Admin付与
+                                </DropdownMenuItem>
+                              )}
+                              {/* Manager role toggle */}
+                              {hasManager ? (
+                                <DropdownMenuItem
+                                  onClick={() => removeRole(u.id, "manager")}
+                                >
+                                  Manager削除
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => addRole(u.id, "manager")}
+                                >
+                                  Manager付与
+                                </DropdownMenuItem>
+                              )}
+                              {/* Block/unblock */}
+                              {u.is_blocked ? (
+                                <DropdownMenuItem
+                                  onClick={() => unblockUser(u.id)}
+                                >
+                                  ブロック解除
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => blockUser(u.id)}
+                                >
+                                  ブロック
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))
