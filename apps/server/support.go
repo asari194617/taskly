@@ -210,6 +210,38 @@ func runMigrations() {
 				failed = true
 				break
 			}
+
+			// Ensure new tables for generalized day shift groups exist
+			if err := DB.AutoMigrate(&DayShiftCycleGroup{}, &DayShiftCycleGroupMember{}); err != nil {
+				log.Printf("migration warning: automigrate day shift groups failed: %v", err)
+			}
+
+			// One-time data migration: convert existing pairs to groups if groups are empty
+			{
+				var existing Migration
+				if err := DB.Where("name = ?", "0009_dayshift_groups").First(&existing).Error; err != nil {
+					// Not applied yet
+					var groupsCnt int64
+					_ = DB.Model(&DayShiftCycleGroup{}).Count(&groupsCnt).Error
+					if groupsCnt == 0 {
+						var pairs []DayShiftCyclePair
+						_ = DB.Order("cycle_id ASC, position ASC, id ASC").Find(&pairs).Error
+						if len(pairs) > 0 {
+							// group by cycle and position similar to pairs
+							for _, p := range pairs {
+								g := DayShiftCycleGroup{CycleID: p.CycleID, Position: p.Position}
+								if err := DB.Create(&g).Error; err != nil {
+									log.Printf("migration warning: create group from pair failed: %v", err)
+									continue
+								}
+								_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User1ID, Position: 1}).Error
+								_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User2ID, Position: 2}).Error
+							}
+						}
+					}
+					DB.Create(&Migration{Name: "0009_dayshift_groups"})
+				}
+			}
 		}
 
 		if !failed {
@@ -1272,27 +1304,55 @@ func performDayShiftRotation(now time.Time) error {
 			return err
 		}
 	}
-	var cfgPairs []DayShiftCyclePair
-	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgPairs).Error
-	var pairs [][]uint
-	if len(cfgPairs) > 0 {
-		for _, p := range cfgPairs {
-			pairs = append(pairs, []uint{p.User1ID, p.User2ID})
+	// Prefer new group configuration if present
+	var cfgGroups []DayShiftCycleGroup
+	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups).Error
+	groups := make([][]uint, 0)
+	if len(cfgGroups) > 0 {
+		for _, g := range cfgGroups {
+			var members []DayShiftCycleGroupMember
+			_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&members).Error
+			if len(members) == 0 {
+				continue
+			}
+			arr := make([]uint, 0, len(members))
+			for _, m := range members {
+				arr = append(arr, m.UserID)
+			}
+			groups = append(groups, arr)
 		}
-	} else {
+	}
+	if len(groups) == 0 {
+		// Fallback to legacy pairs config
+		var cfgPairs []DayShiftCyclePair
+		_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgPairs).Error
+		if len(cfgPairs) > 0 {
+			for _, p := range cfgPairs {
+				groups = append(groups, []uint{p.User1ID, p.User2ID})
+			}
+		}
+	}
+	if len(groups) == 0 {
+		// Auto compute groups from active users using env group size (default 2)
 		actUsers, err := listActiveUsers()
-		if err != nil || len(actUsers) < 2 {
+		if err != nil || len(actUsers) < 1 {
 			return err
 		}
-		pairs = computePairs(actUsers)
+		gs := 2
+		if v := strings.TrimSpace(env("DAYSHIFT_GROUP_SIZE", "")); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n >= 1 {
+				gs = n
+			}
+		}
+		groups = computeGroups(actUsers, gs)
 	}
-	if len(pairs) == 0 {
+	if len(groups) == 0 {
 		return nil
 	}
 	dayIdx := businessDaysBetween(cyc.BeginDate, d)
-	pair := pairs[dayIdx%len(pairs)]
+	grp := groups[dayIdx%len(groups)]
 	_ = DB.Where("day_shift_assignments_id = ?", today.ID).Delete(&DayShiftAssignmentUser{}).Error
-	for _, uid := range pair {
+	for _, uid := range grp {
 		_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: today.ID, UserID: uid}).Error
 	}
 	return nil
@@ -1391,6 +1451,32 @@ func computePairs(users []User) [][]uint {
 	}
 	for i := 0; i < n; i += 2 {
 		out = append(out, []uint{users[i].ID, users[i+1].ID})
+	}
+	return out
+}
+
+// computeGroups splits users into groups of given size in order.
+// If remainder is non-zero, drop the trailing users (and log) to keep group sizes uniform.
+func computeGroups(users []User, size int) [][]uint {
+	out := [][]uint{}
+	n := len(users)
+	if size <= 0 {
+		size = 2
+	}
+	if n < size {
+		return out
+	}
+	rem := n % size
+	if rem != 0 {
+		log.Printf("[DayShift] users not divisible by group size (n=%d, size=%d), dropping last %d user(s)", n, size, rem)
+		n = n - rem
+	}
+	for i := 0; i < n; i += size {
+		grp := make([]uint, 0, size)
+		for j := 0; j < size; j++ {
+			grp = append(grp, users[i+j].ID)
+		}
+		out = append(out, grp)
 	}
 	return out
 }

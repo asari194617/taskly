@@ -242,6 +242,22 @@ type DayShiftCyclePair struct {
 	CreatedAt time.Time
 }
 
+// Generalized day shift group (supports 2 or more users per position)
+type DayShiftCycleGroup struct {
+	ID        uint      `gorm:"primaryKey"`
+	CycleID   uint      `gorm:"index;not null"`
+	Position  int       `gorm:"default:0"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+}
+
+type DayShiftCycleGroupMember struct {
+	ID        uint      `gorm:"primaryKey"`
+	GroupID   uint      `gorm:"index;not null"`
+	UserID    uint      `gorm:"not null"`
+	Position  int       `gorm:"default:0"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+}
+
 type IcalKey struct {
 	ID          uint    `gorm:"primaryKey"`
 	UserID      uint    `gorm:"index;not null"`
