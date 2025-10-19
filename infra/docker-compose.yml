@@ -1,6 +1,7 @@
 services:
   db:
     image: mysql:8.4
+    restart: unless-stopped
     env_file:
       - ../.env
     environment: {}
@@ -19,6 +20,7 @@ services:
       retries: 10
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "3061:6379" # Redis
     volumes:
@@ -26,6 +28,7 @@ services:
   postfix:
     build: ./docker/postfix
     container_name: taskly-postfix
+    restart: unless-stopped
     ports:
       - "3062:25" # SMTP
     environment:
@@ -40,6 +43,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    restart: unless-stopped
     ports:
       - "3063:8080" # API
       - "3064:9464" # Metrics
@@ -53,6 +57,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
     environment: {}
     networks:
       - default
@@ -76,6 +81,7 @@ services:
       - ../.env
     depends_on:
       - db
+    restart: unless-stopped
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
@@ -139,6 +145,7 @@ services:
     depends_on:
       - db
       - airflow-webserver
+    restart: unless-stopped
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
