@@ -127,6 +127,14 @@ func runMigrations() {
 		statements []string
 	}
 
+	// small helper to check column existence
+	hasColumn := func(table, column string) bool {
+		type res struct{ Cnt int }
+		var r res
+		_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?", table, column).Scan(&r).Error
+		return r.Cnt > 0
+	}
+
 	migrations := []migrationFile{
 		{
 			name: "0006_task_type_enum_subject_i18n",
@@ -145,15 +153,16 @@ func runMigrations() {
 				"UPDATE tasks SET type = 'OTHER' WHERE type IN ('その他', 'ｿﾉ他')",
 				"DELETE FROM tasks WHERE type NOT IN ('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER')",
 				"ALTER TABLE tasks MODIFY COLUMN type ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER') NOT NULL DEFAULT 'OTHER'",
-				"ALTER TABLE subjects ADD COLUMN name_en VARCHAR(255) NULL",
+				// MySQL 8.0+: IF NOT EXISTS is supported; harmless if already present
+				"ALTER TABLE subjects ADD COLUMN IF NOT EXISTS name_en VARCHAR(255) NULL",
 			},
 		},
 		{
 			name: "0007_subject_name_ja_backfill",
 			statements: []string{
 				// Add name_ja nullable first (ignore if exists)
-				"ALTER TABLE subjects ADD COLUMN name_ja VARCHAR(255) NULL",
-				// Backfill from legacy title where empty
+				"ALTER TABLE subjects ADD COLUMN IF NOT EXISTS name_ja VARCHAR(255) NULL",
+				// Backfill from legacy title where empty (only if legacy 'title' exists)
 				"UPDATE subjects SET name_ja = title WHERE (name_ja IS NULL OR name_ja = '') AND title IS NOT NULL AND title <> ''",
 				// Enforce NOT NULL after backfill
 				"ALTER TABLE subjects MODIFY COLUMN name_ja VARCHAR(255) NOT NULL",
@@ -164,8 +173,8 @@ func runMigrations() {
 			statements: []string{
 				// Ensure no NULL/empty name_ja before dropping title
 				"UPDATE subjects SET name_ja = title WHERE (name_ja IS NULL OR name_ja = '') AND title IS NOT NULL AND title <> ''",
-				// Drop legacy title column (ignore if already dropped)
-				"ALTER TABLE subjects DROP COLUMN title",
+				// Drop legacy title column if exists
+				"ALTER TABLE subjects DROP COLUMN IF EXISTS title",
 			},
 		},
 	}
@@ -180,13 +189,21 @@ func runMigrations() {
 		// Execute migration statements one by one
 		log.Printf("Running migration: %s", m.name)
 		failed := false
+		// Determine presence of legacy column once per migration
+		titleExists := hasColumn("subjects", "title")
 		for _, stmt := range m.statements {
+			// Skip statements that reference legacy 'title' when it doesn't exist
+			if !titleExists && (strings.Contains(strings.ToLower(stmt), " name_ja = title ") || strings.Contains(strings.ToLower(stmt), "drop column title")) {
+				continue
+			}
 			if err := DB.Exec(stmt).Error; err != nil {
 				// Check if error is about column already existing (safe to ignore)
 				errMsg := err.Error()
 				if strings.Contains(errMsg, "Duplicate column") ||
 					strings.Contains(errMsg, "already exists") ||
-					strings.Contains(errMsg, "1060") { // MySQL error code for duplicate column
+					strings.Contains(errMsg, "1060") || // MySQL error code for duplicate column
+					strings.Contains(errMsg, "Unknown column") ||
+					strings.Contains(errMsg, "1054") { // Unknown column
 					continue // Safe to ignore
 				}
 				log.Printf("Migration %s statement failed: %v\nStatement: %s", m.name, err, stmt)
