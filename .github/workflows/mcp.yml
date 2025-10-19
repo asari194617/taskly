@@ -20,8 +20,9 @@ jobs:
       - id: fallback
         uses: jimmygchen/runner-fallback-action@v1
         with:
-          primary: self-hosted
-          fallback: ubuntu-latest
+          github-token: ${{ github.token }}
+          primary-runner: self-hosted
+          fallback-runner: ubuntu-latest
 
   build:
     needs: select-runner

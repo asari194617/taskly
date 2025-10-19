@@ -15,8 +15,9 @@ jobs:
       - id: fallback
         uses: jimmygchen/runner-fallback-action@v1
         with:
-          primary: self-hosted
-          fallback: ubuntu-latest
+          github-token: ${{ github.token }}
+          primary-runner: self-hosted
+          fallback-runner: ubuntu-latest
   build-linux-win:
     needs: select-runner
     runs-on: ${{ needs.select-runner.outputs.label }}
@@ -80,7 +81,7 @@ jobs:
           path: artifacts/*
 
   publish:
-    needs: [build-linux-win, build-macos, select-runner]
+    needs: [select-runner, build-linux-win, build-macos]
     runs-on: ${{ needs.select-runner.outputs.label }}
     env:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
