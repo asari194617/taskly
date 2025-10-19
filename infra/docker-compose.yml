@@ -104,12 +104,12 @@ services:
       - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
       - ..:/workspace
-    # Clean stale PID then start webserver
+    # Clean stale PID, initialize/upgrade DB once, then start webserver
     command:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-webserver.pid; exec airflow webserver",
+        "rm -f /opt/airflow/airflow-webserver.pid; (airflow db init || airflow db upgrade || true); exec airflow webserver",
       ]
 
   traefik:
@@ -165,12 +165,12 @@ services:
       - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
       - ..:/workspace
-    # Clean stale PID then start scheduler
+    # Clean stale PID, initialize/upgrade DB once, then start scheduler
     command:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-scheduler.pid; exec airflow scheduler",
+        "rm -f /opt/airflow/airflow-scheduler.pid; (airflow db init || airflow db upgrade || true); exec airflow scheduler",
       ]
 volumes:
   db-data:
