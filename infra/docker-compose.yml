@@ -4,7 +4,11 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env
-    environment: {}
+    environment: # DB接続情報は、コンテナ内でのポートとコンテナ外のポートが異なるため、共通化せずに指定
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
+      MYSQL_USER: ${MYSQL_USER:-taskly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
     ports:
       - "3060:3306" # MySQL
     command:
