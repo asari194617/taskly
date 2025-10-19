@@ -21,8 +21,7 @@ type Cycle struct {
 type Pair struct {
 	ID       int64
 	CycleID  int64
-	User1ID  int64
-	User2ID  int64
+	UserIDs  []int64
 	Position int
 }
 
@@ -54,7 +53,7 @@ func main() {
 	isHoliday := func(d time.Time) bool { _, ok := holidays[dateOnly(d)]; return ok }
 
 	for _, c := range cycles {
-		pairs, err := fetchPairs(db, c.ID)
+		pairs, err := fetchGroupsWithMembers(db, c.ID)
 		if err != nil {
 			log.Println("pairs:", err)
 			continue
@@ -71,8 +70,13 @@ func main() {
 				continue
 			}
 			p := pairs[(weekdayIndex(d))%len(pairs)]
-			if err := upsertAssignment(db, d, p.User1ID, p.User2ID, c.ID); err != nil {
+			if err := upsertGroupAssignment(db, d, p.ID, c.ID); err != nil {
 				log.Println("assign:", err)
+				continue
+			}
+			// also reflect members for the group on that date
+			if err := upsertAssignmentMembers(db, d, p.UserIDs); err != nil {
+				log.Println("assign members:", err)
 			}
 		}
 	}
@@ -139,19 +143,34 @@ func fetchActiveCycles(db *sql.DB) ([]Cycle, error) {
 	return out, nil
 }
 
-func fetchPairs(db *sql.DB, cycleID int64) ([]Pair, error) {
-	rows, err := db.Query(`SELECT id, cycle_id, user1_id, user2_id, position FROM dayshift_pairs WHERE cycle_id = ? ORDER BY position ASC`, cycleID)
+func fetchGroupsWithMembers(db *sql.DB, cycleID int64) ([]Pair, error) {
+	// groups
+	gRows, err := db.Query(`SELECT id, cycle_id, position FROM day_shift_cycle_groups WHERE cycle_id = ? ORDER BY position ASC, id ASC`, cycleID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer gRows.Close()
 	var out []Pair
-	for rows.Next() {
-		var p Pair
-		if err := rows.Scan(&p.ID, &p.CycleID, &p.User1ID, &p.User2ID, &p.Position); err != nil {
+	for gRows.Next() {
+		var id, cid int64
+		var pos int
+		if err := gRows.Scan(&id, &cid, &pos); err != nil {
 			continue
 		}
-		out = append(out, p)
+		// members for this group
+		mRows, err := db.Query(`SELECT user_id FROM day_shift_cycle_group_members WHERE group_id = ? ORDER BY position ASC, id ASC`, id)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]int64, 0, 4)
+		for mRows.Next() {
+			var uid int64
+			if err := mRows.Scan(&uid); err == nil {
+				ids = append(ids, uid)
+			}
+		}
+		_ = mRows.Close()
+		out = append(out, Pair{ID: id, CycleID: cid, UserIDs: ids, Position: pos})
 	}
 	return out, nil
 }
@@ -174,7 +193,7 @@ func fetchHolidays(db *sql.DB) (map[time.Time]struct{}, error) {
 }
 
 func lastAssignedDate(db *sql.DB, cycleID int64) time.Time {
-	row := db.QueryRow(`SELECT MAX(date) FROM day_shift_assignments WHERE cycle_id = ?`, cycleID)
+	row := db.QueryRow(`SELECT MAX(date) FROM day_shift_group_assignments WHERE cycle_id = ?`, cycleID)
 	var t sql.NullTime
 	_ = row.Scan(&t)
 	if t.Valid {
@@ -183,20 +202,57 @@ func lastAssignedDate(db *sql.DB, cycleID int64) time.Time {
 	return time.Time{}
 }
 
-func upsertAssignment(db *sql.DB, date time.Time, user1, user2, cycleID int64) error {
-	_, err := db.Exec(`INSERT INTO day_shift_assignments(date, user1_id, user2_id, cycle_id) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE user1_id=VALUES(user1_id), user2_id=VALUES(user2_id), cycle_id=VALUES(cycle_id)`, dateOnly(date), user1, user2, cycleID)
+func upsertGroupAssignment(db *sql.DB, date time.Time, groupID, cycleID int64) error {
+	_, err := db.Exec(`INSERT INTO day_shift_group_assignments(date, group_id, cycle_id) VALUES(?,?,?) ON DUPLICATE KEY UPDATE group_id=VALUES(group_id), cycle_id=VALUES(cycle_id)`, dateOnly(date), groupID, cycleID)
 	return err
 }
 
+func upsertAssignmentMembers(db *sql.DB, date time.Time, userIDs []int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		} else {
+			_ = tx.Commit()
+		}
+	}()
+	// clear existing
+	if _, err = tx.Exec(`DELETE FROM day_shift_group_assignment_members WHERE date = ?`, dateOnly(date)); err != nil {
+		return err
+	}
+	// insert all
+	for _, uid := range userIDs {
+		if _, err = tx.Exec(`INSERT INTO day_shift_group_assignment_members(date, user_id) VALUES(?,?)`, dateOnly(date), uid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func ensureAssignmentsTable(db *sql.DB) error {
-	ddl := `CREATE TABLE IF NOT EXISTS day_shift_assignments (
+	// main assignment table: one group per date
+	ddl1 := `CREATE TABLE IF NOT EXISTS day_shift_group_assignments (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
 		date DATE NOT NULL,
-		user1_id BIGINT NULL,
-		user2_id BIGINT NULL,
+		group_id BIGINT NULL,
 		cycle_id BIGINT NULL,
 		UNIQUE KEY uniq_date (date)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
-	_, err := db.Exec(ddl)
-	return err
+	if _, err := db.Exec(ddl1); err != nil {
+		return err
+	}
+	// members snapshot for a date
+	ddl2 := `CREATE TABLE IF NOT EXISTS day_shift_group_assignment_members (
+		id BIGINT AUTO_INCREMENT PRIMARY KEY,
+		date DATE NOT NULL,
+		user_id BIGINT NOT NULL,
+		KEY idx_date (date)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
+	if _, err := db.Exec(ddl2); err != nil {
+		return err
+	}
+	return nil
 }

@@ -90,8 +90,13 @@ export default function AdminUsers() {
   const [deleteHard, setDeleteHard] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState("");
 
+  // Custom role dialogs
+  const [openCustomAdd, setOpenCustomAdd] = React.useState(false);
+  const [openCustomRemove, setOpenCustomRemove] = React.useState(false);
+  const [customTarget, setCustomTarget] = React.useState<AUser | null>(null);
+  const [customRole, setCustomRole] = React.useState("");
+
   async function load() {
-    if (!token) return;
     setLoading(true);
     try {
       const d = await gql<{
@@ -124,6 +129,14 @@ export default function AdminUsers() {
   React.useEffect(() => {
     load();
   }, [page, sortBy, sortDir]);
+  // optional: reload when query cleared (to avoid sticky empty state)
+  React.useEffect(() => {
+    if (q.trim() === "") {
+      setPage(1);
+      load();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   async function addRole(id: number, role: string) {
     try {
@@ -300,7 +313,11 @@ export default function AdminUsers() {
     }
   }
 
-  async function setCustomRole(userId: number, role: string, enabled: boolean) {
+  async function applyCustomRole(
+    userId: number,
+    role: string,
+    enabled: boolean
+  ) {
     try {
       await gql<{ adminUserSetCustomRole: boolean }>(
         `mutation($id:Int!,$role:String!,$en:Boolean!){ adminUserSetCustomRole(user_id:$id, role:$role, enabled:$en) }`,
@@ -316,15 +333,36 @@ export default function AdminUsers() {
     }
   }
 
-  function addCustomRolePrompt(u: AUser) {
-    const role = window.prompt("追加するロール名を入力")?.trim();
-    if (!role) return;
-    setCustomRole(u.id, role, true);
+  function openCustomAddDialog(u: AUser) {
+    setCustomTarget(u);
+    setCustomRole("");
+    setOpenCustomAdd(true);
   }
-  function removeCustomRolePrompt(u: AUser) {
-    const role = window.prompt("削除するロール名を入力")?.trim();
-    if (!role) return;
-    setCustomRole(u.id, role, false);
+  function openCustomRemoveDialog(u: AUser) {
+    setCustomTarget(u);
+    setCustomRole("");
+    setOpenCustomRemove(true);
+  }
+
+  async function submitCustomAdd() {
+    if (!customTarget) return;
+    const role = customRole.trim();
+    if (!role) {
+      toast({ variant: "destructive", title: "ロール名を入力してください" });
+      return;
+    }
+    await applyCustomRole(customTarget.id, role, true);
+    setOpenCustomAdd(false);
+  }
+  async function submitCustomRemove() {
+    if (!customTarget) return;
+    const role = customRole.trim();
+    if (!role) {
+      toast({ variant: "destructive", title: "ロール名を入力してください" });
+      return;
+    }
+    await applyCustomRole(customTarget.id, role, false);
+    setOpenCustomRemove(false);
   }
 
   function openDeleteDialog(u: AUser) {
@@ -558,12 +596,12 @@ export default function AdminUsers() {
                           );
                         })()}
                         <DropdownMenuItem
-                          onClick={() => addCustomRolePrompt(u)}
+                          onClick={() => openCustomAddDialog(u)}
                         >
                           カスタムロール追加
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => removeCustomRolePrompt(u)}
+                          onClick={() => openCustomRemoveDialog(u)}
                         >
                           カスタムロール削除
                         </DropdownMenuItem>
@@ -717,6 +755,58 @@ export default function AdminUsers() {
               disabled={deleteConfirm !== "削除"}
               onClick={submitDelete}
             >
+              削除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom Role Add Dialog */}
+      <Dialog open={openCustomAdd} onOpenChange={setOpenCustomAdd}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>カスタムロールを追加</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              対象: {customTarget?.email || "-"}
+            </div>
+            <div>
+              <div className="text-sm mb-1">ロール名</div>
+              <Input
+                value={customRole}
+                onChange={(e) => setCustomRole(e.target.value)}
+                placeholder="例: reviewer"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={submitCustomAdd}>追加</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom Role Remove Dialog */}
+      <Dialog open={openCustomRemove} onOpenChange={setOpenCustomRemove}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>カスタムロールを削除</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              対象: {customTarget?.email || "-"}
+            </div>
+            <div>
+              <div className="text-sm mb-1">ロール名</div>
+              <Input
+                value={customRole}
+                onChange={(e) => setCustomRole(e.target.value)}
+                placeholder="例: reviewer"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="destructive" onClick={submitCustomRemove}>
               削除
             </Button>
           </DialogFooter>

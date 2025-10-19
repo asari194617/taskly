@@ -233,6 +233,8 @@ type BusinessCalendar struct {
 	UpdatedAt     time.Time
 }
 
+// Deprecated: Legacy pair model kept only for migration/backfill.
+// Use DayShiftCycleGroup and DayShiftCycleGroupMember instead.
 type DayShiftCyclePair struct {
 	ID        uint `gorm:"primaryKey"`
 	CycleID   uint `gorm:"index;not null"`

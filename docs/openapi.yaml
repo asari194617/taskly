@@ -518,9 +518,9 @@ paths:
           schema: { type: integer }
       responses:
         "204": { description: No content }
-  /admin/dayshift/cycles/{id}/pairs:
+  /admin/dayshift/cycles/{id}/groups:
     get:
-      summary: List explicit pairs for a cycle
+      summary: List groups for a cycle
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -530,7 +530,7 @@ paths:
       responses:
         "200": { description: OK }
     post:
-      summary: Add a pair to a cycle
+      summary: Add a group to a cycle
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -544,15 +544,13 @@ paths:
             schema:
               type: object
               properties:
-                user1_id: { type: integer }
-                user2_id: { type: integer }
-                position: { type: integer, nullable: true }
-              required: [user1_id, user2_id]
+                user_ids: { type: array, items: { type: integer } }
+              required: [user_ids]
       responses:
         "201": { description: Created }
-  /admin/dayshift/cycles/{id}/pairs/{pairId}:
+  /admin/dayshift/cycles/{id}/groups/{groupId}:
     delete:
-      summary: Delete a pair from a cycle
+      summary: Delete a group from a cycle
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -560,22 +558,18 @@ paths:
           required: true
           schema: { type: integer }
         - in: path
-          name: pairId
+          name: groupId
           required: true
           schema: { type: integer }
       responses:
         "204": { description: No content }
-  /admin/dayshift/cycles/{id}/pairs/{pairId}/move:
+  /admin/dayshift/cycles/{id}/groups/reorder:
     post:
-      summary: Change the order of a pair within the cycle
+      summary: Reorder groups within the cycle
       tags: [admin, dayshift]
       parameters:
         - in: path
           name: id
-          required: true
-          schema: { type: integer }
-        - in: path
-          name: pairId
           required: true
           schema: { type: integer }
       requestBody:
@@ -585,8 +579,8 @@ paths:
             schema:
               type: object
               properties:
-                position: { type: integer }
-              required: [position]
+                group_ids: { type: array, items: { type: integer } }
+              required: [group_ids]
       responses:
         "200": { description: OK }
   /admin/calendar/upsert-range:

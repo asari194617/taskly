@@ -159,16 +159,7 @@ func registerGraphQL(app *fiber.App) {
 			"description": &graphql.Field{Type: graphql.String},
 		},
 	})
-	dayShiftPairType := graphql.NewObject(graphql.ObjectConfig{
-		Name: "DayShiftPair",
-		Fields: graphql.Fields{
-			"id":       &graphql.Field{Type: graphql.Int},
-			"cycle_id": &graphql.Field{Type: graphql.Int},
-			"user1_id": &graphql.Field{Type: graphql.Int},
-			"user2_id": &graphql.Field{Type: graphql.Int},
-			"position": &graphql.Field{Type: graphql.Int},
-		},
-	})
+	// Legacy DayShiftPair removed in favor of generalized group-based model
 	dayShiftGroupType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "DayShiftGroup",
 		Fields: graphql.Fields{
@@ -401,43 +392,7 @@ func registerGraphQL(app *fiber.App) {
 					return nil, fmt.Errorf("context missing")
 				},
 			},
-			// Day shift: pairs list for a cycle
-			"adminDayshiftPairs": &graphql.Field{
-				Type: graphql.NewList(dayShiftPairType),
-				Args: graphql.FieldConfigArgument{
-					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-				},
-				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-						if !userFromSession(c) {
-							return nil, fmt.Errorf("unauthorized")
-						}
-						u := c.Locals("user").(*User)
-						isAdmin, _ := userHasRole(u.ID, "admin")
-						isManager, _ := userHasRole(u.ID, "manager")
-						if !(isAdmin || isManager) {
-							return nil, fmt.Errorf("forbidden")
-						}
-						cid := p.Args["cycle_id"].(int)
-						var pairs []DayShiftCyclePair
-						if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&pairs).Error; err != nil {
-							return nil, fmt.Errorf("db")
-						}
-						out := make([]map[string]any, 0, len(pairs))
-						for _, it := range pairs {
-							out = append(out, map[string]any{
-								"id":       it.ID,
-								"cycle_id": it.CycleID,
-								"user1_id": it.User1ID,
-								"user2_id": it.User2ID,
-								"position": it.Position,
-							})
-						}
-						return out, nil
-					}
-					return nil, fmt.Errorf("context missing")
-				},
-			},
+			// Legacy pairs removed; use adminDayshiftGroups instead
 			// Day shift: groups list for a cycle
 			"adminDayshiftGroups": &graphql.Field{
 				Type: graphql.NewList(dayShiftGroupType),
@@ -1822,112 +1777,7 @@ func registerGraphQL(app *fiber.App) {
 					return false, fmt.Errorf("context missing")
 				},
 			},
-			`adminDayshiftPairs`: &graphql.Field{
-				Type: graphql.NewList(dayShiftPairType),
-				Args: graphql.FieldConfigArgument{
-					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-				},
-				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-						if !userFromSession(c) {
-							return nil, fmt.Errorf("unauthorized")
-						}
-						u := c.Locals("user").(*User)
-						isAdmin, _ := userHasRole(u.ID, "admin")
-						isManager, _ := userHasRole(u.ID, "manager")
-						if !(isAdmin || isManager) {
-							return nil, fmt.Errorf("forbidden")
-						}
-						cid := p.Args["cycle_id"].(int)
-						var pairs []DayShiftCyclePair
-						if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&pairs).Error; err != nil {
-							return nil, fmt.Errorf("db")
-						}
-						out := make([]map[string]any, 0, len(pairs))
-						for _, it := range pairs {
-							out = append(out, map[string]any{
-								"id":       it.ID,
-								"cycle_id": it.CycleID,
-								"user1_id": it.User1ID,
-								"user2_id": it.User2ID,
-								"position": it.Position,
-							})
-						}
-						return out, nil
-					}
-					return nil, fmt.Errorf("context missing")
-				},
-			},
-			`adminDayshiftCreatePair`: &graphql.Field{
-				Type: graphql.NewObject(graphql.ObjectConfig{
-					Name: "DayShiftPairCreateResult",
-					Fields: graphql.Fields{
-						"id": &graphql.Field{Type: graphql.Int},
-					},
-				}),
-				Args: graphql.FieldConfigArgument{
-					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-					"user1_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-					"user2_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-				},
-				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-						if !userFromSession(c) {
-							return nil, fmt.Errorf("unauthorized")
-						}
-						u := c.Locals("user").(*User)
-						isAdmin, _ := userHasRole(u.ID, "admin")
-						isManager, _ := userHasRole(u.ID, "manager")
-						if !(isAdmin || isManager) {
-							return nil, fmt.Errorf("forbidden")
-						}
-						cid := p.Args["cycle_id"].(int)
-						u1 := p.Args["user1_id"].(int)
-						u2 := p.Args["user2_id"].(int)
-						var max int64
-						_ = DB.Model(&DayShiftCyclePair{}).Where("cycle_id = ?", cid).Select("COALESCE(MAX(position),0)").Scan(&max).Error
-						pos := int(max) + 1
-						rec := DayShiftCyclePair{CycleID: uint(cid), User1ID: uint(u1), User2ID: uint(u2), Position: pos}
-						if err := DB.Create(&rec).Error; err != nil {
-							return nil, fmt.Errorf("db")
-						}
-						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.pair.create"}).Error
-						return map[string]any{"id": rec.ID}, nil
-					}
-					return nil, fmt.Errorf("context missing")
-				},
-			},
-			`adminDayshiftDeletePair`: &graphql.Field{
-				Type: graphql.Boolean,
-				Args: graphql.FieldConfigArgument{
-					"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-					"pair_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-				},
-				Resolve: func(p graphql.ResolveParams) (any, error) {
-					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-						if !userFromSession(c) {
-							return false, fmt.Errorf("unauthorized")
-						}
-						u := c.Locals("user").(*User)
-						isAdmin, _ := userHasRole(u.ID, "admin")
-						isManager, _ := userHasRole(u.ID, "manager")
-						if !(isAdmin || isManager) {
-							return false, fmt.Errorf("forbidden")
-						}
-						if err := DB.Delete(
-							&DayShiftCyclePair{},
-							"id = ? AND cycle_id = ?",
-							p.Args["pair_id"].(int),
-							p.Args["cycle_id"].(int),
-						).Error; err != nil {
-							return false, fmt.Errorf("db")
-						}
-						_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.pair.delete"}).Error
-						return true, nil
-					}
-					return false, fmt.Errorf("context missing")
-				},
-			},
+			// Legacy pairs mutations removed; use group create/delete and reorder instead
 			// Removed duplicate adminDayshiftGroups list from Mutation to avoid type conflicts.
 			// New: create group with user_ids
 			`adminDayshiftCreateGroup`: &graphql.Field{
