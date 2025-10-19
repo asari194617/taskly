@@ -12,8 +12,20 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  deploy:
+  select-runner:
     runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.fallback.outputs.runner }}
+    steps:
+      - id: fallback
+        uses: jimmygchen/runner-fallback-action@v1
+        with:
+          primary: self-hosted
+          fallback: ubuntu-latest
+
+  deploy:
+    needs: select-runner
+    runs-on: ${{ needs.select-runner.outputs.label }}
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
