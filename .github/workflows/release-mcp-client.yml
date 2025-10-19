@@ -10,18 +10,20 @@ jobs:
   select-runner:
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.choose.outputs.runner || steps.fallback.outputs.runner }}
+      label: ${{ steps.pick.outputs.runner }}
     steps:
-      - id: choose
-        if: github.event_name == 'pull_request' || secrets.RUNNER_FALLBACK_TOKEN == ''
+      - id: def
         run: echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-      - id: fallback
-        if: steps.choose.outcome == 'skipped'
+      - id: fbk
+        name: Select self-hosted with fallback
         uses: jimmygchen/runner-fallback-action@v1
+        continue-on-error: true
         with:
-          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN }}
+          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
           primary-runner: self-hosted
           fallback-runner: ubuntu-latest
+      - id: pick
+        run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
   build-linux-win:
     needs: select-runner
     runs-on: ${{ needs.select-runner.outputs.label }}
