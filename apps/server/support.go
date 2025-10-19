@@ -211,6 +211,8 @@ func runMigrations() {
 					strings.Contains(errMsg, "1060") || // MySQL error code for duplicate column
 					strings.Contains(errMsg, "Unknown column") ||
 					strings.Contains(errMsg, "1054") || // Unknown column
+					strings.Contains(errMsg, "doesn't exist") || // Table doesn't exist
+					strings.Contains(errMsg, "1146") || // MySQL error code for table doesn't exist
 					strings.Contains(errMsg, "Duplicate key name") || // duplicate index name
 					strings.Contains(errMsg, "1061") { // MySQL error code for duplicate key name
 					continue // Safe to ignore
@@ -259,9 +261,55 @@ func runMigrations() {
 			log.Printf("Migration %s applied successfully", m.name)
 		}
 	}
+
+	// Always ensure generalized day shift group tables exist and perform one-time backfill if needed.
+	ensureDayShiftGroupSchemaAndBackfill()
 }
 
 func ptrTime(t time.Time) *time.Time { return &t }
+
+// ensureDayShiftGroupSchemaAndBackfill guarantees the new generalized day shift
+// group tables exist and migrates legacy pairs into groups once.
+func ensureDayShiftGroupSchemaAndBackfill() {
+	// Create/alter tables idempotently
+	if err := DB.AutoMigrate(&DayShiftCycleGroup{}, &DayShiftCycleGroupMember{}); err != nil {
+		log.Printf("migration warning: automigrate day shift groups failed: %v", err)
+		// Even if this fails, return to avoid unexpected behavior
+		return
+	}
+
+	// One-time data migration: convert existing pairs to groups if not yet marked as applied
+	var existing Migration
+	if err := DB.Where("name = ?", "0009_dayshift_groups").First(&existing).Error; err == nil {
+		// Already migrated
+		return
+	}
+
+	// Only backfill when groups table is empty to avoid duplications
+	var groupsCnt int64
+	_ = DB.Model(&DayShiftCycleGroup{}).Count(&groupsCnt).Error
+	if groupsCnt > 0 {
+		// Still mark as applied to avoid checking on every boot
+		_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
+		return
+	}
+
+	var pairs []DayShiftCyclePair
+	if err := DB.Order("cycle_id ASC, position ASC, id ASC").Find(&pairs).Error; err != nil {
+		log.Printf("migration warning: fetch pairs for backfill failed: %v", err)
+		return
+	}
+	for _, p := range pairs {
+		g := DayShiftCycleGroup{CycleID: p.CycleID, Position: p.Position}
+		if err := DB.Create(&g).Error; err != nil {
+			log.Printf("migration warning: create group from pair failed: %v", err)
+			continue
+		}
+		_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User1ID, Position: 1}).Error
+		_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User2ID, Position: 2}).Error
+	}
+	_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
+}
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
 func sha256Hex(b []byte) string {

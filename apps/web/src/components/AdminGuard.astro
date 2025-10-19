@@ -8,7 +8,7 @@
         location.href = `/login?next=${next}`;
         return;
       }
-      const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'X-Client-Platform': 'web' } as Record<string,string>;
       if (token) headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
       const res = await fetch(`${API_BASE}/graphql`, {
         method: 'POST',
