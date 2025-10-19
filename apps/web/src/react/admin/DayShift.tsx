@@ -53,6 +53,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
+import { Textarea } from "@/components/ui/textarea";
 
 type Cycle = {
   id: number;
@@ -104,6 +105,10 @@ export default function AdminDayShift() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [editGroup, setEditGroup] = React.useState<Group | null>(null);
   const [editSelected, setEditSelected] = React.useState<AdminUser[]>([]);
+  // bulk add dialog state
+  const [bulkOpen, setBulkOpen] = React.useState(false);
+  const [bulkCSV, setBulkCSV] = React.useState("");
+  const [bulkLoading, setBulkLoading] = React.useState(false);
 
   async function loadCycles() {
     try {
@@ -623,6 +628,14 @@ export default function AdminDayShift() {
             >
               グループ追加
             </Button>
+            <Button
+              variant="outline"
+              className="ml-2"
+              onClick={() => setBulkOpen(true)}
+              disabled={!cid}
+            >
+              CSV一括追加
+            </Button>
           </div>
         </Card>
         <Card className="p-0 overflow-x-auto">
@@ -852,6 +865,101 @@ export default function AdminDayShift() {
                 }}
               >
                 保存
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* Bulk add groups via CSV */}
+        <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>CSVでグループ一括追加</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                1行につき1グループを追加します。各行は「ユーザーIDをカンマ区切り」で指定してください。
+                例: <code>12,34</code> や <code>5,8,9</code>
+              </p>
+              <Textarea
+                value={bulkCSV}
+                onChange={(e) => setBulkCSV(e.target.value)}
+                placeholder={"例:\n12,34\n5,8,9"}
+                rows={8}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setBulkOpen(false)}>
+                キャンセル
+              </Button>
+              <Button
+                disabled={!cid || bulkLoading || bulkCSV.trim() === ""}
+                onClick={async () => {
+                  if (!cid) return;
+                  setBulkLoading(true);
+                  try {
+                    const lines = bulkCSV.split(/\r?\n/);
+                    let created = 0;
+                    const errors: string[] = [];
+                    for (let i = 0; i < lines.length; i++) {
+                      const raw = lines[i].trim();
+                      if (!raw) continue;
+                      const ids = raw
+                        .split(",")
+                        .map((s) => parseInt(s.trim(), 10))
+                        .filter((n) => Number.isFinite(n) && n > 0);
+                      // dedupe while keeping order
+                      const seen = new Set<number>();
+                      const uniq: number[] = [];
+                      for (const n of ids) {
+                        if (!seen.has(n)) {
+                          seen.add(n);
+                          uniq.push(n);
+                        }
+                      }
+                      if (uniq.length === 0) {
+                        errors.push(`行${i + 1}: ユーザーIDが不正です`);
+                        continue;
+                      }
+                      try {
+                        await gql<{ adminDayshiftCreateGroup: { id: number } }>(
+                          `mutation($cid:Int!,$ids:[Int!]!){ adminDayshiftCreateGroup(cycle_id:$cid, user_ids:$ids){ id } }`,
+                          { cid: Number(cid), ids: uniq }
+                        );
+                        created++;
+                      } catch (e: any) {
+                        errors.push(
+                          `行${i + 1}: ${e?.message || "作成に失敗"}`
+                        );
+                      }
+                    }
+                    if (created > 0) {
+                      toast({
+                        title: "一括追加が完了しました",
+                        description: `${created}件のグループを追加しました${
+                          errors.length ? `（エラー ${errors.length} 行）` : ""
+                        }`,
+                      });
+                      setBulkOpen(false);
+                      setBulkCSV("");
+                      loadGroups();
+                    }
+                    if (errors.length > 0) {
+                      toast({
+                        variant: "destructive",
+                        title: "一部で失敗しました",
+                        description:
+                          errors.slice(0, 5).join("\n") +
+                          (errors.length > 5
+                            ? `\n…ほか ${errors.length - 5} 件`
+                            : ""),
+                      });
+                    }
+                  } finally {
+                    setBulkLoading(false);
+                  }
+                }}
+              >
+                追加する
               </Button>
             </DialogFooter>
           </DialogContent>
