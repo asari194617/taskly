@@ -80,10 +80,19 @@ jobs:
           test -n "$PROD_WORKDIR"
           rsync -az --delete \
             --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".DS_Store" \
             --exclude "**/node_modules" \
             --exclude "**/.next" \
             --exclude "**/.turbo" \
             --exclude "**/dist" \
+            --exclude "**/build" \
+            --exclude "**/.cache" \
+            --exclude "**/.pnpm-store" \
+            --exclude "**/coverage" \
+            --exclude "**/*.log" \
+            --exclude "**/*.tmp" \
+            --exclude "**/*.swp" \
             --exclude "**/artifacts" \
             -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
 

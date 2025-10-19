@@ -1,17 +1,30 @@
-# syntax=docker/dockerfile:1
-FROM golang:1.23-alpine AS build
+# syntax=docker/dockerfile:1.7
+
+# Build on the host arch to avoid QEMU overhead, cross-compile per target platform
+ARG BUILDPLATFORM=linux/amd64
+ARG TARGETPLATFORM=linux/amd64
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
 WORKDIR /src
-COPY go.mod .
 ENV GOTOOLCHAIN=auto
-RUN go mod download
+# Cache go modules
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+	GOPROXY=https://proxy.golang.org,direct go mod download
+# Copy source and build with cache mounts
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o /out/api ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+	--mount=type=cache,target=/root/.cache/go-build \
+	CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+	go build -buildvcs=false -trimpath -ldflags "-s -w" -o /out/api ./
 
 # Extract CA certificates (for outbound HTTPS if needed)
-FROM alpine:3.20 AS certs
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS certs
 RUN apk add --no-cache ca-certificates
 
-FROM alpine:3.20
+FROM --platform=$TARGETPLATFORM alpine:3.20
 WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata bash curl grep sed findutils mariadb-client
 COPY --from=build /out/api /app/api

@@ -1,0 +1,33 @@
+# Exclude VCS and editor junk
+.git
+.gitignore
+.vscode
+.idea
+
+# Node/Frontend artifacts if any vendored into server dir
+node_modules
+
+# Go build artifacts
+bin
+build
+out
+/dist
+/tmp
+*.exe
+*.test
+*.out
+*.log
+
+# Docker build cache directories (do not send)
+/tmp/.buildx-cache
+
+# Ignore local env files
+.env
+.env.*
+
+# OS files
+.DS_Store
+
+# Exclude everything in web and mcp from being sent if referenced relatively (safety)
+../web
+../apps/mcp

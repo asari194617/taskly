@@ -5,11 +5,11 @@ on:
     branches:
       - "**"
     paths:
-      - "apps/api/**"
+      - "apps/server/**"
       - ".github/workflows/api.yml"
   pull_request:
     paths:
-      - "apps/api/**"
+      - "apps/server/**"
 
 jobs:
   select-runner:
@@ -63,24 +63,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Prepare local buildx cache
-        run: |
-          mkdir -p /tmp/.buildx-cache /tmp/.buildx-cache-new
+      - name: Restore buildx cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: ./apps/server
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           tags: ghcr.io/${{ github.repository }}/api:latest
           cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-      - name: Rotate local cache
-        if: always()
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
