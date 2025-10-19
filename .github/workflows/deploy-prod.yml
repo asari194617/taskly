@@ -78,7 +78,14 @@ jobs:
         run: |
           set -eux
           test -n "$PROD_WORKDIR"
-          rsync -az --delete --exclude ".git" -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude "**/node_modules" \
+            --exclude "**/.next" \
+            --exclude "**/.turbo" \
+            --exclude "**/dist" \
+            --exclude "**/artifacts" \
+            -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
 
       - name: Upload .env if provided
         if: env.PROD_ENV != ''
