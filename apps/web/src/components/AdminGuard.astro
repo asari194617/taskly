@@ -25,8 +25,9 @@
       const json = await res.json();
       const me = json?.data?.me;
       if(!(me && (me.is_admin || me.is_manager))){
-        alert('Forbidden');
-        location.href = '/';
+        // 権限なし → 403 ページへ
+        location.href = '/403';
+        return;
       }
     } catch (e) {
       // Network or runtime error: treat as unauthenticated

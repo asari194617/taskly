@@ -33,9 +33,6 @@ func mustInitDB() *gorm.DB {
 	if err != nil {
 		log.Fatalf("db open: %v", err)
 	}
-	if err := db.AutoMigrate(&User{}); err != nil {
-		log.Fatalf("migrate: %v", err)
-	}
 	return db
 }
 

@@ -26,6 +26,9 @@ with DAG(
         task_id="queue_manager",
         bash_command=build_cmd("notifications/que-manager"),
         env={
+            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
+            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
+            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
@@ -39,6 +42,9 @@ with DAG(
         task_id="email_delivery",
         bash_command=build_cmd("notifications/delivery-channels/email"),
         env={
+            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
+            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
+            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
@@ -47,7 +53,9 @@ with DAG(
             "SMTP_HOST": os.environ.get("SMTP_HOST", "postfix"),
             "SMTP_PORT": os.environ.get("SMTP_PORT", "25"),
             "SMTP_FROM": os.environ.get("SMTP_FROM", "noreply@taskly.local"),
+            "SMTP_USER": os.environ.get("SMTP_USER", os.environ.get("SMTP_FROM", "noreply@taskly.local")),
             "SMTP_PASSWORD": os.environ.get("SMTP_PASSWORD", ""),
+            "SMTP_TLS": os.environ.get("SMTP_TLS", "starttls"),
         },
     )
 

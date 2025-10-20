@@ -72,6 +72,13 @@ type AdminUser = {
   email: string;
   display_name: string;
 };
+type Assignment = {
+  id: number;
+  date: string; // YYYY-MM-DD
+  cycle_id: number;
+  status: string;
+  user_ids: number[];
+};
 
 export default function AdminDayShift() {
   const token =
@@ -94,6 +101,11 @@ export default function AdminDayShift() {
   const [loadingCycles, setLoadingCycles] = React.useState(false);
   const [loadingGroups, setLoadingGroups] = React.useState(false);
   const [loadingUsers, setLoadingUsers] = React.useState(false);
+  // assignments state
+  const [assignments, setAssignments] = React.useState<Assignment[]>([]);
+  const [assignStart, setAssignStart] = React.useState("");
+  const [assignEnd, setAssignEnd] = React.useState("");
+  const [loadingAssignments, setLoadingAssignments] = React.useState(false);
   // pagination state
   const [cyclePage, setCyclePage] = React.useState(1);
   const [groupPage, setGroupPage] = React.useState(1);
@@ -109,6 +121,10 @@ export default function AdminDayShift() {
   const [bulkOpen, setBulkOpen] = React.useState(false);
   const [bulkCSV, setBulkCSV] = React.useState("");
   const [bulkLoading, setBulkLoading] = React.useState(false);
+  // edit assignment members dialog state
+  const [editAsgOpen, setEditAsgOpen] = React.useState(false);
+  const [editAsgDate, setEditAsgDate] = React.useState<string>("");
+  const [editAsgSelected, setEditAsgSelected] = React.useState<AdminUser[]>([]);
 
   async function loadCycles() {
     try {
@@ -170,6 +186,42 @@ export default function AdminDayShift() {
       setLoadingGroups(false);
     }
   }
+  async function loadAssignments() {
+    try {
+      setLoadingAssignments(true);
+      // Require at least a cycle or start/end filter to avoid huge result sets
+      const vars: any = {};
+      if (cid) vars.cycle_id = Number(cid);
+      if (assignStart) vars.start = assignStart;
+      if (assignEnd) vars.end = assignEnd;
+      const res = await gql<{ adminDayshiftAssignments: Assignment[] }>(
+        `query($cycle_id:Int,$start:String,$end:String){ adminDayshiftAssignments(cycle_id:$cycle_id,start:$start,end:$end){ id date cycle_id status user_ids } }`,
+        vars
+      );
+      const arr = res.adminDayshiftAssignments || [];
+      setAssignments(arr);
+      const ids = Array.from(new Set(arr.flatMap((a) => a.user_ids)));
+      if (ids.length > 0) {
+        const ures = await gql<{ adminUsersByIds: AdminUser[] }>(
+          `query($ids:[Int!]!){ adminUsersByIds(ids:$ids){ id email display_name } }`,
+          { ids }
+        );
+        setUserMap((prev) => {
+          const cp = { ...prev } as Record<number, AdminUser>;
+          for (const u of ures.adminUsersByIds || []) cp[u.id] = u;
+          return cp;
+        });
+      }
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "読み込みに失敗しました",
+        description: e?.message,
+      });
+    } finally {
+      setLoadingAssignments(false);
+    }
+  }
   React.useEffect(() => {
     if (token) loadCycles();
   }, [token, cyclePage]);
@@ -179,6 +231,15 @@ export default function AdminDayShift() {
   React.useEffect(() => {
     loadGroups();
   }, [cid, groupPage]);
+  // Auto load assignments when cycle or range changes (if any filter provided)
+  React.useEffect(() => {
+    if (cid || assignStart || assignEnd) {
+      loadAssignments();
+    } else {
+      setAssignments([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cid, assignStart, assignEnd]);
 
   async function createCycle() {
     try {
@@ -472,6 +533,295 @@ export default function AdminDayShift() {
             </div>
           )}
         </Card>
+      </div>
+      {/* Assignments section */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-medium">割り当て（スナップショット）</h2>
+        <Card className="p-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <div className="text-sm mb-1">開始日（任意）</div>
+              <DatePicker value={assignStart} onChange={setAssignStart} />
+            </div>
+            <div>
+              <div className="text-sm mb-1">終了日（任意）</div>
+              <DatePicker value={assignEnd} onChange={setAssignEnd} />
+            </div>
+            <div className="flex items-end justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAssignStart("");
+                  setAssignEnd("");
+                }}
+              >
+                クリア
+              </Button>
+              <Button
+                onClick={() => loadAssignments()}
+                disabled={loadingAssignments}
+              >
+                再読み込み
+              </Button>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-0 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>日付</TableHead>
+                <TableHead>Cycle</TableHead>
+                <TableHead>Users</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loadingAssignments ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center text-sm text-muted-foreground"
+                  >
+                    読み込み中…
+                  </TableCell>
+                </TableRow>
+              ) : assignments.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center text-sm text-muted-foreground"
+                  >
+                    {cid || assignStart || assignEnd
+                      ? "割り当てがありません"
+                      : "サイクルまたは日付範囲を指定してください"}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                assignments.map((a) => (
+                  <TableRow key={`${a.date}-${a.id}`}>
+                    <TableCell className="whitespace-nowrap">
+                      {a.date}
+                    </TableCell>
+                    <TableCell>{a.cycle_id || "-"}</TableCell>
+                    <TableCell className="max-w-[420px] truncate">
+                      {a.user_ids
+                        .map((uid) => userLabel(userMap[uid]) || `ID:${uid}`)
+                        .join(", ")}
+                    </TableCell>
+                    <TableCell className="uppercase">
+                      {a.status || "-"}
+                    </TableCell>
+                    <TableCell className="text-right flex gap-2 justify-end">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setEditAsgDate(a.date);
+                          setEditAsgSelected(
+                            a.user_ids
+                              .map((id) => userMap[id])
+                              .filter(Boolean) as AdminUser[]
+                          );
+                          setEditAsgOpen(true);
+                        }}
+                      >
+                        メンバー編集
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={async () => {
+                          try {
+                            await gql<{
+                              adminDayshiftDeleteAssignment: boolean;
+                            }>(
+                              `mutation($d:String!){ adminDayshiftDeleteAssignment(date:$d) }`,
+                              { d: a.date }
+                            );
+                            toast({ title: "削除しました" });
+                            loadAssignments();
+                          } catch (e: any) {
+                            toast({
+                              variant: "destructive",
+                              title: "削除に失敗しました",
+                              description: e?.message,
+                            });
+                          }
+                        }}
+                      >
+                        削除
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+        {/* Shift controls */}
+        <Card className="p-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3 items-end">
+            <div>
+              <div className="text-sm mb-1">開始日</div>
+              <DatePicker
+                value={assignStart}
+                onChange={(v: string) => setAssignStart(v)}
+              />
+            </div>
+            <div className="sm:col-span-2 flex gap-2">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!assignStart) return;
+                  try {
+                    await gql<{ adminDayshiftShift: boolean }>(
+                      `mutation($s:String!){ adminDayshiftShift(start:$s, direction:"backward") }`,
+                      { s: assignStart }
+                    );
+                    toast({ title: "1営業日、前へずらしました" });
+                    loadAssignments();
+                  } catch (e: any) {
+                    toast({
+                      variant: "destructive",
+                      title: "操作に失敗しました",
+                      description: e?.message,
+                    });
+                  }
+                }}
+              >
+                前へ1営業日
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!assignStart) return;
+                  try {
+                    await gql<{ adminDayshiftShift: boolean }>(
+                      `mutation($s:String!){ adminDayshiftShift(start:$s, direction:"forward") }`,
+                      { s: assignStart }
+                    );
+                    toast({ title: "1営業日、後ろへずらしました" });
+                    loadAssignments();
+                  } catch (e: any) {
+                    toast({
+                      variant: "destructive",
+                      title: "操作に失敗しました",
+                      description: e?.message,
+                    });
+                  }
+                }}
+              >
+                後ろへ1営業日
+              </Button>
+            </div>
+          </div>
+        </Card>
+        {/* Edit Assignment Members Dialog */}
+        <Dialog open={editAsgOpen} onOpenChange={setEditAsgOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editAsgDate} のメンバーを編集</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {editAsgSelected.map((u) => (
+                  <span
+                    key={u.id}
+                    className="inline-flex items-center px-2 py-1 rounded bg-muted text-sm"
+                  >
+                    {userLabel(u)}
+                    <button
+                      className="ml-1 opacity-70 hover:opacity-100"
+                      onClick={() =>
+                        setEditAsgSelected((arr) =>
+                          arr.filter((x) => x.id !== u.id)
+                        )
+                      }
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <Popover open={userOpen} onOpenChange={setUserOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="justify-between w-full">
+                    追加するユーザーを検索
+                    <ChevronsUpDownIcon className="ml-2 h-4 w-4 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[500px]">
+                  <Command>
+                    <CommandInput
+                      placeholder="名前またはメールで検索..."
+                      value={userQuery}
+                      onValueChange={setUserQuery}
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        {loadingUsers
+                          ? "検索中…"
+                          : "一致するユーザーがいません"}
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {userOptions.map((u) => (
+                          <CommandItem
+                            key={u.id}
+                            value={String(u.id)}
+                            onSelect={() => {
+                              setEditAsgSelected((arr) =>
+                                arr.find((x) => x.id === u.id)
+                                  ? arr
+                                  : [...arr, u]
+                              );
+                            }}
+                          >
+                            <CheckIcon
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                editAsgSelected.find((x) => x.id === u.id)
+                                  ? "opacity-100"
+                                  : "opacity-0"
+                              )}
+                            />
+                            <span className="truncate">{userLabel(u)}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setEditAsgOpen(false)}>
+                キャンセル
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!editAsgDate) return;
+                  try {
+                    await gql<{
+                      adminDayshiftUpdateAssignmentMembers: boolean;
+                    }>(
+                      `mutation($d:String!,$ids:[Int!]!){ adminDayshiftUpdateAssignmentMembers(date:$d, user_ids:$ids) }`,
+                      { d: editAsgDate, ids: editAsgSelected.map((u) => u.id) }
+                    );
+                    setEditAsgOpen(false);
+                    loadAssignments();
+                  } catch (e: any) {
+                    toast({
+                      variant: "destructive",
+                      title: "更新に失敗しました",
+                      description: e?.message,
+                    });
+                  }
+                }}
+              >
+                保存
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       <div className="space-y-3">
         <h2 className="text-lg font-medium">グループ</h2>

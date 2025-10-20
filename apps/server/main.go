@@ -57,8 +57,11 @@ func main() {
 	// Init WebAuthn (Passkey)
 	initWebAuthn()
 
-	// Auto-migrate core models
-	_ = DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{})
+	// Run pending migrations first (includes timestamp sanitize/defaults)
+	runMigrations()
+
+	// Auto-migrate core models (create missing tables/columns after migrations)
+	_ = DB.AutoMigrate(&Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{})
 	// Ensure new group-based day shift schema exists even if SQL migrations are not applied
 	ensureDayShiftGroupSchemaAndBackfill()
 	// Ensure legacy tasks.deadline column is DATE (not DATETIME)
@@ -67,8 +70,6 @@ func main() {
 	ensureTasksSchema()
 	// Ensure integrations logging table exists even if SQL migrations aren't run externally
 	ensureTasksTeamsLogsTable()
-	// Run pending migrations
-	runMigrations()
 
 	// Sentry initialization (optional)
 	if dsn := env("SENTRY_DSN", ""); dsn != "" {

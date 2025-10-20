@@ -19,6 +19,9 @@ with DAG(
         task_id="generate_rotations",
         bash_command="cd /workspace/batches/day-shift-rotations && go run .",
         env={
+            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
+            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
+            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),

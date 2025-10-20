@@ -61,17 +61,38 @@ func main() {
 		log.Fatalf("ensure notifications_queue: %v", err)
 	}
 
+	// Prefer TZ from env (e.g., Asia/Tokyo)
 	now := time.Now()
-	items := make([]NotifyItem, 0, 128)
-
-	// 期限が近い課題（当日/翌営業日/翌々営業日）
-	targets := targetDates(now)
-	for _, d := range targets {
-		rows, err := db.Query(`SELECT id, added_user_id, title, description, deadline, deadline_since, deadline_until, is_require_hand_in, self_check_required FROM tasks WHERE DATE(deadline)=?`, d.Format("2006-01-02"))
-		if err != nil {
-			log.Println("query tasks:", err)
-			continue
+	if tz := strings.TrimSpace(os.Getenv("TIMEZONE")); tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			now = now.In(loc)
 		}
+	}
+	items := make([]NotifyItem, 0, 256)
+
+	// 期限が近い課題（今日〜明日までの「実際の締切時刻」）を抽出
+	// サーバーと同じロジック（deadline + deadline_until の合成）で絞り込む
+	eff := "TIMESTAMP(deadline, CASE " +
+		"WHEN deadline_until='MORNING' THEN '07:59:59' " +
+		"WHEN deadline_until='P1' THEN '10:30:00' " +
+		"WHEN deadline_until='P2' THEN '12:10:00' " +
+		"WHEN deadline_until='P3' THEN '14:30:00' " +
+		"WHEN deadline_until='P4' THEN '16:10:00' " +
+		"WHEN deadline_until='P5' THEN '17:50:00' " +
+		"WHEN deadline_until='P6' THEN '19:30:00' " +
+		"WHEN deadline_until='P7' THEN '21:10:00' " +
+		"WHEN deadline_until='P8' THEN '22:50:00' " +
+		"ELSE '23:59:59' END)"
+	start := now
+	end := time.Date(now.Year(), now.Month(), now.Day()+1, 23, 59, 59, 0, now.Location())
+	rows, err := db.Query(
+		"SELECT id, added_user_id, title, description, deadline, deadline_since, deadline_until, is_require_hand_in, self_check_required "+
+			"FROM tasks WHERE "+eff+" BETWEEN ? AND ?",
+		start, end,
+	)
+	if err != nil {
+		log.Println("query tasks (effective window):", err)
+	} else {
 		for rows.Next() {
 			var t Task
 			var desc sql.NullString
@@ -81,8 +102,8 @@ func main() {
 			if desc.Valid {
 				t.Description = &desc.String
 			}
-			label := whenLabel(now, d)
-			// Skip if user is deleted or blocked
+			// ラベルは日付ベース（今日/あす）
+			label := whenLabel(now, t.Deadline)
 			if isUserDeleted(db, t.AddedUserID) || isUserBlocked(db, t.AddedUserID) {
 				continue
 			}
@@ -91,7 +112,7 @@ func main() {
 				WhenLabel: label,
 				Subject:   "課題",
 				Title:     t.Title,
-				Body:      fmt.Sprintf("%s まで", deadlineLabel(t, d)),
+				Body:      fmt.Sprintf("%s まで", deadlineLabel(t, t.Deadline)),
 				UserID:    t.AddedUserID,
 			})
 		}
@@ -254,23 +275,7 @@ func isUserBlocked(db *sql.DB, uid uint) bool {
 }
 
 // targetDates returns business dates for notifications: today, next biz day, and the following biz day
-func targetDates(base time.Time) []time.Time {
-	today := dateOnly(base)
-	next1 := businessNext(today)
-	next2 := businessNext(next1)
-	return []time.Time{today, next1, next2}
-}
-
-func businessNext(d time.Time) time.Time {
-	x := d.Add(24 * time.Hour)
-	for i := 0; i < 7; i++ {
-		if x.Weekday() != time.Saturday && x.Weekday() != time.Sunday {
-			return dateOnly(x)
-		}
-		x = x.Add(24 * time.Hour)
-	}
-	return dateOnly(d.Add(24 * time.Hour))
-}
+// Note: business-day helpers removed for tasks; weekendsも含めて締切を判定
 
 func ensureQueueTable(db *sql.DB) error {
 	ddl := `CREATE TABLE IF NOT EXISTS notifications_queue (
@@ -284,7 +289,7 @@ func ensureQueueTable(db *sql.DB) error {
 		channel VARCHAR(32) NULL,
 		status VARCHAR(32) NULL,
 		error_message TEXT NULL,
-		created_at DATETIME NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		processed_at DATETIME NULL,
 		INDEX idx_processed_at (processed_at)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`

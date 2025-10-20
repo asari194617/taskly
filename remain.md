@@ -36,11 +36,10 @@
 
 ## POSTFIX
 
-- [x] 開発環境との互換性のために、Postfix を SMTP サーバーとして利用できるようにしてください。
+- [x] 開発環境との互換性のために、Postfix を SMTP サーバーとして利用できるようにしてください。(STARTTLSの利用など完全な互換性のための対応を含む)
 - [x] Resend の仕様で Postfix を SMTP サーバーとして利用できるようにしてください。
 
-# データベース
-- created_atはCURRENT_TIMESTAMPで自動設定されるようにしてください。
-- updated_atはon update CURRENT_TIMESTAMPで自動で更新されるようにしてください。
-
 # メニュー
+
+# /home
+- このページで課題がずっとローディングのスケルトンになってしまう問題が発見されました。

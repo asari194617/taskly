@@ -82,6 +82,7 @@ func deliverEmail(db *sql.DB, it QueueItem) error {
 	host := valueOr(os.Getenv("SMTP_HOST"), "localhost")
 	port := valueOr(os.Getenv("SMTP_PORT"), "25")
 	from := valueOr(os.Getenv("SMTP_FROM"), "noreply@taskly.local")
+	user := valueOr(os.Getenv("SMTP_USER"), from)
 	pass := os.Getenv("SMTP_PASSWORD")
 	addr := fmt.Sprintf("%s:%s", host, port)
 
@@ -103,7 +104,7 @@ func deliverEmail(db *sql.DB, it QueueItem) error {
 	// AUTH if password is provided, otherwise attempt unauthenticated
 	var auth smtp.Auth
 	if strings.TrimSpace(pass) != "" {
-		auth = smtp.PlainAuth("", from, pass, host)
+		auth = smtp.PlainAuth("", user, pass, host)
 	}
 
 	// optional TLS (skip verify for internal relay like postfix)

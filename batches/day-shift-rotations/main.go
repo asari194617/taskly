@@ -63,20 +63,52 @@ func main() {
 			continue
 		}
 
-		// Find the last assigned date in DB, continue from next business day
-		start := maxDate(dateOnly(c.BeginDate), nextBusinessDayAfter(lastAssignedDate(db, c.ID)))
+		// Find the last assigned date in DB for this cycle, continue from next business day
+		start := maxDate(dateOnly(c.BeginDate), nextBusinessDayAfter(lastAssignedDateForCycle(db, c.ID), isHoliday))
 		for d := start; !d.After(dateOnly(c.FinishDate)); d = d.Add(24 * time.Hour) {
 			if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday || isHoliday(d) {
 				continue
 			}
 			p := pairs[(weekdayIndex(d))%len(pairs)]
-			if err := upsertGroupAssignment(db, d, p.ID, c.ID); err != nil {
+			asgID, err := upsertAssignment(db, d, c.ID)
+			if err != nil {
 				log.Println("assign:", err)
 				continue
 			}
-			// also reflect members for the group on that date
-			if err := upsertAssignmentMembers(db, d, p.UserIDs); err != nil {
+			// also reflect members for the group on that date into day_shift_assignments_users
+			if err := upsertAssignmentMembers(db, asgID, p.UserIDs); err != nil {
 				log.Println("assign members:", err)
+			}
+		}
+	}
+
+	// If rotations end within 5 business days or there are no assignments, generate for the next cycle
+	today := dateOnly(time.Now())
+	lastAll := lastAssignedDateAll(db)
+	if lastAll.IsZero() || businessDaysBetween(today, lastAll, isHoliday) <= 5 {
+		// find next cycle whose begin_date > lastAll (or today if none)
+		base := lastAll
+		if base.IsZero() || base.Before(today) {
+			base = today
+		}
+		next, ok := findNextCycle(db, base)
+		if ok {
+			pairs, err := fetchGroupsWithMembers(db, next.ID)
+			if err == nil && len(pairs) > 0 {
+				for d := dateOnly(next.BeginDate); !d.After(dateOnly(next.FinishDate)); d = d.Add(24 * time.Hour) {
+					if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday || isHoliday(d) {
+						continue
+					}
+					p := pairs[(weekdayIndex(d))%len(pairs)]
+					asgID, err := upsertAssignment(db, d, next.ID)
+					if err != nil {
+						log.Println("next assign:", err)
+						continue
+					}
+					if err := upsertAssignmentMembers(db, asgID, p.UserIDs); err != nil {
+						log.Println("next members:", err)
+					}
+				}
 			}
 		}
 	}
@@ -100,10 +132,10 @@ func dateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
-func nextBusinessDayAfter(d time.Time) time.Time {
+func nextBusinessDayAfter(d time.Time, isHoliday func(time.Time) bool) time.Time {
 	x := dateOnly(d).Add(24 * time.Hour)
-	for i := 0; i < 14; i++ {
-		if x.Weekday() != time.Saturday && x.Weekday() != time.Sunday {
+	for i := 0; i < 30; i++ {
+		if x.Weekday() != time.Saturday && x.Weekday() != time.Sunday && !isHoliday(x) {
 			return x
 		}
 		x = x.Add(24 * time.Hour)
@@ -127,7 +159,9 @@ func weekdayIndex(d time.Time) int { // Mon..Fri -> 0..4 (roll through pairs)
 }
 
 func fetchActiveCycles(db *sql.DB) ([]Cycle, error) {
-	rows, err := db.Query(`SELECT id, begin_date, finish_date, description FROM dayshift_cycles WHERE is_active = 1`)
+	// Server schema: table name is day_shift_cycles (no is_active column)
+	// 直近以降（終了日が今日以降）のサイクルを対象
+	rows, err := db.Query(`SELECT id, begin_date, finish_date, description FROM day_shift_cycles WHERE finish_date >= CURDATE() ORDER BY begin_date ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +210,9 @@ func fetchGroupsWithMembers(db *sql.DB, cycleID int64) ([]Pair, error) {
 }
 
 func fetchHolidays(db *sql.DB) (map[time.Time]struct{}, error) {
-	rows, err := db.Query(`SELECT holiday_date FROM business_calendar WHERE is_holiday = 1`)
+	// Server schema: business_calendar(date, is_business_day)
+	// 祝日（非営業日）を取得
+	rows, err := db.Query(`SELECT date FROM business_calendar WHERE is_business_day = 0`)
 	if err != nil {
 		return nil, err
 	}
@@ -192,8 +228,8 @@ func fetchHolidays(db *sql.DB) (map[time.Time]struct{}, error) {
 	return m, nil
 }
 
-func lastAssignedDate(db *sql.DB, cycleID int64) time.Time {
-	row := db.QueryRow(`SELECT MAX(date) FROM day_shift_group_assignments WHERE cycle_id = ?`, cycleID)
+func lastAssignedDateForCycle(db *sql.DB, cycleID int64) time.Time {
+	row := db.QueryRow(`SELECT MAX(date) FROM day_shift_assignments WHERE cycle_id = ?`, cycleID)
 	var t sql.NullTime
 	_ = row.Scan(&t)
 	if t.Valid {
@@ -202,12 +238,22 @@ func lastAssignedDate(db *sql.DB, cycleID int64) time.Time {
 	return time.Time{}
 }
 
-func upsertGroupAssignment(db *sql.DB, date time.Time, groupID, cycleID int64) error {
-	_, err := db.Exec(`INSERT INTO day_shift_group_assignments(date, group_id, cycle_id) VALUES(?,?,?) ON DUPLICATE KEY UPDATE group_id=VALUES(group_id), cycle_id=VALUES(cycle_id)`, dateOnly(date), groupID, cycleID)
-	return err
+// upsertAssignment creates or ensures an assignment row and returns its id
+func upsertAssignment(db *sql.DB, date time.Time, cycleID int64) (int64, error) {
+	// Use ON DUPLICATE KEY UPDATE to set LAST_INSERT_ID for retrieving id in both insert/update cases
+	res, err := db.Exec(`INSERT INTO day_shift_assignments(date, cycle_id, status) VALUES(?,?, 'assigned') 
+		ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), cycle_id=VALUES(cycle_id)`, dateOnly(date), cycleID)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
-func upsertAssignmentMembers(db *sql.DB, date time.Time, userIDs []int64) error {
+func upsertAssignmentMembers(db *sql.DB, assignmentID int64, userIDs []int64) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -219,13 +265,13 @@ func upsertAssignmentMembers(db *sql.DB, date time.Time, userIDs []int64) error 
 			_ = tx.Commit()
 		}
 	}()
-	// clear existing
-	if _, err = tx.Exec(`DELETE FROM day_shift_group_assignment_members WHERE date = ?`, dateOnly(date)); err != nil {
+	// clear existing members for the assignment id
+	if _, err = tx.Exec(`DELETE FROM day_shift_assignments_users WHERE day_shift_assignments_id = ?`, assignmentID); err != nil {
 		return err
 	}
 	// insert all
 	for _, uid := range userIDs {
-		if _, err = tx.Exec(`INSERT INTO day_shift_group_assignment_members(date, user_id) VALUES(?,?)`, dateOnly(date), uid); err != nil {
+		if _, err = tx.Exec(`INSERT INTO day_shift_assignments_users(day_shift_assignments_id, user_id) VALUES(?,?)`, assignmentID, uid); err != nil {
 			return err
 		}
 	}
@@ -233,26 +279,71 @@ func upsertAssignmentMembers(db *sql.DB, date time.Time, userIDs []int64) error 
 }
 
 func ensureAssignmentsTable(db *sql.DB) error {
-	// main assignment table: one group per date
-	ddl1 := `CREATE TABLE IF NOT EXISTS day_shift_group_assignments (
+	// Ensure main assignment tables exist (compatible with server schema)
+	ddl1 := `CREATE TABLE IF NOT EXISTS day_shift_assignments (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
 		date DATE NOT NULL,
-		group_id BIGINT NULL,
-		cycle_id BIGINT NULL,
-		UNIQUE KEY uniq_date (date)
+		cycle_id BIGINT NOT NULL,
+		status ENUM('assigned','completed','unfulfilled') NOT NULL DEFAULT 'assigned',
+		notes TEXT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		CONSTRAINT fk_day_shift_assignments_cycle FOREIGN KEY (cycle_id) REFERENCES day_shift_cycles(id),
+		UNIQUE KEY uniq_day_cycle (date, cycle_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
 	if _, err := db.Exec(ddl1); err != nil {
 		return err
 	}
-	// members snapshot for a date
-	ddl2 := `CREATE TABLE IF NOT EXISTS day_shift_group_assignment_members (
+	// members table
+	ddl2 := `CREATE TABLE IF NOT EXISTS day_shift_assignments_users (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
-		date DATE NOT NULL,
+		day_shift_assignments_id BIGINT NOT NULL,
 		user_id BIGINT NOT NULL,
-		KEY idx_date (date)
+		CONSTRAINT fk_asg_users_asg FOREIGN KEY (day_shift_assignments_id) REFERENCES day_shift_assignments(id),
+		CONSTRAINT fk_asg_users_user FOREIGN KEY (user_id) REFERENCES users(id),
+		KEY idx_asg_id (day_shift_assignments_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
 	if _, err := db.Exec(ddl2); err != nil {
 		return err
 	}
 	return nil
+}
+
+func lastAssignedDateAll(db *sql.DB) time.Time {
+	row := db.QueryRow(`SELECT MAX(date) FROM day_shift_assignments`)
+	var t sql.NullTime
+	_ = row.Scan(&t)
+	if t.Valid {
+		return dateOnly(t.Time)
+	}
+	return time.Time{}
+}
+
+func businessDaysBetween(start, end time.Time, isHoliday func(time.Time) bool) int {
+	s := dateOnly(start)
+	e := dateOnly(end)
+	if e.Before(s) {
+		return 0
+	}
+	cnt := 0
+	for d := s; !d.After(e); d = d.Add(24 * time.Hour) {
+		wd := d.Weekday()
+		if wd == time.Saturday || wd == time.Sunday || isHoliday(d) {
+			continue
+		}
+		cnt++
+	}
+	if cnt > 0 {
+		return cnt - 1
+	}
+	return 0
+}
+
+func findNextCycle(db *sql.DB, after time.Time) (Cycle, bool) {
+	row := db.QueryRow(`SELECT id, begin_date, finish_date, description FROM day_shift_cycles WHERE begin_date > ? ORDER BY begin_date ASC LIMIT 1`, after)
+	var c Cycle
+	if err := row.Scan(&c.ID, &c.BeginDate, &c.FinishDate, &c.Description); err != nil {
+		return Cycle{}, false
+	}
+	return c, true
 }

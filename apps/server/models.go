@@ -9,18 +9,18 @@ import (
 )
 
 type User struct {
-	ID               uint    `gorm:"primaryKey"`
-	Email            string  `gorm:"uniqueIndex;size:255;not null"`
-	DisplayName      string  `gorm:"size:255"`
-	HashedPassword   *string `gorm:"size:255"`
-	EmailCodeAllowed bool    `gorm:"default:true"`
-	IsDeleted        bool    `gorm:"default:false"`
-	IsDayShiftActive bool    `gorm:"default:false"`
-	NotificationLang string  `gorm:"size:5;not null;default:'ja'"`
-	IsRegistered     bool    `gorm:"default:false"`
-	IsAgreedPolicies bool    `gorm:"default:false"`
-	PushDailyEnabled bool    `gorm:"default:true"`
-	CreatedAt        time.Time
+	ID               uint      `gorm:"primaryKey"`
+	Email            string    `gorm:"uniqueIndex;size:255;not null"`
+	DisplayName      string    `gorm:"size:255"`
+	HashedPassword   *string   `gorm:"size:255"`
+	EmailCodeAllowed bool      `gorm:"default:true"`
+	IsDeleted        bool      `gorm:"default:false"`
+	IsDayShiftActive bool      `gorm:"default:false"`
+	NotificationLang string    `gorm:"size:5;not null;default:'ja'"`
+	IsRegistered     bool      `gorm:"default:false"`
+	IsAgreedPolicies bool      `gorm:"default:false"`
+	PushDailyEnabled bool      `gorm:"default:true"`
+	CreatedAt        time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // WebAuthn user interface implementation
@@ -61,8 +61,8 @@ type Session struct {
 	ClientPlatform string `gorm:"size:64;not null"`
 	HashedToken    string `gorm:"size:255;not null"`
 	ExpiresAt      *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	CreatedAt      time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt      time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 // Web Push subscription for PWA notifications
@@ -72,8 +72,8 @@ type WebPushSubscription struct {
 	Endpoint  string    `gorm:"size:1024;not null"`
 	P256dh    string    `gorm:"size:1024;not null"`
 	Auth      string    `gorm:"size:255;not null"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 // VAPID keys for Web Push (single row)
@@ -81,25 +81,25 @@ type WebPushVAPID struct {
 	ID         uint      `gorm:"primaryKey"`
 	PublicKey  string    `gorm:"size:255;not null"`
 	PrivateKey string    `gorm:"size:255;not null"`
-	CreatedAt  time.Time `gorm:"autoCreateTime"`
+	CreatedAt  time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // RBAC and permissions
 type RoleUser struct {
-	ID        uint   `gorm:"primaryKey"`
-	UserID    uint   `gorm:"index;not null"`
-	Role      string `gorm:"size:16;not null"` // admin | manager
-	CreatedAt time.Time
+	ID        uint      `gorm:"primaryKey"`
+	UserID    uint      `gorm:"index;not null"`
+	Role      string    `gorm:"size:16;not null"` // admin | manager
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type Permission struct {
-	ID        uint    `gorm:"primaryKey"`
-	UserID    uint    `gorm:"index;not null"`
-	Target    string  `gorm:"size:64;not null"`
-	Method    string  `gorm:"size:16;not null"`
-	Value     *string `gorm:"size:255"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        uint      `gorm:"primaryKey"`
+	UserID    uint      `gorm:"index;not null"`
+	Target    string    `gorm:"size:64;not null"`
+	Method    string    `gorm:"size:16;not null"`
+	Value     *string   `gorm:"size:255"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 type Block struct {
@@ -107,18 +107,18 @@ type Block struct {
 	UserID    uint `gorm:"index;not null"`
 	Reason    *string
 	ExpiresAt *time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 type APIKey struct {
-	ID          uint    `gorm:"primaryKey"`
-	UserID      uint    `gorm:"index;not null"`
-	HashedToken string  `gorm:"size:255;not null"`
-	Description *string `gorm:"size:255"`
-	IsValid     bool    `gorm:"default:true"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          uint      `gorm:"primaryKey"`
+	UserID      uint      `gorm:"index;not null"`
+	HashedToken string    `gorm:"size:255;not null"`
+	Description *string   `gorm:"size:255"`
+	IsValid     bool      `gorm:"default:true"`
+	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 type Subject struct {
@@ -126,7 +126,7 @@ type Subject struct {
 	NameJa    string  `gorm:"size:255;not null;default:''"`
 	NameEn    *string `gorm:"size:255"`
 	ExpiresAt *time.Time
-	CreatedAt time.Time
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type Task struct {
@@ -145,16 +145,16 @@ type Task struct {
 	DeadlineSince string    `gorm:"type:ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
 	DeadlineUntil string    `gorm:"type:ENUM('NONE','MORNING','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
 	CreatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"`
+	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 type ApiActionLog struct {
-	ID          uint   `gorm:"primaryKey"`
-	UserID      *uint  `gorm:"index"`
-	HashedToken string `gorm:"size:255;not null"`
-	Action      string `gorm:"size:64;not null"`
-	IP          string `gorm:"size:64;not null"`
-	CreatedAt   time.Time
+	ID          uint      `gorm:"primaryKey"`
+	UserID      *uint     `gorm:"index"`
+	HashedToken string    `gorm:"size:255;not null"`
+	Action      string    `gorm:"size:64;not null"`
+	IP          string    `gorm:"size:64;not null"`
+	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // Generic system/user logs per specification
@@ -162,23 +162,23 @@ type Log struct {
 	ID        uint      `gorm:"primaryKey"`
 	UserID    *uint     `gorm:"index"`
 	Action    string    `gorm:"size:64;not null"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type TOTPSecret struct {
-	ID        uint   `gorm:"primaryKey"`
-	UserID    uint   `gorm:"uniqueIndex;not null"`
-	Secret    string `gorm:"size:255;not null"` // encrypted base32
-	IsActive  bool   `gorm:"default:false"`
-	CreatedAt time.Time
+	ID        uint      `gorm:"primaryKey"`
+	UserID    uint      `gorm:"uniqueIndex;not null"`
+	Secret    string    `gorm:"size:255;not null"` // encrypted base32
+	IsActive  bool      `gorm:"default:false"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type RecoveryCode struct {
-	ID         uint   `gorm:"primaryKey"`
-	UserID     uint   `gorm:"index;not null"`
-	HashedCode string `gorm:"size:255;not null"`
-	IsUsed     bool   `gorm:"default:false"`
-	CreatedAt  time.Time
+	ID         uint      `gorm:"primaryKey"`
+	UserID     uint      `gorm:"index;not null"`
+	HashedCode string    `gorm:"size:255;not null"`
+	IsUsed     bool      `gorm:"default:false"`
+	CreatedAt  time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // Login codes (email magic code)
@@ -188,7 +188,7 @@ type LoginCode struct {
 	HashedCode string    `gorm:"size:255;not null"`
 	ExpiresAt  time.Time `gorm:"index;not null"`
 	ConsumedAt *time.Time
-	CreatedAt  time.Time
+	CreatedAt  time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // Passkeys (WebAuthn) per specification
@@ -199,8 +199,8 @@ type Passkey struct {
 	PublicKey    string    `gorm:"type:text;not null"`
 	SignCount    int64     `gorm:"not null"`
 	DeviceName   *string   `gorm:"size:255"`
-	CreatedAt    time.Time `gorm:"autoCreateTime"`
-	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
+	CreatedAt    time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt    time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 // Day shift models
@@ -216,8 +216,8 @@ type DayShiftAssignment struct {
 	CycleID   uint
 	Status    string `gorm:"size:16"`
 	Notes     *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 type DayShiftAssignmentUser struct {
 	ID                    uint `gorm:"primaryKey"`
@@ -229,19 +229,19 @@ type BusinessCalendar struct {
 	Date          time.Time
 	IsBusinessDay bool
 	Notes         *string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	CreatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
 
 // Deprecated: Legacy pair model kept only for migration/backfill.
 // Use DayShiftCycleGroup and DayShiftCycleGroupMember instead.
 type DayShiftCyclePair struct {
-	ID        uint `gorm:"primaryKey"`
-	CycleID   uint `gorm:"index;not null"`
-	User1ID   uint `gorm:"not null"`
-	User2ID   uint `gorm:"not null"`
-	Position  int  `gorm:"default:0"`
-	CreatedAt time.Time
+	ID        uint      `gorm:"primaryKey"`
+	CycleID   uint      `gorm:"index;not null"`
+	User1ID   uint      `gorm:"not null"`
+	User2ID   uint      `gorm:"not null"`
+	Position  int       `gorm:"default:0"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // Generalized day shift group (supports 2 or more users per position)
@@ -249,7 +249,7 @@ type DayShiftCycleGroup struct {
 	ID        uint      `gorm:"primaryKey"`
 	CycleID   uint      `gorm:"index;not null"`
 	Position  int       `gorm:"default:0"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type DayShiftCycleGroupMember struct {
@@ -257,15 +257,15 @@ type DayShiftCycleGroupMember struct {
 	GroupID   uint      `gorm:"index;not null"`
 	UserID    uint      `gorm:"not null"`
 	Position  int       `gorm:"default:0"`
-	CreatedAt time.Time `gorm:"autoCreateTime"`
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type IcalKey struct {
-	ID          uint    `gorm:"primaryKey"`
-	UserID      uint    `gorm:"index;not null"`
-	Token       string  `gorm:"uniqueIndex;size:255;not null"`
-	Description *string `gorm:"size:255"`
-	CreatedAt   time.Time
+	ID          uint      `gorm:"primaryKey"`
+	UserID      uint      `gorm:"index;not null"`
+	Token       string    `gorm:"uniqueIndex;size:255;not null"`
+	Description *string   `gorm:"size:255"`
+	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // MCP integration tokens per user (for MCP server access via user session)
@@ -274,12 +274,12 @@ type MCP struct {
 	UserID      uint   `gorm:"index"`
 	HashedToken string `gorm:"size:255"`
 	Description *string
-	CreatedAt   time.Time
+	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // Migration tracking
 type Migration struct {
 	ID        uint      `gorm:"primaryKey"`
 	Name      string    `gorm:"uniqueIndex;size:255;not null"`
-	AppliedAt time.Time `gorm:"autoCreateTime"`
+	AppliedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }

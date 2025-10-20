@@ -137,6 +137,86 @@ func runMigrations() {
 
 	migrations := []migrationFile{
 		{
+			name: "0012_timestamp_sanitize",
+			statements: []string{
+				// Temporarily relax NO_ZERO_DATE validation so we can fix bad data
+				"SET @OLD_SQL_MODE = @@sql_mode",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
+				// Normalize existing rows that may have invalid date/time values before altering columns
+				"UPDATE users SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE tasks SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE tasks SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE api_keys SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE api_keys SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE permissions SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE permissions SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE blocks SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE blocks SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE role_users SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE passkeys SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE passkeys SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE day_shift_assignments SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE day_shift_assignments SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE business_calendar SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE business_calendar SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				"UPDATE web_push_subscriptions SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"UPDATE web_push_subscriptions SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
+				// Restore SQL mode
+				"SET SESSION sql_mode=@OLD_SQL_MODE",
+			},
+		},
+		{
+			name: "0011_timestamp_defaults",
+			statements: []string{
+				// Ensure DB-level defaults and ON UPDATE for updated_at across core tables
+				"ALTER TABLE sessions MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE api_keys MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE permissions MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE blocks MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE tasks MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE passkeys MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE day_shift_assignments MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE business_calendar MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+				"ALTER TABLE role_users MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+				// Tables created via AutoMigrate (ensure correct defaults)
+				"ALTER TABLE web_push_subscriptions MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+			},
+		},
+		{
+			name: "0013_role_users_timestamp_fix",
+			statements: []string{
+				"SET @OLD_SQL_MODE = @@sql_mode",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
+				"UPDATE role_users SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"ALTER TABLE role_users MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+				"SET SESSION sql_mode=@OLD_SQL_MODE",
+			},
+		},
+		{
+			name: "0014_subjects_timestamp_fix",
+			statements: []string{
+				"SET @OLD_SQL_MODE = @@sql_mode",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
+				"UPDATE subjects SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
+				"ALTER TABLE subjects MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+				"SET SESSION sql_mode=@OLD_SQL_MODE",
+			},
+		},
+		{
+			name: "0015_migrations_applied_at_fix",
+			statements: []string{
+				"SET @OLD_SQL_MODE = @@sql_mode",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
+				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
+				"UPDATE migrations SET applied_at = NOW() WHERE applied_at IS NULL OR applied_at = '0000-00-00 00:00:00'",
+				"ALTER TABLE migrations MODIFY COLUMN applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
+				"SET SESSION sql_mode=@OLD_SQL_MODE",
+			},
+		},
+		{
 			name: "0010_business_calendar_date_index",
 			statements: []string{
 				// Create index if missing. MySQL 8 supports IF NOT EXISTS for indexes from 8.0.13+, but safer to try and ignore duplicate errors.
@@ -1702,6 +1782,74 @@ func pushAssignmentsOneDayForward(start time.Time) error {
 		if err := DB.Where("date = ?", next.Format("2006-01-02")).First(&dest).Error; err != nil {
 			cyc, _ := getCurrentCycle(next)
 			dest = DayShiftAssignment{Date: next, Status: "assigned"}
+			if cyc != nil {
+				dest.CycleID = cyc.ID
+			}
+			_ = DB.Create(&dest).Error
+		}
+		for _, u := range todayUsers {
+			var cnt int64
+			_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", dest.ID, u.UserID).Count(&cnt).Error
+			if cnt == 0 {
+				_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: dest.ID, UserID: u.UserID}).Error
+			}
+		}
+	}
+	return nil
+}
+
+// Shift all assignments from the previous business day before 'start' one business day backward,
+// and ensure today's users are also assigned to that previous business day.
+func pushAssignmentsOneDayBackward(start time.Time) error {
+	start = dateOnly(start)
+	prev := prevBusinessDay(start)
+	if prev.IsZero() {
+		return nil
+	}
+	// Load all assignments on/before prev within current cycle if any (or for previous 60 days)
+	begin := prev.AddDate(0, 0, -60)
+	if cyc, err := getCurrentCycle(start); err == nil && cyc != nil && cyc.BeginDate.Before(prev) {
+		begin = dateOnly(cyc.BeginDate)
+	}
+	var items []DayShiftAssignment
+	if err := DB.Where("date BETWEEN ? AND ?", begin.Format("2006-01-02"), prev.Format("2006-01-02")).Order("date ASC").Find(&items).Error; err != nil {
+		return err
+	}
+	// Iterate in ascending order to move backward safely
+	for i := 0; i < len(items); i++ {
+		cur := items[i]
+		dest := prevBusinessDay(cur.Date)
+		if dest.IsZero() {
+			continue
+		}
+		var destAsg DayShiftAssignment
+		err := DB.Where("date = ?", dest.Format("2006-01-02")).First(&destAsg).Error
+		if err == nil {
+			// merge users then delete current assignment
+			var curUsers []DayShiftAssignmentUser
+			_ = DB.Where("day_shift_assignments_id = ?", cur.ID).Find(&curUsers).Error
+			for _, u := range curUsers {
+				var cnt int64
+				_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", destAsg.ID, u.UserID).Count(&cnt).Error
+				if cnt == 0 {
+					_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: destAsg.ID, UserID: u.UserID}).Error
+				}
+			}
+			_ = DB.Delete(&DayShiftAssignment{}, cur.ID).Error
+		} else {
+			// simply move the date backward
+			_ = DB.Model(&DayShiftAssignment{}).Where("id = ?", cur.ID).Update("date", dateOnly(dest)).Error
+		}
+	}
+	// Copy today's users to previous business day as well
+	var today DayShiftAssignment
+	if err := DB.Where("date = ?", start.Format("2006-01-02")).First(&today).Error; err == nil {
+		var todayUsers []DayShiftAssignmentUser
+		_ = DB.Where("day_shift_assignments_id = ?", today.ID).Find(&todayUsers).Error
+		var dest DayShiftAssignment
+		if err := DB.Where("date = ?", prev.Format("2006-01-02")).First(&dest).Error; err != nil {
+			cyc, _ := getCurrentCycle(prev)
+			dest = DayShiftAssignment{Date: prev, Status: "assigned"}
 			if cyc != nil {
 				dest.CycleID = cyc.ID
 			}
