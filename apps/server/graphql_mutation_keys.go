@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
@@ -114,6 +115,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		}),
 		Args: graphql.FieldConfigArgument{
 			"description": &graphql.ArgumentConfig{Type: graphql.String},
+			"expires_at":  &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -127,7 +129,15 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 					descPtr = &desc
 				}
 				tok := generateIcalToken()
-				rec := IcalKey{UserID: u.ID, Token: tok, Description: descPtr}
+				var expPtr *time.Time
+				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
+					if t, err := time.Parse(time.RFC3339, s); err == nil {
+						expPtr = &t
+					} else {
+						return nil, fmt.Errorf("invalid expires_at")
+					}
+				}
+				rec := IcalKey{UserID: u.ID, Token: tok, Description: descPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}

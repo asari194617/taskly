@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -51,6 +52,7 @@ func registerSettingsRoutes(app *fiber.App) {
 				"description": it.Description,
 				"url":         fmt.Sprintf("%s/%s.ics", base, it.Token),
 				"created_at":  it.CreatedAt,
+				"expires_at":  it.ExpiresAt,
 			})
 		}
 		return c.JSON(out)
@@ -58,11 +60,12 @@ func registerSettingsRoutes(app *fiber.App) {
 	app.Post("/ical/tokens", authRequired, audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
 		var body struct {
-			Description *string `json:"description"`
+			Description *string    `json:"description"`
+			ExpiresAt   *time.Time `json:"expires_at"`
 		}
 		_ = c.BodyParser(&body)
 		tok := generateIcalToken()
-		rec := IcalKey{UserID: u.ID, Token: tok, Description: body.Description}
+		rec := IcalKey{UserID: u.ID, Token: tok, Description: body.Description, ExpiresAt: body.ExpiresAt}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}

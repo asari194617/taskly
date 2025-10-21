@@ -34,6 +34,112 @@ func env(key, def string) string {
 	return def
 }
 
+// --- Scrubbing helpers ---
+// Sanitize URL path by masking token-like segments such as /ical/{token}.ics or Bearer tokens in query
+func sanitizeURLPath(u string) string {
+	// We avoid importing net/url here to keep behavior simple as input may already be sanitized by framework
+	s := u
+	// mask /ical/<token>.ics
+	if strings.Contains(s, "/ical/") && strings.HasSuffix(s, ".ics") {
+		// replace the last path segment before .ics
+		idx := strings.Index(s, "/ical/")
+		tail := s[idx+len("/ical/"):]
+		if p := strings.Index(tail, "/"); p >= 0 {
+			// extra segments; mask first segment only
+			first := tail[:p]
+			s = strings.Replace(s, first, "[REDACTED]", 1)
+		} else {
+			// single segment like token.ics
+			if q := strings.Index(tail, ".ics"); q > 0 {
+				token := tail[:q]
+				s = strings.Replace(s, token, "[REDACTED]", 1)
+			}
+		}
+	}
+	return s
+}
+
+// Sanitize query string by masking sensitive parameters
+func sanitizeQueryString(q string) string {
+	if strings.TrimSpace(q) == "" {
+		return q
+	}
+	// try to parse lightly as k=v&k2=v2 (without url decoding)
+	parts := strings.Split(q, "&")
+	for i, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) == 2 {
+			k := strings.ToLower(kv[0])
+			if isSensitiveKey(k) || isSensitiveValue(kv[1]) {
+				parts[i] = kv[0] + "=[REDACTED]"
+			}
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
+// Scrub values in a map[string]any recursively when keys or values look sensitive
+func scrubPIIMap(m map[string]any) {
+	for k, v := range m {
+		lk := strings.ToLower(k)
+		if isSensitiveKey(lk) {
+			m[k] = "[REDACTED]"
+			continue
+		}
+		switch t := v.(type) {
+		case string:
+			if isSensitiveValue(t) {
+				m[k] = "[REDACTED]"
+			}
+		case map[string]any:
+			scrubPIIMap(t)
+		case map[string]string:
+			for kk, vv := range t {
+				if isSensitiveKey(kk) || isSensitiveValue(vv) {
+					t[kk] = "[REDACTED]"
+				}
+			}
+		}
+	}
+}
+
+func isSensitiveKey(k string) bool {
+	k = strings.ToLower(strings.TrimSpace(k))
+	switch k {
+	case "authorization", "x-api-key", "api_key", "apikey", "password", "passwd", "secret", "token", "session", "cookie", "set-cookie", "refresh_token", "access_token":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSensitiveValue(v string) bool {
+	s := strings.ToLower(strings.TrimSpace(v))
+	if s == "" {
+		return false
+	}
+	// common bearer/api key prefixes
+	if strings.HasPrefix(s, "bearer ") || strings.HasPrefix(s, "tsk_") || strings.HasPrefix(s, "sess_") || strings.HasPrefix(s, "ict_") {
+		return true
+	}
+	// looks like a JWT (three base64url parts)
+	if strings.Count(v, ".") == 2 && len(v) > 30 {
+		return true
+	}
+	// long hex-ish strings
+	hexish := 0
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
+			hexish++
+		}
+	}
+	if len(v) >= 24 && hexish > len(v)/2 {
+		return true
+	}
+	return false
+}
+
 // ensureDeadlineDateColumn alters tasks.deadline to DATE (from DATETIME) if necessary.
 // This keeps the legacy field date-only, matching current requirements.
 func ensureDeadlineDateColumn() {
@@ -754,8 +860,8 @@ func smtpSend(to, subject, text, html string) error {
 	var conn net.Conn
 	var err error
 	if mode == "smtps" || smtpPort == "465" {
-		// SMTPS (implicit TLS)
-		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost})
+		// SMTPS (implicit TLS) - enforce certificate verification
+		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost, InsecureSkipVerify: false})
 	} else {
 		// Plain TCP first; may upgrade via STARTTLS
 		conn, err = dialer.Dial("tcp", smtpHost+":"+smtpPort)
@@ -772,7 +878,8 @@ func smtpSend(to, subject, text, html string) error {
 	defer func() { _ = cl.Quit() }()
 	if mode == "starttls" {
 		if ok, _ := cl.Extension("STARTTLS"); ok {
-			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost}); err != nil {
+			// Enforce certificate verification
+			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost, InsecureSkipVerify: false}); err != nil {
 				return err
 			}
 		}
@@ -833,7 +940,8 @@ func smtpSendPlain(to, subject, text string) error {
 	var conn net.Conn
 	var err error
 	if mode == "smtps" || smtpPort == "465" {
-		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost})
+		// SMTPS (implicit TLS) - enforce certificate verification
+		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost, InsecureSkipVerify: false})
 	} else {
 		conn, err = dialer.Dial("tcp", smtpHost+":"+smtpPort)
 	}
@@ -849,7 +957,8 @@ func smtpSendPlain(to, subject, text string) error {
 	defer func() { _ = cl.Quit() }()
 	if mode == "starttls" {
 		if ok, _ := cl.Extension("STARTTLS"); ok {
-			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost}); err != nil {
+			// Enforce certificate verification
+			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost, InsecureSkipVerify: false}); err != nil {
 				return err
 			}
 		}

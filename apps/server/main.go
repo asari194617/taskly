@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,14 +33,28 @@ func main() {
 	version := env("DD_VERSION", env("SENTRY_RELEASE", ""))
 	agentHost := env("DD_AGENT_HOST", "127.0.0.1")
 	agentPort := env("DD_TRACE_AGENT_PORT", "8126")
-	tracer.Start(
+	// Configure Datadog tracer options (including optional sampling rate)
+	tOpts := []tracer.StartOption{
 		tracer.WithService(serviceName),
 		tracer.WithEnv(envName),
 		tracer.WithServiceVersion(version),
-		tracer.WithAgentAddr(agentHost+":"+agentPort),
+		tracer.WithAgentAddr(agentHost + ":" + agentPort),
 		tracer.WithRuntimeMetrics(),
-	)
+	}
+	if sr := strings.TrimSpace(env("DD_TRACE_SAMPLE_RATE", "")); sr != "" {
+		if v, err := strconv.ParseFloat(sr, 64); err == nil && v >= 0 && v <= 1 {
+			tOpts = append(tOpts, tracer.WithSampler(tracer.NewRateSampler(v)))
+		}
+	}
+	tracer.Start(tOpts...)
 	defer tracer.Stop()
+
+	// Enforce JWT_SECRET in non-development environments
+	nodeEnv := strings.ToLower(env("NODE_ENV", "development"))
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if nodeEnv != "development" && jwtSecret == "" {
+		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
+	}
 
 	// Optional: Start Datadog profiler when enabled
 	if strings.ToLower(env("DD_PROFILING_ENABLED", "false")) == "true" {
@@ -78,6 +94,71 @@ func main() {
 			TracesSampleRate: 0.1,
 			Environment:      env("SENTRY_ENVIRONMENT", env("NODE_ENV", "development")),
 			Release:          env("SENTRY_RELEASE", ""),
+			BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+				if event == nil {
+					return event
+				}
+				// Scrub request details
+				if event.Request != nil {
+					// Drop cookies and body; keep only minimal query/ip if present elsewhere
+					event.Request.Cookies = ""
+					// Data is a string in some sentry-go versions; use empty string
+					event.Request.Data = ""
+					// Mask sensitive headers
+					if event.Request.Headers != nil {
+						clean := map[string]string{}
+						for k, v := range event.Request.Headers {
+							switch strings.ToLower(k) {
+							case "authorization", "x-api-key", "cookie", "set-cookie":
+								clean[k] = "[REDACTED]"
+							default:
+								clean[k] = v
+							}
+						}
+						event.Request.Headers = clean
+					}
+					// Sanitize URL path (mask tokens like /ical/{token}.ics)
+					if event.Request.URL != "" {
+						event.Request.URL = sanitizeURLPath(event.Request.URL)
+					}
+					// Scrub token-like query params
+					if event.Request.QueryString != "" {
+						event.Request.QueryString = sanitizeQueryString(event.Request.QueryString)
+					}
+				}
+				// Scrub extra and tags
+				if event.Extra != nil {
+					scrubPIIMap(event.Extra)
+				}
+				if event.Tags != nil {
+					for k, v := range event.Tags {
+						if isSensitiveKey(k) || isSensitiveValue(v) {
+							event.Tags[k] = "[REDACTED]"
+						}
+					}
+				}
+				return event
+			},
+			BeforeBreadcrumb: func(crumb *sentry.Breadcrumb, hint *sentry.BreadcrumbHint) *sentry.Breadcrumb {
+				if crumb == nil {
+					return crumb
+				}
+				// For HTTP breadcrumbs, scrub URL and headers in data
+				if strings.EqualFold(crumb.Category, "http") && crumb.Data != nil {
+					if urlv, ok := crumb.Data["url"].(string); ok && urlv != "" {
+						crumb.Data["url"] = sanitizeURLPath(urlv)
+					}
+				}
+				if crumb.Data != nil {
+					// Remove or mask sensitive fields
+					for k := range crumb.Data {
+						if isSensitiveKey(fmt.Sprintf("%v", k)) {
+							crumb.Data[k] = "[REDACTED]"
+						}
+					}
+				}
+				return crumb
+			},
 		})
 		// Add helpful tags and emit a startup log
 		sentry.ConfigureScope(func(scope *sentry.Scope) {
@@ -110,7 +191,7 @@ func main() {
 						scope.SetTag("route", r.Path)
 					}
 					scope.SetTag("method", c.Method())
-					scope.SetTag("url", string(c.OriginalURL()))
+					scope.SetTag("url", sanitizeURLPath(string(c.OriginalURL())))
 					scope.SetContext("request", map[string]any{
 						"query": c.Queries(),
 						"ip":    c.IP(),
@@ -140,6 +221,14 @@ func main() {
 	app.Use(fibertrace.Middleware(
 		fibertrace.WithServiceName(serviceName),
 		fibertrace.WithSpanOptions(),
+		// Ensure span resource uses route pattern (avoids leaking tokens in paths)
+		fibertrace.WithResourceNamer(func(c *fiber.Ctx) string {
+			if r := c.Route(); r != nil {
+				return r.Method + " " + r.Path
+			}
+			// Fallback to method + sanitized URL
+			return c.Method() + " " + sanitizeURLPath(string(c.OriginalURL()))
+		}),
 	))
 
 	// Capture panics and attach request context to Sentry
@@ -151,7 +240,21 @@ func main() {
 
 	// Keep recover after Sentry so panics are reported then gracefully recovered
 	app.Use(recover.New())
-	app.Use(logger.New())
+	// Header masking middleware: remove/replace sensitive headers before further middlewares/logs
+	app.Use(func(c *fiber.Ctx) error {
+		// Mask Authorization and X-API-Key in request headers for downstream loggers
+		if ah := c.Get("Authorization"); ah != "" {
+			c.Request().Header.Set("Authorization", "[REDACTED]")
+		}
+		if ak := c.Get("X-API-Key"); ak != "" {
+			c.Request().Header.Set("X-API-Key", "[REDACTED]")
+		}
+		return c.Next()
+	})
+	// Safe logger: log route pattern instead of concrete path to avoid leaking tokens
+	app.Use(logger.New(logger.Config{
+		Format: "[${time}] ${ip} ${status} ${latency} ${method} ${route}\n",
+	}))
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"),
 		AllowCredentials: strings.ToLower(env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
@@ -255,6 +358,10 @@ func main() {
 		token := c.Params("token")
 		var key IcalKey
 		if err := DB.Where("token = ?", token).First(&key).Error; err != nil {
+			return c.Status(404).SendString("not found")
+		}
+		// enforce expiry if set
+		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
 			return c.Status(404).SendString("not found")
 		}
 		ics := buildICSForUser(key.UserID)

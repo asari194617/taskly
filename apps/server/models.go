@@ -183,12 +183,14 @@ type RecoveryCode struct {
 
 // Login codes (email magic code)
 type LoginCode struct {
-	ID         uint      `gorm:"primaryKey"`
-	Email      string    `gorm:"index;size:255;not null"`
-	HashedCode string    `gorm:"size:255;not null"`
-	ExpiresAt  time.Time `gorm:"index;not null"`
-	ConsumedAt *time.Time
-	CreatedAt  time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	ID             uint      `gorm:"primaryKey"`
+	Email          string    `gorm:"index;size:255;not null"`
+	HashedCode     string    `gorm:"size:255;not null"`
+	ExpiresAt      time.Time `gorm:"index;not null"`
+	ConsumedAt     *time.Time
+	FailedAttempts int `gorm:"not null;default:0"`
+	LockedUntil    *time.Time
+	CreatedAt      time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // Passkeys (WebAuthn) per specification
@@ -261,10 +263,11 @@ type DayShiftCycleGroupMember struct {
 }
 
 type IcalKey struct {
-	ID          uint      `gorm:"primaryKey"`
-	UserID      uint      `gorm:"index;not null"`
-	Token       string    `gorm:"uniqueIndex;size:255;not null"`
-	Description *string   `gorm:"size:255"`
+	ID          uint    `gorm:"primaryKey"`
+	UserID      uint    `gorm:"index;not null"`
+	Token       string  `gorm:"uniqueIndex;size:255;not null"`
+	Description *string `gorm:"size:255"`
+	ExpiresAt   *time.Time
 	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 

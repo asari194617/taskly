@@ -26,11 +26,34 @@ func registerAuthRoutes(app *fiber.App) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
 		}
 		email := strings.ToLower(strings.TrimSpace(body.Email))
+		ip := c.IP()
+		// IP rate limit (max 10 req/10min)
+		ipKey := "login_code_req_ip:" + ip
+		ipCount, _ := RDB.Incr(c.Context(), ipKey).Result()
+		if ipCount == 1 {
+			_ = RDB.Expire(c.Context(), ipKey, 10*60)
+		}
+		if ipCount > 10 {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "ip rate limit"})
+		}
+		// Email rate limit (max 5 req/10min)
+		emailKey := "login_code_req_email:" + email
+		emailCount, _ := RDB.Incr(c.Context(), emailKey).Result()
+		if emailCount == 1 {
+			_ = RDB.Expire(c.Context(), emailKey, 10*60)
+		}
+		if emailCount > 5 {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})
+		}
 		// cooldown: deny if a code was created within last 60s and not expired
 		var recent LoginCode
 		if err := DB.Where("email = ?", email).Order("id DESC").First(&recent).Error; err == nil {
 			if time.Since(recent.CreatedAt) < 60*time.Second && recent.ConsumedAt == nil {
 				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests"})
+			}
+			// ロック中なら拒否
+			if recent.LockedUntil != nil && recent.LockedUntil.After(time.Now()) {
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
 			}
 		}
 		// generate code
@@ -43,8 +66,8 @@ func registerAuthRoutes(app *fiber.App) {
 		smtpPass := env("SMTP_PASSWORD", "")
 		// Build RFC5322 message with required headers (From/To/Subject/Date) - HTML email
 		nowRFC := time.Now().Format(time.RFC1123Z)
-		html := buildEmailHTML("ログインコード", fmt.Sprintf("<p>以下の6桁コードを入力してください。</p><div style=\"font-family:ui-monospace, Menlo, Consolas, monospace; font-size:20px; letter-spacing:4px; font-weight:700;\">%s</div><p style=\"color:#666;\">10分以内に入力してください。</p>", code))
-		text := fmt.Sprintf("Your login code is: %s\nIt expires in 10 minutes.\n", code)
+		html := buildEmailHTML("ログインコード", fmt.Sprintf("<p>以下の6桁コードを入力してください。</p><div style=\"font-family:ui-monospace, Menlo, Consolas, monospace; font-size:20px; letter-spacing:4px; font-weight:700;\">%s</div><p style=\"color:#666;\">5分以内に入力してください。</p>", code))
+		text := fmt.Sprintf("Your login code is: %s\nIt expires in 5 minutes.\n", code)
 		boundary := fmt.Sprintf("taskly-%d", time.Now().UnixNano())
 		msg := []byte(
 			"From: " + from + "\r\n" +
@@ -214,6 +237,25 @@ func registerAuthRoutes(app *fiber.App) {
 				return c.Status(500).JSON(fiber.Map{"error": "db"})
 			}
 		}
+		ip := c.IP()
+		// IP rate limit (max 20 req/10min)
+		ipKey := "login_attempt_ip:" + ip
+		ipCount, _ := RDB.Incr(c.Context(), ipKey).Result()
+		if ipCount == 1 {
+			_ = RDB.Expire(c.Context(), ipKey, 10*60)
+		}
+		if ipCount > 20 {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "ip rate limit"})
+		}
+		// Email rate limit (max 10 req/10min)
+		emailKey := "login_attempt_email:" + u.Email
+		emailCount, _ := RDB.Incr(c.Context(), emailKey).Result()
+		if emailCount == 1 {
+			_ = RDB.Expire(c.Context(), emailKey, 10*60)
+		}
+		if emailCount > 10 {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})
+		}
 		// Blocklist enforcement
 		var cnt int64
 		if err := DB.Model(&Block{}).
@@ -248,7 +290,19 @@ func registerAuthRoutes(app *fiber.App) {
 			if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, time.Now()).Order("id DESC").First(&lc).Error; err != nil {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 			}
+			// ロック中なら拒否
+			if lc.LockedUntil != nil && lc.LockedUntil.After(time.Now()) {
+				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
+			}
 			if lc.HashedCode != sha256Hex([]byte(body.Code)) {
+				// 失敗回数インクリメント
+				failCount := lc.FailedAttempts + 1
+				update := map[string]interface{}{"FailedAttempts": failCount}
+				// 5回以上失敗で有効期限までロック
+				if failCount >= 5 {
+					update["LockedUntil"] = lc.ExpiresAt
+				}
+				_ = DB.Model(&LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 			}
 			now := time.Now()

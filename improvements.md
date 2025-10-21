@@ -55,14 +55,6 @@
     - 本番では`API_CORS_ORIGINS`で明示的かつ最小限のオリジン許可リストを設定。ワイルドカード禁止。
     - プリフライトキャッシュ・ヘッダーを正しく設定し、不要なヘッダー許可を避ける。
 
-- セキュリティヘッダー
-
-  - 問題: サーバーは`Content-Security-Policy`、`X-Frame-Options`/`frame-ancestors`、`X-Content-Type-Options`、`Referrer-Policy`、`Permissions-Policy`等のヘッダーを設定していない。
-  - 対応:
-    - グローバルにセキュリティヘッダーを設定するミドルウェア追加。CSP 例（CDN/ドメインに合わせて調整）：
-      - default-src 'self'; script-src 'self' https://cdn.taskly.iy0306.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.taskly.iy0306.com 'unsafe-inline'; img-src 'self' https://cdn.taskly.iy0306.com data:; connect-src 'self' https://api.taskly.example; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
-    - エッジ（Traefik）で HSTS を有効化、preload も必要なら追加。
-
 - 本番環境の SMTP/Postfix
 
   - 問題: SMTP ヘルパーは"smtps"と"starttls"を正しくサポートするが、infra の Postfix イメージは TLS 無効＆`mynetworks = 0.0.0.0/0`（`infra/docker/postfix/main.cf`）で開発用。
@@ -91,12 +83,6 @@
   - 対応:
     - トークンのローテーション・複数有効化（名前付き）をサポート、UI で短期失効経路を強制。必要ならフィード期間も制限。
     - ICS レスポンスに`X-Robots-Tag: noindex, nofollow`追加、`Content-Disposition: attachment`でプレビュー漏洩防止。
-
-- 権限・デフォルトアクセス方針
-
-  - 問題: `checkPermission`はデフォルトで read/create 許可、update/delete のみ権限オーバーライド時に制限。
-  - 対応:
-    - 特に create のデフォルトを厳格化、update/delete ルールも強化。所有権不一致・論理削除ユーザー等のエッジケーステスト追加。
 
 - 監視・PII
 

@@ -3,6 +3,24 @@ smtpd_banner = $myhostname ESMTP
 biff = no
 append_dot_mydomain = no
 readme_directory = no
+# Minimal postfix config for local relay
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+# ===================== WARNING =====================
+# This config is for LOCAL DEVELOPMENT ONLY.
+# DO NOT USE in production. It disables TLS and allows open relay.
+# mynetworks = 0.0.0.0/0 is extremely dangerous and must NEVER be used in production.
+# For production, use a proper mail provider or MTA with:
+#   - TLS enabled (smtpd_use_tls=yes, smtp_use_tls=yes)
+#   - smtp_tls_security_level=may or encrypt
+#   - smtpd_tls_security_level=may or encrypt
+#   - mynetworks restricted to trusted hosts only
+#   - authentication and relay restrictions enforced
+#   - valid certificates (no InsecureSkipVerify)
+# ===================================================
 
 # TLS off for local dev
 smtpd_use_tls=no

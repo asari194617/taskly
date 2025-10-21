@@ -65,6 +65,12 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 							"description": it.Description,
 							"url":         fmt.Sprintf("%s/%s.ics", base, it.Token),
 							"created_at":  it.CreatedAt.Format(time.RFC3339),
+							"expires_at": func() any {
+								if it.ExpiresAt != nil {
+									return it.ExpiresAt.Format(time.RFC3339)
+								}
+								return nil
+							}(),
 						})
 					}
 					return out, nil

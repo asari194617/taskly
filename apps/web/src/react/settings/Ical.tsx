@@ -22,6 +22,7 @@ type IItem = {
   description?: string | null;
   url: string;
   created_at: string;
+  expires_at?: string | null;
 };
 
 export default function SettingsIcal() {
@@ -33,7 +34,7 @@ export default function SettingsIcal() {
   async function load() {
     try {
       const data = await gql<{ icalTokens: IItem[] }>(
-        `query{ icalTokens{ id description url created_at } }`
+        `query{ icalTokens{ id description url created_at expires_at } }`
       );
       setItems(data.icalTokens || []);
     } catch (e: any) {
@@ -47,13 +48,15 @@ export default function SettingsIcal() {
   React.useEffect(() => {
     if (token) load();
   }, [token]);
+  const [expires, setExpires] = React.useState<string>("");
   async function create() {
     try {
       await gql<{ icalCreate: { id: number; url: string } }>(
-        `mutation($d:String){ icalCreate(description:$d){ id url } }`,
-        { d: desc || undefined }
+        `mutation($d:String,$e:String){ icalCreate(description:$d,expires_at:$e){ id url } }`,
+        { d: desc || undefined, e: expires || undefined }
       );
       setDesc("");
+      setExpires("");
       load();
     } catch (e: any) {
       toast({
@@ -98,6 +101,14 @@ export default function SettingsIcal() {
                 placeholder="例: 個人用"
               />
             </div>
+            <div className="min-w-60">
+              <div className="text-sm mb-1">有効期限(任意, RFC3339)</div>
+              <Input
+                value={expires}
+                onChange={(e) => setExpires(e.target.value)}
+                placeholder="例: 2025-12-31T23:59:59Z"
+              />
+            </div>
             <Button onClick={create}>{dict.settingsIcal.issueUrl}</Button>
           </div>
         </Card>
@@ -109,6 +120,7 @@ export default function SettingsIcal() {
                 <TableHead>{dict.settingsIcal.table.description}</TableHead>
                 <TableHead>{dict.settingsIcal.table.url}</TableHead>
                 <TableHead>{dict.settingsIcal.table.createdAt}</TableHead>
+                <TableHead>期限</TableHead>
                 <TableHead className="text-right">
                   {dict.settingsIcal.table.actions}
                 </TableHead>
@@ -126,6 +138,11 @@ export default function SettingsIcal() {
                   </TableCell>
                   <TableCell>
                     {new Date(it.created_at).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    {it.expires_at
+                      ? new Date(it.expires_at).toLocaleString()
+                      : "-"}
                   </TableCell>
                   <TableCell className="text-right flex gap-2 justify-end">
                     <Button

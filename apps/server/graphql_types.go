@@ -141,6 +141,7 @@ func createGQLTypes() *gqlTypes {
 			"description": &graphql.Field{Type: graphql.String},
 			"url":         &graphql.Field{Type: graphql.String},
 			"created_at":  &graphql.Field{Type: graphql.String},
+			"expires_at":  &graphql.Field{Type: graphql.String},
 		},
 	})
 
