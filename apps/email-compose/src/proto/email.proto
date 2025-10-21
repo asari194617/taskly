@@ -1,0 +1,19 @@
+syntax = "proto3";
+package emailcompose;
+
+service EmailComposer {
+  rpc ComposeLoginCode (ComposeLoginCodeRequest) returns (ComposeResponse) {}
+}
+
+message ComposeLoginCodeRequest {
+  string locale = 1; // 'en' or 'ja'
+  string email = 2;  // recipient for personalization
+  string code = 3;   // login code
+  string app_name = 4;
+}
+
+message ComposeResponse {
+  string subject = 1;
+  string html = 2;
+  string text = 3;
+}

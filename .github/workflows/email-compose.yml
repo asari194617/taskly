@@ -1,0 +1,83 @@
+name: email-compose-ci
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "apps/email-compose/**"
+      - ".github/workflows/email-compose.yml"
+  pull_request:
+    paths:
+      - "apps/email-compose/**"
+
+jobs:
+  select-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.pick.outputs.runner }}
+    steps:
+      - id: def
+        run: echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+      - id: fbk
+        name: Select self-hosted with fallback
+        uses: jimmygchen/runner-fallback-action@v1
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
+          primary-runner: self-hosted
+          fallback-runner: ubuntu-latest
+      - id: pick
+        run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: select-runner
+    runs-on: ${{ needs.select-runner.outputs.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/email-compose/package-lock.json
+      - name: Install
+        working-directory: apps/email-compose
+        run: npm ci || npm install
+      - name: Typecheck & build
+        working-directory: apps/email-compose
+        run: npm run build
+
+  docker:
+    if: github.ref == 'refs/heads/main'
+    needs: select-runner
+    runs-on: ${{ needs.select-runner.outputs.label }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Restore buildx cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/email-compose
+          push: true
+          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          tags: ghcr.io/${{ github.repository }}/email-compose:latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max

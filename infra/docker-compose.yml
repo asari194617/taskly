@@ -54,6 +54,8 @@ services:
     environment:
       # コンテナ間通信では localhost:3061 ではなく、サービス名:ポート を利用する
       REDIS_ADDR: redis:6379
+      EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
+      EMAIL_COMPOSE_HTTP_ADDR: http://email-compose:50052
   # web and mcp can be added later
   mcp:
     build: ../apps/mcp
@@ -103,6 +105,26 @@ services:
         "-lc",
         "rm -f /opt/airflow/airflow-webserver.pid; (airflow db init || airflow db upgrade || true); exec airflow webserver",
       ]
+  email-compose:
+    build: ../apps/email-compose
+    container_name: taskly-email-compose
+    env_file:
+      - ../.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    environment:
+      EMAIL_COMPOSE_GRPC_HOST: 0.0.0.0
+      EMAIL_COMPOSE_GRPC_PORT: 50051
+      EMAIL_COMPOSE_HTTP_PORT: 50052
+      DD_SERVICE: taskly-email-compose
+      DD_TRACE_AGENT_PORT: "8126"
+      DD_AGENT_HOST: ${DD_AGENT_HOST:-host.docker.internal}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
+    ports:
+      - "3070:50051"
+      - "3071:50052"
   airflow-scheduler:
     build: ./airflow
     container_name: taskly-airflow-scheduler

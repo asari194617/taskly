@@ -1,0 +1,8 @@
+{
+  "login_code": {
+    "subject": "Your login code",
+    "greeting": "Hi {{email}}",
+    "intro": "Use the following code to sign in.",
+    "expiry": "This code expires in 5 minutes. If you didn’t request it, you can ignore this email."
+  }
+}

@@ -2,9 +2,12 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -61,7 +64,28 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// generate code
 		code := fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
-		// send email via SMTP synchronously; only store code if send succeeds
+		// Compose email via email-compose service (HTTP fallback)
+		compAddr := env("EMAIL_COMPOSE_HTTP_ADDR", "http://email-compose:50052")
+		reqBody := fmt.Sprintf(`{"locale":%q,"email":%q,"code":%q,"app_name":"Taskly"}`, "ja", email, code)
+		httpReq, _ := http.NewRequestWithContext(c.Context(), "POST", compAddr+"/compose/login-code", strings.NewReader(reqBody))
+		httpReq.Header.Set("Content-Type", "application/json")
+		var subject, html, text string
+		if resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(httpReq); err == nil && resp != nil {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if resp.StatusCode == 200 {
+				var out struct{ Subject, Html, Text string }
+				if jsonErr := json.Unmarshal(body, &out); jsonErr == nil && strings.TrimSpace(out.Subject) != "" {
+					subject, html, text = out.Subject, out.Html, out.Text
+				}
+			}
+		}
+		// Fallback subject/body if composer failed
+		if subject == "" {
+			subject = "Taskly Login Code"
+			html = buildEmailHTML("ログインコード", fmt.Sprintf("<p>以下の6桁コードを入力してください。</p><div style=\"font-family:ui-monospace, Menlo, Consolas, monospace; font-size:20px; letter-spacing:4px; font-weight:700;\">%s</div><p style=\"color:#666;\">5分以内に入力してください。</p>", code))
+			text = fmt.Sprintf("Your login code is: %s\nIt expires in 5 minutes.\n", code)
+		}
 		smtpHost := env("SMTP_HOST", "localhost")
 		smtpPort := env("SMTP_PORT", "25")
 		from := env("SMTP_FROM", "noreply@taskly.local")
@@ -69,13 +93,11 @@ func registerAuthRoutes(app *fiber.App) {
 		smtpPass := env("SMTP_PASSWORD", "")
 		// Build RFC5322 message with required headers (From/To/Subject/Date) - HTML email
 		nowRFC := time.Now().Format(time.RFC1123Z)
-		html := buildEmailHTML("ログインコード", fmt.Sprintf("<p>以下の6桁コードを入力してください。</p><div style=\"font-family:ui-monospace, Menlo, Consolas, monospace; font-size:20px; letter-spacing:4px; font-weight:700;\">%s</div><p style=\"color:#666;\">5分以内に入力してください。</p>", code))
-		text := fmt.Sprintf("Your login code is: %s\nIt expires in 5 minutes.\n", code)
 		boundary := fmt.Sprintf("taskly-%d", time.Now().UnixNano())
 		msg := []byte(
 			"From: " + from + "\r\n" +
 				"To: " + body.Email + "\r\n" +
-				"Subject: Taskly Login Code\r\n" +
+				"Subject: " + subject + "\r\n" +
 				"Date: " + nowRFC + "\r\n" +
 				"MIME-Version: 1.0\r\n" +
 				"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
