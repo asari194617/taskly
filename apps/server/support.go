@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -14,6 +15,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/url"
 	"os"
@@ -32,6 +34,49 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// --- JSON parsing & validation helpers ---
+func parseJSONStrict(c *fiber.Ctx, dst any) error {
+	dec := json.NewDecoder(bytes.NewReader(c.Body()))
+	dec.DisallowUnknownFields()
+	return dec.Decode(dst)
+}
+
+func validationError(c *fiber.Ctx, fields map[string]string) error {
+	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "validation", "fields": fields})
+}
+
+func isEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > 255 || !strings.Contains(s, "@") {
+		return false
+	}
+	// accept simple address forms; mail.ParseAddress is lenient but works for basic format
+	if _, err := mail.ParseAddress(s); err != nil {
+		return false
+	}
+	return true
+}
+
+func maxLen(s string, n int) bool { return len(s) <= n }
+
+func isEnum(v string, allowed ...string) bool {
+	for _, a := range allowed {
+		if strings.EqualFold(v, a) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchPattern(s string, allowed func(r rune) bool) bool {
+	for _, r := range s {
+		if !allowed(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // --- Scrubbing helpers ---

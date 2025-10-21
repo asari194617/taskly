@@ -41,7 +41,12 @@ func registerGraphQL(app *fiber.App) {
 			Query     string         `json:"query"`
 			Variables map[string]any `json:"variables"`
 		}
-		_ = c.BodyParser(&body)
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
+		}
+		if strings.TrimSpace(body.Query) == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "missing query"})
+		}
 
 		// Query depth/complexity limit (simple check)
 		maxDepth := 6

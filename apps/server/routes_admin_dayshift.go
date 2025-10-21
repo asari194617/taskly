@@ -14,7 +14,7 @@ func registerAdminDayShiftRoutes(app *fiber.App) {
 			FinishDate  string  `json:"finish_date"`
 			Description *string `json:"description"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.BeginDate == "" || body.FinishDate == "" {
+		if err := parseJSONStrict(c, &body); err != nil || body.BeginDate == "" || body.FinishDate == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		bd, err1 := time.Parse("2006-01-02", body.BeginDate)
@@ -48,7 +48,7 @@ func registerAdminDayShiftRoutes(app *fiber.App) {
 			IsBusiness bool    `json:"is_business_day"`
 			Notes      *string `json:"notes"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Start == "" || body.End == "" {
+		if err := parseJSONStrict(c, &body); err != nil || body.Start == "" || body.End == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		s, e := body.Start, body.End

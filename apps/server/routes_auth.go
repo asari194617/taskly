@@ -22,10 +22,13 @@ func registerAuthRoutes(app *fiber.App) {
 		var body struct {
 			Email string `json:"email"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Email == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		email := strings.ToLower(strings.TrimSpace(body.Email))
+		if !isEmail(email) {
+			return validationError(c, map[string]string{"email": "invalid email"})
+		}
 		ip := c.IP()
 		// IP rate limit (max 10 req/10min)
 		ipKey := "login_code_req_ip:" + ip
@@ -170,8 +173,11 @@ func registerAuthRoutes(app *fiber.App) {
 		var body struct {
 			Email string `json:"email"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Email == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
+		}
+		if !isEmail(body.Email) {
+			return validationError(c, map[string]string{"email": "invalid email"})
 		}
 		var u User
 		hasUser := DB.Where("email = ?", body.Email).First(&u).Error == nil
@@ -222,8 +228,11 @@ func registerAuthRoutes(app *fiber.App) {
 			Totp     string `json:"totp"`
 			Recovery string `json:"recovery_code"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Email == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
+		}
+		if !isEmail(body.Email) {
+			return validationError(c, map[string]string{"email": "invalid email"})
 		}
 		// Lookup user or create placeholder
 		var u User

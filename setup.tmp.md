@@ -156,7 +156,3 @@ SHOW CREATE TABLE migrations\G;
 
 - Q: SQLite への影響は？
   - A: テストは SQLite を使用しますが、`ON UPDATE` はタグではなく GORM の `autoUpdateTime` を使っており互換を確保しています。
-
----
-
-必要に応じて、貴社の運用形態（Compose / K8s / マネージド DB）に合わせてコマンド例を具体化します。こちらで代行適用やステージング検証も対応できます。

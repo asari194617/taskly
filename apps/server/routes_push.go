@@ -11,7 +11,7 @@ func registerPushRoutes(app *fiber.App) {
 	app.Post("/push/subscribe", authRequired, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
 		var body struct{ Endpoint, P256dh, Auth string }
-		if err := c.BodyParser(&body); err != nil || body.Endpoint == "" || body.P256dh == "" || body.Auth == "" {
+		if err := parseJSONStrict(c, &body); err != nil || strings.TrimSpace(body.Endpoint) == "" || strings.TrimSpace(body.P256dh) == "" || strings.TrimSpace(body.Auth) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		var rec WebPushSubscription
@@ -26,7 +26,7 @@ func registerPushRoutes(app *fiber.App) {
 	app.Post("/push/unsubscribe", authRequired, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
 		var body struct{ Endpoint string }
-		_ = c.BodyParser(&body)
+		_ = parseJSONStrict(c, &body)
 		if strings.TrimSpace(body.Endpoint) != "" {
 			_ = DB.Where("user_id = ? AND endpoint = ?", u.ID, body.Endpoint).Delete(&WebPushSubscription{}).Error
 		}

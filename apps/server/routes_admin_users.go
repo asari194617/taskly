@@ -59,8 +59,8 @@ func registerAdminUsersRoutes(app *fiber.App) {
 		var body struct {
 			Role string `json:"role"`
 		}
-		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		role := strings.ToLower(strings.TrimSpace(body.Role))
 		if role != "admin" && role != "manager" {
@@ -85,8 +85,8 @@ func registerAdminUsersRoutes(app *fiber.App) {
 			Reason    *string `json:"reason"`
 			ExpiresAt *string `json:"expires_at"`
 		}
-		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		var expPtr *time.Time
 		if body.ExpiresAt != nil && *body.ExpiresAt != "" {

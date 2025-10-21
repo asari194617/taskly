@@ -28,8 +28,8 @@ func registerSettingsRoutes(app *fiber.App) {
 		var body struct {
 			EmailLoginEnabled *bool `json:"email_login_enabled"`
 		}
-		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.EmailLoginEnabled != nil {
 			_ = DB.Model(&User{}).Where("id = ?", u.ID).Update("email_code_allowed", *body.EmailLoginEnabled).Error
@@ -63,7 +63,13 @@ func registerSettingsRoutes(app *fiber.App) {
 			Description *string    `json:"description"`
 			ExpiresAt   *time.Time `json:"expires_at"`
 		}
-		_ = c.BodyParser(&body)
+		_ = parseJSONStrict(c, &body)
+		if body.Description != nil {
+			d := strings.TrimSpace(*body.Description)
+			if !maxLen(d, 255) {
+				return validationError(c, map[string]string{"description": "too long"})
+			}
+		}
 		tok := generateIcalToken()
 		rec := IcalKey{UserID: u.ID, Token: tok, Description: body.Description, ExpiresAt: body.ExpiresAt}
 		if err := DB.Create(&rec).Error; err != nil {
@@ -94,8 +100,8 @@ func registerSettingsRoutes(app *fiber.App) {
 		var body struct {
 			DailyEnabled *bool `json:"daily_enabled"`
 		}
-		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.DailyEnabled != nil {
 			_ = DB.Model(&User{}).Where("id = ?", u.ID).Update("push_daily_enabled", *body.DailyEnabled).Error
@@ -115,8 +121,8 @@ func registerSettingsRoutes(app *fiber.App) {
 		var body struct {
 			NotificationLang *string `json:"notification_lang"`
 		}
-		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.NotificationLang != nil {
 			v := strings.ToLower(strings.TrimSpace(*body.NotificationLang))

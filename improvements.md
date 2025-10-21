@@ -114,19 +114,6 @@
 
 ## フロントエンド（apps/web）– Astro/React
 
-クリティカル
-
-- ブラウザでのトークン保存
-
-  - 問題: GraphQL クライアントは`localStorage('api_token')`からトークンを取得し、`Authorization`ヘッダーで送信（`apps/web/src/lib/graphql.ts`）。
-  - 対応:
-    - ブラウザセッションは HttpOnly・Secure・SameSite クッキー利用で XSS トークン窃取を防ぐか、強力な CSP を設定し inline/eval 排除。
-    - クッキー利用時は CSRF 防御（ダブルサブミットまたは SameSite=Lax/Strict ＋ CSRF トークン）を state 変更リクエストに追加。
-
-- セキュリティヘッダー（Astro/エッジ配信）
-  - 対応:
-    - サーバー側ヘッダー推奨をエッジ（Traefik）でも静的フロントに反映：CSP、frame-ancestors 'none'、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、HSTS。
-
 高
 
 - CSRF モデル検証

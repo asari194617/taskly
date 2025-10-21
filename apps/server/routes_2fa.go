@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -28,7 +29,7 @@ func register2FARoutes(app *fiber.App) {
 		var body struct {
 			Code string `json:"code"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Code == "" {
+		if err := parseJSONStrict(c, &body); err != nil || strings.TrimSpace(body.Code) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		key := fmt.Sprintf("totp-setup:%d", u.ID)
@@ -88,7 +89,10 @@ func register2FARoutes(app *fiber.App) {
 			Email string `json:"email"`
 			Code  string `json:"code"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Email == "" || body.Code == "" {
+		if err := parseJSONStrict(c, &body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
+		}
+		if !isEmail(body.Email) || strings.TrimSpace(body.Code) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		var u User
