@@ -123,8 +123,8 @@ services:
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
     ports:
-      - "3070:50051"
-      - "3071:50052"
+      - "3067:50051"
+      - "3068:50052"
   airflow-scheduler:
     build: ./airflow
     container_name: taskly-airflow-scheduler

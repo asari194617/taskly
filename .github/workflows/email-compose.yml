@@ -33,6 +33,9 @@ jobs:
   build:
     needs: select-runner
     runs-on: ${{ needs.select-runner.outputs.label }}
+    defaults:
+      run:
+        working-directory: apps/email-compose
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,11 +43,12 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: apps/email-compose/package-lock.json
-      - name: Install
-        working-directory: apps/email-compose
-        run: npm ci || npm install
+      - name: Install (fast)
+        env:
+          NPM_CONFIG_FUND: "false"
+          NPM_CONFIG_AUDIT: "false"
+        run: npm ci --prefer-offline --no-audit --no-fund || npm install --no-audit --no-fund
       - name: Typecheck & build
-        working-directory: apps/email-compose
         run: npm run build
 
   docker:
@@ -64,20 +68,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Restore buildx cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.ref_name }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: ./apps/email-compose
           push: true
-          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          provenance: false
+          # GH-hostedは単一アーキ(amd64)で高速化。self-hostedはホストアーキに合わせる
+          platforms: ${{ startsWith(needs.select-runner.outputs.label,'self-hosted') && (runner.arch == 'ARM64' && 'linux/arm64' || 'linux/amd64') || 'linux/amd64' }}
           tags: ghcr.io/${{ github.repository }}/email-compose:latest
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
+          cache-from: type=gha,scope=email-compose
+          cache-to: type=gha,scope=email-compose,mode=max
