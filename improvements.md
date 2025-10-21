@@ -1,329 +1,329 @@
-# Taskly improvements (security-focused)
+# Taskly 改善案（セキュリティ重視）
 
-This document captures recommended improvements identified from a repository-wide review. It is prioritized and grouped by area. Scope spans: apps/server (Go/Fiber), apps/web (Astro/React), apps/mcp (Fastify/Node), infra (Docker Compose, Postfix, Traefik, Airflow), and batches.
+このドキュメントは、リポジトリ全体のレビューから特定された推奨改善点をまとめたものです。優先度ごと、領域ごとにグループ化されています。対象範囲は：apps/server（Go/Fiber）、apps/web（Astro/React）、apps/mcp（Fastify/Node）、infra（Docker Compose、Postfix、Traefik、Airflow）、batches です。
 
-Note: This report proposes changes only; no runtime code was modified.
+※注意：本レポートは変更案のみを提案しており、実際のコードには手を加えていません。
 
-## Priority overview
+## 優先度の概要
 
-- Critical (address first)
-  - Enforce strong secrets in production and remove insecure defaults
-  - Tighten auth/token storage flows and reduce attack surface
-  - Lock down email delivery and SMTP/Postfix for prod
-  - Add rate limiting and abuse protections for auth and MCP endpoints
-  - Harden CORS and security headers for server and web
-  - Introduce authorization scoping for MCP API resources
-- High
-  - CSRF strategy check, GraphQL hardening, and request body limits
-  - Logging/observability PII scrubbing and token redaction
-  - iCal token lifecycle and scope controls
-  - Infrastructure: network exposure, TLS/HSTS, secrets handling
-- Medium/Low
-  - DX/operational checklists, tests, documentation, and cleanup
+- クリティカル（最優先で対応）
+  - 本番環境で強力なシークレットを強制し、危険なデフォルト値を排除する
+  - 認証・トークン保存フローの強化と攻撃対象領域の縮小
+  - 本番環境のメール配信・SMTP/Postfix のロックダウン
+  - 認証・MCP エンドポイントへのレートリミットと不正防止の追加
+  - サーバー・Web の CORS とセキュリティヘッダーの強化
+  - MCP API リソースへの認可スコープ導入
+- 高
+  - CSRF 戦略の確認、GraphQL の強化、リクエストボディサイズ制限
+  - ログ・監視での PII（個人情報）スクラビングとトークンのマスキング
+  - iCal トークンのライフサイクル・スコープ管理
+  - インフラ：ネットワーク公開範囲、TLS/HSTS、シークレット管理
+- 中・低
+  - DX/運用チェックリスト、テスト、ドキュメント、クリーンアップ
 
 ---
 
-## Backend (apps/server) – Go/Fiber
+## バックエンド（apps/server）– Go/Fiber
 
-Critical
+クリティカル
 
-- JWT secret default value
+- JWT シークレットのデフォルト値
 
-  - Issue: `/auth/login` returns a JWT signed with `JWT_SECRET` defaulting to "dev" when env is missing (`apps/server/routes_auth.go`). This is insecure if JWTs are used.
-  - Action: Require `JWT_SECRET` in non-development environments; fail fast on startup if missing. Consider removing JWT issuance entirely if unused by clients, to reduce surface.
+  - 問題: `/auth/login`は、環境変数が未設定の場合に`JWT_SECRET`が"dev"となり JWT を署名して返します（`apps/server/routes_auth.go`）。JWT が使われている場合、これは非常に危険です。
+  - 対応: 開発以外の環境では`JWT_SECRET`を必須とし、未設定なら起動時に即エラーで停止する。クライアントが JWT を使っていない場合は、JWT 発行自体を廃止し攻撃対象領域を減らすことも検討。
 
-- Authentication hardening for email code and password login
+- メールコード・パスワードログインの認証強化
 
-  - Issue: Email login codes are 6-digit numeric; cooldown of 60s exists, but there's no explicit per-IP attempt throttling or max verification attempts per code/email.
-  - Actions:
-    - Add rate limiting on `/auth/request-code` and `/auth/login` per IP and per email (e.g., sliding window, exponential backoff on failures).
-    - Track attempts per code/email and lock out after N failed tries until expiration.
-    - Shorten code validity if feasible (10 min is okay for email; consider 5–10 min) and invalidate immediately on success (already consumed; keep).
+  - 問題: メールログインコードは 6 桁数字。60 秒のクールダウンはあるが、IP ごとの試行回数制限やコード/メールごとの最大認証試行回数が明示的にない。
+  - 対応:
+    - `/auth/request-code`と`/auth/login`に IP・メールごとのレートリミット追加（例：スライディングウィンドウ、失敗時指数バックオフ）。
+    - コード/メールごとの試行回数を記録し、N 回失敗したら有効期限までロック。
+    - コード有効期間を可能なら短縮（メールは 10 分で OK、5 ～ 10 分推奨）。成功時は即無効化（既に消費済みなら維持）。
 
-- Session tokens and storage
+- セッショントークンと保存方法
 
-  - Issue: Opaque session tokens are stored client-side and supplied via `Authorization` header (good), but web app stores them in `localStorage` (see apps/web). Sessions are created with 30-day TTL and platform binding is enforced server-side.
-  - Actions:
-    - Consider moving to HttpOnly, Secure cookies for browser sessions to mitigate XSS token theft. If staying with Authorization header: add strict CSP, reduce XSS risk, and make CORS stricter (see below).
-    - Use sliding expiration and revokeOtherSessions after sensitive events (password change, enabling 2FA, recovery usage). A helper exists (`revokeOtherSessions`); wire it where appropriate.
+  - 問題: 不透明なセッショントークンはクライアント側保存＆`Authorization`ヘッダーで送信（良い）が、Web アプリは`localStorage`に保存（apps/web 参照）。セッションは 30 日 TTL で、プラットフォームバインディングはサーバー側で強制。
+  - 対応:
+    - ブラウザセッションは HttpOnly・Secure クッキーに移行し、XSS によるトークン窃取を防ぐことを検討。Authorization ヘッダー継続の場合は厳格な CSP 追加、XSS リスク低減、CORS 強化（下記参照）。
+    - パスワード変更・2FA 有効化・リカバリ利用などの重要イベント後はスライディング有効期限＆`revokeOtherSessions`実行。ヘルパー（`revokeOtherSessions`）は既存、適切な箇所で呼び出す。
 
-- CORS policy
+- CORS ポリシー
 
-  - Issue: `AllowCredentials` is enabled by default and `AllowOrigins` comes from env with common localhost origins. With Authorization header auth, credentials are not required.
-  - Actions:
-    - Set `AllowCredentials=false` by default when using Authorization header.
-    - Provide explicit, minimal origin allowlist in production via `API_CORS_ORIGINS`; avoid wildcards.
-    - Ensure preflight caches and headers are correct; avoid allowing arbitrary headers beyond what is necessary.
+  - 問題: `AllowCredentials`がデフォルトで有効、`AllowOrigins`は環境変数から localhost 等。Authorization ヘッダー認証時は credentials 不要。
+  - 対応:
+    - Authorization ヘッダー利用時は`AllowCredentials=false`をデフォルトに。
+    - 本番では`API_CORS_ORIGINS`で明示的かつ最小限のオリジン許可リストを設定。ワイルドカード禁止。
+    - プリフライトキャッシュ・ヘッダーを正しく設定し、不要なヘッダー許可を避ける。
 
-- Security headers
+- セキュリティヘッダー
 
-  - Issue: Server doesn't set headers like `Content-Security-Policy`, `X-Frame-Options`/`frame-ancestors`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`.
-  - Actions:
-    - Add a middleware to set security headers globally. Sample CSP (tighten paths to your CDN/domains):
+  - 問題: サーバーは`Content-Security-Policy`、`X-Frame-Options`/`frame-ancestors`、`X-Content-Type-Options`、`Referrer-Policy`、`Permissions-Policy`等のヘッダーを設定していない。
+  - 対応:
+    - グローバルにセキュリティヘッダーを設定するミドルウェア追加。CSP 例（CDN/ドメインに合わせて調整）：
       - default-src 'self'; script-src 'self' https://cdn.taskly.iy0306.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.taskly.iy0306.com 'unsafe-inline'; img-src 'self' https://cdn.taskly.iy0306.com data:; connect-src 'self' https://api.taskly.example; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
-    - Turn on HSTS at the edge (Traefik) with preload if appropriate.
+    - エッジ（Traefik）で HSTS を有効化、preload も必要なら追加。
 
-- SMTP and Postfix in production
+- 本番環境の SMTP/Postfix
 
-  - Issue: SMTP helpers support "smtps" and "starttls" correctly, but infra Postfix image is configured with TLS off and `mynetworks = 0.0.0.0/0` for development (`infra/docker/postfix/main.cf`).
-  - Actions:
-    - For production, don’t use the dev Postfix. Use a proper email provider or locked-down MTA with enforced TLS, auth, and restricted relay networks. Never keep `mynetworks=0.0.0.0/0`.
-    - Ensure certificates are validated (no InsecureSkipVerify anywhere; verify batch email channel too).
+  - 問題: SMTP ヘルパーは"smtps"と"starttls"を正しくサポートするが、infra の Postfix イメージは TLS 無効＆`mynetworks = 0.0.0.0/0`（`infra/docker/postfix/main.cf`）で開発用。
+  - 対応:
+    - 本番では dev Postfix を使わず、TLS・認証・リレー制限を強制した適切なメールプロバイダーまたは MTA を利用。`mynetworks=0.0.0.0/0`は絶対に残さない。
+    - 証明書検証を徹底（InsecureSkipVerify 禁止、バッチメールチャンネルも確認）。
 
-- Rate limiting and abuse protection
+- レートリミット・不正防止
 
-  - Issue: No explicit rate limiting on server auth endpoints; DoS/brute-force risk.
-  - Actions:
-    - Add IP-based and user/email-based rate limits for `/auth/*`, `/tasks` mutations, and integration callbacks.
-    - Add global request body size limits.
+  - 問題: サーバー認証エンドポイントに明示的なレートリミットなし。DoS/ブルートフォースリスク。
+  - 対応:
+    - `/auth/*`、`/tasks`ミューテーション、連携コールバックに IP・ユーザー/メール単位のレートリミット追加。
+    - グローバルなリクエストボディサイズ制限追加。
 
-- GraphQL hardening
-  - Issue: GraphQL is exposed by `registerGraphQL(app)`. Risk for deep queries, introspection on prod, and potential heavy operations.
-  - Actions:
-    - Enforce POST-only. Add max query depth/complexity rules and timeouts. Disable introspection on production. Consider persisted queries for public endpoints.
-    - Add rate limiting on GraphQL endpoint and ensure auth enforced for sensitive resolvers.
+- GraphQL 強化
+  - 問題: `registerGraphQL(app)`で GraphQL 公開。深いクエリ・本番でのイントロスペクション・重い処理のリスク。
+  - 対応:
+    - POST 専用化。クエリ深度/複雑度上限・タイムアウト追加。本番ではイントロスペクション無効化。公開エンドポイントは永続化クエリも検討。
+    - GraphQL エンドポイントにレートリミット追加、機密リゾルバは認証必須化。
 
-High
+高
 
-- ICS token security and lifecycle
+- ICS トークンのセキュリティ・ライフサイクル
 
-  - Issue: Public iCal endpoint serves calendar by token (`/ical/:token.ics`). Tokens are random and routes exist to manage tokens, but further controls help.
-  - Actions:
-    - Support token rotation and multiple active tokens with names; enforce short revocation path in UI. Limit feed time window if needed.
-    - Add `X-Robots-Tag: noindex, nofollow` for ICS responses and set `Content-Disposition: attachment` to reduce leaking via previews.
+  - 問題: 公開 iCal エンドポイントはトークンでカレンダーを配信（`/ical/:token.ics`）。トークンはランダムで管理ルートもあるが、さらなる制御が有効。
+  - 対応:
+    - トークンのローテーション・複数有効化（名前付き）をサポート、UI で短期失効経路を強制。必要ならフィード期間も制限。
+    - ICS レスポンスに`X-Robots-Tag: noindex, nofollow`追加、`Content-Disposition: attachment`でプレビュー漏洩防止。
 
-- Permissions and default access policy
+- 権限・デフォルトアクセス方針
 
-  - Issue: `checkPermission` defaults allow read/create and only restricts update/delete unless permission override exists.
-  - Actions:
-    - Consider stricter defaults, especially for create, and harden update/delete rules. Add tests for edge cases (ownership mismatches, soft-deleted users).
+  - 問題: `checkPermission`はデフォルトで read/create 許可、update/delete のみ権限オーバーライド時に制限。
+  - 対応:
+    - 特に create のデフォルトを厳格化、update/delete ルールも強化。所有権不一致・論理削除ユーザー等のエッジケーステスト追加。
 
-- Observability/PII
+- 監視・PII
 
-  - Issue: Error handler attaches user info to Sentry. Queries and IPs are included; bodies not captured, which is good, but further scrubbing recommended.
-  - Actions:
-    - Redact tokens (`Authorization`, `X-API-Key`) from logs and tracing. Scrub PII fields in breadcrumbs. Tune Datadog sampling.
+  - 問題: エラーハンドラは Sentry にユーザー情報を添付。クエリ・IP は含まれるが、ボディは未収集（良い）。さらなるスクラビング推奨。
+  - 対応:
+    - ログ・トレースからトークン（`Authorization`、`X-API-Key`）をマスク。PII フィールドをブレッドクラムから除去。Datadog サンプリング調整。
 
-- Input validation
-  - Issue: Fiber handlers rely on `BodyParser` with minimal validation.
-  - Actions:
-    - Add structured validation (lengths, enums, email format) with clear errors. Reject unknown fields to avoid mass assignment.
+- 入力バリデーション
+  - 問題: Fiber ハンドラは`BodyParser`頼みでバリデーションが最小限。
+  - 対応:
+    - 構造化バリデーション（長さ、enum、メール形式）と明確なエラー追加。未知フィールドは拒否し、マスアサイン防止。
 
-Medium/Low
+中・低
 
-- WebAuthn config review
+- WebAuthn 設定レビュー
 
-  - Action: Verify RP ID/origin lists in `initWebAuthn()` and ensure strict origin matching in production.
+  - 対応: `initWebAuthn()`の RP ID/オリジンリストを確認し、本番では厳格なオリジン一致を徹底。
 
-- Session management UX
+- セッション管理 UX
 
-  - Action: Add endpoints/UI to list active sessions and revoke others. Use existing Redis sets to drive it.
+  - 対応: アクティブセッション一覧・他セッション失効のエンドポイント/UI 追加。既存 Redis セットを活用。
 
-- Tests
-  - Action: Expand GraphQL and REST tests to cover auth failures, permission edges, rate limit boundaries, and ICS token revocation.
+- テスト
+  - 対応: GraphQL・REST テストを拡充し、認証失敗・権限エッジ・レートリミット境界・ICS トークン失効を網羅。
 
-References: `apps/server/main.go`, `apps/server/routes_auth.go`, `apps/server/middlewares.go`, `apps/server/support.go`.
-
----
-
-## Frontend (apps/web) – Astro/React
-
-Critical
-
-- Token storage in browser
-
-  - Issue: GraphQL client reads token from `localStorage('api_token')` and sends via `Authorization` header (`apps/web/src/lib/graphql.ts`).
-  - Actions:
-    - Prefer HttpOnly, Secure same-site cookies for browser sessions to protect against XSS token theft, or ensure strong CSP and eliminate inline/eval where possible.
-    - If cookies are used, add CSRF defenses (double submit or SameSite=Lax/Strict + CSRF token for state-changing requests).
-
-- Security headers (served by Astro/edge)
-  - Actions:
-    - Mirror server-side header recommendations at the edge (Traefik) for static frontend: CSP, frame-ancestors 'none', X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS.
-
-High
-
-- CSRF model verification
-
-  - Issue: With Authorization header and no cookies, CSRF is less of a risk, but if future cookies are introduced, CSRF must be enforced.
-  - Action: Add a design note in docs and ensure any cookie-based session switches in web update server protections accordingly.
-
-- Service worker
-  - Action: Ensure SW update strategy is safe. If caching is added later, restrict to immutable assets and validate scope; currently push handling is minimal.
-
-Medium/Low
-
-- UI affordances
-  - Action: Add account security pages (2FA, sessions, active devices) and ICS token management with warnings/rotation.
-
-References: `apps/web/src/lib/graphql.ts`, `apps/web/src/layouts/AppLayout.astro`.
+参考: `apps/server/main.go`, `apps/server/routes_auth.go`, `apps/server/middlewares.go`, `apps/server/support.go`
 
 ---
 
-## MCP service (apps/mcp) – Fastify/Node
+## フロントエンド（apps/web）– Astro/React
 
-Critical
+クリティカル
 
-- Authorization scoping
+- ブラウザでのトークン保存
 
-  - Issue: Auth checks only validate `X-MCP-Token` against `mcps.hashed_token`, then allow CRUD on tasks and user records. There’s no owner/tenant scoping.
-  - Actions:
-    - Restrict all task queries/mutations to the authenticated MCP user_id (e.g., `WHERE added_user_id = :userId`), unless a broader scope is explicitly granted.
-    - For user endpoints, limit fields and require that `:id` equals authenticated user unless privileged scope.
-    - Introduce token scopes in DB (e.g., read_tasks, write_tasks, read_user_self, write_user_self) and enforce per-route.
+  - 問題: GraphQL クライアントは`localStorage('api_token')`からトークンを取得し、`Authorization`ヘッダーで送信（`apps/web/src/lib/graphql.ts`）。
+  - 対応:
+    - ブラウザセッションは HttpOnly・Secure・SameSite クッキー利用で XSS トークン窃取を防ぐか、強力な CSP を設定し inline/eval 排除。
+    - クッキー利用時は CSRF 防御（ダブルサブミットまたは SameSite=Lax/Strict ＋ CSRF トークン）を state 変更リクエストに追加。
 
-- Rate limiting and input limits
-  - Issue: No built-in rate limiting. Traefik has labels for average/burst but rely on server-side too.
-  - Actions:
-    - Add Fastify rate limit plugin per route, body size limits, and timeouts.
-    - Validate inputs (types, enum values) to prevent malformed data.
+- セキュリティヘッダー（Astro/エッジ配信）
+  - 対応:
+    - サーバー側ヘッダー推奨をエッジ（Traefik）でも静的フロントに反映：CSP、frame-ancestors 'none'、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、HSTS。
 
-High
+高
 
-- Least-privilege DB user
+- CSRF モデル検証
 
-  - Action: Use a DB user with only necessary privileges for MCP; avoid root-like permissions.
+  - 問題: Authorization ヘッダー＋クッキー未使用なら CSRF リスクは低いが、将来クッキー導入時は CSRF 防御必須。
+  - 対応: ドキュメントに設計ノート追加、Web でクッキーセッション化時はサーバー側防御も更新。
 
-- Logging hygiene
+- サービスワーカー
+  - 対応: SW アップデート戦略の安全性確認。キャッシュ追加時は不変アセット限定＆スコープ検証。現状はプッシュ処理のみ最小限。
 
-  - Action: Never log raw tokens; ensure redaction. Standardize error responses and avoid leakage of SQL specifics.
+中・低
 
-- Transport security
-  - Action: Serve behind TLS (Traefik) only; enforce HTTPS and HSTS at edge; disable non-TLS listeners in prod.
+- UI 機能
+  - 対応: アカウントセキュリティページ（2FA、セッション、アクティブデバイス）と ICS トークン管理（警告・ローテーション）追加。
 
-Medium/Low
-
-- Observability
-  - Action: Add basic health/metrics, and alarms for error spikes or rate limit triggers.
-
-References: `apps/mcp/src/index.ts`, Traefik labels in `infra/docker-compose.yml`.
+参考: `apps/web/src/lib/graphql.ts`, `apps/web/src/layouts/AppLayout.astro`
 
 ---
 
-## Infrastructure (infra/docker-compose, Traefik, Postfix, Airflow)
+## MCP サービス（apps/mcp）– Fastify/Node
 
-Critical
+クリティカル
 
-- Postfix config (dev vs prod)
+- 認可スコープ
 
-  - Issue: `infra/docker/postfix/main.cf` disables TLS and allows all networks.
-  - Actions:
-    - Create a separate production postfix or remove it entirely; prefer a managed email provider.
-    - If using your own MTA, restrict `mynetworks`, enable TLS, enforce auth, and enable SPF/DKIM/DMARC.
+  - 問題: 認証は`X-MCP-Token`と`mcps.hashed_token`の照合のみで、タスク・ユーザー CRUD を許可。オーナー/テナントスコープなし。
+  - 対応:
+    - すべてのタスククエリ/ミューテーションは認証済み MCP ユーザー ID（例：`WHERE added_user_id = :userId`）に限定、広いスコープは明示的許可時のみ。
+    - ユーザーエンドポイントはフィールド制限＆`:id`は認証ユーザーと一致必須（特権スコープ除く）。
+    - DB にトークンスコープ（read_tasks, write_tasks, read_user_self, write_user_self 等）を導入し、ルートごとに強制。
 
-- Network exposure
+- レートリミット・入力制限
+  - 問題: 組み込みレートリミットなし。Traefik は平均/バーストラベルありだが、サーバー側でも対応必要。
+  - 対応:
+    - Fastify レートリミットプラグインをルートごとに追加、ボディサイズ制限・タイムアウトも設定。
+    - 入力値（型、enum 値）をバリデーションし、不正データ防止。
 
-  - Issue: Compose exposes MySQL, Redis, API, SMTP to host for dev.
-  - Actions:
-    - In production, bind services to internal networks only and expose only necessary entry points (Traefik/HTTPS, API if needed). Avoid exposing DB/Redis to the internet.
+高
+
+- 最小権限 DB ユーザー
+
+  - 対応: MCP 用 DB ユーザーは必要最小限権限のみ付与、root 権限は避ける。
+
+- ログ衛生
+
+  - 対応: 生トークンは絶対に記録せず、必ずマスク。エラー応答は標準化し、SQL 詳細漏洩を防止。
+
+- 通信セキュリティ
+  - 対応: Traefik 経由のみで配信、HTTPS・HSTS をエッジで強制。本番は非 TLS リスナー無効化。
+
+中・低
+
+- 監視
+  - 対応: 基本的なヘルス/メトリクス、エラー急増・レートリミット発動時のアラーム追加。
+
+参考: `apps/mcp/src/index.ts`, Traefik ラベル（`infra/docker-compose.yml`）
+
+---
+
+## インフラ（infra/docker-compose, Traefik, Postfix, Airflow）
+
+クリティカル
+
+- Postfix 設定（開発 vs 本番）
+
+  - 問題: `infra/docker/postfix/main.cf`は TLS 無効＆全ネットワーク許可。
+  - 対応:
+    - 本番用 Postfix を別途用意するか、完全に廃止。管理型メールプロバイダー推奨。
+    - 独自 MTA 利用時は`mynetworks`制限、TLS 有効化、認証強制、SPF/DKIM/DMARC 有効化。
+
+- ネットワーク公開範囲
+
+  - 問題: Compose は MySQL、Redis、API、SMTP を開発用にホスト公開。
+  - 対応:
+    - 本番ではサービスは内部ネットワークのみバインド、必要な入口（Traefik/HTTPS、API 等）のみ公開。DB/Redis のインターネット公開は避ける。
 
 - TLS/HSTS
-  - Actions:
-    - Ensure Traefik enables HSTS for HTTPS routers and redirect HTTP->HTTPS (already configured). Add preload if domains qualify.
+  - 対応:
+    - Traefik で HTTPS ルーターに HSTS 有効化＆HTTP→HTTPS リダイレクト（既に設定済み）。ドメインが条件を満たせば preload 追加。
 
-High
+高
 
-- Secrets management
+- シークレット管理
 
-  - Actions:
-    - Move all secrets to environment management (Docker secrets, vault, or CI/CD secrets). Do not bake secrets in images.
-    - Create a checklist: JWT_SECRET, TOTP_ENC_KEY, SMTP creds, DB creds, Discord/Teams secrets, VAPID keys, API key salts.
+  - 対応:
+    - すべてのシークレットは環境管理（Docker secrets、Vault、CI/CD secrets）へ移行。イメージに埋め込まない。
+    - チェックリスト作成：JWT_SECRET、TOTP_ENC_KEY、SMTP 認証情報、DB 認証情報、Discord/Teams シークレット、VAPID キー、API キーソルト。
 
-- Metrics and logs
-  - Actions:
-    - Ensure metrics endpoints are not exposed publicly. Restrict `9464` to internal networks only.
+- メトリクス・ログ
+  - 対応:
+    - メトリクスエンドポイントは公開しない。`9464`は内部ネットワーク限定。
 
-Medium/Low
+中・低
 
 - Airflow
-  - Action: Use Postgres for Airflow metastore in non-dev. Lock down UI behind auth.
+  - 対応: 非開発環境では Airflow メタストアに Postgres を利用。UI は認証で保護。
 
-References: `infra/docker-compose.yml`, `infra/docker/postfix/main.cf`.
-
----
-
-## Batch jobs (batches/\*)
-
-Critical/High
-
-- Backups
-
-  - Actions:
-    - Prefer SFTP/FTPS over plain FTP; encrypt backups at rest (PGP) before upload. Keep short-lived credentials and rotate regularly.
-    - Document and test backup restore procedures. Set retention policies and verify pruning jobs.
-
-- Email delivery channel
-  - Actions:
-    - Verify STARTTLS with proper certificate validation; avoid any InsecureSkipVerify usage. Align with server SMTP helper’s secure modes.
-
-Medium/Low
-
-- Notifications pipeline
-  - Actions:
-    - Add dead-letter queues and retry limits. Record structured logs for delivery failures (already partially tracked in `tasks_teams_logs`).
+参考: `infra/docker-compose.yml`, `infra/docker/postfix/main.cf`
 
 ---
 
-## Additional cross-cutting improvements
+## バッチジョブ（batches/\*）
 
-High
+クリティカル・高
 
-- 2FA flows
+- バックアップ
 
-  - Actions:
-    - Enforce 2FA for admin/manager roles. Provide recovery flow UX. Rate limit TOTP/recovery attempts.
+  - 対応:
+    - FTP ではなく SFTP/FTPS 推奨。バックアップはアップロード前に PGP 等で暗号化。短期認証情報を使い、定期的にローテーション。
+    - バックアップ復元手順を文書化・テスト。保持ポリシー設定＆削除ジョブ検証。
 
-- API keys
+- メール配信チャネル
+  - 対応:
+    - STARTTLS ＋証明書検証徹底。InsecureSkipVerify 禁止。サーバー SMTP ヘルパーの安全モードと整合。
 
-  - Actions:
-    - Add explicit scopes and TTLs to API keys; allow naming/rotation. Ensure route scope middleware fully aligns with intended surface.
+中・低
 
-- Data privacy
-  - Actions:
-    - Scrub PII from logs/telemetry. Formalize data retention for logs and queues.
+- 通知パイプライン
+  - 対応:
+    - デッドレターキュー・リトライ上限追加。配信失敗は構造化ログ記録（`tasks_teams_logs`で一部既存）。
 
-Medium/Low
+## その他横断的な改善案
 
-- Documentation and runbooks
-  - Actions:
-    - Production checklist for env vars and TLS, incident response, and key rotation. Document CORS/headers and auth model choices.
+高
 
----
+- 2FA フロー
 
-## Quick wins (0–2 days)
+  - 対応:
+    - 管理者/マネージャーは 2FA 必須化。リカバリフロー UX 追加。TOTP/リカバリ試行もレートリミット。
 
-- Set strong `JWT_SECRET` and fail fast if missing in non-dev; remove JWT issuance if unused.
-- Tighten CORS: disable credentials by default; set strict origin allowlist for prod.
-- Add global security headers via middleware; enable HSTS at Traefik.
-- Add IP/email rate limits to `/auth/request-code` and `/auth/login` (and `/graphql`).
-- Lock dev Postfix to dev only; document production mail provider use.
-- MCP: enforce per-user scoping on all task queries/updates; add rate limiting.
-- Redact tokens from logs and Sentry; ensure no secrets in traces.
+- API キー
 
-## Near-term (1–2 weeks)
+  - 対応:
+    - API キーに明示的スコープ・TTL 追加、命名・ローテーション許可。ルートスコープミドルウェアが意図通りか確認。
 
-- Decide on browser session storage model (cookies vs Authorization header) and implement CSRF defenses if cookies are used.
-- Implement session/device management UI + revoke-other-sessions hooks.
-- Add GraphQL depth/complexity limits and disable introspection on prod.
-- Introduce API key scopes/TTLs and management UI.
-- Harden backup pipeline (SFTP/PGP) and add restore drills.
-- Strengthen SMTP/TLS posture for all environments; remove any insecure fallbacks.
+- データプライバシー
+  - 対応:
+    - ログ・テレメトリから PII 除去。ログ・キューの保持期間を正式化。
 
-## Longer-term (1–2 months)
+中・低
 
-- Formalize privacy/observability policies, PII scrubbing, and retention.
-- Expand automated tests for auth/permissions/rate limits/ICS.
-- Migrate Airflow to managed DB and protect UI.
-- Introduce centralized secrets management (Vault/Azure Key Vault/GCP Secret Manager).
+- ドキュメント・運用手順書
+  - 対応:
+    - 本番用環境変数・TLS・インシデント対応・キー更新のチェックリスト。CORS/ヘッダー・認証モデル選択も文書化。
 
 ---
 
-## Acceptance checks
+---
 
-- Security headers visible on responses (server and static); CSP reports clean.
-- CORS behaves as expected; only allowed origins succeed; credentials disabled unless required.
-- Auth endpoints rate-limited; brute-force attempts are throttled and logged.
-- MCP endpoints scoped to token owner; attempts to access other users’ data are denied.
-- SMTP in prod enforces TLS and auth; no open relay; email proofs (SPF/DKIM/DMARC) validated.
-- Tokens and keys are never logged; Sentry and Datadog show redacted metadata only.
-- Backups are encrypted, transferred over secure channels, and successfully restored in test.
+## クイックウィン（0 ～ 2 日）
+
+- 強力な`JWT_SECRET`設定＆非開発環境で未設定なら即エラー。未使用なら JWT 発行廃止。
+- CORS 強化：デフォルトで credentials 無効化、本番は厳格なオリジンリスト。
+- グローバルセキュリティヘッダーをミドルウェアで追加、Traefik で HSTS 有効化。
+- `/auth/request-code`・`/auth/login`（および`/graphql`）に IP/メール単位レートリミット追加。
+- dev Postfix は dev 専用にロック、本番メールプロバイダー利用を文書化。
+- MCP：すべてのタスククエリ/更新でユーザー単位スコープ強制、レートリミット追加。
+- ログ・Sentry からトークン除去、トレースに秘密情報が残らないよう徹底。
+
+## 近い将来（1 ～ 2 週間）
+
+- ブラウザセッション保存方式（クッキー vs Authorization ヘッダー）決定、クッキー利用時は CSRF 防御実装。
+- セッション/デバイス管理 UI ＋他セッション失効フック実装。
+- GraphQL 深度/複雑度上限追加、本番でイントロスペクション無効化。
+- API キーのスコープ・TTL・管理 UI 導入。
+- バックアップパイプライン強化（SFTP/PGP）＋復元訓練追加。
+- すべての環境で SMTP/TLS 体制強化、危険なフォールバック廃止。
+
+## 長期（1 ～ 2 ヶ月）
+
+- プライバシー・監視方針の正式化、PII 除去・保持期間管理。
+- 認証・権限・レートリミット・ICS の自動テスト拡充。
+- Airflow を管理型 DB へ移行、UI 保護。
+- シークレット管理の集中化（Vault/Azure Key Vault/GCP Secret Manager 等）。
+
+---
+
+## 受け入れチェック
+
+- セキュリティヘッダーがレスポンス（サーバー・静的）で確認でき、CSP レポートがクリーン。
+- CORS が期待通り動作、許可オリジンのみ成功、credentials は必要時以外無効。
+- 認証エンドポイントはレートリミット済み、ブルートフォースは抑制・記録。
+- MCP エンドポイントはトークン所有者にスコープ限定、他ユーザーのデータアクセスは拒否。
+- 本番 SMTP は TLS・認証強制、オープンリレーなし、メール認証（SPF/DKIM/DMARC）検証済み。
+- トークン・キーは絶対に記録されず、Sentry・Datadog はマスク済みメタデータのみ表示。
+- バックアップは暗号化・安全なチャネルで転送、テストで復元成功。
