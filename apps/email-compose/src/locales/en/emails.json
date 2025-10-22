@@ -4,5 +4,14 @@
     "greeting": "Hi {{email}}",
     "intro": "Use the following code to sign in.",
     "expiry": "This code expires in 5 minutes. If you didn’t request it, you can ignore this email."
+  },
+  "moderation_alert": {
+    "subject": "{{appName}} Moderation alert",
+    "title": "Moderation alert",
+    "intro": "Daily moderation run summary.",
+    "summary": "Flagged: {{total}} item(s). Auto-hidden: {{hidden}}.",
+    "highlights": "Examples (up to 5):",
+    "review_button": "Review in Admin",
+    "footer_note": "If this threshold is too strict or lenient, adjust Moderation settings in Admin."
   }
 }

@@ -138,6 +138,8 @@ type Task struct {
 	Type              string  `gorm:"type:ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER');not null;default:'OTHER'"`
 	IsRequireHandIn   bool    `gorm:"not null;default:0"`
 	SelfCheckRequired bool    `gorm:"not null;default:0"`
+	// Moderation: auto-hide flagged content from non-admin views
+	IsHidden bool `gorm:"not null;default:0"`
 	// Deadline date (required)
 	Deadline time.Time `gorm:"type:date;not null"`
 	// Canonical deadline window enums (relative to Deadline date)
@@ -146,6 +148,31 @@ type Task struct {
 	DeadlineUntil string    `gorm:"type:ENUM('NONE','MORNING','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
 	CreatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
+}
+
+// FlaggedContent stores moderation results for content such as tasks
+type FlaggedContent struct {
+	ID        uint      `gorm:"primaryKey"`
+	TaskID    uint      `gorm:"index;not null"`
+	Category  string    `gorm:"size:64;not null"`
+	Severity  string    `gorm:"size:16;not null"` // low|medium|high
+	Score     *float64  `gorm:"null"`
+	Threat    bool      `gorm:"not null;default:0"`
+	Reason    *string   `gorm:"type:text"`
+	Model     *string   `gorm:"size:64"`
+	Metadata  *string   `gorm:"type:json"` // raw model response or extra info
+	Snapshot  *string   `gorm:"type:json"` // snapshot of content at flag time
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+}
+
+// UserReport records user-initiated reports on content
+type UserReport struct {
+	ID             uint      `gorm:"primaryKey"`
+	ReporterUserID *uint     `gorm:"index"`
+	TaskID         uint      `gorm:"index;not null"`
+	Reason         string    `gorm:"size:255;not null"`
+	Comment        *string   `gorm:"type:text"`
+	CreatedAt      time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type ApiActionLog struct {
@@ -285,4 +312,13 @@ type Migration struct {
 	ID        uint      `gorm:"primaryKey"`
 	Name      string    `gorm:"uniqueIndex;size:255;not null"`
 	AppliedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+}
+
+// SystemSetting provides a generic key/value store for system-wide configs
+type SystemSetting struct {
+	ID        uint      `gorm:"primaryKey"`
+	Key       string    `gorm:"uniqueIndex;size:128;not null"`
+	Value     string    `gorm:"type:text;not null"` // JSON string
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }

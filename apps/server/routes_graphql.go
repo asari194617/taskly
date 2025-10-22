@@ -31,7 +31,7 @@ func registerGraphQL(app *fiber.App) {
 		ipKey := "graphql_rate:" + c.IP()
 		ipCount, _ := RDB.Incr(c.Context(), ipKey).Result()
 		if ipCount == 1 {
-			_ = RDB.Expire(c.Context(), ipKey, 60)
+			_ = RDB.Expire(c.Context(), ipKey, 60*time.Second)
 		}
 		if ipCount > 30 {
 			return c.Status(429).JSON(fiber.Map{"error": "rate limit"})

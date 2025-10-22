@@ -28,3 +28,18 @@ bin/
 # Build artifacts
 **/build/
 **/out/
+
+# Python
+__pycache__/
+*.pyc
+
+# Go's build files
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+batches/moderation/moderation
+batches/que-manager/que-manager

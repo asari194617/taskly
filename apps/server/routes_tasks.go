@@ -51,6 +51,10 @@ func registerTasksRoutes(app *fiber.App) {
 		} else {
 			dbq = dbq.Where(eff+" >= ?", now)
 		}
+		// Hide moderated content from non-admins
+		if isAdmin, _ := userHasRole(u.ID, "admin"); !isAdmin {
+			dbq = dbq.Where("is_hidden = 0")
+		}
 		if qstr != "" {
 			like := "%" + qstr + "%"
 			dbq = dbq.Where("title LIKE ? OR description LIKE ?", like, like)

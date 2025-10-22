@@ -37,7 +37,7 @@ func registerAuthRoutes(app *fiber.App) {
 		ipKey := "login_code_req_ip:" + ip
 		ipCount, _ := RDB.Incr(c.Context(), ipKey).Result()
 		if ipCount == 1 {
-			_ = RDB.Expire(c.Context(), ipKey, 10*60)
+			_ = RDB.Expire(c.Context(), ipKey, 10*time.Minute)
 		}
 		if ipCount > 10 {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "ip rate limit"})
@@ -46,7 +46,7 @@ func registerAuthRoutes(app *fiber.App) {
 		emailKey := "login_code_req_email:" + email
 		emailCount, _ := RDB.Incr(c.Context(), emailKey).Result()
 		if emailCount == 1 {
-			_ = RDB.Expire(c.Context(), emailKey, 10*60)
+			_ = RDB.Expire(c.Context(), emailKey, 10*time.Minute)
 		}
 		if emailCount > 5 {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})
@@ -273,7 +273,7 @@ func registerAuthRoutes(app *fiber.App) {
 		ipKey := "login_attempt_ip:" + ip
 		ipCount, _ := RDB.Incr(c.Context(), ipKey).Result()
 		if ipCount == 1 {
-			_ = RDB.Expire(c.Context(), ipKey, 10*60)
+			_ = RDB.Expire(c.Context(), ipKey, 10*time.Minute)
 		}
 		if ipCount > 20 {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "ip rate limit"})
@@ -282,7 +282,7 @@ func registerAuthRoutes(app *fiber.App) {
 		emailKey := "login_attempt_email:" + u.Email
 		emailCount, _ := RDB.Incr(c.Context(), emailKey).Result()
 		if emailCount == 1 {
-			_ = RDB.Expire(c.Context(), emailKey, 10*60)
+			_ = RDB.Expire(c.Context(), emailKey, 10*time.Minute)
 		}
 		if emailCount > 10 {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})

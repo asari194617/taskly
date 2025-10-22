@@ -288,6 +288,52 @@ func runMigrations() {
 
 	migrations := []migrationFile{
 		{
+			name: "0017_system_settings",
+			statements: []string{
+				`CREATE TABLE IF NOT EXISTS system_settings (
+					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+					` + "`key`" + ` VARCHAR(128) NOT NULL UNIQUE,
+					value TEXT NOT NULL,
+					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+			},
+		},
+		{
+			name: "0016_moderation_flags",
+			statements: []string{
+				// Add is_hidden to tasks if missing
+				"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT 0",
+				// Create flagged_contents table
+				`CREATE TABLE IF NOT EXISTS flagged_contents (
+					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+					task_id BIGINT UNSIGNED NOT NULL,
+					category VARCHAR(64) NOT NULL,
+					severity VARCHAR(16) NOT NULL,
+					score DECIMAL(5,3) NULL,
+					threat BOOLEAN NOT NULL DEFAULT FALSE,
+					reason TEXT NULL,
+					model VARCHAR(64) NULL,
+					metadata JSON NULL,
+					snapshot JSON NULL,
+					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					INDEX idx_flagged_contents_task_id (task_id),
+					INDEX idx_flagged_contents_created_at (created_at)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+				// Create user_reports table
+				`CREATE TABLE IF NOT EXISTS user_reports (
+					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+					reporter_user_id BIGINT UNSIGNED NULL,
+					task_id BIGINT UNSIGNED NOT NULL,
+					reason VARCHAR(255) NOT NULL,
+					comment TEXT NULL,
+					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					INDEX idx_user_reports_task_id (task_id),
+					INDEX idx_user_reports_reporter (reporter_user_id)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+			},
+		},
+		{
 			name: "0012_timestamp_sanitize",
 			statements: []string{
 				// Temporarily relax NO_ZERO_DATE validation so we can fix bad data

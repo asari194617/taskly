@@ -77,7 +77,7 @@ func main() {
 	runMigrations()
 
 	// Auto-migrate core models (create missing tables/columns after migrations)
-	_ = DB.AutoMigrate(&Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{})
+	_ = DB.AutoMigrate(&Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{}, &FlaggedContent{}, &UserReport{}, &SystemSetting{})
 	// Ensure new group-based day shift schema exists even if SQL migrations are not applied
 	ensureDayShiftGroupSchemaAndBackfill()
 	// Ensure legacy tasks.deadline column is DATE (not DATETIME)
@@ -240,17 +240,9 @@ func main() {
 
 	// Keep recover after Sentry so panics are reported then gracefully recovered
 	app.Use(recover.New())
-	// Header masking middleware: remove/replace sensitive headers before further middlewares/logs
-	app.Use(func(c *fiber.Ctx) error {
-		// Mask Authorization and X-API-Key in request headers for downstream loggers
-		if ah := c.Get("Authorization"); ah != "" {
-			c.Request().Header.Set("Authorization", "[REDACTED]")
-		}
-		if ak := c.Get("X-API-Key"); ak != "" {
-			c.Request().Header.Set("X-API-Key", "[REDACTED]")
-		}
-		return c.Next()
-	})
+	// Note: Avoid mutating incoming Authorization/X-API-Key headers before auth checks.
+	// We already scrub sensitive data in Sentry hooks and our logger does not print headers.
+	// If header masking is needed for custom logging, perform it at log time without altering the request.
 	// Safe logger: log route pattern instead of concrete path to avoid leaking tokens
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${ip} ${status} ${latency} ${method} ${route}\n",
@@ -292,8 +284,10 @@ func main() {
 	registerAPIKeyRoutes(app)
 	register2FARoutes(app)
 	registerTasksRoutes(app)
+	registerReportRoutes(app)
 	registerAdminDayShiftRoutes(app)
 	registerAdminPermissionsRoutes(app)
+	registerAdminModerationRoutes(app)
 	registerAdminUsersRoutes(app)
 	registerIntegrationRoutes(app)
 
