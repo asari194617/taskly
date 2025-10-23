@@ -67,7 +67,7 @@ async function build() {
         }
         const hashed = sha256Hex(token);
         const [rows] = await pool.query<mysql.RowDataPacket[]>(
-          "SELECT user_id FROM mcps WHERE hashed_token = ? LIMIT 1",
+          "SELECT user_id FROM mcps WHERE hashed_token = ? AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1",
           [hashed]
         );
         if (!rows || rows.length === 0) {

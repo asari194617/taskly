@@ -112,11 +112,12 @@ type Block struct {
 }
 
 type APIKey struct {
-	ID          uint      `gorm:"primaryKey"`
-	UserID      uint      `gorm:"index;not null"`
-	HashedToken string    `gorm:"size:255;not null"`
-	Description *string   `gorm:"size:255"`
-	IsValid     bool      `gorm:"default:true"`
+	ID          uint    `gorm:"primaryKey"`
+	UserID      uint    `gorm:"index;not null"`
+	HashedToken string  `gorm:"size:255;not null"`
+	Description *string `gorm:"size:255"`
+	IsValid     bool    `gorm:"default:true"`
+	ExpiresAt   *time.Time
 	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
@@ -304,6 +305,7 @@ type MCP struct {
 	UserID      uint   `gorm:"index"`
 	HashedToken string `gorm:"size:255"`
 	Description *string
+	ExpiresAt   *time.Time
 	CreatedAt   time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 

@@ -16,6 +16,16 @@ import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 
 type IItem = {
   id: number;
@@ -81,6 +91,25 @@ export default function SettingsIcal() {
       });
     }
   }
+  const [editId, setEditId] = React.useState<number | null>(null);
+  const [editExpires, setEditExpires] = React.useState<string>("");
+  async function updateExpiry(id: number, value: string) {
+    try {
+      await gql<{ icalUpdate: boolean }>(
+        `mutation($id:Int!,$e:String){ icalUpdate(id:$id, expires_at:$e) }`,
+        { id, e: value || undefined }
+      );
+      setEditId(null);
+      setEditExpires("");
+      load();
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: e?.message,
+      });
+    }
+  }
   return (
     <SettingsShell>
       <div className="space-y-6">
@@ -139,10 +168,17 @@ export default function SettingsIcal() {
                   <TableCell>
                     {new Date(it.created_at).toLocaleString()}
                   </TableCell>
-                  <TableCell>
-                    {it.expires_at
-                      ? new Date(it.expires_at).toLocaleString()
-                      : "-"}
+                  <TableCell className="space-x-2">
+                    {it.expires_at ? (
+                      <>
+                        <span>{new Date(it.expires_at).toLocaleString()}</span>
+                        {new Date(it.expires_at) <= new Date() && (
+                          <Badge variant="destructive">期限切れ</Badge>
+                        )}
+                      </>
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell className="text-right flex gap-2 justify-end">
                     <Button
@@ -151,6 +187,41 @@ export default function SettingsIcal() {
                     >
                       {dict.common.copy}
                     </Button>
+                    <Dialog
+                      onOpenChange={(open) => {
+                        if (open) {
+                          setEditId(it.id);
+                          setEditExpires(it.expires_at || "");
+                        } else {
+                          setEditId(null);
+                          setEditExpires("");
+                        }
+                      }}
+                    >
+                      <DialogTrigger asChild>
+                        <Button variant="outline">期限を更新</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>有効期限を設定/更新</DialogTitle>
+                          <DialogDescription>
+                            空欄で保存すると期限を解除します。
+                          </DialogDescription>
+                        </DialogHeader>
+                        <Input
+                          value={editExpires}
+                          onChange={(e) => setEditExpires(e.target.value)}
+                          placeholder="例: 2025-12-31T23:59:59Z"
+                        />
+                        <DialogFooter>
+                          <Button
+                            onClick={() => updateExpiry(editId!, editExpires)}
+                          >
+                            保存
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                     <Button variant="destructive" onClick={() => revoke(it.id)}>
                       {dict.common.delete}
                     </Button>

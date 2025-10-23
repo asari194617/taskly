@@ -288,6 +288,14 @@ func runMigrations() {
 
 	migrations := []migrationFile{
 		{
+			name: "0018_api_mcp_expiry",
+			statements: []string{
+				// Add expires_at to api_keys and mcps (nullable)
+				"ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS expires_at DATETIME NULL",
+				"ALTER TABLE mcps ADD COLUMN IF NOT EXISTS expires_at DATETIME NULL",
+			},
+		},
+		{
 			name: "0017_system_settings",
 			statements: []string{
 				`CREATE TABLE IF NOT EXISTS system_settings (
@@ -711,7 +719,7 @@ func userFromAPIKey(c *fiber.Ctx) bool {
 	}
 	hashed := sha256Hex([]byte(apiKey))
 	var key APIKey
-	if err := DB.Where("hashed_token = ? AND is_valid = 1", hashed).First(&key).Error; err != nil {
+	if err := DB.Where("hashed_token = ? AND is_valid = 1 AND (expires_at IS NULL OR expires_at > ?)", hashed, time.Now()).First(&key).Error; err != nil {
 		return false
 	}
 	var u User

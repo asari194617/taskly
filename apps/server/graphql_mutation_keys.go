@@ -23,6 +23,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		}),
 		Args: graphql.FieldConfigArgument{
 			"description": &graphql.ArgumentConfig{Type: graphql.String},
+			"expires_at":  &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -52,7 +53,15 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if genErr != nil {
 					return nil, fmt.Errorf("gen")
 				}
-				rec := APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr}
+				var expPtr *time.Time
+				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
+					if t, err := time.Parse(time.RFC3339, s); err == nil {
+						expPtr = &t
+					} else {
+						return nil, fmt.Errorf("invalid expires_at")
+					}
+				}
+				rec := APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -74,6 +83,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 			"id":          &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			"is_valid":    &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"description": &graphql.ArgumentConfig{Type: graphql.String},
+			"expires_at":  &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -94,6 +104,18 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						rec.Description = nil
 					} else {
 						rec.Description = &v
+					}
+				}
+				if v, ok := p.Args["expires_at"].(string); ok {
+					vv := strings.TrimSpace(v)
+					if vv == "" {
+						rec.ExpiresAt = nil
+					} else {
+						if t, err := time.Parse(time.RFC3339, vv); err == nil {
+							rec.ExpiresAt = &t
+						} else {
+							return nil, fmt.Errorf("invalid expires_at")
+						}
 					}
 				}
 				if err := DB.Save(&rec).Error; err != nil {
@@ -169,6 +191,45 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 	}
 
+	// Update iCal token expiration
+	fields["icalUpdate"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"id":         &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"expires_at": &graphql.ArgumentConfig{Type: graphql.String},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				id, _ := p.Args["id"].(int)
+				var rec IcalKey
+				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&rec).Error; err != nil {
+					return false, fmt.Errorf("not found")
+				}
+				if v, ok := p.Args["expires_at"].(string); ok {
+					vv := strings.TrimSpace(v)
+					if vv == "" {
+						rec.ExpiresAt = nil
+					} else {
+						if t, err := time.Parse(time.RFC3339, vv); err == nil {
+							rec.ExpiresAt = &t
+						} else {
+							return false, fmt.Errorf("invalid expires_at")
+						}
+					}
+				}
+				if err := DB.Save(&rec).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	fields["mcpCreate"] = &graphql.Field{
 		Type: graphql.NewObject(graphql.ObjectConfig{
 			Name: "McpCreateResult",
@@ -177,6 +238,9 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				"token": &graphql.Field{Type: graphql.String},
 			},
 		}),
+		Args: graphql.FieldConfigArgument{
+			"expires_at": &graphql.ArgumentConfig{Type: graphql.String},
+		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
 				if !userFromSession(c) {
@@ -190,7 +254,15 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if err != nil {
 					return nil, fmt.Errorf("gen")
 				}
-				rec := MCP{UserID: u.ID, HashedToken: hashed}
+				var expPtr *time.Time
+				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
+					if t, e := time.Parse(time.RFC3339, s); e == nil {
+						expPtr = &t
+					} else {
+						return nil, fmt.Errorf("invalid expires_at")
+					}
+				}
+				rec := MCP{UserID: u.ID, HashedToken: hashed, ExpiresAt: expPtr}
 				_ = DB.Where("user_id = ?", u.ID).Delete(&MCP{}).Error
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
@@ -214,6 +286,44 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 					return false, fmt.Errorf("db")
 				}
 				_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
+	// Update MCP token expiration
+	fields["mcpUpdate"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"expires_at": &graphql.ArgumentConfig{Type: graphql.String},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				var rec MCP
+				if err := DB.Where("user_id = ?", u.ID).First(&rec).Error; err != nil {
+					return false, fmt.Errorf("not found")
+				}
+				if v, ok := p.Args["expires_at"].(string); ok {
+					vv := strings.TrimSpace(v)
+					if vv == "" {
+						rec.ExpiresAt = nil
+					} else {
+						if t, err := time.Parse(time.RFC3339, vv); err == nil {
+							rec.ExpiresAt = &t
+						} else {
+							return false, fmt.Errorf("invalid expires_at")
+						}
+					}
+				}
+				if err := DB.Save(&rec).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.update"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

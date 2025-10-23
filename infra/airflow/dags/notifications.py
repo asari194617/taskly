@@ -56,6 +56,9 @@ with DAG(
             "SMTP_USER": os.environ.get("SMTP_USER", os.environ.get("SMTP_FROM", "noreply@taskly.local")),
             "SMTP_PASSWORD": os.environ.get("SMTP_PASSWORD", ""),
             "SMTP_TLS": os.environ.get("SMTP_TLS", "starttls"),
+            "EMAIL_COMPOSE_HTTP_ADDR": os.environ.get("EMAIL_COMPOSE_HTTP_ADDR", "http://email-compose:50052"),
+            "APP_NAME": os.environ.get("APP_NAME", "Taskly"),
+            "LOCALE": os.environ.get("LOCALE", "ja"),
         },
     )
 

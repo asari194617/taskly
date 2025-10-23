@@ -130,6 +130,7 @@ func createGQLTypes() *gqlTypes {
 			"id":          &graphql.Field{Type: graphql.Int},
 			"description": &graphql.Field{Type: graphql.String},
 			"is_valid":    &graphql.Field{Type: graphql.Boolean},
+			"expires_at":  &graphql.Field{Type: graphql.String},
 			"created_at":  &graphql.Field{Type: graphql.String},
 		},
 	})
@@ -148,8 +149,9 @@ func createGQLTypes() *gqlTypes {
 	mcpInfoType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "McpInfo",
 		Fields: graphql.Fields{
-			"enabled":   &graphql.Field{Type: graphql.Boolean},
-			"has_token": &graphql.Field{Type: graphql.Boolean},
+			"enabled":    &graphql.Field{Type: graphql.Boolean},
+			"has_token":  &graphql.Field{Type: graphql.Boolean},
+			"expires_at": &graphql.Field{Type: graphql.String},
 		},
 	})
 

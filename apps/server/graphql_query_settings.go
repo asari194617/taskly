@@ -36,7 +36,13 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 							"id":          it.ID,
 							"description": it.Description,
 							"is_valid":    it.IsValid,
-							"created_at":  it.CreatedAt.Format(time.RFC3339),
+							"expires_at": func() any {
+								if it.ExpiresAt != nil {
+									return it.ExpiresAt.Format(time.RFC3339)
+								}
+								return nil
+							}(),
+							"created_at": it.CreatedAt.Format(time.RFC3339),
 						})
 					}
 					return out, nil
@@ -88,9 +94,13 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 					}
 					u := c.Locals("user").(*User)
 					enabled := strings.ToLower(env("MCP_ENABLED", "true")) == "true"
-					var cnt int64
-					_ = DB.Model(&MCP{}).Where("user_id = ?", u.ID).Count(&cnt).Error
-					return map[string]any{"enabled": enabled, "has_token": cnt > 0}, nil
+					var rec MCP
+					_ = DB.Where("user_id = ?", u.ID).Order("id DESC").First(&rec).Error
+					var expires any
+					if rec.ID != 0 && rec.ExpiresAt != nil {
+						expires = rec.ExpiresAt.Format(time.RFC3339)
+					}
+					return map[string]any{"enabled": enabled, "has_token": rec.ID != 0, "expires_at": expires}, nil
 				}
 				return nil, fmt.Errorf("context missing")
 			},

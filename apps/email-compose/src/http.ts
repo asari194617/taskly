@@ -2,6 +2,10 @@ import http from "node:http";
 import { render } from "@react-email/render";
 import { LoginCodeEmail } from "./templates/LoginCode.js";
 import { ModerationAlertEmail } from "./templates/ModerationAlert.js";
+import {
+  TaskDigestEmail,
+  type TaskDigestItem,
+} from "./templates/TaskDigest.js";
 import { t as translate } from "./i18n.js";
 
 export function startHttpServer(port: number) {
@@ -54,6 +58,32 @@ export function startHttpServer(port: number) {
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
         const subject = t("emails:moderation_alert.subject", { appName });
+        const out = JSON.stringify({ subject, html, text });
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        return res.end(out);
+      }
+      if (req.method === "POST" && req.url === "/compose/task-digest") {
+        const chunks: Buffer[] = [];
+        for await (const ch of req) chunks.push(ch as Buffer);
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const locale = (body.locale as string) || "ja";
+        const appName = (body.app_name as string) || "Taskly";
+        const items: TaskDigestItem[] = Array.isArray(body.items)
+          ? body.items
+          : [];
+        const t: (k: string, o?: any) => string = (key: string, o?: any) =>
+          translate(key, { lng: locale, ...(o || {}) });
+        const element = TaskDigestEmail({ appName, items, t });
+        const html = render(element, { pretty: true });
+        const text = render(element, { plainText: true });
+        let subject: string;
+        if (items.length === 1) {
+          const i = items[0];
+          subject = `【${i.when_label}まで】${i.subject}: ${i.title}`;
+        } else {
+          subject = `期限が近い課題が${items.length}件あります`;
+        }
         const out = JSON.stringify({ subject, html, text });
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json");

@@ -3,8 +3,11 @@ package main
 import (
 	"crypto/tls"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/smtp"
 	"os"
 	"strings"
@@ -39,17 +42,32 @@ func main() {
 		return
 	}
 
-	sent := 0
+	// Group by user and send digest per user
+	groups := map[int64][]QueueItem{}
 	for _, it := range items {
-		if err := deliverEmail(db, it); err != nil {
-			log.Printf("deliver failed id=%d: %v\n", it.ID, err)
-			_ = markQueueError(db, it.ID, err)
+		if !it.UserID.Valid || it.UserID.Int64 == 0 {
+			// skip items without a direct recipient for now
 			continue
 		}
-		sent++
-		_ = markQueueProcessed(db, it.ID)
+		groups[it.UserID.Int64] = append(groups[it.UserID.Int64], it)
 	}
-	log.Printf("email notifications sent: %d\n", sent)
+
+	totalSent := 0
+	for uid, group := range groups {
+		if err := deliverGroupEmail(db, uid, group); err != nil {
+			log.Printf("deliver group failed uid=%d: %v\n", uid, err)
+			// mark errors on each item
+			for _, it := range group {
+				_ = markQueueError(db, it.ID, err)
+			}
+			continue
+		}
+		totalSent++
+		for _, it := range group {
+			_ = markQueueProcessed(db, it.ID)
+		}
+	}
+	log.Printf("email notifications sent (groups): %d\n", totalSent)
 }
 
 func fetchPendingEmailQueue(db *sql.DB) ([]QueueItem, error) {
@@ -69,9 +87,9 @@ func fetchPendingEmailQueue(db *sql.DB) ([]QueueItem, error) {
 	return out, nil
 }
 
-func deliverEmail(db *sql.DB, it QueueItem) error {
+func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 	// Resolve recipient
-	to, err := resolveRecipientEmail(db, it.UserID)
+	to, err := resolveRecipientEmail(db, sql.NullInt64{Int64: uid, Valid: true})
 	if err != nil {
 		return fmt.Errorf("resolve: %w", err)
 	}
@@ -86,20 +104,41 @@ func deliverEmail(db *sql.DB, it QueueItem) error {
 	pass := os.Getenv("SMTP_PASSWORD")
 	addr := fmt.Sprintf("%s:%s", host, port)
 
+	// Compose via email-compose HTTP
+	composeAddr := valueOr(os.Getenv("EMAIL_COMPOSE_HTTP_ADDR"), "http://email-compose:50052")
+	locale := valueOr(os.Getenv("LOCALE"), "ja")
+	appName := valueOr(os.Getenv("APP_NAME"), "Taskly")
+	payload := buildComposePayload(locale, appName, group)
+	subj, text, html, err := callComposeTaskDigest(composeAddr, payload)
+	if err != nil {
+		return fmt.Errorf("compose: %w", err)
+	}
+
 	header := make(map[string]string)
 	header["From"] = from
 	header["To"] = to
-	header["Subject"] = fmt.Sprintf("[%s] %s - %s", it.WhenLabel, it.Subject, it.Title)
+	header["Subject"] = subj
 	header["Date"] = time.Now().Format(time.RFC1123Z)
 	header["MIME-Version"] = "1.0"
-	header["Content-Type"] = "text/plain; charset=UTF-8"
+	boundary := fmt.Sprintf("==TASKLY_%d==", time.Now().UnixNano())
+	header["Content-Type"] = fmt.Sprintf("multipart/alternative; boundary=%s", boundary)
 
 	var msg strings.Builder
 	for k, v := range header {
 		msg.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 	}
 	msg.WriteString("\r\n")
-	msg.WriteString(it.Body)
+	// text part
+	msg.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n\r\n")
+	msg.WriteString(text)
+	msg.WriteString("\r\n")
+	// html part
+	msg.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	msg.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
+	msg.WriteString(html)
+	msg.WriteString("\r\n")
+	msg.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 
 	// AUTH if password is provided, otherwise attempt unauthenticated
 	var auth smtp.Auth
@@ -145,6 +184,56 @@ func deliverEmail(db *sql.DB, it QueueItem) error {
 	}
 	return c.Quit()
 }
+
+type composePayload struct {
+	Locale  string              `json:"locale"`
+	AppName string              `json:"app_name"`
+	Items   []map[string]string `json:"items"`
+}
+
+func buildComposePayload(locale, appName string, items []QueueItem) composePayload {
+	out := composePayload{Locale: locale, AppName: appName}
+	for _, it := range items {
+		out.Items = append(out.Items, map[string]string{
+			"when_label": it.WhenLabel,
+			"subject":    it.Subject,
+			"title":      it.Title,
+			"body":       it.Body,
+		})
+	}
+	return out
+}
+
+func callComposeTaskDigest(base string, payload composePayload) (subject, text, html string, err error) {
+	url := strings.TrimRight(base, "/") + "/compose/task-digest"
+	body, _ := jsonMarshal(payload)
+	req, _ := http.NewRequest("POST", url, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	cli := &http.Client{Timeout: 10 * time.Second}
+	resp, err := cli.Do(req)
+	if err != nil {
+		return "", "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return "", "", "", fmt.Errorf("compose http %d: %s", resp.StatusCode, string(b))
+	}
+	var out struct {
+		Subject string `json:"subject"`
+		Text    string `json:"text"`
+		Html    string `json:"html"`
+	}
+	dec := jsonNewDecoder(resp.Body)
+	if err := dec.Decode(&out); err != nil {
+		return "", "", "", err
+	}
+	return out.Subject, out.Text, out.Html, nil
+}
+
+// Small wrappers to avoid importing full encoding/json symbol names everywhere
+func jsonMarshal(v any) ([]byte, error)        { return json.Marshal(v) }
+func jsonNewDecoder(r io.Reader) *json.Decoder { return json.NewDecoder(r) }
 
 func resolveRecipientEmail(db *sql.DB, userID sql.NullInt64) (string, error) {
 	// If userID is null or 0, skip (no direct recipient). In future: expand to assignment owners.

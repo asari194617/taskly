@@ -14,6 +14,8 @@ import (
 type Task struct {
 	ID                uint
 	AddedUserID       uint
+	SubjectID         uint
+	SubjectName       string
 	Title             string
 	Description       *string
 	Deadline          time.Time
@@ -70,7 +72,7 @@ func main() {
 	}
 	items := make([]NotifyItem, 0, 256)
 
-	// 期限が近い課題（今日〜明日までの「実際の締切時刻」）を抽出
+	// 期限が近い課題（今日〜あさってまでの「実際の締切時刻」）を抽出
 	// サーバーと同じロジック（deadline + deadline_until の合成）で絞り込む
 	eff := "TIMESTAMP(deadline, CASE " +
 		"WHEN deadline_until='MORNING' THEN '07:59:59' " +
@@ -84,10 +86,11 @@ func main() {
 		"WHEN deadline_until='P8' THEN '22:50:00' " +
 		"ELSE '23:59:59' END)"
 	start := now
-	end := time.Date(now.Year(), now.Month(), now.Day()+1, 23, 59, 59, 0, now.Location())
+	// Include up to the end of the day-after-tomorrow so that 明後日の課題 are covered
+	end := time.Date(now.Year(), now.Month(), now.Day()+2, 23, 59, 59, 0, now.Location())
 	rows, err := db.Query(
-		"SELECT id, added_user_id, title, description, deadline, deadline_since, deadline_until, is_require_hand_in, self_check_required "+
-			"FROM tasks WHERE "+eff+" BETWEEN ? AND ?",
+		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
+			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE "+eff+" BETWEEN ? AND ?",
 		start, end,
 	)
 	if err != nil {
@@ -96,7 +99,7 @@ func main() {
 		for rows.Next() {
 			var t Task
 			var desc sql.NullString
-			if err := rows.Scan(&t.ID, &t.AddedUserID, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.SelfCheckRequired); err != nil {
+			if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.SelfCheckRequired); err != nil {
 				continue
 			}
 			if desc.Valid {
@@ -107,10 +110,14 @@ func main() {
 			if isUserDeleted(db, t.AddedUserID) || isUserBlocked(db, t.AddedUserID) {
 				continue
 			}
+			subj := strings.TrimSpace(t.SubjectName)
+			if subj == "" {
+				subj = "課題"
+			}
 			items = append(items, NotifyItem{
 				Kind:      "task",
 				WhenLabel: label,
-				Subject:   "課題",
+				Subject:   subj,
 				Title:     t.Title,
 				Body:      fmt.Sprintf("%s まで", deadlineLabel(t, t.Deadline)),
 				UserID:    t.AddedUserID,
