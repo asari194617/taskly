@@ -143,6 +143,8 @@ func registerTasksRoutes(app *fiber.App) {
 		}
 		// Asynchronous Teams notification via Outlook/Power Automate email
 		go sendTeamsNotifyEmailForTask(rec)
+		// Async Discord notification
+		go sendDiscordContent(fmt.Sprintf("[Task Created] id=%d title=%q by=%s", rec.ID, rec.Title, u.Email))
 		return c.Status(201).JSON(rec)
 	})
 
@@ -216,6 +218,8 @@ func registerTasksRoutes(app *fiber.App) {
 			msg := buildTaskUpdateMessageJa(before, rec)
 			go sendTeamsReplyEmail(rec.ID, mid, msg)
 		}
+		// Async Discord notification
+		go sendDiscordContent(fmt.Sprintf("[Task Updated] id=%d title=%q by=%s", rec.ID, rec.Title, u.Email))
 		return c.JSON(rec)
 	})
 
@@ -250,6 +254,8 @@ func registerTasksRoutes(app *fiber.App) {
 			msg := buildTaskDeleteMessageJa(rec)
 			go sendTeamsReplyEmail(rec.ID, mid, msg)
 		}
+		// Async Discord notification
+		go sendDiscordContent(fmt.Sprintf("[Task Deleted] id=%d title=%q by=%s", rec.ID, rec.Title, u.Email))
 		return c.SendStatus(204)
 	})
 }

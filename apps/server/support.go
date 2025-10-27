@@ -1542,16 +1542,21 @@ func notifyDayShift(ts time.Time) error {
 	if hook == "" {
 		return nil
 	}
-	content := fmt.Sprintf("Day shift for %s: %d user(s) assigned.", ts.Format("2006-01-02"), len(users))
-	payload := fmt.Sprintf(`{"content": %q}`, content)
-	req, _ := http.NewRequest("POST", hook, strings.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err == nil && resp != nil {
-		_ = resp.Body.Close()
+	// Load user display names/emails for context
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		var usr User
+		if err := DB.Select("email", "display_name").First(&usr, u.UserID).Error; err == nil {
+			if strings.TrimSpace(usr.DisplayName) != "" {
+				names = append(names, usr.DisplayName)
+			} else {
+				names = append(names, usr.Email)
+			}
+		}
 	}
-	return err
+	content := fmt.Sprintf("[DayShift Notify] date=%s users=%s initiator=scheduler", ts.Format("2006-01-02"), strings.Join(names, ", "))
+	go sendDiscordContent(content)
+	return nil
 }
 
 func tasksNotifyScheduler(notifyHHmm string) {
@@ -1606,6 +1611,21 @@ func buildEmailHTML(title, contentHTML string) string {
       <div style="text-align:center; color:#64748b; font-size:12px; margin-top:16px;">Taskly</div>
     </div>
   </body></html>`, icalEscape(title), contentHTML)
+}
+
+// sendDiscordContent posts a simple content message to Discord webhook if configured. Fire-and-forget friendly.
+func sendDiscordContent(content string) {
+	hook := env("DISCORD_WEBHOOK_URL", "")
+	if strings.TrimSpace(hook) == "" || strings.TrimSpace(content) == "" {
+		return
+	}
+	payload := fmt.Sprintf(`{"content": %q}`, content)
+	req, _ := http.NewRequest("POST", hook, strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	if resp, err := client.Do(req); err == nil && resp != nil {
+		_ = resp.Body.Close()
+	}
 }
 
 func performDayShiftRotation(now time.Time) error {
@@ -1711,18 +1731,9 @@ func ensureNextCycleIfNearEnd(now time.Time) error {
 	if now.After(cyc.FinishDate.AddDate(0, 0, -3)) {
 		var next DayShiftCycle
 		if err := DB.Where("begin_date > ?", cyc.FinishDate).Order("begin_date ASC").First(&next).Error; err != nil {
-			hook := env("DISCORD_WEBHOOK_URL", "")
-			if hook != "" {
-				content := fmt.Sprintf("[DayShift] No next cycle defined after %s", cyc.FinishDate.Format("2006-01-02"))
-				payload := fmt.Sprintf(`{"content": %q}`, content)
-				req, _ := http.NewRequest("POST", hook, strings.NewReader(payload))
-				req.Header.Set("Content-Type", "application/json")
-				client := &http.Client{Timeout: 5 * time.Second}
-				resp, err := client.Do(req)
-				if err == nil && resp != nil {
-					_ = resp.Body.Close()
-				}
-			}
+			// Async Discord notice to define next cycle
+			content := fmt.Sprintf("[DayShift] No next cycle defined after %s", cyc.FinishDate.Format("2006-01-02"))
+			go sendDiscordContent(content)
 			return nil
 		}
 		for dt := dateOnly(next.BeginDate); !dt.After(dateOnly(next.FinishDate)); dt = dt.Add(24 * time.Hour) {

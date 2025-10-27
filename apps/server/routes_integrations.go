@@ -308,8 +308,8 @@ func registerIntegrationRoutes(app *fiber.App) {
 		if err := performDayShiftRotation(target); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "rotation"})
 		}
-		// Notify Discord via embeds
-		notifyDayShiftRotationDiscord(target)
+		// Notify Discord via embeds (async)
+		go notifyDayShiftRotationDiscord(target)
 		return c.Status(202).JSON(fiber.Map{"ok": true, "rotated": true})
 	})
 }

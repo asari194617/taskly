@@ -57,7 +57,8 @@ func main() {
 	// Select tasks created in the last day that are not hidden
 	rows, err := db.Query(`SELECT id, added_user_id, title, description, created_at, updated_at FROM tasks WHERE (created_at >= NOW() - INTERVAL 1 DAY OR updated_at >= NOW() - INTERVAL 1 DAY) AND (is_hidden = 0 OR is_hidden IS NULL)`)
 	if err != nil {
-		log.Fatalf("query tasks: %v", err)
+		log.Printf("query tasks failed (continuing): %v", err)
+		return
 	}
 	defer rows.Close()
 

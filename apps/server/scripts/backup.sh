@@ -1,69 +1,56 @@
-#!/bin/sh#!/usr/bin/env bash
+#!/usr/bin/env bash
 
-set -euset -euo pipefail
+set -euo pipefail
 
+# Required envs: MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+# Optional: MYSQLDUMP_EXTRA_OPTS, BACKUP_DIR, TMP_DIR, BACKUP_RETENTION_DAYS, FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_DIR
 
+MYSQL_HOST=${MYSQL_HOST:-localhost}
+MYSQL_PORT=${MYSQL_PORT:-3306}
+MYSQL_USER=${MYSQL_USER:-root}
+MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+MYSQL_DATABASE=${MYSQL_DATABASE:-taskly}
 
-DB_HOST=${DB_HOST:-localhost}# Required envs:
+OUT_DIR=${BACKUP_DIR:-/var/backups}
+TMP_DIR=${TMP_DIR:-/tmp}
+RETENTION=${BACKUP_RETENTION_DAYS:-7}
+FTP_DIR=${FTP_DIR:-/backups}
 
-DB_PORT=${DB_PORT:-3306}# MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
-
-MYSQL_USER=${MYSQL_USER:-root}# FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_DIR (e.g., /backups)
-
-MYSQL_PASSWORD=${MYSQL_PASSWORD:-}# BACKUP_RETENTION_DAYS (default 7)
-
-MYSQL_DATABASE=${MYSQL_DATABASE:-taskly}# Optional: MYSQLDUMP_EXTRA_OPTS
-
-
-
-OUT_DIR=${BACKUP_DIR:-/var/backups}RETENTION=${BACKUP_RETENTION_DAYS:-7}
-
-mkdir -p "$OUT_DIR"STAMP=$(date +"%Y%m%d-%H%M%S")
-
+mkdir -p "$OUT_DIR" "$TMP_DIR"
+STAMP=$(date +"%Y%m%d-%H%M%S")
 BACKUP_NAME="backup-${STAMP}.sql.gz"
+BACKUP_PATH="${TMP_DIR}/${BACKUP_NAME}"
+OUT_FILE="${OUT_DIR}/${BACKUP_NAME}"
 
-STAMP=$(date +%Y%m%d-%H%M%S)TMP_DIR=${TMP_DIR:-/tmp}
-
-OUT_FILE="$OUT_DIR/backup-$STAMP.sql.gz"BACKUP_PATH="${TMP_DIR}/${BACKUP_NAME}"
-
-
-
-# Requires mariadb-client in image (installed in Dockerfile)if [[ -z "${MYSQL_HOST:-}" || -z "${MYSQL_USER:-}" || -z "${MYSQL_PASSWORD:-}" || -z "${MYSQL_DATABASE:-}" ]]; then
-
-mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" | gzip > "$OUT_FILE"  echo "[backup] Missing MySQL envs" >&2
-
-chmod 600 "$OUT_FILE"  exit 1
-
-fi
-
-echo "Backup created: $OUT_FILE"FTP_DIR=${FTP_DIR:-/backups}
-if [[ -z "${FTP_HOST:-}" || -z "${FTP_USER:-}" || -z "${FTP_PASSWORD:-}" ]]; then
-  echo "[backup] Missing FTP envs" >&2
+if [[ -z "${MYSQL_HOST}" || -z "${MYSQL_USER}" || -z "${MYSQL_DATABASE}" ]]; then
+  echo "[backup] Missing MySQL envs" >&2
   exit 1
 fi
 
-# Dump
 echo "[backup] Dumping MySQL ${MYSQL_DATABASE}..."
-mysqldump -h"${MYSQL_HOST}" -P"${MYSQL_PORT:-3306}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
+mysqldump -h"${MYSQL_HOST}" -P"${MYSQL_PORT}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
   --single-transaction --quick --routines --events ${MYSQLDUMP_EXTRA_OPTS:-} "${MYSQL_DATABASE}" | gzip -c > "${BACKUP_PATH}"
 
-echo "[backup] Uploading to FTP via curl..."
-FTP_URL="ftp://${FTP_HOST}${FTP_DIR}/${BACKUP_NAME}"
-curl -sS --ftp-create-dirs --user "${FTP_USER}:${FTP_PASSWORD}" -T "${BACKUP_PATH}" "${FTP_URL}"
-# Set permission 600 if server supports SITE CHMOD
-curl -sS --user "${FTP_USER}:${FTP_PASSWORD}" -Q "SITE CHMOD 600 ${FTP_DIR}/${BACKUP_NAME}" "ftp://${FTP_HOST}"
-# Retention: list only names and delete older ones beyond RETENTION; assumes lexicographic sort by timestamp
-LIST=$(curl -sS --list-only --user "${FTP_USER}:${FTP_PASSWORD}" "ftp://${FTP_HOST}${FTP_DIR}/" | sort)
-COUNT=$(echo "$LIST" | wc -l | tr -d ' ')
-KEEP=${RETENTION}
-if [[ ${COUNT} -gt ${KEEP} ]]; then
-  DEL_NUM=$((COUNT-KEEP))
-  DEL_LIST=$(echo "$LIST" | head -n ${DEL_NUM})
-  while IFS= read -r f; do
-    [[ -n "$f" ]] && curl -sS --user "${FTP_USER}:${FTP_PASSWORD}" -Q "DELE ${FTP_DIR}/${f}" "ftp://${FTP_HOST}"
-  done <<< "$DEL_LIST"
+install -m 600 "${BACKUP_PATH}" "${OUT_FILE}"
+echo "[backup] Local backup created: ${OUT_FILE} (mode 600)"
+
+if [[ -n "${FTP_HOST:-}" && -n "${FTP_USER:-}" && -n "${FTP_PASSWORD:-}" ]]; then
+  echo "[backup] Uploading to FTP via curl..."
+  FTP_URL="ftp://${FTP_HOST}${FTP_DIR}/${BACKUP_NAME}"
+  curl -sS --ftp-create-dirs --user "${FTP_USER}:${FTP_PASSWORD}" -T "${BACKUP_PATH}" "${FTP_URL}"
+  # Attempt to set permission 600 if server supports SITE CHMOD (best effort)
+  curl -sS --user "${FTP_USER}:${FTP_PASSWORD}" -Q "SITE CHMOD 600 ${FTP_DIR}/${BACKUP_NAME}" "ftp://${FTP_HOST}" || true
+  # Retention on FTP: keep latest ${RETENTION}
+  LIST=$(curl -sS --list-only --user "${FTP_USER}:${FTP_PASSWORD}" "ftp://${FTP_HOST}${FTP_DIR}/" | sort)
+  COUNT=$(echo "$LIST" | wc -l | tr -d ' ')
+  if [[ ${COUNT} -gt ${RETENTION} ]]; then
+    DEL_NUM=$((COUNT-RETENTION))
+    echo "$LIST" | head -n ${DEL_NUM} | while IFS= read -r f; do
+      [[ -n "$f" ]] && curl -sS --user "${FTP_USER}:${FTP_PASSWORD}" -Q "DELE ${FTP_DIR}/${f}" "ftp://${FTP_HOST}" || true
+    done
+  fi
 fi
 
-# Local cleanup
+# Local cleanup of temp file
 rm -f "${BACKUP_PATH}"
 echo "[backup] Done"

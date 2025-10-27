@@ -7,7 +7,9 @@
     "dev": "node --watch dist/index.js",
     "start": "node dist/index.js",
     "start:stdio": "node dist/stdio.js",
-    "link": "npm link"
+    "link": "npm link",
+    "test": "jest --config ./jest.config.cjs --runInBand",
+    "test:watch": "jest --config ./jest.config.cjs --watch"
   },
   "bin": {
     "taskly-mcp": "bin/taskly-mcp"
@@ -22,6 +24,10 @@
   },
   "devDependencies": {
     "@types/node": "20.12.12",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "jest": "29.7.0",
+    "ts-jest": "29.2.5",
+    "@types/jest": "29.5.12",
+    "@jest/types": "29.6.3"
   }
 }
