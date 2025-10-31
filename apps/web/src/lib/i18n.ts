@@ -222,8 +222,8 @@ export const t = (lang: Lang) => ({
     notifications: lang === "ja" ? "通知設定" : "Notification Settings",
     notificationsDesc:
       lang === "ja"
-        ? "メール・Web Push など（準備中）"
-        : "Email, web push, etc. (Coming soon)",
+        ? "メール・Web Push など"
+        : "Email, web push, etc.",
     apiKeys: lang === "ja" ? "APIキーの設定" : "API Key Settings",
     apiKeysDesc:
       lang === "ja" ? "APIキーの発行と管理" : "Issue and manage API keys",
@@ -320,8 +320,8 @@ export const t = (lang: Lang) => ({
     heading: lang === "ja" ? "通知設定" : "Notification Settings",
     emailDesc:
       lang === "ja"
-        ? "タスクや日直の更新をメールで受け取ります（準備中）。"
-        : "Receive updates by email (coming soon).",
+        ? "タスクや日直の更新をメールで受け取ります。"
+        : "Receive updates by email.",
     webPush: lang === "ja" ? "Web Push" : "Web Push",
     daily:
       lang === "ja"
