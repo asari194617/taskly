@@ -30,6 +30,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { CircleHelp as CircleQuestionMark } from "lucide-react";
 
 type McpInfo = {
   enabled: boolean;
@@ -48,8 +50,26 @@ export default function SettingsMcp() {
   const [creating, setCreating] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const copiedTimerRef = React.useRef<number | null>(null);
-  const [expires, setExpires] = React.useState<string>("");
+  const [expires, setExpires] = React.useState<string>(""); // local input
   const [editExpires, setEditExpires] = React.useState<string>("");
+  const HELP_URL = (import.meta as any).env?.PUBLIC_HELP_MCP || "/docs/mcp";
+
+  function toRFC3339(input: string): string | undefined {
+    const v = (input || "").trim();
+    if (!v) return undefined;
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return undefined;
+    return d.toISOString();
+  }
+  function fromRFC3339(s?: string | null): string {
+    if (!s) return "";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate()
+    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
 
   async function loadInfo() {
     try {
@@ -89,7 +109,7 @@ export default function SettingsMcp() {
       setCreating(true);
       const d = await gql<{ mcpCreate: { ok: boolean; token: string } }>(
         `mutation($e:String){ mcpCreate(expires_at:$e){ ok token } }`,
-        { e: expires || undefined }
+        { e: toRFC3339(expires) }
       );
       setCreatedToken(d.mcpCreate.token);
       setExpires("");
@@ -126,7 +146,7 @@ export default function SettingsMcp() {
     try {
       await gql<{ mcpUpdate: boolean }>(
         `mutation($e:String){ mcpUpdate(expires_at:$e) }`,
-        { e: editExpires || undefined }
+        { e: toRFC3339(editExpires) }
       );
       toast({ title: dict.toast.updated });
       setEditExpires("");
@@ -146,7 +166,23 @@ export default function SettingsMcp() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">{dict.settingsMcp.heading}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">{dict.settingsMcp.heading}</h1>
+          {HELP_URL && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a href={HELP_URL} target="_blank" rel="noreferrer">
+                    <Button variant="ghost" size="icon" aria-label="ヘルプ">
+                      <CircleQuestionMark />
+                    </Button>
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>ヘルプ</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
         <Alert>
           <AlertTitle>{dict.common.warning}</AlertTitle>
           <AlertDescription>{dict.settingsMcp.shareWarning}</AlertDescription>
@@ -185,7 +221,7 @@ export default function SettingsMcp() {
                       <Dialog
                         onOpenChange={(open) => {
                           if (open) {
-                            setEditExpires(info?.expires_at || "");
+                            setEditExpires(fromRFC3339(info?.expires_at));
                           } else {
                             setEditExpires("");
                           }
@@ -200,14 +236,11 @@ export default function SettingsMcp() {
                           </DialogHeader>
                           <div className="space-y-3">
                             <div>
-                              <div className="text-sm mb-1">
-                                有効期限(任意, RFC3339)
-                              </div>
-                              <input
-                                className="w-full h-9 rounded border bg-transparent px-3 text-sm"
+                              <div className="text-sm mb-1">有効期限(任意)</div>
+                              <DateTimePicker
                                 value={editExpires}
-                                onChange={(e) => setEditExpires(e.target.value)}
-                                placeholder="例: 2025-12-31T23:59:59Z"
+                                onChange={setEditExpires}
+                                placeholder="日時を選択"
                               />
                             </div>
                             <DialogFooter>
@@ -303,14 +336,11 @@ export default function SettingsMcp() {
                         ) : (
                           <div className="space-y-3">
                             <div>
-                              <div className="text-sm mb-1">
-                                有効期限(任意, RFC3339)
-                              </div>
-                              <input
-                                className="w-full h-9 rounded border bg-transparent px-3 text-sm"
+                              <div className="text-sm mb-1">有効期限(任意)</div>
+                              <DateTimePicker
                                 value={expires}
-                                onChange={(e) => setExpires(e.target.value)}
-                                placeholder="例: 2025-12-31T23:59:59Z"
+                                onChange={setExpires}
+                                placeholder="日時を選択"
                               />
                             </div>
                             <DialogFooter>

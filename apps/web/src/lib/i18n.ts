@@ -278,8 +278,8 @@ export const t = (lang: Lang) => ({
     issueUrl: lang === "ja" ? "URLを発行" : "Issue URL",
     shareWarning:
       lang === "ja"
-        ? "iCal購読URLは第三者に知られると予定を閲覧されます。URLは機密情報として扱い、公開しないでください。"
-        : "If someone gets your iCal URL, they can view your calendar. Treat it as a secret and do not share it.",
+        ? "iCal購読URLを第三者に共有することは利用規約で禁止されています。URLは機密情報として扱い、公開しないでください。"
+        : "Sharing your iCal subscription URL with others is prohibited by the terms of service. Treat it as a secret and do not share it.",
     table: {
       id: "ID",
       description: lang === "ja" ? "説明" : "Description",

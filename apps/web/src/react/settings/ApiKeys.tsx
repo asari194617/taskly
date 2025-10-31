@@ -27,6 +27,14 @@ import { useLang } from "@/react/LanguageProvider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import {
+  Tooltip,
+  TooltipProvider,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import { CircleHelp as CircleQuestionMark } from "lucide-react";
 
 type ApiKey = {
   id: number;
@@ -42,9 +50,28 @@ export default function SettingsApiKeys() {
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<ApiKey[]>([]);
   const [desc, setDesc] = React.useState("");
-  const [expires, setExpires] = React.useState<string>("");
+  const [expires, setExpires] = React.useState<string>(""); // local input
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
+  const HELP_URL =
+    (import.meta as any).env?.PUBLIC_HELP_API_KEYS || "/docs/api-keys";
+
+  function toRFC3339(input: string): string | undefined {
+    const v = (input || "").trim();
+    if (!v) return undefined;
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return undefined;
+    return d.toISOString();
+  }
+  function fromRFC3339(s?: string | null): string {
+    if (!s) return "";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate()
+    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
 
   async function load() {
     try {
@@ -70,7 +97,7 @@ export default function SettingsApiKeys() {
       setCreating(true);
       const data = await gql<{ apiKeyCreate: { id: number; token: string } }>(
         `mutation($d:String,$e:String){ apiKeyCreate(description:$d, expires_at:$e){ id token } }`,
-        { d: desc || undefined, e: expires || undefined }
+        { d: desc || undefined, e: toRFC3339(expires) }
       );
       setCreatedToken(data.apiKeyCreate.token);
       setDesc("");
@@ -106,7 +133,7 @@ export default function SettingsApiKeys() {
     try {
       await gql<{ apiKeyUpdate: { id: number; is_valid: boolean } }>(
         `mutation($id:Int!,$e:String){ apiKeyUpdate(id:$id, expires_at:$e){ id is_valid } }`,
-        { id, e: value || undefined }
+        { id, e: toRFC3339(value) }
       );
       load();
     } catch (e: any) {
@@ -124,9 +151,25 @@ export default function SettingsApiKeys() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">
-          {dict.settingsApiKeys.heading}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">
+            {dict.settingsApiKeys.heading}
+          </h1>
+          {HELP_URL && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a href={HELP_URL} target="_blank" rel="noreferrer">
+                    <Button variant="ghost" size="icon" aria-label="ヘルプ">
+                      <CircleQuestionMark />
+                    </Button>
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>ヘルプ</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
         <Alert>
           <AlertTitle>{dict.common.warning}</AlertTitle>
           <AlertDescription>
@@ -146,11 +189,11 @@ export default function SettingsApiKeys() {
               />
             </div>
             <div className="min-w-60">
-              <div className="text-sm mb-1">有効期限(任意, RFC3339)</div>
-              <Input
+              <div className="text-sm mb-1">有効期限(任意)</div>
+              <DateTimePicker
                 value={expires}
-                onChange={(e) => setExpires(e.target.value)}
-                placeholder="例: 2025-12-31T23:59:59Z"
+                onChange={setExpires}
+                placeholder="日時を選択"
               />
             </div>
             <Dialog
@@ -268,7 +311,7 @@ export default function SettingsApiKeys() {
                         onOpenChange={(open) => {
                           if (open) {
                             setEditId(it.id);
-                            setEditExpires(it.expires_at || "");
+                            setEditExpires(fromRFC3339(it.expires_at));
                           } else {
                             setEditId(null);
                             setEditExpires("");
@@ -285,10 +328,10 @@ export default function SettingsApiKeys() {
                               空欄で保存すると期限を解除します。
                             </DialogDescription>
                           </DialogHeader>
-                          <Input
+                          <DateTimePicker
                             value={editExpires}
-                            onChange={(e) => setEditExpires(e.target.value)}
-                            placeholder="例: 2025-12-31T23:59:59Z"
+                            onChange={setEditExpires}
+                            placeholder="日時を選択"
                           />
                           <DialogFooter>
                             <Button

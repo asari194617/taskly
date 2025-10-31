@@ -26,6 +26,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { CircleHelp as CircleQuestionMark } from "lucide-react";
 
 type IItem = {
   id: number;
@@ -35,12 +44,35 @@ type IItem = {
   expires_at?: string | null;
 };
 
+function toRFC3339FromLocal(input: string): string | undefined {
+  const v = (input || "").trim();
+  if (!v) return undefined;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return undefined;
+  return d.toISOString();
+}
+
+function fromRFC3339ToLocalInput(s?: string | null): string {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
 export default function SettingsIcal() {
   const { dict } = useLang();
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<IItem[]>([]);
   const [desc, setDesc] = React.useState("");
+  const HELP_URL = (import.meta as any).env?.PUBLIC_HELP_ICAL || "/docs/ical";
+
   async function load() {
     try {
       const data = await gql<{ icalTokens: IItem[] }>(
@@ -58,12 +90,12 @@ export default function SettingsIcal() {
   React.useEffect(() => {
     if (token) load();
   }, [token]);
-  const [expires, setExpires] = React.useState<string>("");
+  const [expires, setExpires] = React.useState<string>(""); // local "yyyy-MM-ddTHH:mm"
   async function create() {
     try {
       await gql<{ icalCreate: { id: number; url: string } }>(
         `mutation($d:String,$e:String){ icalCreate(description:$d,expires_at:$e){ id url } }`,
-        { d: desc || undefined, e: expires || undefined }
+        { d: desc || undefined, e: toRFC3339FromLocal(expires) }
       );
       setDesc("");
       setExpires("");
@@ -92,12 +124,12 @@ export default function SettingsIcal() {
     }
   }
   const [editId, setEditId] = React.useState<number | null>(null);
-  const [editExpires, setEditExpires] = React.useState<string>("");
+  const [editExpires, setEditExpires] = React.useState<string>(""); // local
   async function updateExpiry(id: number, value: string) {
     try {
       await gql<{ icalUpdate: boolean }>(
         `mutation($id:Int!,$e:String){ icalUpdate(id:$id, expires_at:$e) }`,
-        { id, e: value || undefined }
+        { id, e: toRFC3339FromLocal(value) }
       );
       setEditId(null);
       setEditExpires("");
@@ -113,7 +145,23 @@ export default function SettingsIcal() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">{dict.settingsIcal.heading}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">{dict.settingsIcal.heading}</h1>
+          {HELP_URL && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <a href={HELP_URL} target="_blank" rel="noreferrer">
+                    <Button variant="ghost" size="icon" aria-label="ヘルプ">
+                      <CircleQuestionMark />
+                    </Button>
+                  </a>
+                </TooltipTrigger>
+                <TooltipContent>ヘルプ</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
         <Alert>
           <AlertTitle>{dict.common.warning}</AlertTitle>
           <AlertDescription>{dict.settingsIcal.shareWarning}</AlertDescription>
@@ -131,11 +179,11 @@ export default function SettingsIcal() {
               />
             </div>
             <div className="min-w-60">
-              <div className="text-sm mb-1">有効期限(任意, RFC3339)</div>
-              <Input
+              <div className="text-sm mb-1">有効期限(任意)</div>
+              <DateTimePicker
                 value={expires}
-                onChange={(e) => setExpires(e.target.value)}
-                placeholder="例: 2025-12-31T23:59:59Z"
+                onChange={setExpires}
+                placeholder="日時を選択"
               />
             </div>
             <Button onClick={create}>{dict.settingsIcal.issueUrl}</Button>
@@ -191,7 +239,9 @@ export default function SettingsIcal() {
                       onOpenChange={(open) => {
                         if (open) {
                           setEditId(it.id);
-                          setEditExpires(it.expires_at || "");
+                          setEditExpires(
+                            fromRFC3339ToLocalInput(it.expires_at)
+                          );
                         } else {
                           setEditId(null);
                           setEditExpires("");
@@ -208,10 +258,10 @@ export default function SettingsIcal() {
                             空欄で保存すると期限を解除します。
                           </DialogDescription>
                         </DialogHeader>
-                        <Input
+                        <DateTimePicker
                           value={editExpires}
-                          onChange={(e) => setEditExpires(e.target.value)}
-                          placeholder="例: 2025-12-31T23:59:59Z"
+                          onChange={setEditExpires}
+                          placeholder="日時を選択"
                         />
                         <DialogFooter>
                           <Button
