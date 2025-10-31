@@ -1,0 +1,83 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+---
+<Layout title="Android版（近日対応）" description="Taskly Androidアプリは現在開発中です。">
+	<div class="mx-auto max-w-5xl space-y-10">
+		<!-- Hero -->
+		<section class="flex flex-col gap-4">
+			<div class="flex items-center gap-2">
+				<Badge variant="secondary">Coming soon</Badge>
+				<span class="text-sm text-muted-foreground">Android</span>
+			</div>
+			<h1 class="text-3xl md:text-4xl font-bold tracking-tight">Android版 Taskly</h1>
+			<p class="text-muted-foreground max-w-2xl">
+				Android向けのネイティブ体験を準備中です。プッシュ通知、ホーム画面ウィジェット、オフラインアクセスなど、毎日のタスク管理をもっとスムーズに。
+			</p>
+			<div class="flex flex-wrap gap-3 pt-1">
+				<a href="/" class="inline-flex"><Button>今すぐ Web 版で試す</Button></a>
+				<a href="/settings" class="inline-flex"><Button variant="outline">通知設定を確認</Button></a>
+			</div>
+		</section>
+
+		<!-- Highlights -->
+		<section class="grid gap-4 md:grid-cols-3">
+					<Card>
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17 1H7a2 2 0 0 0-2 2v18l7-3 7 3V3a2 2 0 0 0-2-2Z"/></svg>
+						プッシュ通知
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					朝のダイジェストや締切前のリマインダーを、端末に確実にお届けします。
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h5v6H4V6Zm0 8h7v6H6a2 2 0 0 1-2-2v-4Zm9 6v-6h7v4a2 2 0 0 1-2 2h-5Zm7-12V6a2 2 0 0 0-2-2h-5v6h7Z"/></svg>
+						ホーム画面ウィジェット
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					今日の課題をホーム画面からひと目で確認。完了チェックもワンタップ。
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+						<svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h9l5 5v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5Zm11 0v3h3"/></svg>
+						オフライン対応
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					電波が不安定な環境でも作業OK。同期はオンライン復帰後に自動で行われます。
+				</CardContent>
+			</Card>
+		</section>
+
+		<!-- FAQ / Notes -->
+		<section class="grid gap-4 md:grid-cols-2">
+			<Card>
+				<CardHeader>
+					<CardTitle>公開予定</CardTitle>
+				</CardHeader>
+				<CardContent>
+					準備が整い次第、順次クローズドテスト → 一般公開を予定しています。最新情報はこのページでお知らせします。
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<CardTitle>今すぐできること</CardTitle>
+				</CardHeader>
+				<CardContent>
+					現在の Web 版は PWA に対応しています。ブラウザの「ホーム画面に追加」からアプリのように使えます。
+				</CardContent>
+			</Card>
+		</section>
+	</div>
+</Layout>
+
