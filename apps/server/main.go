@@ -240,17 +240,6 @@ func main() {
 
 	// Keep recover after Sentry so panics are reported then gracefully recovered
 	app.Use(recover.New())
-	// Header masking middleware: remove/replace sensitive headers before further middlewares/logs
-	app.Use(func(c *fiber.Ctx) error {
-		// Mask Authorization and X-API-Key in request headers for downstream loggers
-		if ah := c.Get("Authorization"); ah != "" {
-			c.Request().Header.Set("Authorization", "[REDACTED]")
-		}
-		if ak := c.Get("X-API-Key"); ak != "" {
-			c.Request().Header.Set("X-API-Key", "[REDACTED]")
-		}
-		return c.Next()
-	})
 	// Safe logger: log route pattern instead of concrete path to avoid leaking tokens
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${ip} ${status} ${latency} ${method} ${route}\n",
@@ -260,7 +249,7 @@ func main() {
 		AllowCredentials: strings.ToLower(env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
 		AllowHeaders:     "Authorization,authorization, Content-Type,content-type, X-Client-Platform,x-client-platform, X-API-Key,x-api-key",
 		// Be explicit about methods to satisfy strict proxies and preflight checks
-		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 	}))
 
 	// Restrict API key accessible endpoints
