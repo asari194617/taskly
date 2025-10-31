@@ -633,9 +633,14 @@ func parseAuthToken(authHeader string) string {
 }
 
 func userFromSession(c *fiber.Ctx) bool {
+	// Optional debug logging for auth flow (no secrets). Enable by setting DEBUG_AUTH=true
+	debugAuth := strings.ToLower(strings.TrimSpace(env("DEBUG_AUTH", ""))) == "true"
 	raw := c.Get("Authorization")
 	token := parseAuthToken(raw)
 	if token == "" {
+		if debugAuth {
+			log.Printf("[auth] %s %s missing Authorization", c.Method(), sanitizeURLPath(c.Path()))
+		}
 		return false
 	}
 	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
@@ -643,9 +648,15 @@ func userFromSession(c *fiber.Ctx) bool {
 	if err != nil || strings.TrimSpace(uidStr) == "" {
 		var sess Session
 		if dberr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&sess).Error; dberr != nil {
+			if debugAuth {
+				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
+			}
 			return false
 		}
 		if headerPlat != "" && sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
+			if debugAuth {
+				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, sess.ClientPlatform)
+			}
 			return false
 		}
 		ttl := 30 * 24 * time.Hour
@@ -657,26 +668,44 @@ func userFromSession(c *fiber.Ctx) bool {
 		}
 		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", sess.UserID), ttl).Err()
 		uidStr = fmt.Sprintf("%d", sess.UserID)
+		if debugAuth {
+			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, sess.ClientPlatform)
+		}
 	} else {
 		if headerPlat != "" {
 			var sess Session
 			if err := DB.Where("hashed_token = ?", sha256Hex([]byte(token))).Order("id DESC").First(&sess).Error; err == nil {
 				if sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
+					if debugAuth {
+						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, sess.ClientPlatform)
+					}
 					return false
 				}
 			}
 		}
+		if debugAuth {
+			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
+		}
 	}
 	var u User
 	if err := DB.First(&u, uidStr).Error; err != nil {
+		if debugAuth {
+			log.Printf("[auth] %s %s user not found id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
+		}
 		return false
 	}
 	var cnt int64
 	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+		if debugAuth {
+			log.Printf("[auth] %s %s user blocked id=%d", c.Method(), sanitizeURLPath(c.Path()), u.ID)
+		}
 		return false
 	}
 	c.Locals("user", &u)
 	c.Locals("token", token)
+	if debugAuth {
+		log.Printf("[auth] %s %s OK user=%d plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), u.ID, headerPlat)
+	}
 	return true
 }
 
