@@ -49,15 +49,15 @@ export default function Footer() {
         links: [
           { title: "Web", href: "https://taskly.iy0306.com/" },
           {
-            title: "iPhone,iPad,Mac",
+            title: "iPhone,iPad,Mac(近日公開)",
             href: "https://taskly.iy0306.com/platform/iphone-ipad-mac",
           },
           {
-            title: "Android",
+            title: "Android(近日公開)",
             href: "https://taskly.iy0306.com/platform/android",
           },
           {
-            title: "Windows",
+            title: "Windows(近日公開)",
             href: "https://taskly.iy0306.com/platform/windows",
           },
         ],

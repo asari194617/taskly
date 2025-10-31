@@ -97,7 +97,7 @@ func registerAuthRoutes(app *fiber.App) {
 		msg := []byte(
 			"From: " + from + "\r\n" +
 				"To: " + body.Email + "\r\n" +
-				"Subject: " + subject + "\r\n" +
+				"Subject: " + "["+ code + "]" + subject + "\r\n" +
 				"Date: " + nowRFC + "\r\n" +
 				"MIME-Version: 1.0\r\n" +
 				"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
