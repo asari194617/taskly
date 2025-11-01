@@ -1,0 +1,13 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import MailCode from "../../react/login/MailCode";
+---
+<Layout title="Login - Mail Code">
+  <div class="mx-auto max-w-md">
+    <MailCode client:load />
+  </div>
+  <script>
+    import { redirectIfAuthed } from "@/lib/auth-guard";
+    redirectIfAuthed("/home");
+  </script>
+</Layout>

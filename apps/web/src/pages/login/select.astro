@@ -1,0 +1,13 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import SelectMfa from "../../react/login/SelectMfa";
+---
+<Layout title="Login - Select">
+  <div class="mx-auto max-w-md">
+    <SelectMfa client:load />
+  </div>
+  <script>
+    import { redirectIfAuthed } from "@/lib/auth-guard";
+    redirectIfAuthed("/home");
+  </script>
+</Layout>

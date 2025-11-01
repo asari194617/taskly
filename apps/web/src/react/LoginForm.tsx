@@ -14,6 +14,14 @@ import { gql } from "../lib/graphql";
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
 
+type Step =
+  | "begin" // DispLoginBegin
+  | "password" // DispPasswordInput
+  | "select_mfa" // DispSelectMfaMethod
+  | "passkey" // DispPasskeyInput
+  | "totp" // DispTotpInput
+  | "mail_code"; // DispMailCodeInput
+
 export default function LoginForm() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -21,14 +29,16 @@ export default function LoginForm() {
   const [totp, setTotp] = React.useState("");
   const [recovery, setRecovery] = React.useState("");
   const [hasPassword, setHasPassword] = React.useState<boolean | null>(null);
-  const [totpEnabled, setTotpEnabled] = React.useState<boolean>(false);
-  const [passkeyEnabled, setPasskeyEnabled] = React.useState<boolean>(false);
+  const [totpAvailable, setTotpAvailable] = React.useState<boolean>(false);
+  const [passkeyAvailable, setPasskeyAvailable] =
+    React.useState<boolean>(false);
+  const [emailCodeAvailable, setEmailCodeAvailable] =
+    React.useState<boolean>(false);
   const [availableMethods, setAvailableMethods] = React.useState<string[]>([]);
-  const [selectedMethod, setSelectedMethod] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
-  const [step, setStep] = React.useState<"email" | "verify">("email");
+  const [step, setStep] = React.useState<Step>("begin");
   const [blocked, setBlocked] = React.useState<string | null>(null);
 
   // Determine post-login redirect target
@@ -43,10 +53,32 @@ export default function LoginForm() {
     }
   }, []);
 
+  // Decide next UI state based on server-advertised methods per PlantUML
+  const decideInitialStep = (
+    hasPw: boolean,
+    methods: string[],
+    flags: { totp: boolean; passkey: boolean; emailCode: boolean }
+  ) => {
+    if (hasPw) {
+      // If password is enabled, go to password input first
+      setStep("password");
+      return;
+    }
+    const enabled: Array<"passkey" | "mail_code"> = [];
+    if (flags.passkey) enabled.push("passkey");
+    if (flags.emailCode) enabled.push("mail_code");
+    // If only one MFA method is enabled, go directly to that screen; else show selection
+    if (enabled.length === 1) {
+      setStep(enabled[0]);
+    } else {
+      setStep("select_mfa");
+    }
+  };
+
   const discover = async () => {
     setMessage(null);
     setHasPassword(null);
-    setTotpEnabled(false);
+    setTotpAvailable(false);
     if (!email) return;
     try {
       const res = await fetch(`${apiBase}/auth/options`, {
@@ -59,14 +91,22 @@ export default function LoginForm() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      setHasPassword(!!data?.has_password);
-      setTotpEnabled(!!data?.totp_enabled);
+      const hasPw = !!data?.has_password;
+      setHasPassword(hasPw);
+      setTotpAvailable(!!data?.totp_enabled);
       const methods: string[] = Array.isArray(data?.methods)
         ? data.methods
         : [];
       setAvailableMethods(methods);
-      setPasskeyEnabled(!!data?.passkey_enabled || methods.includes("passkey"));
-      setStep("verify");
+      const passkey = !!data?.passkey_enabled || methods.includes("passkey");
+      const emailCode = methods.includes("email_code");
+      setPasskeyAvailable(passkey);
+      setEmailCodeAvailable(emailCode);
+      decideInitialStep(hasPw, methods, {
+        totp: !!data?.totp_enabled,
+        passkey,
+        emailCode,
+      });
     } catch (_err) {
       setMessage("認証方式の取得に失敗しました");
     }
@@ -109,6 +149,7 @@ export default function LoginForm() {
     }
   };
 
+  // Perform final login call with gathered factors
   const login = async () => {
     setLoading(true);
     setMessage(null);
@@ -243,7 +284,8 @@ export default function LoginForm() {
           <CardTitle>ログイン</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {step === "email" && (
+          {/* DispLoginBegin */}
+          {step === "begin" && (
             <div className="space-y-2">
               <Label htmlFor="email">メールアドレス</Label>
               <Input
@@ -265,7 +307,8 @@ export default function LoginForm() {
             </div>
           )}
 
-          {step === "verify" && hasPassword === true ? (
+          {/* DispPasswordInput */}
+          {step === "password" && hasPassword === true ? (
             <div className="space-y-2">
               <Label htmlFor="password">パスワード</Label>
               <Input
@@ -275,60 +318,91 @@ export default function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
               />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    // After password, if 2FA (TOTP) is enabled, go to selection or directly to TOTP
+                    if (totpAvailable) {
+                      if (passkeyAvailable) {
+                        setStep("select_mfa");
+                      } else {
+                        setStep("totp");
+                      }
+                    } else {
+                      // No MFA → perform password-only login
+                      login();
+                    }
+                  }}
+                  disabled={loading || !email || !password}
+                >
+                  次へ
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setStep("begin")}
+                >
+                  戻る
+                </Button>
+              </div>
             </div>
           ) : null}
-          {step === "verify" && hasPassword === false && (
+
+          {/* DispSelectMfaMethod (password disabled with multiple methods) */}
+          {step === "select_mfa" && (
             <div className="space-y-4">
               <div className="space-y-1">
                 <Label>認証方法を選択</Label>
                 <div className="flex flex-wrap gap-2">
-                  {availableMethods.includes("email_code") && (
+                  {/* Email code option (only when password is not set) */}
+                  {!hasPassword && emailCodeAvailable && (
                     <Button
                       type="button"
-                      variant={
-                        selectedMethod === "email_code"
-                          ? "default"
-                          : "secondary"
-                      }
+                      variant="secondary"
                       onClick={async () => {
-                        setSelectedMethod("email_code");
                         await requestCode();
+                        setStep("mail_code");
                       }}
                       disabled={loading || sending || !email}
                     >
                       {sending ? "送信中…" : "メールコード"}
                     </Button>
                   )}
-                  {availableMethods.includes("passkey") && (
+                  {passkeyAvailable && (
                     <Button
                       type="button"
-                      variant={
-                        selectedMethod === "passkey" ? "default" : "secondary"
-                      }
-                      onClick={() => setSelectedMethod("passkey")}
+                      variant="secondary"
+                      onClick={() => setStep("passkey")}
                     >
                       パスキー
                     </Button>
                   )}
+                  {totpAvailable && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setStep("totp")}
+                    >
+                      TOTP
+                    </Button>
+                  )}
                 </div>
               </div>
-              {selectedMethod === "email_code" && (
-                <div className="space-y-2">
-                  <Label htmlFor="code">メールコード</Label>
-                  <Input
-                    id="code"
-                    type="text"
-                    inputMode="numeric"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    placeholder="123456"
-                  />
-                </div>
-              )}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setStep(hasPassword ? "password" : "begin")}
+                >
+                  戻る
+                </Button>
+              </div>
             </div>
           )}
 
-          {step === "verify" && totpEnabled && (
+          {/* DispTotpInput */}
+          {step === "totp" && (
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-2">
                 <Label htmlFor="totp">TOTP</Label>
@@ -351,35 +425,102 @@ export default function LoginForm() {
                   placeholder="abcd-efgh"
                 />
               </div>
-            </div>
-          )}
-
-          {step === "verify" && (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                onClick={login}
-                disabled={loading || !email}
-              >
-                ログイン
-              </Button>
-              {(passkeyEnabled || selectedMethod === "passkey") && (
+              <div className="col-span-2 flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => login()}
+                  disabled={
+                    loading || !email || (hasPassword ? !password : false)
+                  }
+                >
+                  続行
+                </Button>
                 <Button
                   type="button"
                   variant="secondary"
+                  onClick={() =>
+                    setStep(hasPassword ? "password" : "select_mfa")
+                  }
+                >
+                  戻る
+                </Button>
+              </div>
+            </div>
+          )}
+          {/* DispMailCodeInput */}
+          {step === "mail_code" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="code">メールコード</Label>
+                <Input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="123456"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => login()}
+                  disabled={
+                    loading ||
+                    !email ||
+                    code.length === 0 ||
+                    (hasPassword ? !password : false)
+                  }
+                >
+                  続行
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={requestCode}
+                  disabled={sending}
+                >
+                  {sending ? "再送中…" : "コードを再送"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    setStep(
+                      availableMethods.length > 1 ? "select_mfa" : "begin"
+                    )
+                  }
+                >
+                  戻る
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* DispPasskeyInput */}
+          {step === "passkey" && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                パスキーでログインを行います。
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
                   onClick={passkeyLogin}
                   disabled={loading || !email}
                 >
-                  パスキーでログイン
+                  パスキーで続行
                 </Button>
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setStep("email")}
-              >
-                戻る
-              </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    setStep(hasPassword ? "select_mfa" : "select_mfa")
+                  }
+                >
+                  戻る
+                </Button>
+              </div>
             </div>
           )}
           {message && (

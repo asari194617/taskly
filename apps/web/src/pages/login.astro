@@ -1,10 +1,10 @@
 ---
 import Layout from "../layouts/AppLayout.astro";
-import LoginForm from "../react/LoginForm";
+import Begin from "../react/login/Begin";
 ---
 <Layout title="Login">
   <div class="mx-auto max-w-md">
-    <LoginForm client:load />
+    <Begin client:load />
   </div>
   <script>
     import { redirectIfAuthed } from "@/lib/auth-guard";
