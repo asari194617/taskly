@@ -71,7 +71,7 @@ export default function SettingsIcal() {
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<IItem[]>([]);
   const [desc, setDesc] = React.useState("");
-  const HELP_URL = (import.meta as any).env?.PUBLIC_HELP_ICAL || "/docs/ical";
+  const HELP_URL = "https://ritzy-lift-e38.notion.site/290a3874f8c880a6b1f6e67cef05ae56?source=copy_link";
 
   async function load() {
     try {

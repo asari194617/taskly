@@ -55,8 +55,7 @@ export default function SettingsApiKeys() {
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [openCreate, setOpenCreate] = React.useState(false);
-  const HELP_URL =
-    (import.meta as any).env?.PUBLIC_HELP_API_KEYS || "/docs/api-keys";
+  const HELP_URL = "https://ritzy-lift-e38.notion.site/API-290a3874f8c880189db2e3d09128077d?source=copy_link";
 
   function toRFC3339(input: string): string | undefined {
     const v = (input || "").trim();

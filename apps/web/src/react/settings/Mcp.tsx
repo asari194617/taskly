@@ -54,7 +54,7 @@ export default function SettingsMcp() {
   const [expires, setExpires] = React.useState<string>(""); // local input
   const [editExpires, setEditExpires] = React.useState<string>("");
   const [openIssue, setOpenIssue] = React.useState(false);
-  const HELP_URL = (import.meta as any).env?.PUBLIC_HELP_MCP || "/docs/mcp";
+  const HELP_URL = "https://ritzy-lift-e38.notion.site/MCP-290a3874f8c880a08c31f53116cb2ead?source=copy_link";
 
   function toRFC3339(input: string): string | undefined {
     const v = (input || "").trim();
