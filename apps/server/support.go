@@ -1645,16 +1645,113 @@ func buildEmailHTML(title, contentHTML string) string {
 // sendDiscordContent posts a simple content message to Discord webhook if configured. Fire-and-forget friendly.
 func sendDiscordContent(content string) {
 	hook := env("DISCORD_WEBHOOK_URL", "")
-	if strings.TrimSpace(hook) == "" || strings.TrimSpace(content) == "" {
+	if strings.TrimSpace(hook) == "" {
+		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
+		return
+	}
+	if strings.TrimSpace(content) == "" {
+		log.Printf("discord: skipped (empty content)")
 		return
 	}
 	payload := fmt.Sprintf(`{"content": %q}`, content)
-	req, _ := http.NewRequest("POST", hook, strings.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 5 * time.Second}
-	if resp, err := client.Do(req); err == nil && resp != nil {
-		_ = resp.Body.Close()
+	req, err := http.NewRequest("POST", hook, strings.NewReader(payload))
+	if err != nil {
+		log.Printf("discord: build request error: %v", err)
+		return
 	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "taskly-server/1.0")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("discord: post error: %v", err)
+		return
+	}
+	// Drain and close body
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("discord: non-2xx status: %d", resp.StatusCode)
+		return
+	}
+	log.Printf("discord: sent ok")
+}
+
+// sendDiscordEmbeds posts one or more embeds to the Discord webhook. Logs basic diagnostics.
+func sendDiscordEmbeds(embeds []map[string]any) {
+	hook := env("DISCORD_WEBHOOK_URL", "")
+	if strings.TrimSpace(hook) == "" {
+		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
+		return
+	}
+	if len(embeds) == 0 {
+		log.Printf("discord: skipped (no embeds)")
+		return
+	}
+	payloadObj := map[string]any{"embeds": embeds}
+	b, err := json.Marshal(payloadObj)
+	if err != nil {
+		log.Printf("discord: marshal error: %v", err)
+		return
+	}
+	req, err := http.NewRequest("POST", hook, bytes.NewReader(b))
+	if err != nil {
+		log.Printf("discord: build request error: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "taskly-server/1.0")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("discord: post error: %v", err)
+		return
+	}
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("discord: non-2xx status: %d", resp.StatusCode)
+		return
+	}
+	log.Printf("discord: embeds sent ok")
+}
+
+// sendDiscordTaskEmbed builds and sends an embed for task events (created/updated/deleted)
+func sendDiscordTaskEmbed(action string, t Task, actor string) {
+	// Prepare fields
+	eff := effectiveDeadlineTime(t)
+	webURL := strings.TrimSpace(env("WEB_URL", ""))
+	title := "Task"
+	color := 5814783 // default bluish
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "created", "create":
+		title = "Task Created"
+		color = 0x2ecc71 // green
+	case "updated", "update":
+		title = "Task Updated"
+		color = 0xf1c40f // yellow
+	case "deleted", "delete":
+		title = "Task Deleted"
+		color = 0xe74c3c // red
+	}
+	fields := []map[string]any{
+		{"name": "ID", "value": fmt.Sprintf("%d", t.ID), "inline": true},
+		{"name": "Deadline", "value": eff.Format("2006-01-02 15:04"), "inline": true},
+		{"name": "Since/Until", "value": fmt.Sprintf("%s / %s", strings.ToUpper(t.DeadlineSince), strings.ToUpper(t.DeadlineUntil)), "inline": true},
+		{"name": "By", "value": actor, "inline": true},
+	}
+	// Optional link to web app (no specific task page, so link to home if provided)
+	embed := map[string]any{
+		"title":       title,
+		"description": t.Title,
+		"color":       color,
+		"fields":      fields,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	if webURL != "" {
+		embed["url"] = strings.TrimRight(webURL, "/") + "/home"
+	}
+	sendDiscordEmbeds([]map[string]any{embed})
 }
 
 func performDayShiftRotation(now time.Time) error {
