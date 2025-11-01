@@ -138,7 +138,7 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 	meType := t.MeType
 	authSettingsType := t.AuthSettingsType
 
-	return graphql.Fields{
+	fields := graphql.Fields{
 		"subjects": &graphql.Field{
 			Type: graphql.NewList(subjectType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
@@ -153,7 +153,12 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					}
 					out := make([]map[string]any, 0, len(subs))
 					for _, s := range subs {
-						out = append(out, map[string]any{"id": s.ID, "name_ja": s.NameJa, "name_en": s.NameEn})
+						row := map[string]any{"id": s.ID, "name_ja": s.NameJa, "name_en": s.NameEn}
+						if s.ExpiresAt != nil {
+							row["expires_at"] = s.ExpiresAt.Format(time.RFC3339)
+						}
+						row["created_at"] = s.CreatedAt.Format(time.RFC3339)
+						out = append(out, row)
 					}
 					return out, nil
 				}
@@ -217,4 +222,10 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 			},
 		},
 	}
+
+	// Merge in admin subjects query
+	for k, v := range queryFieldsAdminSubjects(t) {
+		fields[k] = v
+	}
+	return fields
 }

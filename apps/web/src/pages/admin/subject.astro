@@ -1,0 +1,10 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import AdminGuard from "../../components/AdminGuard.astro";
+import AdminSubjects from "../../react/admin/Subjects";
+---
+<Layout title="教科管理">
+	<AdminGuard />
+	<AdminSubjects client:load />
+</Layout>
+

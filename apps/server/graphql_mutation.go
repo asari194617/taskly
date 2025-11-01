@@ -22,6 +22,7 @@ func buildRootMutation(t *gqlTypes) *graphql.Object {
 	merge(mutationFieldsKeys(t))
 	merge(mutationFieldsTasks(t))
 	merge(mutationFieldsAuth(t))
+	merge(mutationFieldsSubjects(t))
 
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
 		Name:   "Mutation",

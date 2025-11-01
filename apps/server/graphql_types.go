@@ -43,9 +43,11 @@ func createGQLTypes() *gqlTypes {
 	subjectType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Subject",
 		Fields: graphql.Fields{
-			"id":      &graphql.Field{Type: graphql.Int},
-			"name_ja": &graphql.Field{Type: graphql.String},
-			"name_en": &graphql.Field{Type: graphql.String},
+			"id":         &graphql.Field{Type: graphql.Int},
+			"name_ja":    &graphql.Field{Type: graphql.String},
+			"name_en":    &graphql.Field{Type: graphql.String},
+			"expires_at": &graphql.Field{Type: graphql.String},
+			"created_at": &graphql.Field{Type: graphql.String},
 			"name": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (any, error) {
 				// Resolve localized name based on current user's notification language
 				var subj Subject
