@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { CircleHelp as CircleQuestionMark } from "lucide-react";
+import { formatYmdHm } from "@/lib/utils";
 
 type McpInfo = {
   enabled: boolean;
@@ -52,6 +53,7 @@ export default function SettingsMcp() {
   const copiedTimerRef = React.useRef<number | null>(null);
   const [expires, setExpires] = React.useState<string>(""); // local input
   const [editExpires, setEditExpires] = React.useState<string>("");
+  const [openIssue, setOpenIssue] = React.useState(false);
   const HELP_URL = (import.meta as any).env?.PUBLIC_HELP_MCP || "/docs/mcp";
 
   function toRFC3339(input: string): string | undefined {
@@ -102,6 +104,21 @@ export default function SettingsMcp() {
       loadLogs();
     }
   }, [token]);
+
+  // Keyboard shortcut: Cmd/Ctrl+N to open "issue token" dialog when not having one
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const key = (e.key || "").toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "n") {
+        if (info && !info.has_token) {
+          e.preventDefault();
+          setOpenIssue(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey as any);
+    return () => window.removeEventListener("keydown", onKey as any);
+  }, [info]);
 
   async function createToken() {
     try {
@@ -200,10 +217,7 @@ export default function SettingsMcp() {
               <div className="space-y-2">
                 {info?.has_token && (
                   <div className="text-sm text-muted-foreground">
-                    期限:{" "}
-                    {info.expires_at
-                      ? new Date(info.expires_at).toLocaleString()
-                      : "-"}
+                    期限: {info.expires_at ? formatYmdHm(info.expires_at) : "-"}
                     {info.expires_at &&
                       new Date(info.expires_at) <= new Date() && (
                         <span className="ml-2">
@@ -254,7 +268,9 @@ export default function SettingsMcp() {
                     </>
                   ) : (
                     <Dialog
+                      open={openIssue}
                       onOpenChange={async (open) => {
+                        setOpenIssue(open);
                         if (open) {
                           setCreatedToken(null);
                           setCreating(false);
@@ -265,7 +281,6 @@ export default function SettingsMcp() {
                             copiedTimerRef.current = null;
                           }
                         } else {
-                          // After closing, refresh info and logs to reflect new state
                           await loadInfo();
                           await loadLogs();
                           setCopied(false);
@@ -277,7 +292,9 @@ export default function SettingsMcp() {
                       }}
                     >
                       <DialogTrigger asChild>
-                        <Button>{dict.settingsMcp.issueToken}</Button>
+                        <Button onClick={() => setOpenIssue(true)}>
+                          {dict.settingsMcp.issueToken}
+                        </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
@@ -341,6 +358,7 @@ export default function SettingsMcp() {
                                 value={expires}
                                 onChange={setExpires}
                                 placeholder="日時を選択"
+                                autoFocus
                               />
                             </div>
                             <DialogFooter>
@@ -380,9 +398,7 @@ export default function SettingsMcp() {
                   <TableCell className="font-mono text-xs">
                     {l.action}
                   </TableCell>
-                  <TableCell>
-                    {new Date(l.created_at).toLocaleString()}
-                  </TableCell>
+                  <TableCell>{formatYmdHm(l.created_at)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

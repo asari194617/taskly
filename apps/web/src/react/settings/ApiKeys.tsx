@@ -19,13 +19,13 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogClose,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
@@ -35,6 +35,7 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { CircleHelp as CircleQuestionMark } from "lucide-react";
+import { formatYmdHm } from "@/lib/utils";
 
 type ApiKey = {
   id: number;
@@ -53,6 +54,7 @@ export default function SettingsApiKeys() {
   const [expires, setExpires] = React.useState<string>(""); // local input
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
+  const [openCreate, setOpenCreate] = React.useState(false);
   const HELP_URL =
     (import.meta as any).env?.PUBLIC_HELP_API_KEYS || "/docs/api-keys";
 
@@ -122,7 +124,6 @@ export default function SettingsApiKeys() {
       load();
     } catch (e: any) {
       toast({
-        variant: "destructive",
         title: "更新に失敗しました",
         description: e?.message,
       });
@@ -147,6 +148,19 @@ export default function SettingsApiKeys() {
 
   const [editId, setEditId] = React.useState<number | null>(null);
   const [editExpires, setEditExpires] = React.useState<string>("");
+
+  // Keyboard shortcut: Cmd/Ctrl+N to open and issue new key
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const key = (e.key || "").toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "n") {
+        e.preventDefault();
+        setOpenCreate(true);
+      }
+    };
+    window.addEventListener("keydown", onKey as any);
+    return () => window.removeEventListener("keydown", onKey as any);
+  }, []);
 
   return (
     <SettingsShell>
@@ -197,24 +211,20 @@ export default function SettingsApiKeys() {
               />
             </div>
             <Dialog
-              onOpenChange={(open) => {
+              open={openCreate}
+              onOpenChange={async (open) => {
+                setOpenCreate(open);
                 if (open) {
                   setCreatedToken(null);
                   setCreating(false);
+                  await create();
                 } else {
-                  // reset states when closing
                   setCreating(false);
                 }
               }}
             >
               <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    // One-click: open dialog and immediately create
-                    create();
-                  }}
-                >
+                <Button type="button" onClick={() => setOpenCreate(true)}>
                   {dict.settingsApiKeys.issueNew}
                 </Button>
               </DialogTrigger>
@@ -291,13 +301,9 @@ export default function SettingsApiKeys() {
                       dict.common.disabled
                     )}
                   </TableCell>
+                  <TableCell>{formatYmdHm(it.created_at)}</TableCell>
                   <TableCell>
-                    {new Date(it.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    {it.expires_at
-                      ? new Date(it.expires_at).toLocaleString()
-                      : "-"}
+                    {it.expires_at ? formatYmdHm(it.expires_at) : "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex gap-2 justify-end">

@@ -1,4 +1,5 @@
-"use client";
+import { formatYmdHm } from "@/lib/utils";
+("use client");
 import * as React from "react";
 import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
@@ -214,13 +215,11 @@ export default function SettingsIcal() {
                   <TableCell className="max-w-[360px] truncate font-mono text-xs">
                     {it.url}
                   </TableCell>
-                  <TableCell>
-                    {new Date(it.created_at).toLocaleString()}
-                  </TableCell>
+                  <TableCell>{formatYmdHm(it.created_at)}</TableCell>
                   <TableCell className="space-x-2">
                     {it.expires_at ? (
                       <>
-                        <span>{new Date(it.expires_at).toLocaleString()}</span>
+                        <span>{formatYmdHm(it.expires_at)}</span>
                         {new Date(it.expires_at) <= new Date() && (
                           <Badge variant="destructive">期限切れ</Badge>
                         )}

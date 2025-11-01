@@ -25,6 +25,7 @@ import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { formatYmdHm } from "@/lib/utils";
 import {
   Drawer,
   DrawerContent,
@@ -96,6 +97,7 @@ export default function AdminSubjects() {
   const [nameJa, setNameJa] = React.useState("");
   const [nameEn, setNameEn] = React.useState("");
   const [expires, setExpires] = React.useState<string>("");
+  const nameJaRef = React.useRef<HTMLInputElement>(null);
 
   async function create() {
     try {
@@ -128,6 +130,25 @@ export default function AdminSubjects() {
       });
     }
   }
+  // Keyboard shortcut: Cmd/Ctrl+N to open create dialog/drawer
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const key = (e.key || "").toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "n") {
+        e.preventDefault();
+        setOpenCreate(true);
+      }
+    };
+    window.addEventListener("keydown", onKey as any);
+    return () => window.removeEventListener("keydown", onKey as any);
+  }, []);
+
+  // Focus first field when creation UI opens
+  React.useEffect(() => {
+    if (openCreate) {
+      setTimeout(() => nameJaRef.current?.focus(), 0);
+    }
+  }, [openCreate]);
 
   // Edit dialog states
   const [editOpen, setEditOpen] = React.useState(false);
@@ -210,6 +231,7 @@ export default function AdminSubjects() {
                 <div>
                   <div className="text-sm mb-1">名前(日本語)</div>
                   <Input
+                    ref={nameJaRef}
                     value={nameJa}
                     onChange={(e) => setNameJa(e.target.value)}
                     placeholder="例: 数学"
@@ -311,13 +333,9 @@ export default function AdminSubjects() {
                 <TableCell className="max-w-[280px] truncate">
                   {it.name_en || "-"}
                 </TableCell>
+                <TableCell>{formatYmdHm(it.created_at)}</TableCell>
                 <TableCell>
-                  {new Date(it.created_at).toLocaleString()}
-                </TableCell>
-                <TableCell>
-                  {it.expires_at
-                    ? new Date(it.expires_at).toLocaleString()
-                    : "-"}
+                  {it.expires_at ? formatYmdHm(it.expires_at) : "-"}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-2 justify-end">

@@ -14,10 +14,16 @@ type Props = {
   value: string; // yyyy-MM-ddTHH:mm (local)
   onChange: (v: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 };
 
 // Minimal date-time picker built with native inputs inside a popover.
-export function DateTimePicker({ value, onChange, placeholder }: Props) {
+export function DateTimePicker({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+}: Props) {
   const [open, setOpen] = React.useState(false);
   const date = value ? value.split("T")[0] : "";
   const time = value ? value.split("T")[1] || "" : "";
@@ -25,9 +31,16 @@ export function DateTimePicker({ value, onChange, placeholder }: Props) {
     if (!value) return placeholder || "選択してください";
     const [d, t] = value.split("T");
     if (!d) return placeholder || "選択してください";
-    const dt = new Date(`${d}${t ? "T" + t : "T00:00"}`);
-    // Fallback to raw when Date is invalid
-    return isNaN(dt.getTime()) ? value.replace("T", " ") : dt.toLocaleString();
+    const [yy, mm, dd] = d.split("-");
+    const dateStr =
+      yy && mm && dd ? `${yy}/${mm}/${dd}` : d.split("-").join("/");
+    if (!t) return dateStr;
+    const hhmmss = t.split(":");
+    const hh = (hhmmss[0] || "00").padStart(2, "0");
+    const mi = (hhmmss[1] || "00").padStart(2, "0");
+    const ss = (hhmmss[2] || "").slice(0, 2);
+    const timeStr = ss ? `${hh}:${mi}:${ss}` : `${hh}:${mi}`;
+    return `${dateStr} ${timeStr}`;
   }, [value, placeholder]);
 
   function parseLocalDate(d: string): Date | undefined {
@@ -63,6 +76,7 @@ export function DateTimePicker({ value, onChange, placeholder }: Props) {
           type="button"
           variant="outline"
           className="w-full justify-between font-normal"
+          autoFocus={autoFocus}
         >
           <span className="truncate text-left">{label}</span>
           <ChevronDownIcon className="ml-2 size-4 shrink-0 opacity-60" />
@@ -77,7 +91,12 @@ export function DateTimePicker({ value, onChange, placeholder }: Props) {
                 <CalendarIcon className="mr-2 size-4 opacity-70" />
                 <span>
                   {date
-                    ? new Date(`${date}T00:00`).toLocaleDateString()
+                    ? (() => {
+                        const [y, m, d] = date.split("-");
+                        return y && m && d
+                          ? `${y}/${m}/${d}`
+                          : date.split("-").join("/");
+                      })()
                     : "日付を選択"}
                 </span>
               </Button>
