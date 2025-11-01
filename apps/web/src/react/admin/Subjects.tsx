@@ -24,6 +24,17 @@ import { Input } from "@/components/ui/input";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerTrigger,
+  DrawerClose,
+} from "@/components/ui/drawer";
 
 type Subject = {
   id: number;
@@ -77,6 +88,8 @@ export default function AdminSubjects() {
   React.useEffect(() => {
     if (token) load();
   }, [token]);
+
+  const isMobile = useIsMobile();
 
   // Create dialog states
   const [openCreate, setOpenCreate] = React.useState(false);
@@ -184,48 +197,93 @@ export default function AdminSubjects() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">教科管理</h1>
-        <Dialog open={openCreate} onOpenChange={setOpenCreate}>
-          <DialogTrigger asChild>
-            <Button>教科を追加</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>教科を追加</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-3">
-              <div>
-                <div className="text-sm mb-1">名前(日本語)</div>
-                <Input
-                  value={nameJa}
-                  onChange={(e) => setNameJa(e.target.value)}
-                  placeholder="例: 数学"
-                />
+        {isMobile ? (
+          <Drawer open={openCreate} onOpenChange={setOpenCreate}>
+            <DrawerTrigger asChild>
+              <Button>教科を追加</Button>
+            </DrawerTrigger>
+            <DrawerContent>
+              <DrawerHeader className="text-left">
+                <DrawerTitle>教科を追加</DrawerTitle>
+              </DrawerHeader>
+              <div className="px-4 pb-4 grid gap-3">
+                <div>
+                  <div className="text-sm mb-1">名前(日本語)</div>
+                  <Input
+                    value={nameJa}
+                    onChange={(e) => setNameJa(e.target.value)}
+                    placeholder="例: 数学"
+                  />
+                </div>
+                <div>
+                  <div className="text-sm mb-1">名前(英語・任意)</div>
+                  <Input
+                    value={nameEn}
+                    onChange={(e) => setNameEn(e.target.value)}
+                    placeholder="例: Mathematics"
+                  />
+                </div>
+                <div>
+                  <div className="text-sm mb-1">有効期限(任意)</div>
+                  <DateTimePicker
+                    value={expires}
+                    onChange={setExpires}
+                    placeholder="日時を選択"
+                  />
+                </div>
               </div>
-              <div>
-                <div className="text-sm mb-1">名前(英語・任意)</div>
-                <Input
-                  value={nameEn}
-                  onChange={(e) => setNameEn(e.target.value)}
-                  placeholder="例: Mathematics"
-                />
+              <DrawerFooter>
+                <DrawerClose asChild>
+                  <Button variant="secondary">キャンセル</Button>
+                </DrawerClose>
+                <Button onClick={create}>作成</Button>
+              </DrawerFooter>
+            </DrawerContent>
+          </Drawer>
+        ) : (
+          <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+            <DialogTrigger asChild>
+              <Button>教科を追加</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>教科を追加</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-3">
+                <div>
+                  <div className="text-sm mb-1">名前(日本語)</div>
+                  <Input
+                    value={nameJa}
+                    onChange={(e) => setNameJa(e.target.value)}
+                    placeholder="例: 数学"
+                  />
+                </div>
+                <div>
+                  <div className="text-sm mb-1">名前(英語・任意)</div>
+                  <Input
+                    value={nameEn}
+                    onChange={(e) => setNameEn(e.target.value)}
+                    placeholder="例: Mathematics"
+                  />
+                </div>
+                <div>
+                  <div className="text-sm mb-1">有効期限(任意)</div>
+                  <DateTimePicker
+                    value={expires}
+                    onChange={setExpires}
+                    placeholder="日時を選択"
+                  />
+                </div>
               </div>
-              <div>
-                <div className="text-sm mb-1">有効期限(任意)</div>
-                <DateTimePicker
-                  value={expires}
-                  onChange={setExpires}
-                  placeholder="日時を選択"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="secondary">キャンセル</Button>
-              </DialogClose>
-              <Button onClick={create}>作成</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="secondary">キャンセル</Button>
+                </DialogClose>
+                <Button onClick={create}>作成</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card className="p-0 overflow-x-auto">
@@ -280,46 +338,89 @@ export default function AdminSubjects() {
         </Table>
       </Card>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>教科を編集</DialogTitle>
-            <DialogDescription>
-              空欄で保存すると期限を解除します。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div>
-              <div className="text-sm mb-1">名前(日本語)</div>
-              <Input
-                value={editNameJa}
-                onChange={(e) => setEditNameJa(e.target.value)}
-              />
+      {isMobile ? (
+        <Drawer open={editOpen} onOpenChange={setEditOpen}>
+          <DrawerContent>
+            <DrawerHeader className="text-left">
+              <DrawerTitle>教科を編集</DrawerTitle>
+              <DrawerDescription>
+                空欄で保存すると期限を解除します。
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="px-4 pb-4 grid gap-3">
+              <div>
+                <div className="text-sm mb-1">名前(日本語)</div>
+                <Input
+                  value={editNameJa}
+                  onChange={(e) => setEditNameJa(e.target.value)}
+                />
+              </div>
+              <div>
+                <div className="text-sm mb-1">名前(英語・任意)</div>
+                <Input
+                  value={editNameEn}
+                  onChange={(e) => setEditNameEn(e.target.value)}
+                />
+              </div>
+              <div>
+                <div className="text-sm mb-1">有効期限(任意)</div>
+                <DateTimePicker
+                  value={editExpires}
+                  onChange={setEditExpires}
+                  placeholder="日時を選択"
+                />
+              </div>
             </div>
-            <div>
-              <div className="text-sm mb-1">名前(英語・任意)</div>
-              <Input
-                value={editNameEn}
-                onChange={(e) => setEditNameEn(e.target.value)}
-              />
+            <DrawerFooter>
+              <DrawerClose asChild>
+                <Button variant="secondary">キャンセル</Button>
+              </DrawerClose>
+              <Button onClick={saveEdit}>保存</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>教科を編集</DialogTitle>
+              <DialogDescription>
+                空欄で保存すると期限を解除します。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <div>
+                <div className="text-sm mb-1">名前(日本語)</div>
+                <Input
+                  value={editNameJa}
+                  onChange={(e) => setEditNameJa(e.target.value)}
+                />
+              </div>
+              <div>
+                <div className="text-sm mb-1">名前(英語・任意)</div>
+                <Input
+                  value={editNameEn}
+                  onChange={(e) => setEditNameEn(e.target.value)}
+                />
+              </div>
+              <div>
+                <div className="text-sm mb-1">有効期限(任意)</div>
+                <DateTimePicker
+                  value={editExpires}
+                  onChange={setEditExpires}
+                  placeholder="日時を選択"
+                />
+              </div>
             </div>
-            <div>
-              <div className="text-sm mb-1">有効期限(任意)</div>
-              <DateTimePicker
-                value={editExpires}
-                onChange={setEditExpires}
-                placeholder="日時を選択"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="secondary">キャンセル</Button>
-            </DialogClose>
-            <Button onClick={saveEdit}>保存</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="secondary">キャンセル</Button>
+              </DialogClose>
+              <Button onClick={saveEdit}>保存</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

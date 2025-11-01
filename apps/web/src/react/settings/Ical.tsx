@@ -166,7 +166,7 @@ export default function SettingsIcal() {
           <AlertDescription>{dict.settingsIcal.shareWarning}</AlertDescription>
         </Alert>
         <Card className="p-4 space-y-3">
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-60">
               <div className="text-sm mb-1">
                 {dict.settingsIcal.descOptional}
@@ -185,7 +185,9 @@ export default function SettingsIcal() {
                 placeholder="日時を選択"
               />
             </div>
-            <Button onClick={create}>{dict.settingsIcal.issueUrl}</Button>
+            <Button className="w-full sm:w-auto" onClick={create}>
+              {dict.settingsIcal.issueUrl}
+            </Button>
           </div>
         </Card>
         <Card className="p-0 overflow-x-auto">
