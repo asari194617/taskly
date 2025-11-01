@@ -87,6 +87,8 @@ export function DateTimePicker({ value, onChange, placeholder }: Props) {
                 mode="single"
                 selected={parseLocalDate(date)}
                 captionLayout="dropdown"
+                fromYear={1970}
+                toYear={2100}
                 onSelect={(d) => commit(formatLocalDate(d), time)}
               />
             </PopoverContent>
