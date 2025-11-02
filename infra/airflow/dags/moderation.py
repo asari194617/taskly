@@ -26,7 +26,7 @@ with DAG(
 
     run_moderation = BashOperator(
         task_id="run_moderation",
-        bash_command="go run /workspace/batches/moderation/main.go",
+        bash_command="cd /workspace/batches/moderation && go run .",
         env={
             "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
             "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),

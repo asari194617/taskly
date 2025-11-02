@@ -288,25 +288,55 @@ func ensureAssignmentsTable(db *sql.DB) error {
 		notes TEXT NULL,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		CONSTRAINT fk_day_shift_assignments_cycle FOREIGN KEY (cycle_id) REFERENCES day_shift_cycles(id),
 		UNIQUE KEY uniq_day_cycle (date, cycle_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
 	if _, err := db.Exec(ddl1); err != nil {
 		return err
 	}
-	// members table
-	ddl2 := `CREATE TABLE IF NOT EXISTS day_shift_assignments_users (
+
+	// Determine signedness of referenced IDs to avoid FK type mismatches
+	asgUnsigned, _ := isColumnUnsigned(db, "day_shift_assignments", "id")
+	userUnsigned, _ := isColumnUnsigned(db, "users", "id")
+	asgCol := "BIGINT"
+	if asgUnsigned {
+		asgCol += " UNSIGNED"
+	}
+	userCol := "BIGINT"
+	if userUnsigned {
+		userCol += " UNSIGNED"
+	}
+
+	// Create members table without hard FK first to avoid immediate failure on type mismatches
+	ddl2 := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS day_shift_assignments_users (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
-		day_shift_assignments_id BIGINT NOT NULL,
-		user_id BIGINT NOT NULL,
-		CONSTRAINT fk_asg_users_asg FOREIGN KEY (day_shift_assignments_id) REFERENCES day_shift_assignments(id),
-		CONSTRAINT fk_asg_users_user FOREIGN KEY (user_id) REFERENCES users(id),
-		KEY idx_asg_id (day_shift_assignments_id)
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
+		day_shift_assignments_id %s NOT NULL,
+		user_id %s NOT NULL,
+		KEY idx_asg_id (day_shift_assignments_id),
+		KEY idx_user_id (user_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`, asgCol, userCol)
 	if _, err := db.Exec(ddl2); err != nil {
 		return err
 	}
+
+	// Try adding foreign keys; ignore if it fails (log only)
+	if _, err := db.Exec(`ALTER TABLE day_shift_assignments_users ADD CONSTRAINT fk_asg_users_asg FOREIGN KEY (day_shift_assignments_id) REFERENCES day_shift_assignments(id)`); err != nil {
+		log.Println("warn: skipping fk_asg_users_asg:", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE day_shift_assignments_users ADD CONSTRAINT fk_asg_users_user FOREIGN KEY (user_id) REFERENCES users(id)`); err != nil {
+		log.Println("warn: skipping fk_asg_users_user:", err)
+	}
+
 	return nil
+}
+
+// isColumnUnsigned checks if a given column is defined as unsigned.
+func isColumnUnsigned(db *sql.DB, table, column string) (bool, error) {
+	row := db.QueryRow(`SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`, table, column)
+	var colType string
+	if err := row.Scan(&colType); err != nil {
+		return false, err
+	}
+	return strings.Contains(strings.ToLower(colType), "unsigned"), nil
 }
 
 func lastAssignedDateAll(db *sql.DB) time.Time {
