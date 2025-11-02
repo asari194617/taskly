@@ -25,11 +25,11 @@ with DAG(
             "GOCACHE": "/home/airflow/.cache/go-build",
             "PATH": "/usr/local/go/bin:/home/airflow/go/bin:/usr/lib/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             # DB connection for mysqldump (explicit constants to avoid localhost fallback)
-            "DB_HOST": "db",
-            "DB_PORT": "3306",
-            "MYSQL_USER": "taskly",
-            "MYSQL_PASSWORD": "taskly_password",
-            "MYSQL_DATABASE": "taskly",
+            "DB_HOST": os.environ.get("DB_HOST", "db"),
+            "DB_PORT": os.environ.get("DB_PORT", "3306"),
+            "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
+            "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
+            "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
             # Persist backups under airflow-data volume
             "BACKUP_DIR": "/opt/airflow/backups",
             # FTP credentials (forward from container env)
