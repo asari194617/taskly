@@ -27,13 +27,13 @@ func registerGraphQL(app *fiber.App) {
 
 	// GraphQL POST-only endpoint with security features
 	app.Post("/graphql", func(c *fiber.Ctx) error {
-		// Rate limit: max 30 req/min per IP
+		// Rate limit: max 150 req/min per IP
 		ipKey := "graphql_rate:" + c.IP()
 		ipCount, _ := RDB.Incr(c.Context(), ipKey).Result()
 		if ipCount == 1 {
 			_ = RDB.Expire(c.Context(), ipKey, 60*time.Second)
 		}
-		if ipCount > 30 {
+		if ipCount > 150 {
 			return c.Status(429).JSON(fiber.Map{"error": "rate limit"})
 		}
 

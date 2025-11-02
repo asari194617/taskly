@@ -78,7 +78,7 @@ export default function AdminUsers() {
   >(null);
   const [sortDir, setSortDir] = React.useState<"asc" | "desc" | null>(null);
 
-  // Dialog states
+  // Dialog/Drawer responsive states
   const [openEdit, setOpenEdit] = React.useState(false);
   const [editTarget, setEditTarget] = React.useState<AUser | null>(null);
   const [editEmail, setEditEmail] = React.useState("");
@@ -287,6 +287,203 @@ export default function AdminUsers() {
         description: e?.message,
       });
     }
+  }
+
+  // Shared content components (for responsive Dialog/Drawer)
+  function EditUserForm() {
+    return (
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm mb-1">メール</div>
+          <Input
+            value={editEmail}
+            onChange={(e) => setEditEmail(e.target.value)}
+          />
+        </div>
+        <div>
+          <div className="text-sm mb-1">表示名</div>
+          <Input
+            value={editDisplayName}
+            onChange={(e) => setEditDisplayName(e.target.value)}
+          />
+        </div>
+        <div>
+          <div className="text-sm mb-1">表示言語</div>
+          <Select value={editLang} onValueChange={setEditLang}>
+            <SelectTrigger>
+              <SelectValue placeholder="言語" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ja">日本語</SelectItem>
+              <SelectItem value="en">English</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={editEmailLogin}
+            onCheckedChange={setEditEmailLogin}
+            id="email-login"
+          />
+          <label htmlFor="email-login" className="text-sm">
+            メールログインを許可
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+  function NotifSettingsContent() {
+    return (
+      <div className="space-y-4">
+        <div className="text-sm text-muted-foreground">
+          対象: {notifTarget?.email || "-"}
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="notif-email2"
+            checked={notifEmail}
+            onCheckedChange={setNotifEmail}
+          />
+          <label htmlFor="notif-email2" className="text-sm">
+            メールで配信
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="notif-push2"
+            checked={notifPush}
+            onCheckedChange={setNotifPush}
+          />
+          <label htmlFor="notif-push2" className="text-sm">
+            プッシュ通知で配信
+          </label>
+        </div>
+        <div className="pt-2">
+          <div className="text-sm font-medium mb-2">通知種類</div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="type-task"
+                checked={typeTask}
+                onCheckedChange={setTypeTask}
+              />
+              <label htmlFor="type-task" className="text-sm">
+                課題通知（TASK）
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="type-dayshift"
+                checked={typeDayShift}
+                onCheckedChange={setTypeDayShift}
+              />
+              <label htmlFor="type-dayshift" className="text-sm">
+                日直通知（DAYSHIFT）
+              </label>
+            </div>
+          </div>
+        </div>
+        <div className="pt-4 space-y-3">
+          <div className="text-sm font-medium">デバイス一覧</div>
+          <div className="border rounded">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>プラットフォーム</TableHead>
+                  <TableHead>名前</TableHead>
+                  <TableHead>有効</TableHead>
+                  <TableHead>更新</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {devices.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="text-sm text-muted-foreground"
+                    >
+                      デバイスがありません
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  devices.map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell>{d.platform}</TableCell>
+                      <TableCell>{d.name || "-"}</TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={d.is_enabled}
+                          onCheckedChange={(v) => toggleDeviceEnabled(d.id, v)}
+                        />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(d.updated_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => deleteDevice(d.id)}
+                        >
+                          削除
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+            <div>
+              <div className="text-sm mb-1">プラットフォーム</div>
+              <Select value={newDevPlatform} onValueChange={setNewDevPlatform}>
+                <SelectTrigger>
+                  <SelectValue placeholder="選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EMAIL">EMAIL</SelectItem>
+                  <SelectItem value="WEBPUSH">WEBPUSH</SelectItem>
+                  <SelectItem value="IOS">IOS</SelectItem>
+                  <SelectItem value="ANDROID">ANDROID</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="text-sm mb-1">名前</div>
+              <Input
+                value={newDevName}
+                onChange={(e) => setNewDevName(e.target.value)}
+                placeholder="任意"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <div className="text-sm mb-1">Payload(JSON)</div>
+              <Input
+                value={newDevPayload}
+                onChange={(e) => setNewDevPayload(e.target.value)}
+                placeholder='{"endpoint":"..."}'
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={newDevEnabled}
+                onCheckedChange={setNewDevEnabled}
+                id="newDevEnabled"
+              />
+              <label htmlFor="newDevEnabled" className="text-sm">
+                有効
+              </label>
+            </div>
+            <div className="md:col-span-5 text-right">
+              <Button onClick={createDevice}>デバイス追加</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   async function submitCreate() {
@@ -846,54 +1043,33 @@ export default function AdminUsers() {
         </PaginationContent>
       </Pagination>
 
-      <Dialog open={openEdit} onOpenChange={setOpenEdit}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ユーザー編集</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <div className="text-sm mb-1">メール</div>
-              <Input
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-              />
+      {isMobile ? (
+        <Drawer open={openEdit} onOpenChange={setOpenEdit}>
+          <DrawerContent>
+            <DrawerHeader className="text-left">
+              <DrawerTitle>ユーザー編集</DrawerTitle>
+            </DrawerHeader>
+            <div className="px-4 pb-4">
+              <EditUserForm />
             </div>
-            <div>
-              <div className="text-sm mb-1">表示名</div>
-              <Input
-                value={editDisplayName}
-                onChange={(e) => setEditDisplayName(e.target.value)}
-              />
-            </div>
-            <div>
-              <div className="text-sm mb-1">表示言語</div>
-              <Select value={editLang} onValueChange={setEditLang}>
-                <SelectTrigger>
-                  <SelectValue placeholder="言語" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ja">日本語</SelectItem>
-                  <SelectItem value="en">English</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={editEmailLogin}
-                onCheckedChange={setEditEmailLogin}
-                id="email-login"
-              />
-              <label htmlFor="email-login" className="text-sm">
-                メールログインを許可
-              </label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={submitEdit}>更新</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DrawerFooter>
+              <Button onClick={submitEdit}>更新</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={openEdit} onOpenChange={setOpenEdit}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ユーザー編集</DialogTitle>
+            </DialogHeader>
+            <EditUserForm />
+            <DialogFooter>
+              <Button onClick={submitEdit}>更新</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Notification Settings: Responsive Drawer+Dialog */}
       {isMobile ? (
@@ -901,31 +1077,10 @@ export default function AdminUsers() {
           <DrawerContent>
             <DrawerHeader className="text-left">
               <DrawerTitle>通知設定</DrawerTitle>
-              <DrawerDescription>
-                対象: {notifTarget?.email || "-"}
-              </DrawerDescription>
+              <DrawerDescription>詳細設定とデバイス管理</DrawerDescription>
             </DrawerHeader>
-            <div className="px-4 pb-4 space-y-4">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="notif-email"
-                  checked={notifEmail}
-                  onCheckedChange={setNotifEmail}
-                />
-                <label htmlFor="notif-email" className="text-sm">
-                  メールで配信
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="notif-push"
-                  checked={notifPush}
-                  onCheckedChange={setNotifPush}
-                />
-                <label htmlFor="notif-push" className="text-sm">
-                  プッシュ通知で配信
-                </label>
-              </div>
+            <div className="px-4 pb-4">
+              <NotifSettingsContent />
             </div>
             <DrawerFooter>
               <Button onClick={submitNotif}>保存</Button>
@@ -938,159 +1093,7 @@ export default function AdminUsers() {
             <DialogHeader>
               <DialogTitle>通知設定</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                対象: {notifTarget?.email || "-"}
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="notif-email2"
-                  checked={notifEmail}
-                  onCheckedChange={setNotifEmail}
-                />
-                <label htmlFor="notif-email2" className="text-sm">
-                  メールで配信
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="notif-push2"
-                  checked={notifPush}
-                  onCheckedChange={setNotifPush}
-                />
-                <label htmlFor="notif-push2" className="text-sm">
-                  プッシュ通知で配信
-                </label>
-              </div>
-              <div className="pt-2">
-                <div className="text-sm font-medium mb-2">通知種類</div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="type-task"
-                      checked={typeTask}
-                      onCheckedChange={setTypeTask}
-                    />
-                    <label htmlFor="type-task" className="text-sm">
-                      課題通知（TASK）
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="type-dayshift"
-                      checked={typeDayShift}
-                      onCheckedChange={setTypeDayShift}
-                    />
-                    <label htmlFor="type-dayshift" className="text-sm">
-                      日直通知（DAYSHIFT）
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <div className="pt-4 space-y-3">
-                <div className="text-sm font-medium">デバイス一覧</div>
-                <div className="border rounded">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>プラットフォーム</TableHead>
-                        <TableHead>名前</TableHead>
-                        <TableHead>有効</TableHead>
-                        <TableHead>更新</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {devices.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={5}
-                            className="text-sm text-muted-foreground"
-                          >
-                            デバイスがありません
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        devices.map((d) => (
-                          <TableRow key={d.id}>
-                            <TableCell>{d.platform}</TableCell>
-                            <TableCell>{d.name || "-"}</TableCell>
-                            <TableCell>
-                              <Switch
-                                checked={d.is_enabled}
-                                onCheckedChange={(v) =>
-                                  toggleDeviceEnabled(d.id, v)
-                                }
-                              />
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {new Date(d.updated_at).toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() => deleteDevice(d.id)}
-                              >
-                                削除
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                  <div>
-                    <div className="text-sm mb-1">プラットフォーム</div>
-                    <Select
-                      value={newDevPlatform}
-                      onValueChange={setNewDevPlatform}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="EMAIL">EMAIL</SelectItem>
-                        <SelectItem value="WEBPUSH">WEBPUSH</SelectItem>
-                        <SelectItem value="IOS">IOS</SelectItem>
-                        <SelectItem value="ANDROID">ANDROID</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="text-sm mb-1">名前</div>
-                    <Input
-                      value={newDevName}
-                      onChange={(e) => setNewDevName(e.target.value)}
-                      placeholder="任意"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="text-sm mb-1">Payload(JSON)</div>
-                    <Input
-                      value={newDevPayload}
-                      onChange={(e) => setNewDevPayload(e.target.value)}
-                      placeholder='{"endpoint":"..."}'
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={newDevEnabled}
-                      onCheckedChange={setNewDevEnabled}
-                      id="newDevEnabled"
-                    />
-                    <label htmlFor="newDevEnabled" className="text-sm">
-                      有効
-                    </label>
-                  </div>
-                  <div className="md:col-span-5 text-right">
-                    <Button onClick={createDevice}>デバイス追加</Button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <NotifSettingsContent />
             <DialogFooter>
               <Button onClick={submitNotif}>保存</Button>
             </DialogFooter>

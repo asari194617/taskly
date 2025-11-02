@@ -350,6 +350,182 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 		},
 	}
 
+	// Set per-type preference (TASK or DAYSHIFT)
+	fields["adminUserSetNotificationTypePref"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"user_id":           &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"notification_type": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"enabled":           &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				isAdmin, _ := userHasRole(u.ID, "admin")
+				isManager, _ := userHasRole(u.ID, "manager")
+				if !(isAdmin || isManager) {
+					return false, fmt.Errorf("forbidden")
+				}
+				uid := uint(p.Args["user_id"].(int))
+				tp := strings.ToUpper(strings.TrimSpace(p.Args["notification_type"].(string)))
+				if tp != "TASK" && tp != "DAYSHIFT" {
+					return false, fmt.Errorf("invalid type")
+				}
+				en := p.Args["enabled"].(bool)
+				var rec NotificationTypePref
+				if err := DB.Where("user_id = ? AND notification_type = ?", uid, tp).First(&rec).Error; err != nil {
+					rec = NotificationTypePref{UserID: uid, NotificationType: tp, IsEnabled: en}
+					if err := DB.Create(&rec).Error; err != nil {
+						return false, fmt.Errorf("db")
+					}
+				} else {
+					if err := DB.Model(&NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", en).Error; err != nil {
+						return false, fmt.Errorf("db")
+					}
+				}
+				_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_type_pref:%d:%s:%t", uid, tp, en)}).Error
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
+	// Create a device (for IOS/ANDROID or named WEBPUSH entries if needed)
+	fields["adminUserCreateDevice"] = &graphql.Field{
+		Type: graphql.NewObject(graphql.ObjectConfig{Name: "AdminUserCreateDeviceResult", Fields: graphql.Fields{"id": &graphql.Field{Type: graphql.Int}}}),
+		Args: graphql.FieldConfigArgument{
+			"user_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"platform": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"name":     &graphql.ArgumentConfig{Type: graphql.String},
+			"payload":  &graphql.ArgumentConfig{Type: graphql.String},
+			"enabled":  &graphql.ArgumentConfig{Type: graphql.Boolean},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return nil, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				isAdmin, _ := userHasRole(u.ID, "admin")
+				isManager, _ := userHasRole(u.ID, "manager")
+				if !(isAdmin || isManager) {
+					return nil, fmt.Errorf("forbidden")
+				}
+				uid := uint(p.Args["user_id"].(int))
+				platform := strings.ToUpper(strings.TrimSpace(p.Args["platform"].(string)))
+				if platform == "" {
+					return nil, fmt.Errorf("invalid platform")
+				}
+				name, _ := p.Args["name"].(string)
+				var namePtr *string
+				if strings.TrimSpace(name) != "" {
+					v := name
+					namePtr = &v
+				}
+				payload, _ := p.Args["payload"].(string)
+				var payloadPtr *string
+				if strings.TrimSpace(payload) != "" {
+					v := payload
+					payloadPtr = &v
+				}
+				enabled := true
+				if v, ok := p.Args["enabled"].(bool); ok {
+					enabled = v
+				}
+				rec := NotificationDevice{UserID: uid, Platform: platform, Name: namePtr, Payload: payloadPtr, IsEnabled: enabled}
+				if err := DB.Create(&rec).Error; err != nil {
+					return nil, fmt.Errorf("db")
+				}
+				_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.create:%d:%s", uid, platform)}).Error
+				return map[string]any{"id": int(rec.ID)}, nil
+			}
+			return nil, fmt.Errorf("context missing")
+		},
+	}
+
+	// Update a device (name/payload/is_enabled)
+	fields["adminUserUpdateDevice"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"device_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"name":       &graphql.ArgumentConfig{Type: graphql.String},
+			"payload":    &graphql.ArgumentConfig{Type: graphql.String},
+			"is_enabled": &graphql.ArgumentConfig{Type: graphql.Boolean},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				isAdmin, _ := userHasRole(u.ID, "admin")
+				isManager, _ := userHasRole(u.ID, "manager")
+				if !(isAdmin || isManager) {
+					return false, fmt.Errorf("forbidden")
+				}
+				id := uint(p.Args["device_id"].(int))
+				updates := map[string]any{}
+				if v, ok := p.Args["name"].(string); ok {
+					if strings.TrimSpace(v) == "" {
+						updates["name"] = nil
+					} else {
+						updates["name"] = v
+					}
+				}
+				if v, ok := p.Args["payload"].(string); ok {
+					if strings.TrimSpace(v) == "" {
+						updates["payload"] = nil
+					} else {
+						updates["payload"] = v
+					}
+				}
+				if v, ok := p.Args["is_enabled"].(bool); ok {
+					updates["is_enabled"] = v
+				}
+				if len(updates) == 0 {
+					return true, nil
+				}
+				if err := DB.Model(&NotificationDevice{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.update:%d", id)}).Error
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
+	// Delete a device
+	fields["adminUserDeleteDevice"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"device_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				isAdmin, _ := userHasRole(u.ID, "admin")
+				isManager, _ := userHasRole(u.ID, "manager")
+				if !(isAdmin || isManager) {
+					return false, fmt.Errorf("forbidden")
+				}
+				id := uint(p.Args["device_id"].(int))
+				if err := DB.Delete(&NotificationDevice{}, id).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.delete:%d", id)}).Error
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	fields["adminUserSetNotificationSettings"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{
@@ -362,182 +538,6 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !userFromSession(c) {
 					return false, fmt.Errorf("unauthorized")
 				}
-
-				// Set per-type preference (TASK or DAYSHIFT)
-				fields["adminUserSetNotificationTypePref"] = &graphql.Field{
-					Type: graphql.Boolean,
-					Args: graphql.FieldConfigArgument{
-						"user_id":           &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-						"notification_type": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
-						"enabled":           &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
-					},
-					Resolve: func(p graphql.ResolveParams) (any, error) {
-						if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-							if !userFromSession(c) {
-								return false, fmt.Errorf("unauthorized")
-							}
-							u := c.Locals("user").(*User)
-							isAdmin, _ := userHasRole(u.ID, "admin")
-							isManager, _ := userHasRole(u.ID, "manager")
-							if !(isAdmin || isManager) {
-								return false, fmt.Errorf("forbidden")
-							}
-							uid := uint(p.Args["user_id"].(int))
-							tp := strings.ToUpper(strings.TrimSpace(p.Args["notification_type"].(string)))
-							if tp != "TASK" && tp != "DAYSHIFT" {
-								return false, fmt.Errorf("invalid type")
-							}
-							en := p.Args["enabled"].(bool)
-							var rec NotificationTypePref
-							if err := DB.Where("user_id = ? AND notification_type = ?", uid, tp).First(&rec).Error; err != nil {
-								rec = NotificationTypePref{UserID: uid, NotificationType: tp, IsEnabled: en}
-								if err := DB.Create(&rec).Error; err != nil {
-									return false, fmt.Errorf("db")
-								}
-							} else {
-								if err := DB.Model(&NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", en).Error; err != nil {
-									return false, fmt.Errorf("db")
-								}
-							}
-							_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_type_pref:%d:%s:%t", uid, tp, en)}).Error
-							return true, nil
-						}
-						return false, fmt.Errorf("context missing")
-					},
-				}
-
-				// Create a device (for IOS/ANDROID or named WEBPUSH entries if needed)
-				fields["adminUserCreateDevice"] = &graphql.Field{
-					Type: graphql.NewObject(graphql.ObjectConfig{Name: "AdminUserCreateDeviceResult", Fields: graphql.Fields{"id": &graphql.Field{Type: graphql.Int}}}),
-					Args: graphql.FieldConfigArgument{
-						"user_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-						"platform": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
-						"name":     &graphql.ArgumentConfig{Type: graphql.String},
-						"payload":  &graphql.ArgumentConfig{Type: graphql.String},
-						"enabled":  &graphql.ArgumentConfig{Type: graphql.Boolean},
-					},
-					Resolve: func(p graphql.ResolveParams) (any, error) {
-						if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-							if !userFromSession(c) {
-								return nil, fmt.Errorf("unauthorized")
-							}
-							u := c.Locals("user").(*User)
-							isAdmin, _ := userHasRole(u.ID, "admin")
-							isManager, _ := userHasRole(u.ID, "manager")
-							if !(isAdmin || isManager) {
-								return nil, fmt.Errorf("forbidden")
-							}
-							uid := uint(p.Args["user_id"].(int))
-							platform := strings.ToUpper(strings.TrimSpace(p.Args["platform"].(string)))
-							if platform == "" {
-								return nil, fmt.Errorf("invalid platform")
-							}
-							name, _ := p.Args["name"].(string)
-							var namePtr *string
-							if strings.TrimSpace(name) != "" {
-								v := name
-								namePtr = &v
-							}
-							payload, _ := p.Args["payload"].(string)
-							var payloadPtr *string
-							if strings.TrimSpace(payload) != "" {
-								v := payload
-								payloadPtr = &v
-							}
-							enabled := true
-							if v, ok := p.Args["enabled"].(bool); ok {
-								enabled = v
-							}
-							rec := NotificationDevice{UserID: uid, Platform: platform, Name: namePtr, Payload: payloadPtr, IsEnabled: enabled}
-							if err := DB.Create(&rec).Error; err != nil {
-								return nil, fmt.Errorf("db")
-							}
-							_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.create:%d:%s", uid, platform)}).Error
-							return map[string]any{"id": int(rec.ID)}, nil
-						}
-						return nil, fmt.Errorf("context missing")
-					},
-				}
-
-				// Update a device (name/payload/is_enabled)
-				fields["adminUserUpdateDevice"] = &graphql.Field{
-					Type: graphql.Boolean,
-					Args: graphql.FieldConfigArgument{
-						"device_id":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-						"name":       &graphql.ArgumentConfig{Type: graphql.String},
-						"payload":    &graphql.ArgumentConfig{Type: graphql.String},
-						"is_enabled": &graphql.ArgumentConfig{Type: graphql.Boolean},
-					},
-					Resolve: func(p graphql.ResolveParams) (any, error) {
-						if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-							if !userFromSession(c) {
-								return false, fmt.Errorf("unauthorized")
-							}
-							u := c.Locals("user").(*User)
-							isAdmin, _ := userHasRole(u.ID, "admin")
-							isManager, _ := userHasRole(u.ID, "manager")
-							if !(isAdmin || isManager) {
-								return false, fmt.Errorf("forbidden")
-							}
-							id := uint(p.Args["device_id"].(int))
-							updates := map[string]any{}
-							if v, ok := p.Args["name"].(string); ok {
-								if strings.TrimSpace(v) == "" {
-									updates["name"] = nil
-								} else {
-									updates["name"] = v
-								}
-							}
-							if v, ok := p.Args["payload"].(string); ok {
-								if strings.TrimSpace(v) == "" {
-									updates["payload"] = nil
-								} else {
-									updates["payload"] = v
-								}
-							}
-							if v, ok := p.Args["is_enabled"].(bool); ok {
-								updates["is_enabled"] = v
-							}
-							if len(updates) == 0 {
-								return true, nil
-							}
-							if err := DB.Model(&NotificationDevice{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-								return false, fmt.Errorf("db")
-							}
-							_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.update:%d", id)}).Error
-							return true, nil
-						}
-						return false, fmt.Errorf("context missing")
-					},
-				}
-
-				// Delete a device
-				fields["adminUserDeleteDevice"] = &graphql.Field{
-					Type: graphql.Boolean,
-					Args: graphql.FieldConfigArgument{
-						"device_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-					},
-					Resolve: func(p graphql.ResolveParams) (any, error) {
-						if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-							if !userFromSession(c) {
-								return false, fmt.Errorf("unauthorized")
-							}
-							u := c.Locals("user").(*User)
-							isAdmin, _ := userHasRole(u.ID, "admin")
-							isManager, _ := userHasRole(u.ID, "manager")
-							if !(isAdmin || isManager) {
-								return false, fmt.Errorf("forbidden")
-							}
-							id := uint(p.Args["device_id"].(int))
-							if err := DB.Delete(&NotificationDevice{}, id).Error; err != nil {
-								return false, fmt.Errorf("db")
-							}
-							_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.delete:%d", id)}).Error
-							return true, nil
-						}
-						return false, fmt.Errorf("context missing")
-					},
-				}
 				u := c.Locals("user").(*User)
 				isAdmin, _ := userHasRole(u.ID, "admin")
 				isManager, _ := userHasRole(u.ID, "manager")
@@ -549,25 +549,27 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				wp := p.Args["webpush_enabled"].(bool)
 				// Upsert EMAIL device
 				var emDev NotificationDevice
-				if err := DB.Where("user_id = ? AND platform = ?", uid, "EMAIL").First(&emDev).Error; err != nil {
-					rec := NotificationDevice{UserID: uid, Platform: "EMAIL", IsEnabled: em}
-					if err := DB.Create(&rec).Error; err != nil {
+				if err := DB.Where("user_id = ? AND platform = ?", uid, "EMAIL").First(&emDev).Error; err == nil {
+					if err := DB.Model(&NotificationDevice{}).Where("id = ?", emDev.ID).Update("is_enabled", em).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
-				} else {
-					if err := DB.Model(&NotificationDevice{}).Where("id = ?", emDev.ID).Update("is_enabled", em).Error; err != nil {
+				} else if em {
+					// create record only when enabling
+					rec := NotificationDevice{UserID: uid, Platform: "EMAIL", IsEnabled: true}
+					if err := DB.Create(&rec).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
 				// Upsert WEBPUSH device
 				var wpDev NotificationDevice
-				if err := DB.Where("user_id = ? AND platform = ?", uid, "WEBPUSH").First(&wpDev).Error; err != nil {
-					rec := NotificationDevice{UserID: uid, Platform: "WEBPUSH", IsEnabled: wp}
-					if err := DB.Create(&rec).Error; err != nil {
+				if err := DB.Where("user_id = ? AND platform = ?", uid, "WEBPUSH").First(&wpDev).Error; err == nil {
+					if err := DB.Model(&NotificationDevice{}).Where("id = ?", wpDev.ID).Update("is_enabled", wp).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
-				} else {
-					if err := DB.Model(&NotificationDevice{}).Where("id = ?", wpDev.ID).Update("is_enabled", wp).Error; err != nil {
+				} else if wp {
+					// create record only when enabling
+					rec := NotificationDevice{UserID: uid, Platform: "WEBPUSH", IsEnabled: true}
+					if err := DB.Create(&rec).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
