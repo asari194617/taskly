@@ -9,25 +9,58 @@ import (
 
 // gqlTypes groups GraphQL object types used across Query and Mutation builders.
 type gqlTypes struct {
-	AdminUserType          *graphql.Object
-	SubjectType            *graphql.Object
-	TaskType               *graphql.Object
-	MeType                 *graphql.Object
-	AuthSettingsType       *graphql.Object
-	PasskeyType            *graphql.Object
-	ApiKeyType             *graphql.Object
-	IcalTokenType          *graphql.Object
-	McpInfoType            *graphql.Object
-	LogItemType            *graphql.Object
-	DayShiftCycleType      *graphql.Object
-	DayShiftAssignmentType *graphql.Object
-	DayShiftGroupType      *graphql.Object
-	DayShiftCycleListType  *graphql.Object
-	DayShiftGroupListType  *graphql.Object
+	AdminUserType             *graphql.Object
+	NotificationSettingsType  *graphql.Object
+	NotificationDeviceType    *graphql.Object
+	NotificationTypePrefsType *graphql.Object
+	SubjectType               *graphql.Object
+	TaskType                  *graphql.Object
+	MeType                    *graphql.Object
+	AuthSettingsType          *graphql.Object
+	PasskeyType               *graphql.Object
+	ApiKeyType                *graphql.Object
+	IcalTokenType             *graphql.Object
+	McpInfoType               *graphql.Object
+	LogItemType               *graphql.Object
+	DayShiftCycleType         *graphql.Object
+	DayShiftAssignmentType    *graphql.Object
+	DayShiftGroupType         *graphql.Object
+	DayShiftCycleListType     *graphql.Object
+	DayShiftGroupListType     *graphql.Object
 }
 
 // createGQLTypes constructs all GraphQL types. Keep logic identical to original definitions.
 func createGQLTypes() *gqlTypes {
+	notificationSettingsType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "NotificationSettings",
+		Fields: graphql.Fields{
+			"email_enabled":   &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"webpush_enabled": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"updated_at":      &graphql.Field{Type: graphql.String},
+		},
+	})
+
+	notificationDeviceType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "NotificationDevice",
+		Fields: graphql.Fields{
+			"id":         &graphql.Field{Type: graphql.NewNonNull(graphql.Int)},
+			"user_id":    &graphql.Field{Type: graphql.NewNonNull(graphql.Int)},
+			"platform":   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"name":       &graphql.Field{Type: graphql.String},
+			"payload":    &graphql.Field{Type: graphql.String},
+			"is_enabled": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"created_at": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"updated_at": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+		},
+	})
+
+	notificationTypePrefsType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "NotificationTypePrefs",
+		Fields: graphql.Fields{
+			"TASK":     &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"DAYSHIFT": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+		},
+	})
 	adminUserType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "AdminUser",
 		Fields: graphql.Fields{
@@ -240,20 +273,23 @@ func createGQLTypes() *gqlTypes {
 	})
 
 	return &gqlTypes{
-		AdminUserType:          adminUserType,
-		SubjectType:            subjectType,
-		TaskType:               taskType,
-		MeType:                 meType,
-		AuthSettingsType:       authSettingsType,
-		PasskeyType:            passkeyType,
-		ApiKeyType:             apiKeyType,
-		IcalTokenType:          icalTokenType,
-		McpInfoType:            mcpInfoType,
-		LogItemType:            logItemType,
-		DayShiftCycleType:      dayShiftCycleType,
-		DayShiftAssignmentType: dayShiftAssignmentType,
-		DayShiftGroupType:      dayShiftGroupType,
-		DayShiftCycleListType:  dayShiftCycleListType,
-		DayShiftGroupListType:  dayShiftGroupListType,
+		AdminUserType:             adminUserType,
+		NotificationSettingsType:  notificationSettingsType,
+		NotificationDeviceType:    notificationDeviceType,
+		NotificationTypePrefsType: notificationTypePrefsType,
+		SubjectType:               subjectType,
+		TaskType:                  taskType,
+		MeType:                    meType,
+		AuthSettingsType:          authSettingsType,
+		PasskeyType:               passkeyType,
+		ApiKeyType:                apiKeyType,
+		IcalTokenType:             icalTokenType,
+		McpInfoType:               mcpInfoType,
+		LogItemType:               logItemType,
+		DayShiftCycleType:         dayShiftCycleType,
+		DayShiftAssignmentType:    dayShiftAssignmentType,
+		DayShiftGroupType:         dayShiftGroupType,
+		DayShiftCycleListType:     dayShiftCycleListType,
+		DayShiftGroupListType:     dayShiftGroupListType,
 	}
 }

@@ -1,0 +1,13 @@
+-- Per-user notification devices registry
+CREATE TABLE IF NOT EXISTS notification_devices (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(255) NULL,
+  platform ENUM('EMAIL','WEBPUSH','IOS','ANDROID') NOT NULL,
+  payload JSON NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_user_platform (user_id, platform),
+  CONSTRAINT fk_nd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

@@ -57,7 +57,7 @@ export async function createApp(pool: DBPool) {
     }
     sql += " ORDER BY id DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
-  const [rows] = await pool.query(sql, params);
+    const [rows] = await pool.query(sql, params);
     reply.send(rows);
   });
 
@@ -123,7 +123,7 @@ export async function createApp(pool: DBPool) {
   app.get("/users/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
     const [rows] = await pool.query(
-      "SELECT id, email, display_name, is_deleted, is_day_shift_active, notification_lang, is_registered, is_agreed_policies, push_daily_enabled, created_at FROM users WHERE id = ? LIMIT 1",
+      "SELECT id, email, display_name, is_deleted, is_day_shift_active, notification_lang, is_registered, is_agreed_policies, created_at FROM users WHERE id = ? LIMIT 1",
       [id]
     );
     if (!rows || rows.length === 0)
@@ -153,8 +153,7 @@ export async function createApp(pool: DBPool) {
       up("is_registered", body.is_registered ? 1 : 0);
     if (body.is_agreed_policies !== undefined)
       up("is_agreed_policies", body.is_agreed_policies ? 1 : 0);
-    if (body.push_daily_enabled !== undefined)
-      up("push_daily_enabled", body.push_daily_enabled ? 1 : 0);
+    // push_daily_enabled removed; use notification_devices WEBPUSH via server APIs instead
     if (fields.length === 0) return reply.send({ ok: true });
     const sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
     values.push(id);

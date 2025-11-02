@@ -86,14 +86,12 @@ func registerSettingsRoutes(app *fiber.App) {
 		return c.SendStatus(204)
 	})
 
-	// Push settings (per-user)
+	// Push settings (deprecated): map to WEBPUSH device enabled state
 	app.Get("/settings/push", authRequired, audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
-		var fresh User
-		_ = DB.First(&fresh, u.ID).Error
-		return c.JSON(fiber.Map{
-			"daily_enabled": fresh.PushDailyEnabled,
-		})
+		var cnt int64
+		_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = ? AND is_enabled = 1", u.ID, "WEBPUSH").Count(&cnt).Error
+		return c.JSON(fiber.Map{"daily_enabled": cnt > 0})
 	})
 	app.Post("/settings/push", authRequired, audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*User)
@@ -103,8 +101,20 @@ func registerSettingsRoutes(app *fiber.App) {
 		if err := parseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
-		if body.DailyEnabled != nil {
-			_ = DB.Model(&User{}).Where("id = ?", u.ID).Update("push_daily_enabled", *body.DailyEnabled).Error
+		if body.DailyEnabled == nil {
+			return c.SendStatus(204)
+		}
+		// Ensure a default WEBPUSH device row exists and set its enabled state
+		var dev NotificationDevice
+		if err := DB.Where("user_id = ? AND platform = ?", u.ID, "WEBPUSH").First(&dev).Error; err != nil {
+			// create
+			var name *string
+			nm := "default"
+			name = &nm
+			dev = NotificationDevice{UserID: u.ID, Name: name, Platform: "WEBPUSH", IsEnabled: *body.DailyEnabled}
+			_ = DB.Create(&dev).Error
+		} else {
+			_ = DB.Model(&NotificationDevice{}).Where("id = ?", dev.ID).Update("is_enabled", *body.DailyEnabled).Error
 		}
 		return c.SendStatus(204)
 	})

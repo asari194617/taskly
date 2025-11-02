@@ -12,8 +12,128 @@ import (
 // queryFieldsAdminUsers returns GraphQL fields for admin users queries.
 func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 	adminUserType := t.AdminUserType
+	nsType := t.NotificationSettingsType
+	devType := t.NotificationDeviceType
+	ntpType := t.NotificationTypePrefsType
 
 	return graphql.Fields{
+		"adminUserNotificationSettings": &graphql.Field{
+			Type: nsType,
+			Args: graphql.FieldConfigArgument{
+				"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			},
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*User)
+					isAdmin, _ := userHasRole(u.ID, "admin")
+					isManager, _ := userHasRole(u.ID, "manager")
+					if !(isAdmin || isManager) {
+						return nil, fmt.Errorf("forbidden")
+					}
+					uid := uint(p.Args["user_id"].(int))
+					// Defaults
+					emailEnabled := true
+					webpushEnabled := false
+					var latest *time.Time
+					var devs []NotificationDevice
+					_ = DB.Where("user_id = ? AND platform IN ?", uid, []string{"EMAIL", "WEBPUSH"}).Find(&devs).Error
+					for _, d := range devs {
+						switch strings.ToUpper(strings.TrimSpace(d.Platform)) {
+						case "EMAIL":
+							emailEnabled = d.IsEnabled
+						case "WEBPUSH":
+							webpushEnabled = d.IsEnabled
+						}
+						if latest == nil || d.UpdatedAt.After(*latest) {
+							t := d.UpdatedAt
+							latest = &t
+						}
+					}
+					var updated any = nil
+					if latest != nil {
+						updated = latest.Format(time.RFC3339)
+					}
+					return map[string]any{"email_enabled": emailEnabled, "webpush_enabled": webpushEnabled, "updated_at": updated}, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+		// Notification type preferences
+		"adminUserNotificationTypePrefs": &graphql.Field{
+			Type: ntpType,
+			Args: graphql.FieldConfigArgument{
+				"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			},
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*User)
+					isAdmin, _ := userHasRole(u.ID, "admin")
+					isManager, _ := userHasRole(u.ID, "manager")
+					if !(isAdmin || isManager) {
+						return nil, fmt.Errorf("forbidden")
+					}
+					uid := uint(p.Args["user_id"].(int))
+					// defaults
+					prefs := map[string]bool{"TASK": true, "DAYSHIFT": true}
+					var list []NotificationTypePref
+					_ = DB.Where("user_id = ?", uid).Find(&list).Error
+					for _, it := range list {
+						k := strings.ToUpper(strings.TrimSpace(it.NotificationType))
+						prefs[k] = it.IsEnabled
+					}
+					return map[string]any{"TASK": prefs["TASK"], "DAYSHIFT": prefs["DAYSHIFT"]}, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+
+		// Devices list by user
+		"adminUserDevices": &graphql.Field{
+			Type: graphql.NewList(devType),
+			Args: graphql.FieldConfigArgument{
+				"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			},
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*User)
+					isAdmin, _ := userHasRole(u.ID, "admin")
+					isManager, _ := userHasRole(u.ID, "manager")
+					if !(isAdmin || isManager) {
+						return nil, fmt.Errorf("forbidden")
+					}
+					uid := uint(p.Args["user_id"].(int))
+					var devs []NotificationDevice
+					if err := DB.Where("user_id = ?", uid).Order("id ASC").Find(&devs).Error; err != nil {
+						return nil, err
+					}
+					out := make([]map[string]any, 0, len(devs))
+					for _, d := range devs {
+						out = append(out, map[string]any{
+							"id":         int(d.ID),
+							"user_id":    int(d.UserID),
+							"platform":   d.Platform,
+							"name":       d.Name,
+							"payload":    d.Payload,
+							"is_enabled": d.IsEnabled,
+							"created_at": d.CreatedAt.Format(time.RFC3339),
+							"updated_at": d.UpdatedAt.Format(time.RFC3339),
+						})
+					}
+					return out, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+
 		// Helper: fetch specific users by IDs for display mapping
 		"adminUsersByIds": &graphql.Field{
 			Type: graphql.NewList(adminUserType),

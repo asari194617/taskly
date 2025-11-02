@@ -77,7 +77,7 @@ func main() {
 	runMigrations()
 
 	// Auto-migrate core models (create missing tables/columns after migrations)
-	_ = DB.AutoMigrate(&Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{}, &FlaggedContent{}, &UserReport{}, &SystemSetting{})
+	_ = DB.AutoMigrate(&Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &BusinessCalendar{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{}, &FlaggedContent{}, &UserReport{}, &SystemSetting{}, &NotificationTypePref{}, &NotificationDevice{})
 	// Ensure new group-based day shift schema exists even if SQL migrations are not applied
 	ensureDayShiftGroupSchemaAndBackfill()
 	// Ensure legacy tasks.deadline column is DATE (not DATETIME)

@@ -37,6 +37,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   Pagination,
   PaginationContent,
@@ -89,6 +98,32 @@ export default function AdminUsers() {
   const [deleteTarget, setDeleteTarget] = React.useState<AUser | null>(null);
   const [deleteHard, setDeleteHard] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState("");
+
+  // Notification settings dialog/drawer
+  const isMobile = useIsMobile();
+  const [openNotif, setOpenNotif] = React.useState(false);
+  const [notifTarget, setNotifTarget] = React.useState<AUser | null>(null);
+  const [notifEmail, setNotifEmail] = React.useState(true);
+  const [notifPush, setNotifPush] = React.useState(false);
+  // Type prefs
+  const [typeTask, setTypeTask] = React.useState(true);
+  const [typeDayShift, setTypeDayShift] = React.useState(true);
+  // Devices
+  type Device = {
+    id: number;
+    user_id: number;
+    platform: string;
+    name?: string | null;
+    payload?: string | null;
+    is_enabled: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  const [devices, setDevices] = React.useState<Device[]>([]);
+  const [newDevPlatform, setNewDevPlatform] = React.useState("WEBPUSH");
+  const [newDevName, setNewDevName] = React.useState("");
+  const [newDevPayload, setNewDevPayload] = React.useState("");
+  const [newDevEnabled, setNewDevEnabled] = React.useState(true);
 
   // Custom role dialogs
   const [openCustomAdd, setOpenCustomAdd] = React.useState(false);
@@ -372,6 +407,147 @@ export default function AdminUsers() {
     setOpenDelete(true);
   }
 
+  async function openNotifDialog(u: AUser) {
+    setNotifTarget(u);
+    try {
+      const d = await gql<{
+        adminUserNotificationSettings: {
+          email_enabled: boolean;
+          webpush_enabled: boolean;
+        };
+        adminUserNotificationTypePrefs: { TASK: boolean; DAYSHIFT: boolean };
+        adminUserDevices: Device[];
+      }>(
+        `query($id:Int!){
+          adminUserNotificationSettings(user_id:$id){ email_enabled webpush_enabled }
+          adminUserNotificationTypePrefs(user_id:$id){ TASK DAYSHIFT }
+          adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at }
+        }`,
+        { id: u.id }
+      );
+      setNotifEmail(d.adminUserNotificationSettings?.email_enabled ?? true);
+      setNotifPush(d.adminUserNotificationSettings?.webpush_enabled ?? false);
+      setTypeTask(d.adminUserNotificationTypePrefs?.TASK ?? true);
+      setTypeDayShift(d.adminUserNotificationTypePrefs?.DAYSHIFT ?? true);
+      setDevices(d.adminUserDevices || []);
+      setOpenNotif(true);
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "取得に失敗しました",
+        description: e?.message,
+      });
+    }
+  }
+
+  async function submitNotif() {
+    if (!notifTarget) return;
+    try {
+      // save channels (email/webpush)
+      await gql<{ adminUserSetNotificationSettings: boolean }>(
+        `mutation($id:Int!,$em:Boolean!,$wp:Boolean!){ adminUserSetNotificationSettings(user_id:$id, email_enabled:$em, webpush_enabled:$wp) }`,
+        { id: notifTarget.id, em: notifEmail, wp: notifPush }
+      );
+      // save type prefs
+      await gql<{ adminUserSetNotificationTypePref: boolean }>(
+        `mutation($id:Int!,$tp:String!,$en:Boolean!){ adminUserSetNotificationTypePref(user_id:$id, notification_type:$tp, enabled:$en) }`,
+        { id: notifTarget.id, tp: "TASK", en: typeTask }
+      );
+      await gql<{ adminUserSetNotificationTypePref: boolean }>(
+        `mutation($id:Int!,$tp:String!,$en:Boolean!){ adminUserSetNotificationTypePref(user_id:$id, notification_type:$tp, enabled:$en) }`,
+        { id: notifTarget.id, tp: "DAYSHIFT", en: typeDayShift }
+      );
+      setOpenNotif(false);
+      toast({ title: "通知設定を更新しました" });
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: e?.message,
+      });
+    }
+  }
+
+  async function toggleDeviceEnabled(devId: number, enabled: boolean) {
+    try {
+      await gql<{ adminUserUpdateDevice: boolean }>(
+        `mutation($id:Int!,$en:Boolean){ adminUserUpdateDevice(device_id:$id, is_enabled:$en) }`,
+        { id: devId, en: enabled }
+      );
+      // refresh list
+      if (notifTarget) {
+        const r = await gql<{ adminUserDevices: Device[] }>(
+          `query($id:Int!){ adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at } }`,
+          { id: notifTarget.id }
+        );
+        setDevices(r.adminUserDevices || []);
+      }
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: e?.message,
+      });
+    }
+  }
+
+  async function deleteDevice(devId: number) {
+    if (!window.confirm("このデバイスを削除しますか？")) return;
+    try {
+      await gql<{ adminUserDeleteDevice: boolean }>(
+        `mutation($id:Int!){ adminUserDeleteDevice(device_id:$id) }`,
+        { id: devId }
+      );
+      if (notifTarget) {
+        const r = await gql<{ adminUserDevices: Device[] }>(
+          `query($id:Int!){ adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at } }`,
+          { id: notifTarget.id }
+        );
+        setDevices(r.adminUserDevices || []);
+      }
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "削除に失敗しました",
+        description: e?.message,
+      });
+    }
+  }
+
+  async function createDevice() {
+    if (!notifTarget) return;
+    try {
+      await gql<{ adminUserCreateDevice: { id: number } }>(
+        `mutation($id:Int!,$pf:String!,$name:String,$payload:String,$en:Boolean){ adminUserCreateDevice(user_id:$id, platform:$pf, name:$name, payload:$payload, enabled:$en){ id } }`,
+        {
+          id: notifTarget.id,
+          pf: newDevPlatform,
+          name: newDevName || undefined,
+          payload: newDevPayload || undefined,
+          en: newDevEnabled,
+        }
+      );
+      // reset form
+      setNewDevPlatform("WEBPUSH");
+      setNewDevName("");
+      setNewDevPayload("");
+      setNewDevEnabled(true);
+      // refresh list
+      const r = await gql<{ adminUserDevices: Device[] }>(
+        `query($id:Int!){ adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at } }`,
+        { id: notifTarget.id }
+      );
+      setDevices(r.adminUserDevices || []);
+      toast({ title: "デバイスを追加しました" });
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "追加に失敗しました",
+        description: e?.message,
+      });
+    }
+  }
+
   async function submitDelete() {
     if (!deleteTarget) return;
     if (deleteConfirm !== "削除") {
@@ -560,6 +736,9 @@ export default function AdminUsers() {
                         <DropdownMenuItem onClick={() => openEditDialog(u)}>
                           編集
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openNotifDialog(u)}>
+                          通知設定
+                        </DropdownMenuItem>
                         {(() => {
                           const roles = u.roles || [];
                           const hasAdmin = roles.includes("admin");
@@ -715,6 +894,209 @@ export default function AdminUsers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Notification Settings: Responsive Drawer+Dialog */}
+      {isMobile ? (
+        <Drawer open={openNotif} onOpenChange={setOpenNotif}>
+          <DrawerContent>
+            <DrawerHeader className="text-left">
+              <DrawerTitle>通知設定</DrawerTitle>
+              <DrawerDescription>
+                対象: {notifTarget?.email || "-"}
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="px-4 pb-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="notif-email"
+                  checked={notifEmail}
+                  onCheckedChange={setNotifEmail}
+                />
+                <label htmlFor="notif-email" className="text-sm">
+                  メールで配信
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="notif-push"
+                  checked={notifPush}
+                  onCheckedChange={setNotifPush}
+                />
+                <label htmlFor="notif-push" className="text-sm">
+                  プッシュ通知で配信
+                </label>
+              </div>
+            </div>
+            <DrawerFooter>
+              <Button onClick={submitNotif}>保存</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={openNotif} onOpenChange={setOpenNotif}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>通知設定</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="text-sm text-muted-foreground">
+                対象: {notifTarget?.email || "-"}
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="notif-email2"
+                  checked={notifEmail}
+                  onCheckedChange={setNotifEmail}
+                />
+                <label htmlFor="notif-email2" className="text-sm">
+                  メールで配信
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="notif-push2"
+                  checked={notifPush}
+                  onCheckedChange={setNotifPush}
+                />
+                <label htmlFor="notif-push2" className="text-sm">
+                  プッシュ通知で配信
+                </label>
+              </div>
+              <div className="pt-2">
+                <div className="text-sm font-medium mb-2">通知種類</div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="type-task"
+                      checked={typeTask}
+                      onCheckedChange={setTypeTask}
+                    />
+                    <label htmlFor="type-task" className="text-sm">
+                      課題通知（TASK）
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="type-dayshift"
+                      checked={typeDayShift}
+                      onCheckedChange={setTypeDayShift}
+                    />
+                    <label htmlFor="type-dayshift" className="text-sm">
+                      日直通知（DAYSHIFT）
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 space-y-3">
+                <div className="text-sm font-medium">デバイス一覧</div>
+                <div className="border rounded">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>プラットフォーム</TableHead>
+                        <TableHead>名前</TableHead>
+                        <TableHead>有効</TableHead>
+                        <TableHead>更新</TableHead>
+                        <TableHead className="text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {devices.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={5}
+                            className="text-sm text-muted-foreground"
+                          >
+                            デバイスがありません
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        devices.map((d) => (
+                          <TableRow key={d.id}>
+                            <TableCell>{d.platform}</TableCell>
+                            <TableCell>{d.name || "-"}</TableCell>
+                            <TableCell>
+                              <Switch
+                                checked={d.is_enabled}
+                                onCheckedChange={(v) =>
+                                  toggleDeviceEnabled(d.id, v)
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(d.updated_at).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => deleteDevice(d.id)}
+                              >
+                                削除
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                  <div>
+                    <div className="text-sm mb-1">プラットフォーム</div>
+                    <Select
+                      value={newDevPlatform}
+                      onValueChange={setNewDevPlatform}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EMAIL">EMAIL</SelectItem>
+                        <SelectItem value="WEBPUSH">WEBPUSH</SelectItem>
+                        <SelectItem value="IOS">IOS</SelectItem>
+                        <SelectItem value="ANDROID">ANDROID</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <div className="text-sm mb-1">名前</div>
+                    <Input
+                      value={newDevName}
+                      onChange={(e) => setNewDevName(e.target.value)}
+                      placeholder="任意"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="text-sm mb-1">Payload(JSON)</div>
+                    <Input
+                      value={newDevPayload}
+                      onChange={(e) => setNewDevPayload(e.target.value)}
+                      placeholder='{"endpoint":"..."}'
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={newDevEnabled}
+                      onCheckedChange={setNewDevEnabled}
+                      id="newDevEnabled"
+                    />
+                    <label htmlFor="newDevEnabled" className="text-sm">
+                      有効
+                    </label>
+                  </div>
+                  <div className="md:col-span-5 text-right">
+                    <Button onClick={createDevice}>デバイス追加</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={submitNotif}>保存</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog open={openDelete} onOpenChange={setOpenDelete}>
         <DialogContent>

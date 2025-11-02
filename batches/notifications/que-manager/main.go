@@ -44,7 +44,7 @@ type NotifyItem struct {
 	Subject   string
 	Title     string
 	Body      string
-	UserID    uint
+	UserID    uint // optional; when zero and Kind=task we expand to all users by prefs
 }
 
 func main() {
@@ -107,9 +107,6 @@ func main() {
 			}
 			// ラベルは日付ベース（今日/あす）
 			label := whenLabel(now, t.Deadline)
-			if isUserDeleted(db, t.AddedUserID) || isUserBlocked(db, t.AddedUserID) {
-				continue
-			}
 			subj := strings.TrimSpace(t.SubjectName)
 			if subj == "" {
 				subj = "課題"
@@ -120,7 +117,7 @@ func main() {
 				Subject:   subj,
 				Title:     t.Title,
 				Body:      fmt.Sprintf("%s まで", deadlineLabel(t, t.Deadline)),
-				UserID:    t.AddedUserID,
+				UserID:    0, // expand to all users by preferences below
 			})
 		}
 		rows.Close()
@@ -142,15 +139,56 @@ func main() {
 		}
 	}
 
+	// Resolve eligible users and preferences
+	userIDs, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
 	// キューに投入（共通テーブル）: 各チャネルごとに投入（email, webpush）
 	for _, it := range items {
-		// email
-		if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'email', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.UserID); err != nil {
-			log.Println("enqueue email:", err)
+		// tasks: expand to all users
+		if it.Kind == "task" && it.UserID == 0 {
+			for _, uid := range userIDs {
+				// type preference: TASK default ON
+				if tp, ok := typePrefs[uid]; ok {
+					if !tp["TASK"] {
+						continue
+					}
+				}
+				pf := devicePrefs[uid]
+				if pf.Email {
+					if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'email', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, uid); err != nil {
+						log.Println("enqueue email:", err)
+					}
+				}
+				if pf.WebPush {
+					if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, uid); err != nil {
+						log.Println("enqueue webpush:", err)
+					}
+				}
+			}
+			continue
 		}
-		// webpush
-		if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.UserID); err != nil {
-			log.Println("enqueue webpush:", err)
+		// fallback: enqueue for specific user (e.g., dayshift future expansion)
+		if it.UserID != 0 {
+			// respect per-type preference
+			typeKey := "TASK"
+			if strings.EqualFold(it.Kind, "dayshift") {
+				typeKey = "DAYSHIFT"
+			}
+			if tp, ok := typePrefs[it.UserID]; ok {
+				if !tp[typeKey] {
+					continue
+				}
+			}
+			pf := devicePrefs[it.UserID]
+			if pf.Email {
+				if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'email', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.UserID); err != nil {
+					log.Println("enqueue email:", err)
+				}
+			}
+			if pf.WebPush {
+				if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.UserID); err != nil {
+					log.Println("enqueue webpush:", err)
+				}
+			}
 		}
 	}
 }
@@ -279,6 +317,80 @@ func isUserBlocked(db *sql.DB, uid uint) bool {
 		return false
 	}
 	return cnt > 0
+}
+
+type userDevicePrefs struct{ Email, WebPush bool }
+
+// loadEligibleUsersAndPrefs returns non-deleted/non-blocked users and their notification prefs.
+// Defaults: email=true, webpush=false when no settings row exists.
+func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, map[uint]map[string]bool) {
+	ids := make([]uint, 0, 1024)
+	device := make(map[uint]userDevicePrefs, 1024)
+	typePrefs := make(map[uint]map[string]bool, 1024)
+	// load users
+	rows, err := db.Query(`SELECT id, is_deleted FROM users`)
+	if err != nil {
+		log.Println("load users:", err)
+		return ids, device, typePrefs
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uint
+		var del bool
+		if err := rows.Scan(&id, &del); err != nil {
+			continue
+		}
+		if del {
+			continue
+		}
+		if isUserBlocked(db, id) {
+			continue
+		}
+		ids = append(ids, id)
+		// default device prefs
+		device[id] = userDevicePrefs{Email: true, WebPush: false}
+		// default type prefs: both enabled
+		typePrefs[id] = map[string]bool{"TASK": true, "DAYSHIFT": true}
+	}
+	// overlay per-user device settings
+	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
+	if err != nil {
+		return ids, device, typePrefs
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var uid uint
+		var platform string
+		var enabled bool
+		if err := rows2.Scan(&uid, &platform, &enabled); err != nil {
+			continue
+		}
+		p := device[uid]
+		switch strings.ToUpper(strings.TrimSpace(platform)) {
+		case "EMAIL":
+			p.Email = enabled
+		case "WEBPUSH":
+			p.WebPush = enabled
+		}
+		device[uid] = p
+	}
+	// overlay per-user type settings
+	rows3, err := db.Query(`SELECT user_id, notification_type, is_enabled FROM notification_type_prefs`)
+	if err == nil {
+		defer rows3.Close()
+		for rows3.Next() {
+			var uid uint
+			var t string
+			var en bool
+			if err := rows3.Scan(&uid, &t, &en); err != nil {
+				continue
+			}
+			m := typePrefs[uid]
+			m[strings.ToUpper(strings.TrimSpace(t))] = en
+			typePrefs[uid] = m
+		}
+	}
+	return ids, device, typePrefs
 }
 
 // targetDates returns business dates for notifications: today, next biz day, and the following biz day

@@ -19,7 +19,6 @@ type User struct {
 	NotificationLang string    `gorm:"size:5;not null;default:'ja'"`
 	IsRegistered     bool      `gorm:"default:false"`
 	IsAgreedPolicies bool      `gorm:"default:false"`
-	PushDailyEnabled bool      `gorm:"default:true"`
 	CreatedAt        time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
@@ -321,6 +320,30 @@ type SystemSetting struct {
 	ID        uint      `gorm:"primaryKey"`
 	Key       string    `gorm:"uniqueIndex;size:128;not null"`
 	Value     string    `gorm:"type:text;not null"` // JSON string
+	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
+}
+
+// NotificationSettings stores per-user delivery preferences
+// Removed: NotificationSettings (replaced by NotificationDevice + NotificationTypePref)
+
+// NotificationTypePref stores per-user on/off for specific notification kinds
+type NotificationTypePref struct {
+	ID               uint      `gorm:"primaryKey"`
+	UserID           uint      `gorm:"index;not null"`
+	NotificationType string    `gorm:"size:16;not null"` // TASK | DAYSHIFT
+	IsEnabled        bool      `gorm:"not null;default:true"`
+	CreatedAt        time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+}
+
+// NotificationDevice stores per-user devices/channels (email, webpush, mobile)
+type NotificationDevice struct {
+	ID        uint      `gorm:"primaryKey"`
+	UserID    uint      `gorm:"index;not null"`
+	Name      *string   `gorm:"size:255"`
+	Platform  string    `gorm:"size:16;not null"` // EMAIL | WEBPUSH | IOS | ANDROID
+	Payload   *string   `gorm:"type:json"`        // optional JSON payload/metadata
+	IsEnabled bool      `gorm:"not null;default:true"`
 	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }

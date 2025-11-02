@@ -145,7 +145,6 @@ const tools: Record<
             notification_lang: { type: "string" },
             is_registered: { type: "boolean" },
             is_agreed_policies: { type: "boolean" },
-            push_daily_enabled: { type: "boolean" },
           },
         },
       },

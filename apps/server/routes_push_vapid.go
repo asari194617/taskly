@@ -141,12 +141,17 @@ func pushNotifyScheduler(hhmm string) {
 		}
 		time.Sleep(time.Until(next))
 		go func() {
-			// for each user with subs and daily push enabled, send count of tasks due today
+			// for each user with WEBPUSH device enabled, send count of tasks due today
 			var users []User
-			_ = DB.Where("is_deleted = 0 AND push_daily_enabled = 1").Find(&users).Error
+			_ = DB.Where("is_deleted = 0").Find(&users).Error
 			today := dateOnly(time.Now())
 			tomorrow := dateOnly(time.Now().Add(24 * time.Hour)).Add(-time.Nanosecond)
 			for _, u := range users {
+				var enabled int64
+				_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = ? AND is_enabled = 1", u.ID, "WEBPUSH").Count(&enabled).Error
+				if enabled == 0 {
+					continue
+				}
 				var cnt int64
 				eff := effectiveDeadlineExpr("")
 				_ = DB.Model(&Task{}).Where("added_user_id = ? AND "+eff+" BETWEEN ? AND ?", u.ID, today, tomorrow).Count(&cnt).Error

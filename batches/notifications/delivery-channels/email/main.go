@@ -68,6 +68,10 @@ func main() {
 		}
 	}
 	log.Printf("email notifications sent (groups): %d\n", totalSent)
+	// Cleanup: remove processed rows to keep queue temporary
+	if _, err := db.Exec(`DELETE FROM notifications_queue WHERE processed_at IS NOT NULL`); err != nil {
+		log.Println("cleanup processed queue:", err)
+	}
 }
 
 func fetchPendingEmailQueue(db *sql.DB) ([]QueueItem, error) {

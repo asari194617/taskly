@@ -86,6 +86,10 @@ func main() {
 		_ = markQueueProcessed(db, it.ID)
 	}
 	log.Printf("webpush notifications sent: %d\n", sent)
+	// Cleanup: remove processed rows to keep queue temporary
+	if _, err := db.Exec(`DELETE FROM notifications_queue WHERE processed_at IS NOT NULL`); err != nil {
+		log.Println("cleanup processed queue:", err)
+	}
 }
 
 func fetchPendingWebPushQueue(db *sql.DB) ([]QueueItem, error) {
