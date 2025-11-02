@@ -34,6 +34,8 @@ type AuthState = {
   email_login_enabled: boolean;
   has_password: boolean;
   totp_enabled: boolean;
+  passkey_count?: number;
+  recovery_codes_count?: number;
 };
 
 export default function SettingsSecurity() {
@@ -52,13 +54,27 @@ export default function SettingsSecurity() {
   const [pwOpen, setPwOpen] = React.useState(false);
   const [pwCurrent, setPwCurrent] = React.useState("");
   const [pwNext, setPwNext] = React.useState("");
+  const [pkOpen, setPkOpen] = React.useState(false);
+  const [passkeys, setPasskeys] = React.useState<
+    Array<{ id: number; device_name: string; created_at: string }>
+  >([]);
+  const [editingPk, setEditingPk] = React.useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   React.useEffect(() => {
     if (!token) return;
-    gql<{ authSettings: AuthState }>(
-      `query{ authSettings{ email_login_enabled has_password totp_enabled } }`
+    gql<{
+      authSettings: AuthState;
+      myPasskeys: { id: number; device_name: string; created_at: string }[];
+    }>(
+      `query{ authSettings{ email_login_enabled has_password totp_enabled passkey_count recovery_codes_count } myPasskeys{ id device_name created_at } }`
     )
-      .then((d) => setAuth(d.authSettings))
+      .then((d) => {
+        setAuth(d.authSettings);
+        setPasskeys(d.myPasskeys || []);
+      })
       .catch(() =>
         toast({ variant: "destructive", title: dict.toast.userInfoFetchError })
       );
@@ -171,6 +187,21 @@ export default function SettingsSecurity() {
       );
       if (finished) {
         toast({ title: dict.settingsSecurity.passkey.registered });
+        // reload list/counts
+        try {
+          const d = await gql<{
+            myPasskeys: {
+              id: number;
+              device_name: string;
+              created_at: string;
+            }[];
+            authSettings: AuthState;
+          }>(
+            `query{ myPasskeys{ id device_name created_at } authSettings{ passkey_count recovery_codes_count email_login_enabled has_password totp_enabled } }`
+          );
+          setPasskeys(d.myPasskeys || []);
+          setAuth((s) => ({ ...(s || {}), ...d.authSettings } as AuthState));
+        } catch {}
       } else {
         throw new Error("finish returned false");
       }
@@ -452,9 +483,287 @@ export default function SettingsSecurity() {
           <div className="text-sm text-muted-foreground">
             {dict.settingsSecurity.passkey.desc}
           </div>
-          <Button onClick={registerPasskey}>
-            {dict.settingsSecurity.passkey.register}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={registerPasskey}>
+              {dict.settingsSecurity.passkey.register}
+            </Button>
+            <Dialog
+              open={isDesktop && pkOpen}
+              onOpenChange={(v: boolean) => setPkOpen(isDesktop ? v : pkOpen)}
+            >
+              <DialogTrigger asChild>
+                <Button variant="secondary" onClick={() => setPkOpen(true)}>
+                  {dict.settingsSecurity.passkey.manage}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {dict.settingsSecurity.passkey.manage}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <Button onClick={registerPasskey}>
+                    {dict.settingsSecurity.passkey.addThisDevice}
+                  </Button>
+                  <div className="space-y-2 max-h-64 overflow-auto">
+                    {passkeys.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">
+                        {dict.settingsSecurity.passkey.none}
+                      </div>
+                    ) : (
+                      passkeys.map((pk) => (
+                        <div
+                          key={pk.id}
+                          className="flex items-center gap-2 border rounded px-3 py-2"
+                        >
+                          {editingPk?.id === pk.id ? (
+                            <>
+                              <Input
+                                value={editingPk.name}
+                                onChange={(e) =>
+                                  setEditingPk({
+                                    id: pk.id,
+                                    name: e.target.value,
+                                  })
+                                }
+                                className="flex-1"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await gql(
+                                      `mutation($id:Int!,$name:String!){ renamePasskey(id:$id,name:$name) }`,
+                                      { id: pk.id, name: editingPk.name }
+                                    );
+                                    setPasskeys((list) =>
+                                      list.map((it) =>
+                                        it.id === pk.id
+                                          ? {
+                                              ...it,
+                                              device_name: editingPk.name,
+                                            }
+                                          : it
+                                      )
+                                    );
+                                    setEditingPk(null);
+                                  } catch {
+                                    toast({
+                                      variant: "destructive",
+                                      title: dict.toast.updateFailed,
+                                    });
+                                  }
+                                }}
+                              >
+                                {dict.common.save}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setEditingPk(null)}
+                              >
+                                {dict.common.cancel}
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex-1">
+                                <div className="font-medium">
+                                  {pk.device_name || "Passkey"}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {new Date(pk.created_at).toLocaleString()}
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  setEditingPk({
+                                    id: pk.id,
+                                    name: pk.device_name,
+                                  })
+                                }
+                              >
+                                {dict.settingsSecurity.passkey.rename}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={async () => {
+                                  try {
+                                    await gql(
+                                      `mutation($id:Int!){ deletePasskey(id:$id) }`,
+                                      { id: pk.id }
+                                    );
+                                    setPasskeys((list) =>
+                                      list.filter((it) => it.id !== pk.id)
+                                    );
+                                  } catch {
+                                    toast({
+                                      variant: "destructive",
+                                      title: dict.toast.deleteFailed,
+                                    });
+                                  }
+                                }}
+                              >
+                                {dict.settingsSecurity.passkey.delete}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setPkOpen(false)}
+                    >
+                      {dict.common.close}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Drawer
+              open={!isDesktop && pkOpen}
+              onOpenChange={(v: boolean) => setPkOpen(!isDesktop ? v : pkOpen)}
+            >
+              <DrawerContent>
+                <DrawerHeader className="text-left">
+                  <DrawerTitle>
+                    {dict.settingsSecurity.passkey.manage}
+                  </DrawerTitle>
+                </DrawerHeader>
+                <div className="px-4 pb-4 space-y-3">
+                  <Button className="w-full" onClick={registerPasskey}>
+                    {dict.settingsSecurity.passkey.addThisDevice}
+                  </Button>
+                  <div className="space-y-2 max-h-64 overflow-auto">
+                    {passkeys.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">
+                        {dict.settingsSecurity.passkey.none}
+                      </div>
+                    ) : (
+                      passkeys.map((pk) => (
+                        <div
+                          key={pk.id}
+                          className="flex items-center gap-2 border rounded px-3 py-2"
+                        >
+                          {editingPk?.id === pk.id ? (
+                            <>
+                              <Input
+                                value={editingPk.name}
+                                onChange={(e) =>
+                                  setEditingPk({
+                                    id: pk.id,
+                                    name: e.target.value,
+                                  })
+                                }
+                                className="flex-1"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await gql(
+                                      `mutation($id:Int!,$name:String!){ renamePasskey(id:$id,name:$name) }`,
+                                      { id: pk.id, name: editingPk.name }
+                                    );
+                                    setPasskeys((list) =>
+                                      list.map((it) =>
+                                        it.id === pk.id
+                                          ? {
+                                              ...it,
+                                              device_name: editingPk.name,
+                                            }
+                                          : it
+                                      )
+                                    );
+                                    setEditingPk(null);
+                                  } catch {
+                                    toast({
+                                      variant: "destructive",
+                                      title: dict.toast.updateFailed,
+                                    });
+                                  }
+                                }}
+                              >
+                                {dict.common.save}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setEditingPk(null)}
+                              >
+                                {dict.common.cancel}
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex-1">
+                                <div className="font-medium">
+                                  {pk.device_name || "Passkey"}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {new Date(pk.created_at).toLocaleString()}
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  setEditingPk({
+                                    id: pk.id,
+                                    name: pk.device_name,
+                                  })
+                                }
+                              >
+                                {dict.settingsSecurity.passkey.rename}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={async () => {
+                                  try {
+                                    await gql(
+                                      `mutation($id:Int!){ deletePasskey(id:$id) }`,
+                                      { id: pk.id }
+                                    );
+                                    setPasskeys((list) =>
+                                      list.filter((it) => it.id !== pk.id)
+                                    );
+                                  } catch {
+                                    toast({
+                                      variant: "destructive",
+                                      title: dict.toast.deleteFailed,
+                                    });
+                                  }
+                                }}
+                              >
+                                {dict.settingsSecurity.passkey.delete}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      variant="secondary"
+                      onClick={() => setPkOpen(false)}
+                    >
+                      {dict.common.close}
+                    </Button>
+                  </div>
+                </div>
+              </DrawerContent>
+            </Drawer>
+          </div>
         </Card>
         <Card className="p-4 space-y-3">
           <div className="font-medium">
@@ -464,7 +773,9 @@ export default function SettingsSecurity() {
             {dict.settingsSecurity.recovery.desc}
           </div>
           <Button onClick={generateRecovery}>
-            {dict.settingsSecurity.recovery.generate}
+            {auth?.recovery_codes_count && auth.recovery_codes_count > 0
+              ? dict.settingsSecurity.recovery.reissue
+              : dict.settingsSecurity.recovery.generate}
           </Button>
           <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
             <DialogContent>

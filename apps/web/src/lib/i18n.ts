@@ -221,9 +221,7 @@ export const t = (lang: Lang) => ({
         : "Passkey, TOTP, email login, recovery code",
     notifications: lang === "ja" ? "通知設定" : "Notification Settings",
     notificationsDesc:
-      lang === "ja"
-        ? "メール・Web Push など"
-        : "Email, web push, etc.",
+      lang === "ja" ? "メール・Web Push など" : "Email, web push, etc.",
     apiKeys: lang === "ja" ? "APIキーの設定" : "API Key Settings",
     apiKeysDesc:
       lang === "ja" ? "APIキーの発行と管理" : "Issue and manage API keys",
@@ -435,6 +433,18 @@ export const t = (lang: Lang) => ({
       register: lang === "ja" ? "パスキーを登録" : "Register passkey",
       registered:
         lang === "ja" ? "パスキーを登録しました" : "Passkey registered",
+      manage: lang === "ja" ? "パスキーを管理" : "Manage passkeys",
+      addThisDevice:
+        lang === "ja"
+          ? "この端末のパスキーを追加"
+          : "Add passkey for this device",
+      name: lang === "ja" ? "名称" : "Name",
+      rename: lang === "ja" ? "名称を変更" : "Rename",
+      delete: lang === "ja" ? "削除" : "Delete",
+      none:
+        lang === "ja"
+          ? "登録済みのパスキーはありません"
+          : "No passkeys registered",
     },
     recovery: {
       title: lang === "ja" ? "リカバリーコード" : "Recovery codes",
@@ -444,6 +454,8 @@ export const t = (lang: Lang) => ({
           : "Issuing new codes invalidates previous unused codes.",
       generate:
         lang === "ja" ? "リカバリーコードを発行" : "Generate recovery codes",
+      reissue:
+        lang === "ja" ? "リカバリーコードを再発行" : "Re-issue recovery codes",
       dialogTitle: lang === "ja" ? "リカバリーコード" : "Recovery codes",
       dialogDesc:
         lang === "ja"

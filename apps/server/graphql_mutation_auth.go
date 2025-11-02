@@ -306,6 +306,60 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 	}
 
+	// Passkey management
+	fields["renamePasskey"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"id":   &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				id, _ := p.Args["id"].(int)
+				name, _ := p.Args["name"].(string)
+				name = strings.TrimSpace(name)
+				if len(name) > 255 {
+					name = name[:255]
+				}
+				var pk Passkey
+				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&pk).Error; err != nil {
+					return false, fmt.Errorf("not found")
+				}
+				pk.DeviceName = &name
+				if err := DB.Save(&pk).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
+	fields["deletePasskey"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				id, _ := p.Args["id"].(int)
+				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&Passkey{}).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	fields["setPassword"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{

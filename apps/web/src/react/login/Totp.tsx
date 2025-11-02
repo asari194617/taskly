@@ -18,7 +18,6 @@ import {
 export default function Totp() {
   const [email] = React.useState(getEmailFromQuery());
   const [totp, setTotp] = React.useState("");
-  const [recovery, setRecovery] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
 
@@ -37,7 +36,6 @@ export default function Totp() {
           email,
           password,
           totp: totp || undefined,
-          recovery_code: recovery || undefined,
         }),
       });
       const data = await res.json();
@@ -62,28 +60,16 @@ export default function Totp() {
         <CardTitle>TOTP 認証</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-2">
-            <Label htmlFor="totp">TOTP</Label>
-            <Input
-              id="totp"
-              type="text"
-              inputMode="numeric"
-              value={totp}
-              onChange={(e) => setTotp(e.target.value)}
-              placeholder="123456"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="recovery">リカバリー</Label>
-            <Input
-              id="recovery"
-              type="text"
-              value={recovery}
-              onChange={(e) => setRecovery(e.target.value)}
-              placeholder="abcd-efgh"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="totp">TOTP</Label>
+          <Input
+            id="totp"
+            type="text"
+            inputMode="numeric"
+            value={totp}
+            onChange={(e) => setTotp(e.target.value)}
+            placeholder="123456"
+          />
         </div>
         <div className="flex gap-2">
           <Button type="button" onClick={doLogin} disabled={loading || !email}>

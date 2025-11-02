@@ -18,7 +18,8 @@ export default function SelectMfa() {
     passkey: boolean;
     emailCode: boolean;
     totp: boolean;
-  }>({ passkey: false, emailCode: false, totp: false });
+    recovery: boolean;
+  }>({ passkey: false, emailCode: false, totp: false, recovery: false });
 
   React.useEffect(() => {
     (async () => {
@@ -40,9 +41,16 @@ export default function SelectMfa() {
         const emailCode =
           Array.isArray(data?.methods) && data.methods.includes("email_code");
         const totp = !!data?.totp_enabled;
+        const recovery =
+          Array.isArray(data?.methods) && data.methods.includes("recovery");
         // If password was entered earlier, email code should not be offered
         const pw = sessionStorage.getItem("login_pw") || "";
-        setOptions({ passkey, emailCode: pw ? false : emailCode, totp });
+        setOptions({
+          passkey,
+          emailCode: pw ? false : emailCode,
+          totp,
+          recovery,
+        });
       } catch (e: any) {
         setMessage(e.message || "エラーが発生しました");
       } finally {
@@ -104,6 +112,19 @@ export default function SelectMfa() {
                 variant="secondary"
               >
                 認証コード（TOTP）で続行
+              </Button>
+            )}
+            {options.recovery && (
+              <Button
+                type="button"
+                className="w-full justify-start h-12"
+                onClick={() =>
+                  (window.location.href = withNext(`/login/recovery${qs}`))
+                }
+                disabled={loading}
+                variant="secondary"
+              >
+                リカバリーコードで続行
               </Button>
             )}
           </div>

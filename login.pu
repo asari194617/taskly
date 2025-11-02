@@ -9,6 +9,7 @@ state DispSelectMfaMethod as "多要素認証方法選択画面(有効な認証�
 state DispPasskeyInput as "多要素認証入力画面(パスキー)"
 state DispTotpInput as "多要素認証入力画面(TOTP)"
 state DispMailCodeInput as "多要素認証入力画面(メールコード)"
+state DispRecoveryCodeInput as "多要素認証入力画面(リカバリーコード)"
 state DispLoginSuccess as "ログイン成功(ホーム画面)"
 
 DispLoginBegin --> DispPasswordInput : ユーザー名入力後(パスワードが有効化されている場合)
@@ -17,12 +18,14 @@ DispLoginBegin --> DispSelectMfaMethod : ユーザー名入力後(パスワー�
 DispSelectMfaMethod --> DispPasskeyInput : パスキー選択時
 DispSelectMfaMethod --> DispTotpInput : TOTP選択時
 DispSelectMfaMethod --> DispMailCodeInput : メールコード選択時
+DispSelectMfaMethod --> DispRecoveryCodeInput : リカバリーコード選択時
 DispLoginBegin --> DispMailCodeInput : ユーザー名入力後(パスワードが設定されておらず、多要素認証のうちメールコード認証のみが有効化されている場合。デフォルトではここに遷移)
 DispLoginBegin --> DispPasskeyInput : ユーザー名入力後(パスワードが設定されておらず、多要素認証のうちパスキー認証のみが有効化されている場合)
 DispLoginBegin --> DispTotpInput : ユーザー名入力後(パスワードが設定されておらず、多要素認証のうちTOTP認証のみが有効化されている場合)
 DispPasskeyInput --> DispLoginSuccess : 多要素認証成功時
 DispTotpInput --> DispLoginSuccess : 多要素認証成功時
 DispMailCodeInput --> DispLoginSuccess : 多要素認証成功時
+DispRecoveryCodeInput --> DispLoginSuccess : 多要素認証成功時
 DispPasswordInput --> DispLoginSuccess : パスワード認証成功時(多要素認証が全て無効化されており、パスワードが有効化されている場合)
 
 @enduml

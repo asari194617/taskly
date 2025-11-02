@@ -37,6 +37,7 @@ export default function Begin() {
       const passkey = !!data?.passkey_enabled || methods.includes("passkey");
       const emailCode = methods.includes("email_code");
       const totp = !!data?.totp_enabled;
+      const recovery = methods.includes("recovery");
 
       const qs = `?email=${encodeURIComponent(email)}`;
       if (hasPw) {
@@ -47,6 +48,7 @@ export default function Begin() {
         passkey ? "passkey" : null,
         emailCode ? "mail" : null,
         totp ? "totp" : null,
+        recovery ? "recovery" : null,
       ].filter(Boolean) as string[];
       if (enabled.length <= 1) {
         // Direct route when only one method is enabled
@@ -56,6 +58,8 @@ export default function Begin() {
           window.location.assign(withNext(`/login/mail-code${qs}`));
         } else if (totp) {
           window.location.assign(withNext(`/login/totp${qs}`));
+        } else if (recovery) {
+          window.location.assign(withNext(`/login/recovery${qs}`));
         } else {
           setMessage("このアカウントに使用可能な認証方法がありません");
         }

@@ -14,6 +14,7 @@ type gqlTypes struct {
 	TaskType               *graphql.Object
 	MeType                 *graphql.Object
 	AuthSettingsType       *graphql.Object
+	PasskeyType            *graphql.Object
 	ApiKeyType             *graphql.Object
 	IcalTokenType          *graphql.Object
 	McpInfoType            *graphql.Object
@@ -123,6 +124,9 @@ func createGQLTypes() *gqlTypes {
 			"email_login_enabled": &graphql.Field{Type: graphql.Boolean},
 			"has_password":        &graphql.Field{Type: graphql.Boolean},
 			"totp_enabled":        &graphql.Field{Type: graphql.Boolean},
+			// Additional fields for UI logic
+			"passkey_count":        &graphql.Field{Type: graphql.Int},
+			"recovery_codes_count": &graphql.Field{Type: graphql.Int},
 		},
 	})
 
@@ -145,6 +149,15 @@ func createGQLTypes() *gqlTypes {
 			"url":         &graphql.Field{Type: graphql.String},
 			"created_at":  &graphql.Field{Type: graphql.String},
 			"expires_at":  &graphql.Field{Type: graphql.String},
+		},
+	})
+
+	passkeyType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Passkey",
+		Fields: graphql.Fields{
+			"id":          &graphql.Field{Type: graphql.Int},
+			"device_name": &graphql.Field{Type: graphql.String},
+			"created_at":  &graphql.Field{Type: graphql.String},
 		},
 	})
 
@@ -232,6 +245,7 @@ func createGQLTypes() *gqlTypes {
 		TaskType:               taskType,
 		MeType:                 meType,
 		AuthSettingsType:       authSettingsType,
+		PasskeyType:            passkeyType,
 		ApiKeyType:             apiKeyType,
 		IcalTokenType:          icalTokenType,
 		McpInfoType:            mcpInfoType,

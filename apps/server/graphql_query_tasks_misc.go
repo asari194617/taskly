@@ -137,6 +137,7 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 	subjectType := t.SubjectType
 	meType := t.MeType
 	authSettingsType := t.AuthSettingsType
+	passkeyType := t.PasskeyType
 
 	fields := graphql.Fields{
 		"subjects": &graphql.Field{
@@ -212,11 +213,49 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					}
 					hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
 					totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+					// counts for UI logic
+					var pkCount int64
+					_ = DB.Model(&Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+					var rcCount int64
+					_ = DB.Model(&RecoveryCode{}).Where("user_id = ? AND is_used = 0", fresh.ID).Count(&rcCount).Error
 					return map[string]any{
-						"email_login_enabled": fresh.EmailCodeAllowed,
-						"has_password":        hasPassword,
-						"totp_enabled":        totpEnabled,
+						"email_login_enabled":  fresh.EmailCodeAllowed,
+						"has_password":         hasPassword,
+						"totp_enabled":         totpEnabled,
+						"passkey_count":        int(pkCount),
+						"recovery_codes_count": int(rcCount),
 					}, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+		// List my passkeys for management UI
+		"myPasskeys": &graphql.Field{
+			Type: graphql.NewList(passkeyType),
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*User)
+					var items []Passkey
+					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
+						return nil, err
+					}
+					out := make([]map[string]any, 0, len(items))
+					for _, it := range items {
+						out = append(out, map[string]any{
+							"id": it.ID,
+							"device_name": func() any {
+								if it.DeviceName != nil {
+									return *it.DeviceName
+								}
+								return "Passkey"
+							}(),
+							"created_at": it.CreatedAt.Format(time.RFC3339),
+						})
+					}
+					return out, nil
 				}
 				return nil, fmt.Errorf("context missing")
 			},

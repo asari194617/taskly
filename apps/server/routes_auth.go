@@ -97,7 +97,7 @@ func registerAuthRoutes(app *fiber.App) {
 		msg := []byte(
 			"From: " + from + "\r\n" +
 				"To: " + body.Email + "\r\n" +
-				"Subject: " + "["+ code + "]" + subject + "\r\n" +
+				"Subject: " + "[" + code + "]" + subject + "\r\n" +
 				"Date: " + nowRFC + "\r\n" +
 				"MIME-Version: 1.0\r\n" +
 				"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
@@ -220,6 +220,13 @@ func registerAuthRoutes(app *fiber.App) {
 			_ = DB.Model(&Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
 			passkeyEnabled = cnt > 0
 		}
+		// recovery codes presence (independent of TOTP)
+		recoveryAvailable := false
+		if hasUser {
+			var rc int64
+			_ = DB.Model(&RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&rc).Error
+			recoveryAvailable = rc > 0
+		}
 		methods := []string{}
 		if hasPassword {
 			methods = append(methods, "password")
@@ -228,7 +235,10 @@ func registerAuthRoutes(app *fiber.App) {
 			methods = append(methods, "email_code")
 		}
 		if totpEnabled {
-			methods = append(methods, "totp", "recovery")
+			methods = append(methods, "totp")
+		}
+		if recoveryAvailable {
+			methods = append(methods, "recovery")
 		}
 		if passkeyEnabled {
 			methods = append(methods, "passkey")
