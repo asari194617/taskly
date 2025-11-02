@@ -2,7 +2,8 @@ export type GQLError = { message: string };
 
 export async function gql<T>(
   query: string,
-  variables?: Record<string, any>
+  variables?: Record<string, any>,
+  opts?: { signal?: AbortSignal }
 ): Promise<T> {
   const token =
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
@@ -22,6 +23,7 @@ export async function gql<T>(
         : {}),
     },
     body: JSON.stringify({ query, variables }),
+    signal: opts?.signal,
   });
   const json = await res.json();
   if (!res.ok || json.errors?.length) {

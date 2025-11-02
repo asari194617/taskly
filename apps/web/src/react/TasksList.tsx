@@ -195,35 +195,56 @@ export default function TasksList() {
   const [editDesc, setEditDesc] = React.useState("");
   const [subjects, setSubjects] = React.useState<Subject[]>([]);
   const isDesktop = useMediaQuery("(min-width: 768px)");
+  // One-time bootstrap: subjects and my role; avoid reloading on each search
   React.useEffect(() => {
     const token = localStorage.getItem("api_token");
     if (!token) {
       window.location.replace("/login");
       return;
     }
-    Promise.all([
-      gql<{ tasks: { items: Task[] } }>(
-        `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
-        { q: q || undefined }
-      ),
-      gql<{ subjects: Subject[] }>(`query{ subjects{ id name_ja name_en } }`),
-      gql<{ me: { is_admin: boolean; is_manager: boolean } }>(
-        `query{ me{ is_admin is_manager } }`
-      ),
-    ])
-      .then(([t, s, me]) => {
-        setItems(t.tasks.items);
-        setSubjects(s.subjects || []);
+    gql<{ subjects: Subject[] }>(`query{ subjects{ id name_ja name_en } }`)
+      .then((s) => setSubjects(s.subjects || []))
+      .catch((e) => setError(e?.message || dict.tasks.loadFailed));
+    gql<{ me: { is_admin: boolean; is_manager: boolean } }>(
+      `query{ me{ is_admin is_manager } }`
+    )
+      .then((me) => {
         setIsAdmin(!!me?.me?.is_admin);
         setIsManager(!!me?.me?.is_manager);
       })
-      .catch((e) => setError(e?.message || dict.tasks.loadFailed));
+      .catch(() => {
+        /* ignore role load error for now */
+      });
+  }, [dict.tasks.loadFailed]);
+
+  // Search tasks with cancellation; only refetch when q changes
+  React.useEffect(() => {
+    const token = localStorage.getItem("api_token");
+    if (!token) {
+      window.location.replace("/login");
+      return;
+    }
+    const ac = new AbortController();
+    gql<{ tasks: { items: Task[] } }>(
+      `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
+      { q: q || undefined },
+      { signal: ac.signal }
+    )
+      .then((t) => setItems(t.tasks.items))
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        setError(e?.message || dict.tasks.loadFailed);
+      });
+    return () => ac.abort();
   }, [q, dict.tasks.loadFailed]);
 
   // debounce search input changes
   const [qInput, setQInput] = React.useState("");
   React.useEffect(() => {
-    const id = setTimeout(() => setQ(qInput.trim()), 300);
+    const id = setTimeout(() => {
+      const trimmed = qInput.trim();
+      setQ(trimmed.length >= 2 ? trimmed : "");
+    }, 500);
     return () => clearTimeout(id);
   }, [qInput]);
 
@@ -556,7 +577,8 @@ export default function TasksList() {
               onChange={(e) => setQInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  setQ(qInput.trim());
+                  const trimmed = qInput.trim();
+                  setQ(trimmed.length >= 2 ? trimmed : "");
                 }
               }}
             />
