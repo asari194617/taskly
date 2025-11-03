@@ -1,0 +1,10 @@
+name = "taskly-email-inbound"
+main = "worker.js"
+compatibility_date = "2025-11-03"
+
+# Email Workers は HTTP ルート設定は不要。Email Routing 側でこの Worker を紐づけます。
+
+[vars]
+# 例: DMARC_INBOUND_ENDPOINT = "https://api.example.com/dmarc/inbound"
+# 本番/開発で切り替える場合は wrangler の環境機能 (environments) を利用してください。
+DMARC_INBOUND_ENDPOINT = "https://api.example.com/dmarc/inbound"
