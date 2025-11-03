@@ -62,4 +62,21 @@ with DAG(
         },
     )
 
-    queue_manager >> email_delivery
+    discord_delivery = BashOperator(
+        task_id="discord_delivery",
+        bash_command=build_cmd("notifications/delivery-channels/discord"),
+        env={
+            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
+            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
+            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
+            "DB_HOST": os.environ.get("DB_HOST", "db"),
+            "DB_PORT": os.environ.get("DB_PORT", "3306"),
+            "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
+            "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
+            "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
+            "TIMEZONE": "Asia/Tokyo",
+            "DISCORD_WEBHOOK_URL": os.environ.get("DISCORD_WEBHOOK_URL", ""),
+        },
+    )
+
+    queue_manager.set_downstream([email_delivery, discord_delivery])

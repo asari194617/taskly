@@ -28,8 +28,8 @@ func main() {
 	if err := uploadAndPrune(file); err != nil {
 		log.Fatal(err)
 	}
-
-	if err := os.Chmod(file, 0o600); err != nil {
+	// Ensure group-readable (640) by default
+	if err := os.Chmod(file, 0o640); err != nil {
 		log.Println("chmod:", err)
 	}
 }
@@ -61,7 +61,7 @@ func runDump(outFile string) error {
 		return fmt.Errorf("mysqldump: %w", err)
 	}
 
-	f, err := os.Create(outFile)
+	f, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
 	if err != nil {
 		return err
 	}
