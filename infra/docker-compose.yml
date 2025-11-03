@@ -103,6 +103,7 @@ services:
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
       AIRFLOW__WEBSERVER__WEB_SERVER_HOST: 0.0.0.0
+      AIRFLOW__WEBSERVER__BASE_URL: https://airflow-taskly.iy0306.com
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
       DD_TRACE_AGENT_PORT: "8126"
