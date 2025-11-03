@@ -109,7 +109,7 @@ jobs:
       - name: Remote deploy
         run: |
           set -eux
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" <<'EOS'
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" <<EOS
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
