@@ -1,0 +1,11 @@
+# Root-level Wrangler config for the Email Worker in cloudflare-email-workers/
+# This lets `npx wrangler deploy` run from the repo root.
+
+name = "taskly-email-inbound"
+main = "cloudflare-email-workers/worker.js"
+compatibility_date = "2025-11-03"
+
+# Vars/Secrets are managed via `wrangler variables/secret` or Dashboard.
+# Example:
+# [vars]
+# DMARC_INBOUND_ENDPOINT = "https://api.example.com/dmarc/inbound"
