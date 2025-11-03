@@ -1374,7 +1374,9 @@ func buildTaskUpdateMessageJa(before Task, after Task) string {
 }
 
 func buildTaskDeleteMessageJa(t Task) string {
-	return fmt.Sprintf("課題が削除されました: %s (ID:%d)", t.Title, t.ID)
+	// Teams 返信用のメッセージはシンプルに固定文言で通知
+	// もし詳細が必要になった場合は、タイトル等を後段に追記する運用に変更可能
+	return "この課題は削除されました。"
 }
 
 // Build SQL expression string for effective deadline timestamp

@@ -85,6 +85,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				}
 				// Fire async Teams notification email for Power Automate
 				go sendTeamsNotifyEmailForTask(rec)
+				// Async Discord notification (embed) to align with REST create
+				go sendDiscordTaskEmbed("created", rec, u.Email)
 				out := map[string]any{
 					"id":                  rec.ID,
 					"title":               rec.Title,
@@ -196,6 +198,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					msg := buildTaskUpdateMessageJa(before, rec)
 					go sendTeamsReplyEmail(rec.ID, mid, msg)
 				}
+				// Async Discord notification (embed) to align with REST update
+				go sendDiscordTaskEmbed("updated", rec, u.Email)
 				out := map[string]any{
 					"id":                  rec.ID,
 					"title":               rec.Title,
@@ -253,6 +257,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					msg := buildTaskDeleteMessageJa(rec)
 					go sendTeamsReplyEmail(rec.ID, mid, msg)
 				}
+				// Async Discord notification (embed) to align with REST delete
+				go sendDiscordTaskEmbed("deleted", rec, u.Email)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
