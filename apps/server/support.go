@@ -1539,25 +1539,7 @@ func checkPermission(userID uint, target, action string, ownerID *uint) (bool, e
 }
 
 // Day shift helpers and schedulers
-func dayShiftScheduler(notifyHHmm string) {
-	parts := strings.SplitN(notifyHHmm, ":", 2)
-	hh, _ := strconv.Atoi(parts[0])
-	mm, _ := strconv.Atoi(parts[1])
-	for {
-		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
-		if !now.Before(next) {
-			next = next.Add(24 * time.Hour)
-		}
-		time.Sleep(time.Until(next))
-		go func(ts time.Time) {
-			_ = notifyDayShift(ts)
-			_ = ensureNextCycleIfNearEnd(ts)
-			// Run rotation to ensure assignments are kept in sync
-			_ = performDayShiftRotation(ts)
-		}(time.Now())
-	}
-}
+// (server no longer runs in-process schedulers; handled by Airflow)
 
 func isBusinessDay(d time.Time) bool {
 	var bc BusinessCalendar
@@ -1568,80 +1550,9 @@ func isBusinessDay(d time.Time) bool {
 	return wd != time.Saturday && wd != time.Sunday
 }
 
-func notifyDayShift(ts time.Time) error {
-	if !isBusinessDay(ts) {
-		return nil
-	}
-	var asg DayShiftAssignment
-	if err := DB.Where("date = ?", ts.Format("2006-01-02")).First(&asg).Error; err != nil {
-		return nil
-	}
-	var users []DayShiftAssignmentUser
-	_ = DB.Where("day_shift_assignments_id = ?", asg.ID).Find(&users).Error
-	if len(users) == 0 {
-		return nil
-	}
-	hook := env("DISCORD_WEBHOOK_URL", "")
-	if hook == "" {
-		return nil
-	}
-	// Load user display names/emails for context
-	names := make([]string, 0, len(users))
-	for _, u := range users {
-		var usr User
-		if err := DB.Select("email", "display_name").First(&usr, u.UserID).Error; err == nil {
-			if strings.TrimSpace(usr.DisplayName) != "" {
-				names = append(names, usr.DisplayName)
-			} else {
-				names = append(names, usr.Email)
-			}
-		}
-	}
-	// Send structured embed to Discord (async)
-	go sendDiscordDayShiftNotifyEmbed(ts, names, "scheduler")
-	return nil
-}
+// (batch day shift notification moved to Airflow)
 
-func tasksNotifyScheduler(notifyHHmm string) {
-	parts := strings.SplitN(notifyHHmm, ":", 2)
-	hh, _ := strconv.Atoi(parts[0])
-	mm, _ := strconv.Atoi(parts[1])
-	for {
-		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
-		if !now.Before(next) {
-			next = next.Add(24 * time.Hour)
-		}
-		time.Sleep(time.Until(next))
-		go sendDailyTaskDigest()
-	}
-}
-
-func sendDailyTaskDigest() {
-	start := dateOnly(time.Now())
-	end := dateOnly(time.Now().Add(48 * time.Hour)).Add(-time.Nanosecond)
-	var users []User
-	_ = DB.Where("is_deleted = 0").Find(&users).Error
-	for _, u := range users {
-		var tasks []Task
-		eff := effectiveDeadlineExpr("")
-		_ = DB.Where("added_user_id = ? AND "+eff+" BETWEEN ? AND ?", u.ID, start, end).Order(eff + " ASC").Find(&tasks).Error
-		if len(tasks) == 0 {
-			continue
-		}
-		b := &strings.Builder{}
-		b.WriteString("<p>期限が近い課題の一覧です。</p>")
-		b.WriteString("<table style=\"width:100%; border-collapse:collapse;\"><thead><tr><th style=\"text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;\">タイトル</th><th style=\"text-align:left; padding:8px; border-bottom:1px solid #e5e7eb;\">期限</th></tr></thead><tbody>")
-		for _, t := range tasks {
-			dl := effectiveDeadlineTime(t).Format("2006-01-02 15:04")
-			b.WriteString(fmt.Sprintf("<tr><td style=\"padding:8px; border-bottom:1px solid #f1f5f9;\">%s</td><td style=\"padding:8px; border-bottom:1px solid #f1f5f9; white-space:nowrap;\">%s</td></tr>", icalEscape(t.Title), icalEscape(dl)))
-		}
-		b.WriteString("</tbody></table>")
-		html := buildEmailHTML("期限が近い課題のお知らせ", b.String())
-		text := "期限が近い課題があります。アプリで確認してください。"
-		_ = smtpSend(u.Email, "[Taskly] 期限が近い課題のお知らせ", text, html)
-	}
-}
+// (daily tasks digest moved to Airflow notifications DAG)
 
 func buildEmailHTML(title, contentHTML string) string {
 	return fmt.Sprintf(`<!doctype html><html><head><meta charset="utf-8"/></head>

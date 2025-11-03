@@ -259,20 +259,10 @@ func main() {
 	// GraphQL routes
 	registerGraphQL(app)
 
-	// Day shift scheduler (08:30 local) – minimal implementation
-	if strings.ToLower(env("DAYSHIFT_ENABLED", "true")) == "true" {
-		notifyTime := env("DAYSHIFT_NOTIFY_TIME", "08:30")
-		go dayShiftScheduler(notifyTime)
-	}
-
-	// Daily tasks email digest (07:30 local by default)
-	if strings.ToLower(env("TASK_DIGEST_ENABLED", "true")) == "true" {
-		go tasksNotifyScheduler(env("TASK_DIGEST_TIME", "07:30"))
-	}
-	// Daily tasks push digest (07:45 default)
-	if strings.ToLower(env("PUSH_DIGEST_ENABLED", "false")) == "true" {
-		go pushNotifyScheduler(env("PUSH_DIGEST_TIME", "07:45"))
-	}
+	// No in-process batch schedulers in server.
+	// - Day shift rotation/notification: handled by Airflow DAGs (infra/airflow/dags/day_shift_rotations.py)
+	// - Task notifications (email/WebPush): handled by Airflow DAG (infra/airflow/dags/notifications.py)
+	// If an emergency fallback is ever needed, re-enable via dedicated batch apps or DAGs, not here.
 
 	// Register extracted route groups
 	registerAuthRoutes(app)

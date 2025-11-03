@@ -41,5 +41,14 @@ __pycache__/
 *.test
 *.out
 
+batches/backup-mysql/backup-mysql
+batches/day-shift-rotations/day-shift-rotations
 batches/moderation/moderation
 batches/que-manager/que-manager
+batches/notifications/que-manager/que-manager
+batches/notifications/delivery-channels/discord/discord
+batches/notifications/delivery-channels/email/email
+batches/notifications/delivery-channels/webpush/webpush
+
+apps/dmarc-processor/dmarc-processor
+apps/server/server

@@ -2,12 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"strconv"
-	"strings"
-	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/gofiber/fiber/v2"
@@ -128,42 +124,4 @@ func sendPushToUser(uid uint, payload map[string]any) (int, error) {
 	return sent, nil
 }
 
-// pushNotifyScheduler: send a compact digest similar to email
-func pushNotifyScheduler(hhmm string) {
-	parts := strings.SplitN(hhmm, ":", 2)
-	hh, _ := strconv.Atoi(parts[0])
-	mm, _ := strconv.Atoi(parts[1])
-	for {
-		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), hh, mm, 0, 0, now.Location())
-		if !now.Before(next) {
-			next = next.Add(24 * time.Hour)
-		}
-		time.Sleep(time.Until(next))
-		go func() {
-			// for each user with WEBPUSH device enabled, send count of tasks due today
-			var users []User
-			_ = DB.Where("is_deleted = 0").Find(&users).Error
-			today := dateOnly(time.Now())
-			tomorrow := dateOnly(time.Now().Add(24 * time.Hour)).Add(-time.Nanosecond)
-			for _, u := range users {
-				var enabled int64
-				_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = ? AND is_enabled = 1", u.ID, "WEBPUSH").Count(&enabled).Error
-				if enabled == 0 {
-					continue
-				}
-				var cnt int64
-				eff := effectiveDeadlineExpr("")
-				_ = DB.Model(&Task{}).Where("added_user_id = ? AND "+eff+" BETWEEN ? AND ?", u.ID, today, tomorrow).Count(&cnt).Error
-				if cnt <= 0 {
-					continue
-				}
-				_, _ = sendPushToUser(u.ID, map[string]any{
-					"title": "今日の課題",
-					"body":  fmt.Sprintf("本日締切の課題が%d件あります", cnt),
-					"data":  map[string]any{"url": "/home"},
-				})
-			}
-		}()
-	}
-}
+// (server no longer runs in-process push digest schedulers; handled by Airflow)
