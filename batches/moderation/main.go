@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"google.golang.org/genai"
 )
 
 type Task struct {
@@ -74,7 +76,7 @@ func main() {
 		if desc.Valid {
 			t.Description = &desc.String
 		}
-		res, raw := moderateTask(t)
+		res, raw, modelName := moderateTask(t)
 		if res == nil {
 			continue
 		}
@@ -84,7 +86,7 @@ func main() {
 		snapshot := map[string]any{"title": t.Title, "description": t.Description}
 		snapJSON, _ := json.Marshal(snapshot)
 		_, _ = db.Exec(`INSERT INTO flagged_contents (task_id, category, severity, score, threat, reason, model, metadata, snapshot, created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())`,
-			t.ID, res.Category, res.Severity, res.Score, res.Threat, nullIfEmpty(res.Reason), "gemini-1.5-pro", string(metaJSON), string(snapJSON))
+			t.ID, res.Category, res.Severity, res.Score, res.Threat, nullIfEmpty(res.Reason), modelName, string(metaJSON), string(snapJSON))
 		// Auto-hide according to policy
 		if shouldAutoHide(res, policy) {
 			toHide = append(toHide, t)
@@ -150,43 +152,29 @@ func min(a, b int) int {
 	return b
 }
 
-func moderateTask(t Task) (*ModerationResult, string) {
-	apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	if apiKey == "" {
-		return nil, ""
+func moderateTask(t Task) (*ModerationResult, string, string) {
+	if strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) == "" {
+		return nil, "", ""
 	}
-	prompt := `You are a content moderation classifier. Analyze the following content (title and description) for policy violations (harassment, hate, sexual, violence, self-harm, illegal, malware, threats). Respond ONLY in compact JSON with keys: category (string), severity (low|medium|high), score (0..1), threat (true|false), reason (short string).`
+	// Allow overriding model via env; default to latest spec example
+	modelName := strings.TrimSpace(os.Getenv("GEMINI_MODEL"))
+	if modelName == "" {
+		modelName = "gemini-2.5-flash"
+	}
+	prompt := "You are a content moderation classifier. Analyze the following content (title and description) for policy violations (harassment, hate, sexual, violence, self-harm, illegal, malware, threats). Respond ONLY in compact JSON with keys: category (string), severity (low|medium|high), score (0..1), threat (true|false), reason (short string)."
 	content := fmt.Sprintf("Title: %s\nDescription: %s", t.Title, safeStr(t.Description))
-	reqBody := map[string]any{
-		"contents": []map[string]any{{"parts": []map[string]any{{"text": prompt + "\n\n" + content}}}},
+
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, nil)
+	if err != nil {
+		return nil, "", modelName
 	}
-	b, _ := json.Marshal(reqBody)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=" + apiKey
-	client := &http.Client{Timeout: 12 * time.Second}
-	req, _ := http.NewRequest("POST", url, strings.NewReader(string(b)))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
+	resp, err := client.Models.GenerateContent(ctx, modelName, []*genai.Content{genai.NewContentFromText(prompt+"\n\n"+content, "")}, nil)
 	if err != nil || resp == nil {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-		return nil, ""
+		return nil, "", modelName
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	var gr geminiResponse
-	if err := json.Unmarshal(raw, &gr); err != nil {
-		return nil, string(raw)
-	}
-	var text strings.Builder
-	for _, c := range gr.Candidates {
-		for _, p := range c.Content.Parts {
-			text.WriteString(p.Text)
-		}
-	}
-	// Try to extract JSON from the text
-	payload := strings.TrimSpace(text.String())
-	// If wrapped in code fences, strip
+	raw := resp.Text()
+	payload := strings.TrimSpace(raw)
 	payload = strings.TrimPrefix(payload, "```json")
 	payload = strings.TrimSuffix(payload, "```")
 	payload = strings.TrimSpace(payload)
@@ -197,11 +185,11 @@ func moderateTask(t Task) (*ModerationResult, string) {
 		if strings.Contains(s, "kill") || strings.Contains(s, "threat") || strings.Contains(s, "爆破") || strings.Contains(s, "殺す") {
 			sev := "high"
 			tr := true
-			return &ModerationResult{Category: "threat", Severity: sev, Threat: tr, Reason: "keyword heuristic"}, string(raw)
+			return &ModerationResult{Category: "threat", Severity: sev, Threat: tr, Reason: "keyword heuristic"}, raw, modelName
 		}
-		return nil, string(raw)
+		return nil, raw, modelName
 	}
-	return &res, string(raw)
+	return &res, raw, modelName
 }
 
 func safeStr(p *string) string {

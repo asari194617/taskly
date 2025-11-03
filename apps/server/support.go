@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -26,6 +27,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pquerna/otp/totp"
+	"google.golang.org/genai"
 	"gorm.io/gorm"
 )
 
@@ -1798,33 +1800,6 @@ func performDayShiftRotation(now time.Time) error {
 	return nil
 }
 
-func ensureNextCycleIfNearEnd(now time.Time) error {
-	var cyc DayShiftCycle
-	if err := DB.Order("finish_date DESC").First(&cyc).Error; err != nil {
-		return nil
-	}
-	if now.After(cyc.FinishDate.AddDate(0, 0, -3)) {
-		var next DayShiftCycle
-		if err := DB.Where("begin_date > ?", cyc.FinishDate).Order("begin_date ASC").First(&next).Error; err != nil {
-			// Async Discord notice to define next cycle
-			content := fmt.Sprintf("[DayShift] No next cycle defined after %s", cyc.FinishDate.Format("2006-01-02"))
-			go sendDiscordContent(content)
-			return nil
-		}
-		for dt := dateOnly(next.BeginDate); !dt.After(dateOnly(next.FinishDate)); dt = dt.Add(24 * time.Hour) {
-			if !isBusinessDay(dt) {
-				continue
-			}
-			var cnt int64
-			_ = DB.Model(&DayShiftAssignment{}).Where("date = ?", dt.Format("2006-01-02")).Count(&cnt).Error
-			if cnt == 0 {
-				_ = DB.Create(&DayShiftAssignment{Date: time.Date(dt.Year(), dt.Month(), dt.Day(), 0, 0, 0, 0, dt.Location()), CycleID: next.ID, Status: "assigned"}).Error
-			}
-		}
-	}
-	return nil
-}
-
 func getCurrentCycle(d time.Time) (*DayShiftCycle, error) {
 	var cyc DayShiftCycle
 	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).First(&cyc).Error; err != nil {
@@ -1943,49 +1918,26 @@ func shouldRotateByGemini(subject, body string) bool {
 		return true
 	}
 	// 2) If Gemini API key is configured, ask the model; parse JSON result safely
-	apiKey := env("GEMINI_API_KEY", "")
-	if apiKey == "" {
+	if env("GEMINI_API_KEY", "") == "" {
 		// No API key and heuristic didn't match → do not rotate
 		return false
 	}
-	prompt := "以下のメール内容が『当日日直の延期・振替・順延・スライド（＝日直をずらす）』を求めているか判定してください。回答は YES または NO のみ。\nSubject: " + subject + "\nBody: " + body
-	reqBody := fmt.Sprintf(`{"contents":[{"parts":[{"text":%q}]}]}`, prompt)
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey
-	client := &http.Client{Timeout: 8 * time.Second}
-	req, _ := http.NewRequest("POST", url, strings.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil || resp == nil {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-		return false
-	}
-	defer resp.Body.Close()
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	var gr struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.Unmarshal(bodyBytes, &gr); err == nil {
-		var b strings.Builder
-		for _, c := range gr.Candidates {
-			for _, p := range c.Content.Parts {
-				b.WriteString(p.Text)
-				b.WriteString("\n")
+	// Allow overriding model via env; default to gemini-2.5-flash to match current API examples
+	modelName := strings.TrimSpace(env("GEMINI_MODEL", "gemini-2.5-flash"))
+	ctx := context.Background()
+	cli, err := genai.NewClient(ctx, nil)
+	if err == nil {
+		prompt := "以下のメール内容が『当日日直の延期・振替・順延・スライド（＝日直をずらす）』を求めているか判定してください。回答は YES または NO のみ。\nSubject: " + subject + "\nBody: " + body
+		content := genai.NewContentFromText(prompt, "")
+		resp, err := cli.Models.GenerateContent(ctx, modelName, []*genai.Content{content}, nil)
+		if err == nil && resp != nil {
+			ans := strings.ToUpper(resp.Text())
+			if strings.Contains(ans, "YES") || strings.Contains(ans, "ＹＥＳ") || strings.Contains(ans, "はい") {
+				return true
 			}
-		}
-		ans := strings.ToUpper(b.String())
-		if strings.Contains(ans, "YES") || strings.Contains(ans, "ＹＥＳ") || strings.Contains(ans, "はい") {
-			return true
-		}
-		if strings.Contains(ans, "NO") || strings.Contains(ans, "ＮＯ") || strings.Contains(ans, "いいえ") {
-			return false
+			if strings.Contains(ans, "NO") || strings.Contains(ans, "ＮＯ") || strings.Contains(ans, "いいえ") {
+				return false
+			}
 		}
 	}
 	// 3) Fallback: if model response ambiguous, rely on heuristic again
