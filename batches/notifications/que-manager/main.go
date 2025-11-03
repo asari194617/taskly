@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,7 @@ type Task struct {
 	AddedUserID       uint
 	SubjectID         uint
 	SubjectName       string
+	Type              string
 	Title             string
 	Description       *string
 	Deadline          time.Time
@@ -45,6 +47,8 @@ type NotifyItem struct {
 	Title     string
 	Body      string
 	UserID    uint // optional; when zero and Kind=task we expand to all users by prefs
+	Meta      string
+	Badges    string // JSON array string
 }
 
 func main() {
@@ -89,7 +93,7 @@ func main() {
 	// Include up to the end of the day-after-tomorrow so that 明後日の課題 are covered
 	end := time.Date(now.Year(), now.Month(), now.Day()+2, 23, 59, 59, 0, now.Location())
 	rows, err := db.Query(
-		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
+		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
 			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE "+eff+" BETWEEN ? AND ?",
 		start, end,
 	)
@@ -99,7 +103,7 @@ func main() {
 		for rows.Next() {
 			var t Task
 			var desc sql.NullString
-			if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.SelfCheckRequired); err != nil {
+			if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.SelfCheckRequired); err != nil {
 				continue
 			}
 			if desc.Valid {
@@ -111,6 +115,10 @@ func main() {
 			if subj == "" {
 				subj = "課題"
 			}
+			// メタ（科目 + 期限ラベル）
+			meta := fmt.Sprintf("%s %s", subj, deadlineLabel(t, t.Deadline))
+			// バッジJSON
+			badges := buildBadgesJSON(t)
 			items = append(items, NotifyItem{
 				Kind:      "task",
 				WhenLabel: label,
@@ -118,6 +126,8 @@ func main() {
 				Title:     t.Title,
 				Body:      fmt.Sprintf("%s まで", deadlineLabel(t, t.Deadline)),
 				UserID:    0, // expand to all users by preferences below
+				Meta:      meta,
+				Badges:    badges,
 			})
 		}
 		rows.Close()
@@ -153,13 +163,9 @@ func main() {
 					}
 				}
 				pf := devicePrefs[uid]
-				if pf.Email {
-					if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'email', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, uid); err != nil {
-						log.Println("enqueue email:", err)
-					}
-				}
+				// Do not enqueue email digests; they will be built live at delivery time
 				if pf.WebPush {
-					if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, uid); err != nil {
+					if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, meta, badges_json, user_id, channel, created_at) VALUES (?,?,?,?,?,?,?,?,'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.Meta, it.Badges, uid); err != nil {
 						log.Println("enqueue webpush:", err)
 					}
 				}
@@ -179,13 +185,9 @@ func main() {
 				}
 			}
 			pf := devicePrefs[it.UserID]
-			if pf.Email {
-				if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'email', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.UserID); err != nil {
-					log.Println("enqueue email:", err)
-				}
-			}
+			// Do not enqueue email digests; they will be built live at delivery time
 			if pf.WebPush {
-				if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, user_id, channel, created_at) VALUES (?,?,?,?,?,?, 'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.UserID); err != nil {
+				if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, meta, badges_json, user_id, channel, created_at) VALUES (?,?,?,?,?,?,?,?,'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.Meta, it.Badges, it.UserID); err != nil {
 					log.Println("enqueue webpush:", err)
 				}
 			}
@@ -404,6 +406,8 @@ func ensureQueueTable(db *sql.DB) error {
 		subject VARCHAR(255) NOT NULL,
 		title TEXT,
 		body TEXT,
+		meta TEXT NULL,
+		badges_json TEXT NULL,
 		user_id BIGINT NULL,
 		channel VARCHAR(32) NULL,
 		status VARCHAR(32) NULL,
@@ -412,6 +416,52 @@ func ensureQueueTable(db *sql.DB) error {
 		processed_at DATETIME NULL,
 		INDEX idx_processed_at (processed_at)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
-	_, err := db.Exec(ddl)
-	return err
+	if _, err := db.Exec(ddl); err != nil {
+		return err
+	}
+	// Add columns if table existed without them
+	if _, err := db.Exec(`ALTER TABLE notifications_queue ADD COLUMN IF NOT EXISTS meta TEXT NULL`); err != nil {
+		log.Println("alter add meta:", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE notifications_queue ADD COLUMN IF NOT EXISTS badges_json TEXT NULL`); err != nil {
+		log.Println("alter add badges_json:", err)
+	}
+	return nil
+}
+
+// buildBadgesJSON builds badges JSON based on task attributes
+func buildBadgesJSON(t Task) string {
+	type badge struct {
+		Label   string `json:"label"`
+		Variant string `json:"variant,omitempty"`
+	}
+	out := make([]badge, 0, 3)
+	if lbl := displayTaskTypeJaLocal(t.Type); strings.TrimSpace(lbl) != "" && strings.ToUpper(strings.TrimSpace(t.Type)) != "OTHER" {
+		out = append(out, badge{Label: lbl, Variant: "gray"})
+	}
+	if t.IsRequireHandIn {
+		out = append(out, badge{Label: "提出必須", Variant: "red"})
+	}
+	if t.SelfCheckRequired {
+		out = append(out, badge{Label: "自己採点", Variant: "blue"})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+func displayTaskTypeJaLocal(e string) string {
+	switch strings.ToUpper(strings.TrimSpace(e)) {
+	case "ONLINE":
+		return "オンライン"
+	case "FACE_TO_FACE":
+		return "対面"
+	case "QUIZ":
+		return "小テスト"
+	case "PRESENTATION":
+		return "発表"
+	case "SELF_STUDY":
+		return "自主学習"
+	default:
+		return ""
+	}
 }

@@ -22,7 +22,25 @@ type QueueItem struct {
 	Subject   string
 	Title     string
 	Body      string
+	Meta      sql.NullString
+	Badges    sql.NullString // JSON
 	UserID    sql.NullInt64
+}
+
+// Domain task snapshot for live composition
+type Task struct {
+	ID                uint
+	AddedUserID       uint
+	SubjectID         uint
+	SubjectName       string
+	Type              string
+	Title             string
+	Description       *string
+	Deadline          time.Time
+	DeadlineSince     string
+	DeadlineUntil     string
+	IsRequireHandIn   bool
+	SelfCheckRequired bool
 }
 
 func main() {
@@ -33,62 +51,321 @@ func main() {
 	}
 	defer db.Close()
 
-	items, err := fetchPendingEmailQueue(db)
+	// Build digest on-the-fly from current DB state (do not rely on queued snapshots)
+	groups, err := computeLiveDigestGroups(db)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(items) == 0 {
-		log.Println("no pending notifications for email")
+	if len(groups) == 0 {
+		log.Println("no eligible email digests to send")
 		return
-	}
-
-	// Group by user and send digest per user
-	groups := map[int64][]QueueItem{}
-	for _, it := range items {
-		if !it.UserID.Valid || it.UserID.Int64 == 0 {
-			// skip items without a direct recipient for now
-			continue
-		}
-		groups[it.UserID.Int64] = append(groups[it.UserID.Int64], it)
 	}
 
 	totalSent := 0
 	for uid, group := range groups {
 		if err := deliverGroupEmail(db, uid, group); err != nil {
 			log.Printf("deliver group failed uid=%d: %v\n", uid, err)
-			// mark errors on each item
-			for _, it := range group {
-				_ = markQueueError(db, it.ID, err)
-			}
 			continue
 		}
 		totalSent++
-		for _, it := range group {
-			_ = markQueueProcessed(db, it.ID)
-		}
 	}
 	log.Printf("email notifications sent (groups): %d\n", totalSent)
-	// Cleanup: remove processed rows to keep queue temporary
-	if _, err := db.Exec(`DELETE FROM notifications_queue WHERE processed_at IS NOT NULL`); err != nil {
-		log.Println("cleanup processed queue:", err)
-	}
 }
 
-func fetchPendingEmailQueue(db *sql.DB) ([]QueueItem, error) {
-	rows, err := db.Query(`SELECT id, when_label, subject, title, body, user_id FROM notifications_queue WHERE processed_at IS NULL AND (channel IS NULL OR channel='email') ORDER BY id ASC LIMIT 200`)
+// computeLiveDigestGroups collects due tasks and expands them to per-user email digests
+func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
+	now := time.Now()
+	// Use TIMEZONE if provided
+	if tz := strings.TrimSpace(os.Getenv("TIMEZONE")); tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			now = now.In(loc)
+		}
+	}
+	tasks, err := fetchDueTasks(db, now)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasks) == 0 {
+		return map[int64][]QueueItem{}, nil
+	}
+	// Eligible users and prefs
+	uids, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
+	// Build common items once
+	baseItems := make([]QueueItem, 0, len(tasks))
+	for _, tsk := range tasks {
+		subj := strings.TrimSpace(tsk.SubjectName)
+		if subj == "" {
+			subj = "課題"
+		}
+		wl := whenLabel(now, tsk.Deadline)
+		meta := fmt.Sprintf("%s %s", subj, deadlineLabel(tsk, tsk.Deadline))
+		badges := buildBadgesJSON(tsk)
+		baseItems = append(baseItems, QueueItem{
+			WhenLabel: wl,
+			Subject:   subj,
+			Title:     tsk.Title,
+			Body:      fmt.Sprintf("%s まで", deadlineLabel(tsk, tsk.Deadline)),
+			Meta:      sql.NullString{String: meta, Valid: true},
+			Badges:    sql.NullString{String: badges, Valid: strings.TrimSpace(badges) != ""},
+		})
+	}
+	// Expand to per-user groups
+	groups := make(map[int64][]QueueItem, len(uids))
+	for _, uid := range uids {
+		// Type preference: TASK must be enabled
+		if tp, ok := typePrefs[uid]; ok {
+			if !tp["TASK"] {
+				continue
+			}
+		}
+		// Device preference: email must be enabled
+		if pf := devicePrefs[uid]; !pf.Email {
+			continue
+		}
+		// assign a copy (to keep future extensibility per-user)
+		arr := make([]QueueItem, len(baseItems))
+		copy(arr, baseItems)
+		groups[int64(uid)] = arr
+	}
+	return groups, nil
+}
+
+// fetchDueTasks returns tasks whose effective deadline is within [now, end of the day after tomorrow]
+func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
+	eff := "TIMESTAMP(deadline, CASE " +
+		"WHEN deadline_until='MORNING' THEN '07:59:59' " +
+		"WHEN deadline_until='P1' THEN '10:30:00' " +
+		"WHEN deadline_until='P2' THEN '12:10:00' " +
+		"WHEN deadline_until='P3' THEN '14:30:00' " +
+		"WHEN deadline_until='P4' THEN '16:10:00' " +
+		"WHEN deadline_until='P5' THEN '17:50:00' " +
+		"WHEN deadline_until='P6' THEN '19:30:00' " +
+		"WHEN deadline_until='P7' THEN '21:10:00' " +
+		"WHEN deadline_until='P8' THEN '22:50:00' " +
+		"ELSE '23:59:59' END)"
+	start := now
+	end := time.Date(now.Year(), now.Month(), now.Day()+2, 23, 59, 59, 0, now.Location())
+	rows, err := db.Query(
+		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
+			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE "+eff+" BETWEEN ? AND ?",
+		start, end,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []QueueItem
+	out := make([]Task, 0, 256)
 	for rows.Next() {
-		var it QueueItem
-		if err := rows.Scan(&it.ID, &it.WhenLabel, &it.Subject, &it.Title, &it.Body, &it.UserID); err != nil {
+		var t Task
+		var desc sql.NullString
+		if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.SelfCheckRequired); err != nil {
 			continue
 		}
-		out = append(out, it)
+		if desc.Valid {
+			t.Description = &desc.String
+		}
+		out = append(out, t)
 	}
 	return out, nil
+}
+
+type userDevicePrefs struct{ Email, WebPush bool }
+
+// loadEligibleUsersAndPrefs returns non-deleted/non-blocked users and their notification prefs. Defaults applied.
+func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, map[uint]map[string]bool) {
+	ids := make([]uint, 0, 1024)
+	device := make(map[uint]userDevicePrefs, 1024)
+	typePrefs := make(map[uint]map[string]bool, 1024)
+	// users
+	rows, err := db.Query(`SELECT id, is_deleted FROM users`)
+	if err != nil {
+		log.Println("load users:", err)
+		return ids, device, typePrefs
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uint
+		var del bool
+		if err := rows.Scan(&id, &del); err != nil {
+			continue
+		}
+		if del {
+			continue
+		}
+		if isUserBlocked(db, id) {
+			continue
+		}
+		ids = append(ids, id)
+		device[id] = userDevicePrefs{Email: true, WebPush: false}
+		typePrefs[id] = map[string]bool{"TASK": true, "DAYSHIFT": true}
+	}
+	// device prefs overlay
+	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
+	if err == nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var uid uint
+			var platform string
+			var enabled bool
+			if err := rows2.Scan(&uid, &platform, &enabled); err != nil {
+				continue
+			}
+			p := device[uid]
+			switch strings.ToUpper(strings.TrimSpace(platform)) {
+			case "EMAIL":
+				p.Email = enabled
+			case "WEBPUSH":
+				p.WebPush = enabled
+			}
+			device[uid] = p
+		}
+	}
+	// type prefs overlay
+	rows3, err := db.Query(`SELECT user_id, notification_type, is_enabled FROM notification_type_prefs`)
+	if err == nil {
+		defer rows3.Close()
+		for rows3.Next() {
+			var uid uint
+			var t string
+			var en bool
+			if err := rows3.Scan(&uid, &t, &en); err != nil {
+				continue
+			}
+			m := typePrefs[uid]
+			m[strings.ToUpper(strings.TrimSpace(t))] = en
+			typePrefs[uid] = m
+		}
+	}
+	return ids, device, typePrefs
+}
+
+// isUserBlocked checks active blocks for the user
+func isUserBlocked(db *sql.DB, uid uint) bool {
+	row := db.QueryRow(`SELECT COUNT(1) FROM blocks WHERE user_id = ? AND (expires_at IS NULL OR expires_at > NOW())`, uid)
+	var cnt int
+	if err := row.Scan(&cnt); err != nil {
+		return false
+	}
+	return cnt > 0
+}
+
+func dateOnly(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+func isNextMonth(a, b time.Time) bool {
+	return a.Month() != b.Month() && a.Year() == b.Year()
+}
+func isNextYear(a, b time.Time) bool { return a.Year() != b.Year() }
+
+func whenLabel(base, target time.Time) string {
+	b := dateOnly(base)
+	t := dateOnly(target)
+	if t.Equal(b) {
+		return "今日"
+	}
+	if t.Equal(b.Add(24 * time.Hour)) {
+		return "あす"
+	}
+	if t.Equal(b.Add(48 * time.Hour)) {
+		return "あさって"
+	}
+	if isNextYear(b, t) {
+		return t.Format("2006年01月02日")
+	}
+	if isNextMonth(b, t) {
+		return t.Format("01月02日")
+	}
+	return t.Format("02日")
+}
+
+func deadlineLabel(t Task, d time.Time) string {
+	date := d.Format("1/2")
+	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
+	if strings.TrimSpace(label) == "" {
+		return date + " まで"
+	}
+	return date + " " + label
+}
+
+func deriveDeadlineLabelEnum(since, until string) string {
+	sIdx := periodIndex(since)
+	uIdx := periodIndex(until)
+	if strings.EqualFold(until, "MORNING") {
+		return "朝まで"
+	}
+	if uIdx > 0 && (sIdx == 0 || sIdx == uIdx) {
+		return fmt.Sprintf("%d限まで", uIdx)
+	}
+	if sIdx > 0 && uIdx > 0 {
+		if sIdx == uIdx {
+			return fmt.Sprintf("%d限まで", uIdx)
+		}
+		if sIdx < uIdx {
+			return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
+		}
+	}
+	return ""
+}
+
+func periodIndex(s string) int {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "P1":
+		return 1
+	case "P2":
+		return 2
+	case "P3":
+		return 3
+	case "P4":
+		return 4
+	case "P5":
+		return 5
+	case "P6":
+		return 6
+	case "P7":
+		return 7
+	case "P8":
+		return 8
+	default:
+		return 0
+	}
+}
+
+// buildBadgesJSON builds badges JSON based on task attributes
+func buildBadgesJSON(t Task) string {
+	type badge struct {
+		Label   string `json:"label"`
+		Variant string `json:"variant,omitempty"`
+	}
+	out := make([]badge, 0, 3)
+	if lbl := displayTaskTypeJaLocal(t.Type); strings.TrimSpace(lbl) != "" && strings.ToUpper(strings.TrimSpace(t.Type)) != "OTHER" {
+		out = append(out, badge{Label: lbl, Variant: "gray"})
+	}
+	if t.IsRequireHandIn {
+		out = append(out, badge{Label: "提出必須", Variant: "red"})
+	}
+	if t.SelfCheckRequired {
+		out = append(out, badge{Label: "自己採点", Variant: "blue"})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+func displayTaskTypeJaLocal(e string) string {
+	switch strings.ToUpper(strings.TrimSpace(e)) {
+	case "ONLINE":
+		return "オンライン"
+	case "FACE_TO_FACE":
+		return "対面"
+	case "QUIZ":
+		return "小テスト"
+	case "PRESENTATION":
+		return "発表"
+	case "SELF_STUDY":
+		return "自主学習"
+	default:
+		return ""
+	}
 }
 
 func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
@@ -190,20 +467,31 @@ func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 }
 
 type composePayload struct {
-	Locale  string              `json:"locale"`
-	AppName string              `json:"app_name"`
-	Items   []map[string]string `json:"items"`
+	Locale  string           `json:"locale"`
+	AppName string           `json:"app_name"`
+	Items   []map[string]any `json:"items"`
 }
 
 func buildComposePayload(locale, appName string, items []QueueItem) composePayload {
 	out := composePayload{Locale: locale, AppName: appName}
 	for _, it := range items {
-		out.Items = append(out.Items, map[string]string{
+		m := map[string]any{
 			"when_label": it.WhenLabel,
 			"subject":    it.Subject,
 			"title":      it.Title,
 			"body":       it.Body,
-		})
+		}
+		if it.Meta.Valid {
+			m["meta"] = it.Meta.String
+		}
+		if it.Badges.Valid && strings.TrimSpace(it.Badges.String) != "" {
+			// try parse JSON
+			var arr []map[string]any
+			if err := json.Unmarshal([]byte(it.Badges.String), &arr); err == nil {
+				m["badges"] = arr
+			}
+		}
+		out.Items = append(out.Items, m)
 	}
 	return out
 }

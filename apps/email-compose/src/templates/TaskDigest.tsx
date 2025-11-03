@@ -133,13 +133,13 @@ export function TaskDigestEmail({
                   </Text>
 
                   {/* meta line: subject + date text */}
-                  <Text style={{ marginTop: 4, color: "#6B7280" }}>
+                  <Text style={{ margin: 0, marginTop: 4, color: "#6B7280" }}>
                     {x.meta ?? x.subject}
                   </Text>
 
                   {/* description */}
                   {x.body ? (
-                    <Text style={{ marginTop: 6, color: "#6B7280" }}>
+                    <Text style={{ margin: 0, marginTop: 6, color: "#6B7280" }}>
                       {x.body}
                     </Text>
                   ) : null}
