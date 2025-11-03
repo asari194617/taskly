@@ -1,0 +1,75 @@
+openapi: 3.0.3
+info:
+  title: Taskly DMARC Processor API
+  version: 1.0.0
+  description: Inbound email processing for DMARC reports and bounces
+servers:
+  - url: http://localhost:3069
+paths:
+  /inbound:
+    post:
+      summary: Receive inbound email payload from Cloudflare Email Workers
+      description: >-
+        Accepts a JSON payload forwarded by Cloudflare Email Workers. Authenticated
+        via `X-Email-Integration-Secret` header.
+      parameters:
+        - in: header
+          name: X-Email-Integration-Secret
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from:
+                  type: string
+                to:
+                  type: string
+                subject:
+                  type: string
+                headers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                text:
+                  type: string
+                html:
+                  type: string
+                raw:
+                  type: string
+                  description: Base64-encoded RFC822 raw message
+                attachments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      filename:
+                        type: string
+                      content_type:
+                        type: string
+                      content_base64:
+                        type: string
+            example:
+              from: "noreply@example.com"
+              to: "postmaster@example.com"
+              subject: "Report Domain: example.com"
+              headers:
+                Subject: "Report Domain: example.com"
+              text: ""
+              html: ""
+              raw: "...base64..."
+              attachments:
+                - filename: "dmarc.xml"
+                  content_type: "application/xml"
+                  content_base64: "..."
+      responses:
+        "202":
+          description: Accepted for processing
+        "401":
+          description: Unauthorized
+        "400":
+          description: Invalid request

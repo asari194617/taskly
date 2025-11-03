@@ -192,6 +192,15 @@ type Log struct {
 	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
+// Email suppression entries for temporary delivery pause
+type EmailSuppression struct {
+	ID             uint   `gorm:"primaryKey"`
+	Email          string `gorm:"size:255;index;not null"`
+	Reason         *string
+	SuspendedUntil time.Time `gorm:"index;not null"`
+	CreatedAt      time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+}
+
 type TOTPSecret struct {
 	ID        uint      `gorm:"primaryKey"`
 	UserID    uint      `gorm:"uniqueIndex;not null"`

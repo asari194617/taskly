@@ -56,6 +56,23 @@ services:
       REDIS_ADDR: redis:6379
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       EMAIL_COMPOSE_HTTP_ADDR: http://email-compose:50052
+  dmarc-processor:
+    build: ../apps/dmarc-processor
+    container_name: taskly-dmarc-processor
+    env_file:
+      - ../.env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "3069:8080" # DMARC processor API
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
+      MYSQL_USER: ${MYSQL_USER:-taskly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
   # web and mcp can be added later
   mcp:
     build: ../apps/mcp

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -111,6 +112,18 @@ func uploadAndPrune(localFile string) error {
 	}
 	log.Printf("Uploaded %s to ftp://%s:%s%s/%s", base, host, port, dir, base)
 
+	// try to set remote permission via SITE CHMOD if the server supports it
+	chmod := valueOr(os.Getenv("FTP_CHMOD"), "640")
+	chmod = strings.TrimSpace(chmod)
+	if chmod != "" {
+		cmd := fmt.Sprintf("CHMOD %s %s", chmod, base)
+		if err := tryFTPSiteCHMOD(c, cmd); err != nil {
+			log.Printf("FTP CHMOD %q failed: %v (server may not support SITE)", cmd, err)
+		} else {
+			log.Printf("Set remote permission to %s for %s", chmod, base)
+		}
+	}
+
 	// prune older than 7 days
 	entries, err := c.List("")
 	if err != nil {
@@ -133,4 +146,42 @@ func valueOr(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// tryFTPSiteCHMOD tries to issue a CHMOD via SITE or SendCommand on the ftp client.
+func tryFTPSiteCHMOD(c interface{}, cmd string) error {
+	v := reflect.ValueOf(c)
+	// Prefer Site(cmd string) error if available
+	if m := v.MethodByName("Site"); m.IsValid() {
+		out := m.Call([]reflect.Value{reflect.ValueOf(cmd)})
+		if len(out) == 1 && !out[0].IsNil() {
+			if err, ok := out[0].Interface().(error); ok {
+				return err
+			}
+		}
+		return nil
+	}
+	// Fallback: SendCommand("SITE "+cmd) with various possible signatures
+	if m := v.MethodByName("SendCommand"); m.IsValid() {
+		out := m.Call([]reflect.Value{reflect.ValueOf("SITE " + cmd)})
+		// Common forms: (int, string, error) or (string, error)
+		if len(out) == 3 {
+			if !out[2].IsNil() {
+				if err, ok := out[2].Interface().(error); ok {
+					return err
+				}
+			}
+			return nil
+		}
+		if len(out) == 2 {
+			if !out[1].IsNil() {
+				if err, ok := out[1].Interface().(error); ok {
+					return err
+				}
+			}
+			return nil
+		}
+		return nil
+	}
+	return fmt.Errorf("ftp client missing Site/SendCommand methods")
 }

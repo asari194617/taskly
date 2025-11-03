@@ -380,5 +380,55 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 		},
 	}
 
+	// Send day shift notification for a specific date and notify Discord asynchronously
+	fields["adminDayshiftNotify"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				isAdmin, _ := userHasRole(u.ID, "admin")
+				isManager, _ := userHasRole(u.ID, "manager")
+				if !(isAdmin || isManager) {
+					return false, fmt.Errorf("forbidden")
+				}
+				ds := strings.TrimSpace(p.Args["date"].(string))
+				dt, err := time.Parse("2006-01-02", ds)
+				if err != nil {
+					return false, fmt.Errorf("invalid date")
+				}
+				// Resolve assigned users for the date
+				var asg DayShiftAssignment
+				if err := DB.Where("date = ?", ds).First(&asg).Error; err != nil {
+					return false, fmt.Errorf("assignment not found")
+				}
+				var members []DayShiftAssignmentUser
+				_ = DB.Where("day_shift_assignments_id = ?", asg.ID).Find(&members).Error
+				names := make([]string, 0, len(members))
+				for _, m := range members {
+					var usr User
+					if err := DB.Select("email", "display_name").First(&usr, m.UserID).Error; err == nil {
+						if strings.TrimSpace(usr.DisplayName) != "" {
+							names = append(names, usr.DisplayName)
+						} else {
+							names = append(names, usr.Email)
+						}
+					}
+				}
+				// Async Discord embed
+				go sendDiscordDayShiftNotifyEmbed(dt, names, u.Email)
+				// Future: trigger actual notification to assigned users (email/push) here
+				_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.notify"}).Error
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	return fields
 }

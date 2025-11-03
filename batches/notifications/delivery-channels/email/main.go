@@ -100,11 +100,16 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 		wl := whenLabel(now, tsk.Deadline)
 		meta := fmt.Sprintf("%s %s", subj, deadlineLabel(tsk, tsk.Deadline))
 		badges := buildBadgesJSON(tsk)
+		// Body should contain only the task description (if any), not the deadline label
+		desc := ""
+		if tsk.Description != nil {
+			desc = strings.TrimSpace(*tsk.Description)
+		}
 		baseItems = append(baseItems, QueueItem{
 			WhenLabel: wl,
 			Subject:   subj,
 			Title:     tsk.Title,
-			Body:      fmt.Sprintf("%s まで", deadlineLabel(tsk, tsk.Deadline)),
+			Body:      desc,
 			Meta:      sql.NullString{String: meta, Valid: true},
 			Badges:    sql.NullString{String: badges, Valid: strings.TrimSpace(badges) != ""},
 		})

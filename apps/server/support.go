@@ -288,6 +288,20 @@ func runMigrations() {
 
 	migrations := []migrationFile{
 		{
+			name: "0019_email_suppressions",
+			statements: []string{
+				`CREATE TABLE IF NOT EXISTS email_suppressions (
+					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+					email VARCHAR(255) NOT NULL,
+					reason TEXT NULL,
+					suspended_until DATETIME NOT NULL,
+					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					INDEX idx_email_suppressions_email (email),
+					INDEX idx_email_suppressions_until (suspended_until)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+			},
+		},
+		{
 			name: "0018_api_mcp_expiry",
 			statements: []string{
 				// Add expires_at to api_keys and mcps (nullable)
@@ -1583,8 +1597,8 @@ func notifyDayShift(ts time.Time) error {
 			}
 		}
 	}
-	content := fmt.Sprintf("[DayShift Notify] date=%s users=%s initiator=scheduler", ts.Format("2006-01-02"), strings.Join(names, ", "))
-	go sendDiscordContent(content)
+	// Send structured embed to Discord (async)
+	go sendDiscordDayShiftNotifyEmbed(ts, names, "scheduler")
 	return nil
 }
 
@@ -1750,6 +1764,30 @@ func sendDiscordTaskEmbed(action string, t Task, actor string) {
 	}
 	if webURL != "" {
 		embed["url"] = strings.TrimRight(webURL, "/") + "/home"
+	}
+	sendDiscordEmbeds([]map[string]any{embed})
+}
+
+// sendDiscordDayShiftNotifyEmbed sends an embed about day shift notification sending
+func sendDiscordDayShiftNotifyEmbed(date time.Time, userNames []string, actor string) {
+	title := "Day Shift Notified"
+	color := 0x3498db // blue
+	users := ""
+	if len(userNames) > 0 {
+		users = strings.Join(userNames, ", ")
+	} else {
+		users = "(none)"
+	}
+	fields := []map[string]any{
+		{"name": "Date", "value": date.Format("2006-01-02"), "inline": true},
+		{"name": "Users", "value": users, "inline": false},
+		{"name": "By", "value": actor, "inline": true},
+	}
+	embed := map[string]any{
+		"title":     title,
+		"color":     color,
+		"fields":    fields,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 	sendDiscordEmbeds([]map[string]any{embed})
 }
