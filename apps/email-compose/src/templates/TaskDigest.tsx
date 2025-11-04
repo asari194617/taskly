@@ -71,7 +71,7 @@ export function TaskDigestEmail({
 
   return (
     <Layout title={title}>
-      <Container>
+      <Container style={{ padding: 4 }}>
         <Section style={{ paddingTop: 8, paddingBottom: 8 }}>
           <Heading as="h1" style={{ margin: 0, fontSize: 18 }}>
             {isSingle
