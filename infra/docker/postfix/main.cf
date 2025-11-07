@@ -40,3 +40,11 @@ relay_domains = $mydestination
 smtp_tls_security_level = none
 smtpd_tls_security_level = none
 smtpd_peername_lookup = no
+
+# OpenDKIM Milter 設定
+milter_protocol = 2
+milter_default_action = accept
+
+# OpenDKIM ソケットの指定
+smtpd_milters = unix:/var/run/opendkim/opendkim.sock
+non_smtpd_milters = unix:/var/run/opendkim/opendkim.sock

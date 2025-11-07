@@ -912,10 +912,12 @@ func buildICSForUser(userID uint) string {
 	eff := effectiveDeadlineExpr("")
 	_ = DB.Where("added_user_id = ?", userID).Order(eff + " ASC").Limit(500).Find(&tasks).Error
 	for _, t := range tasks {
-		ed := effectiveDeadlineTime(t)
-		if ed.IsZero() {
+		// Treat tasks as all-day events in the calendar (use date-only DTSTART/DTEND)
+		// Use the task.Deadline (date only) as the day; DTEND is exclusive and set to next day
+		if t.Deadline.IsZero() {
 			continue
 		}
+		// ed := effectiveDeadlineTime(t)
 		var subj Subject
 		_ = DB.First(&subj, t.SubjectID).Error
 		var u User
@@ -932,11 +934,22 @@ func buildICSForUser(userID uint) string {
 		b.WriteString(fmt.Sprintf("UID:tsk-%d@taskly\r\n", t.ID))
 		b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", now))
 		b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", icalEscape("[Task] "+sName+": "+t.Title)))
-		if t.Description != nil {
-			b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape(*t.Description)))
+		// Build description: include existing description and deadline period (何限)
+		descLines := make([]string, 0)
+		if t.Description != nil && strings.TrimSpace(*t.Description) != "" {
+			descLines = append(descLines, *t.Description)
 		}
-		b.WriteString(fmt.Sprintf("DTSTART:%s\r\n", ed.UTC().Format("20060102T150405Z")))
-		b.WriteString(fmt.Sprintf("DTEND:%s\r\n", ed.UTC().Format("20060102T150405Z")))
+		// append period info
+		sinceText := displaySinceJa(t.DeadlineSince)
+		untilText := displayUntilJa(t.DeadlineUntil)
+		periodInfo := fmt.Sprintf("%s / %s", sinceText, untilText)
+		descLines = append(descLines, periodInfo)
+		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape(strings.Join(descLines, "\\n"))))
+		// All-day DTSTART/DTEND (DTEND is exclusive — next day)
+		dtStart := t.Deadline.Format("20060102")
+		dtEnd := t.Deadline.AddDate(0, 0, 1).Format("20060102")
+		b.WriteString(fmt.Sprintf("DTSTART;VALUE=DATE:%s\r\n", dtStart))
+		b.WriteString(fmt.Sprintf("DTEND;VALUE=DATE:%s\r\n", dtEnd))
 		b.WriteString("END:VEVENT" + crlf)
 	}
 	var asgs []struct {
@@ -948,14 +961,15 @@ func buildICSForUser(userID uint) string {
 		Joins("JOIN day_shift_assignments_users u ON u.day_shift_assignments_id = a.id").
 		Where("u.user_id = ?", userID).Order("a.date ASC").Limit(500).Scan(&asgs).Error
 	for _, a := range asgs {
-		start := time.Date(a.Date.Year(), a.Date.Month(), a.Date.Day(), 9, 0, 0, 0, a.Date.Location())
-		end := start.Add(8 * time.Hour)
+		// Represent day shift as an all-day event on the assignment date
 		b.WriteString("BEGIN:VEVENT" + crlf)
 		b.WriteString(fmt.Sprintf("UID:ds-%d@taskly\r\n", a.ID))
 		b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", now))
 		b.WriteString("SUMMARY:Day Shift\r\n")
-		b.WriteString(fmt.Sprintf("DTSTART:%s\r\n", start.UTC().Format("20060102T150405Z")))
-		b.WriteString(fmt.Sprintf("DTEND:%s\r\n", end.UTC().Format("20060102T150405Z")))
+		// Optional description could include info — keep minimal
+		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape("日直")))
+		b.WriteString(fmt.Sprintf("DTSTART;VALUE=DATE:%s\r\n", a.Date.Format("20060102")))
+		b.WriteString(fmt.Sprintf("DTEND;VALUE=DATE:%s\r\n", a.Date.AddDate(0, 0, 1).Format("20060102")))
 		b.WriteString("END:VEVENT" + crlf)
 	}
 	b.WriteString("END:VCALENDAR" + crlf)
