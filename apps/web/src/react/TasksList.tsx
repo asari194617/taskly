@@ -6,7 +6,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "../components/ui/empty";
+} from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Drawer,
@@ -79,6 +80,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { t, type Lang } from "@/lib/i18n";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 type Task = {
   id: number;
@@ -91,6 +93,7 @@ type Task = {
   type?: string | null;
   is_require_hand_in?: boolean;
   self_check_required?: boolean;
+  is_completed?: boolean;
 };
 type Subject = { id: number; name_ja: string; name_en?: string | null };
 
@@ -173,6 +176,13 @@ export default function TasksList() {
   const [isManager, setIsManager] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [q, setQ] = React.useState("");
+  const [completedFilter, setCompletedFilter] = React.useState<
+    "incomplete" | "completed" | "all"
+  >("all");
+  // Pending completion/uncompletion operations with undo window
+  const [pending, setPending] = React.useState<
+    Record<number, { target: boolean; timeout: any }>
+  >({});
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
   const [newSubjectId, setNewSubjectId] = React.useState("");
@@ -225,16 +235,44 @@ export default function TasksList() {
       return;
     }
     const ac = new AbortController();
-    gql<{ tasks: { items: Task[] } }>(
-      `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
-      { q: q || undefined },
-      { signal: ac.signal }
-    )
-      .then((t) => setItems(t.tasks.items))
-      .catch((e: any) => {
+    (async () => {
+      try {
+        const t = await gql<{ tasks: { items: Task[] } }>(
+          `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required is_completed } } }`,
+          { q: q || undefined },
+          { signal: ac.signal }
+        );
+        setItems(t.tasks.items);
+      } catch (e: any) {
         if (e?.name === "AbortError") return;
-        setError(e?.message || dict.tasks.loadFailed);
-      });
+        const msg: string = e?.message || "";
+        // Fallback for servers that don't yet have is_completed field
+        if (/Cannot query field "is_completed"/i.test(msg)) {
+          try {
+            const t2 = await gql<{
+              tasks: { items: Omit<Task, "is_completed">[] };
+            }>(
+              `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
+              { q: q || undefined },
+              { signal: ac.signal }
+            );
+            // Inject is_completed=false for fallback
+            setItems(
+              (t2.tasks.items as Task[]).map((x) => ({
+                ...x,
+                is_completed: false,
+              }))
+            );
+            return;
+          } catch (e2: any) {
+            if (e2?.name === "AbortError") return;
+            setError(e2?.message || dict.tasks.loadFailed);
+            return;
+          }
+        }
+        setError(msg || dict.tasks.loadFailed);
+      }
+    })();
     return () => ac.abort();
   }, [q, dict.tasks.loadFailed]);
 
@@ -252,15 +290,21 @@ export default function TasksList() {
   const shownItems = React.useMemo(() => {
     if (!items) return [] as Task[];
     const searching = q.trim().length > 0;
-    if (searching) return items;
+    let base = items;
+    // Apply completion filter
+    if (completedFilter === "incomplete")
+      base = base.filter((t) => !t.is_completed);
+    else if (completedFilter === "completed")
+      base = base.filter((t) => !!t.is_completed);
+    if (searching) return base;
     const todayStart = startOfDay(new Date()).getTime();
-    return items.filter((t) => {
+    return base.filter((t) => {
       if (!t.deadline) return true;
       const d = new Date(t.deadline);
       const sod = startOfDay(d).getTime();
       return sod >= todayStart;
     });
-  }, [items, q]);
+  }, [items, q, completedFilter]);
 
   // Keyboard shortcuts: g then n to create; '?' to show help
   React.useEffect(() => {
@@ -525,6 +569,72 @@ export default function TasksList() {
     }
   }
 
+  // Toggle completion with pending undo window
+  function toggleWithPending(task: Task) {
+    // optimistic flip state for visual feedback
+    setItems((cur) =>
+      (cur || []).map((x) =>
+        x.id === task.id ? { ...x, is_completed: !x.is_completed } : x
+      )
+    );
+    const existing = pending[task.id];
+    if (existing) {
+      // Undo: cancel timer and revert state
+      clearTimeout(existing.timeout);
+      setPending((p) => {
+        const cp = { ...p };
+        delete cp[task.id];
+        return cp;
+      });
+      setItems((cur) =>
+        (cur || []).map((x) =>
+          x.id === task.id ? { ...x, is_completed: !x.is_completed } : x
+        )
+      );
+      return;
+    }
+    const target = !task.is_completed;
+    const timeout = setTimeout(async () => {
+      setPending((p) => {
+        const cp = { ...p };
+        delete cp[task.id];
+        return cp;
+      });
+      try {
+        if (target) {
+          await gql<{ completeTask: boolean }>(
+            `mutation($id:Int!){ completeTask(id:$id) }`,
+            { id: task.id }
+          );
+        } else {
+          await gql<{ uncompleteTask: boolean }>(
+            `mutation($id:Int!){ uncompleteTask(id:$id) }`,
+            { id: task.id }
+          );
+        }
+      } catch (err: any) {
+        // revert on error
+        setItems((cur) =>
+          (cur || []).map((x) =>
+            x.id === task.id ? { ...x, is_completed: !target } : x
+          )
+        );
+        toast({
+          variant: "destructive",
+          title: dict.toast.updateFailed,
+          description: err?.message,
+        });
+      }
+    }, 3000);
+    setPending((p) => ({ ...p, [task.id]: { target, timeout } }));
+  }
+
+  // Delete confirmation dialog state
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deleteTargetId, setDeleteTargetId] = React.useState<number | null>(
+    null
+  );
+
   if (error) {
     return (
       <Empty className="border">
@@ -590,6 +700,7 @@ export default function TasksList() {
             </InputGroupAddon>
           </InputGroup>
         </div>
+        {/* Removed select filter (moved to badges) */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -612,6 +723,34 @@ export default function TasksList() {
         >
           <Plus className="h-4 w-4" />
         </Button>
+      </div>
+
+      {/* Completion filter badges ("すべて" omitted). Click active badge to clear filter. */}
+      <div className="flex flex-wrap gap-2 -mt-2">
+        {[
+          { key: "incomplete", label: "未完了" },
+          { key: "completed", label: "完了済み" },
+        ].map((f) => {
+          const active = completedFilter === f.key;
+          return (
+            <Badge
+              key={f.key}
+              onClick={() =>
+                setCompletedFilter((prev) =>
+                  prev === f.key ? "all" : (f.key as any)
+                )
+              }
+              className={
+                "cursor-pointer select-none px-3 py-1" +
+                (active
+                  ? " bg-primary text-primary-foreground"
+                  : " bg-muted text-muted-foreground")
+              }
+            >
+              {f.label}
+            </Badge>
+          );
+        })}
       </div>
 
       {/* New Task Form (responsive dialog/drawer) */}
@@ -850,6 +989,15 @@ export default function TasksList() {
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
+        ) : completedFilter !== "all" ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <FileText className="h-5 w-5" />
+              </EmptyMedia>
+              <EmptyTitle>{dict.tasks.noTasks}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <Empty className="border">
             <EmptyHeader>
@@ -1033,11 +1181,50 @@ export default function TasksList() {
                         return label ? `${dateStr} ${label}` : dateStr;
                       })();
                       const isEditing = editingId === t.id;
+                      const pendingInfo = pending[t.id];
                       return (
                         <li
                           key={t.id}
-                          className="rounded-lg border p-4 bg-card text-card-foreground"
+                          onClick={(e) => {
+                            const tag = (e.target as HTMLElement).tagName;
+                            if (
+                              [
+                                "BUTTON",
+                                "INPUT",
+                                "TEXTAREA",
+                                "LABEL",
+                                "SELECT",
+                                "SVG",
+                                "PATH",
+                              ].includes(tag)
+                            )
+                              return;
+                            if (isEditing) return;
+                            toggleWithPending(t);
+                          }}
+                          className={
+                            "relative rounded-lg border p-4 pl-12 bg-card text-card-foreground transition-opacity cursor-pointer " +
+                            (pendingInfo ? " opacity-50" : "")
+                          }
                         >
+                          {/* Radio vertically centered on left */}
+                          <RadioGroup
+                            value={t.is_completed ? "done" : "undone"}
+                            onValueChange={(val: string) => {
+                              const target = val === "done";
+                              if (target !== !!t.is_completed) {
+                                toggleWithPending(t);
+                              }
+                            }}
+                            className="absolute left-4 top-1/2 -translate-y-1/2"
+                          >
+                            <RadioGroupItem
+                              value="undone"
+                              className="sr-only"
+                              aria-label="未完了"
+                            />
+                            <RadioGroupItem value="done" aria-label="完了" />
+                          </RadioGroup>
                           {isEditing ? (
                             <div className="space-y-3">
                               <div>
@@ -1224,7 +1411,10 @@ export default function TasksList() {
                                     <Button
                                       size="sm"
                                       variant="destructive"
-                                      onClick={() => deleteTask(t.id)}
+                                      onClick={() => {
+                                        setDeleteTargetId(t.id);
+                                        setDeleteOpen(true);
+                                      }}
                                     >
                                       <Trash2 className="h-4 w-4 mr-1" />{" "}
                                       {dict.tasks.delete}
@@ -1253,7 +1443,10 @@ export default function TasksList() {
                                       {(isAdmin || isManager) && (
                                         <DropdownMenuItem
                                           className="text-destructive focus:text-destructive"
-                                          onClick={() => deleteTask(t.id)}
+                                          onClick={() => {
+                                            setDeleteTargetId(t.id);
+                                            setDeleteOpen(true);
+                                          }}
                                         >
                                           <Trash2 className="h-4 w-4 mr-2" />{" "}
                                           {dict.tasks.delete}
@@ -1274,6 +1467,56 @@ export default function TasksList() {
           </div>
         );
       })()}
+      {/* Delete confirm dialog */}
+      <TasksListDeleteDialog
+        open={deleteOpen}
+        setOpen={setDeleteOpen}
+        onConfirm={() => {
+          if (deleteTargetId != null) {
+            deleteTask(deleteTargetId);
+            setDeleteTargetId(null);
+          }
+        }}
+      />
     </div>
+  );
+}
+
+// Delete confirm dialog mounted at root of TasksList
+// Note: placed after component to keep JSX readable
+export function TasksListDeleteDialog({
+  open,
+  setOpen,
+  onConfirm,
+}: {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>削除の確認</DialogTitle>
+          <DialogDescription>
+            この課題を削除します。よろしいですか？
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            キャンセル
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              onConfirm();
+              setOpen(false);
+            }}
+          >
+            削除する
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

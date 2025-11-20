@@ -75,7 +75,8 @@ export default function UserMenu() {
     window.location.href = "/login";
   };
 
-  const name = me?.display_name || me?.email || "";
+  const rawName = me?.display_name || me?.email || "";
+  const name = lang === "ja" && rawName ? `${rawName} さん` : rawName;
   const initials =
     name
       .split(/\s+|@/)

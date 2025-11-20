@@ -933,18 +933,38 @@ func buildICSForUser(userID uint) string {
 		b.WriteString("BEGIN:VEVENT" + crlf)
 		b.WriteString(fmt.Sprintf("UID:tsk-%d@taskly\r\n", t.ID))
 		b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", now))
-		b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", icalEscape("[Task] "+sName+": "+t.Title)))
-		// Build description: include existing description and deadline period (何限)
-		descLines := make([]string, 0)
+		b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", icalEscape("[課題] "+sName+": "+t.Title)))
+		// Build description: include existing description and human-readable period label
+		desc := ""
 		if t.Description != nil && strings.TrimSpace(*t.Description) != "" {
-			descLines = append(descLines, *t.Description)
+			// Replace newlines with spaces per UX requirement
+			desc = strings.TrimSpace(strings.ReplaceAll(*t.Description, "\n", " "))
 		}
-		// append period info
-		sinceText := displaySinceJa(t.DeadlineSince)
-		untilText := displayUntilJa(t.DeadlineUntil)
-		periodInfo := fmt.Sprintf("%s / %s", sinceText, untilText)
-		descLines = append(descLines, periodInfo)
-		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape(strings.Join(descLines, "\\n"))))
+		// Build compact period label
+		label := ""
+		sIdx := periodIndex(t.DeadlineSince)
+		uIdx := periodIndex(t.DeadlineUntil)
+		if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "MORNING") {
+			label = "朝まで"
+		} else if sIdx > 0 && uIdx > 0 {
+			if sIdx == uIdx {
+				label = fmt.Sprintf("%d限", sIdx)
+			} else if sIdx < uIdx {
+				label = fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
+			}
+		} else if uIdx > 0 {
+			label = fmt.Sprintf("%d限まで", uIdx)
+		} else if sIdx > 0 {
+			label = fmt.Sprintf("%d限以降", sIdx)
+		}
+		if strings.TrimSpace(label) != "" {
+			if desc != "" {
+				desc = desc + " " + label
+			} else {
+				desc = label
+			}
+		}
+		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape(desc)))
 		// All-day DTSTART/DTEND (DTEND is exclusive — next day)
 		dtStart := t.Deadline.Format("20060102")
 		dtEnd := t.Deadline.AddDate(0, 0, 1).Format("20060102")
@@ -1189,16 +1209,20 @@ func deriveDeadlineLabelEnum(since, until string) string {
 	if strings.EqualFold(until, "MORNING") {
 		return "朝まで"
 	}
-	if uIdx > 0 && (sIdx == 0 || sIdx == uIdx) {
-		return fmt.Sprintf("%d限まで", uIdx)
-	}
 	if sIdx > 0 && uIdx > 0 {
 		if sIdx == uIdx {
-			return fmt.Sprintf("%d限まで", uIdx)
+			// Single-period window: show like "n限" (not "n限まで")
+			return fmt.Sprintf("%d限", uIdx)
 		}
 		if sIdx < uIdx {
 			return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
 		}
+	}
+	if uIdx > 0 {
+		return fmt.Sprintf("%d限まで", uIdx)
+	}
+	if sIdx > 0 {
+		return fmt.Sprintf("%d限以降", sIdx)
 	}
 	return ""
 }
@@ -1393,6 +1417,21 @@ func buildTaskDeleteMessageJa(t Task) string {
 	return "この課題は削除されました。"
 }
 
+// ensureTasksCompletionTable creates the per-user task completion table if not exists.
+func ensureTasksCompletionTable() {
+	const ddl = `CREATE TABLE IF NOT EXISTS tasks_users_completions (
+  id BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  task_id BIGINT NOT NULL,
+  completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_user_task (user_id, task_id),
+  INDEX idx_task_user (task_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+	if err := DB.Exec(ddl).Error; err != nil {
+		log.Printf("migration warning: create tasks_users_completions failed: %v", err)
+	}
+}
+
 // Build SQL expression string for effective deadline timestamp
 func effectiveDeadlineExpr(alias string) string {
 	col := func(name string) string {
@@ -1441,7 +1480,7 @@ func sendTeamsNotifyEmailForTask(t Task) {
 		desc = *t.Description
 	}
 	// JSON body consumed by Power Automate
-	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q}`, fmt.Sprintf("%d", t.ID), formatted, desc)
+	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), formatted, desc, time.Now().Format(time.RFC3339))
 	// Fire and forget
 	go func() {
 		_ = smtpSendPlain(to, subject, body)

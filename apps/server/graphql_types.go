@@ -133,6 +133,7 @@ func createGQLTypes() *gqlTypes {
 			"deadline":            &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
 			"deadline_since":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
 			"deadline_until":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
+			"is_completed":        &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
 			"created_at":          &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"updated_at":          &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 		},

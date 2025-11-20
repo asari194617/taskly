@@ -106,6 +106,25 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 						nextCursor = map[string]string{"cursor_deadline": ed.Format(time.RFC3339), "cursor_id": fmt.Sprintf("%d", last.ID)}
 					}
 					// serialize
+					// Preload user's completion map for fetched items
+					completed := map[uint]bool{}
+					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+						u := c.Locals("user").(*User)
+						ids := make([]uint, 0, len(items))
+						for _, it := range items {
+							ids = append(ids, it.ID)
+						}
+						if len(ids) > 0 {
+							// Build IN clause safely
+							// Use GORM's Where with slice
+							rows := []struct{ TaskID uint }{}
+							if err := DB.Raw("SELECT task_id AS task_id FROM tasks_users_completions WHERE user_id = ? AND task_id IN ?", u.ID, ids).Scan(&rows).Error; err == nil {
+								for _, r := range rows {
+									completed[r.TaskID] = true
+								}
+							}
+						}
+					}
 					outItems := make([]map[string]any, 0, len(items))
 					for _, it := range items {
 						out := map[string]any{
@@ -120,6 +139,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 						out["deadline"] = it.Deadline.Format("2006-01-02")
 						out["deadline_since"] = it.DeadlineSince
 						out["deadline_until"] = it.DeadlineUntil
+						out["is_completed"] = completed[it.ID]
 						out["created_at"] = it.CreatedAt.Format(time.RFC3339)
 						out["updated_at"] = it.UpdatedAt.Format(time.RFC3339)
 						outItems = append(outItems, out)

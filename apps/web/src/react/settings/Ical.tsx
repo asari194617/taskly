@@ -71,7 +71,8 @@ export default function SettingsIcal() {
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<IItem[]>([]);
   const [desc, setDesc] = React.useState("");
-  const HELP_URL = "https://ritzy-lift-e38.notion.site/290a3874f8c880a6b1f6e67cef05ae56?source=copy_link";
+  const HELP_URL =
+    "https://ritzy-lift-e38.notion.site/290a3874f8c880a6b1f6e67cef05ae56?source=copy_link";
 
   async function load() {
     try {
@@ -142,6 +143,8 @@ export default function SettingsIcal() {
       });
     }
   }
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deleteId, setDeleteId] = React.useState<number | null>(null);
   return (
     <SettingsShell>
       <div className="space-y-6">
@@ -231,7 +234,17 @@ export default function SettingsIcal() {
                   <TableCell className="text-right flex gap-2 justify-end">
                     <Button
                       variant="secondary"
-                      onClick={() => navigator.clipboard.writeText(it.url)}
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(it.url);
+                          toast({ title: dict.common.copied });
+                        } catch (e) {
+                          toast({
+                            variant: "destructive",
+                            title: "コピーに失敗しました",
+                          });
+                        }
+                      }}
                     >
                       {dict.common.copy}
                     </Button>
@@ -272,7 +285,13 @@ export default function SettingsIcal() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
-                    <Button variant="destructive" onClick={() => revoke(it.id)}>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        setDeleteId(it.id);
+                        setDeleteOpen(true);
+                      }}
+                    >
                       {dict.common.delete}
                     </Button>
                   </TableCell>
@@ -281,6 +300,32 @@ export default function SettingsIcal() {
             </TableBody>
           </Table>
         </Card>
+        {/* Delete confirm dialog */}
+        <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>削除の確認</DialogTitle>
+              <DialogDescription>
+                このiCal URLを削除します。よろしいですか？
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                キャンセル
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  if (deleteId != null) await revoke(deleteId);
+                  setDeleteOpen(false);
+                  setDeleteId(null);
+                }}
+              >
+                削除する
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </SettingsShell>
   );

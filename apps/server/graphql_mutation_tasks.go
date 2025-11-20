@@ -265,5 +265,55 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 		},
 	}
 
+	// Mark task as completed for current user
+	fields["completeTask"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				id, _ := p.Args["id"].(int)
+				// Ensure task exists
+				var rec Task
+				if err := DB.First(&rec, id).Error; err != nil {
+					return false, fmt.Errorf("not found")
+				}
+				// Upsert completion
+				if err := DB.Exec("INSERT INTO tasks_users_completions(user_id, task_id) VALUES(?, ?) ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP", u.ID, rec.ID).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
+	// Unmark task completion for current user
+	fields["uncompleteTask"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				id, _ := p.Args["id"].(int)
+				if err := DB.Exec("DELETE FROM tasks_users_completions WHERE user_id = ? AND task_id = ?", u.ID, id).Error; err != nil {
+					return false, fmt.Errorf("db")
+				}
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	return fields
 }

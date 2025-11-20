@@ -86,6 +86,8 @@ func main() {
 	ensureTasksSchema()
 	// Ensure integrations logging table exists even if SQL migrations aren't run externally
 	ensureTasksTeamsLogsTable()
+	// Ensure per-user task completion table exists
+	ensureTasksCompletionTable()
 
 	// Sentry initialization (optional)
 	if dsn := env("SENTRY_DSN", ""); dsn != "" {
