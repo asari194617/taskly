@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
+    "module": "Node16",
     "lib": ["ES2022"],
-    "moduleResolution": "Node",
+    "moduleResolution": "Node16",
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
@@ -11,8 +11,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "types": ["node", "react"],
-    "jsx": "react-jsx",
-    "ignoreDeprecations": "6.0"
+    "jsx": "react-jsx"
   },
   "include": ["src"]
 }
