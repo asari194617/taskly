@@ -1537,7 +1537,8 @@ func performDayShiftRotation(now time.Time) error {
 
 func getCurrentCycle(d time.Time) (*DayShiftCycle, error) {
 	var cyc DayShiftCycle
-	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).First(&cyc).Error; err != nil {
+	// If multiple cycles cover the date, prefer the one with the latest finish_date
+	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).Order("finish_date DESC, id DESC").First(&cyc).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}

@@ -17,6 +17,7 @@ func buildRootMutation(t *gqlTypes) *graphql.Object {
 
 	// Assemble mutation fields from topic modules
 	merge(mutationFieldsDayShift(t))
+	merge(mutationFieldsSettings(t))
 	merge(mutationFieldsAdminUsers(t))
 	merge(mutationFieldsCalendar(t))
 	merge(mutationFieldsKeys(t))

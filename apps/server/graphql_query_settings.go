@@ -84,6 +84,27 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 				return nil, fmt.Errorf("context missing")
 			},
 		},
+		// Day shift current index from configs
+		"dayShiftIndex": &graphql.Field{
+			Type: graphql.Int,
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return 0, fmt.Errorf("unauthorized")
+					}
+				}
+				var row struct{ V string }
+				if err := DB.Raw("SELECT value AS v FROM configs WHERE `key`='day_shift_current_index' LIMIT 1").Scan(&row).Error; err != nil {
+					return 0, err
+				}
+				if strings.TrimSpace(row.V) == "" {
+					return 0, nil
+				}
+				var n int
+				fmt.Sscanf(row.V, "%d", &n)
+				return n, nil
+			},
+		},
 		// MCP info for current user
 		"mcpInfo": &graphql.Field{
 			Type: mcpInfoType,
