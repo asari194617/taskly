@@ -33,10 +33,6 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := ensureAssignmentsTable(db); err != nil {
-		log.Fatal(err)
-	}
-
 	cycles, err := fetchActiveCycles(db)
 	if err != nil {
 		log.Fatal(err)
@@ -275,57 +271,6 @@ func upsertAssignmentMembers(db *sql.DB, assignmentID int64, userIDs []int64) er
 			return err
 		}
 	}
-	return nil
-}
-
-func ensureAssignmentsTable(db *sql.DB) error {
-	// Ensure main assignment tables exist (compatible with server schema)
-	ddl1 := `CREATE TABLE IF NOT EXISTS day_shift_assignments (
-		id BIGINT AUTO_INCREMENT PRIMARY KEY,
-		date DATE NOT NULL,
-		cycle_id BIGINT NOT NULL,
-		status ENUM('assigned','completed','unfulfilled') NOT NULL DEFAULT 'assigned',
-		notes TEXT NULL,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		UNIQUE KEY uniq_day_cycle (date, cycle_id)
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
-	if _, err := db.Exec(ddl1); err != nil {
-		return err
-	}
-
-	// Determine signedness of referenced IDs to avoid FK type mismatches
-	asgUnsigned, _ := isColumnUnsigned(db, "day_shift_assignments", "id")
-	userUnsigned, _ := isColumnUnsigned(db, "users", "id")
-	asgCol := "BIGINT"
-	if asgUnsigned {
-		asgCol += " UNSIGNED"
-	}
-	userCol := "BIGINT"
-	if userUnsigned {
-		userCol += " UNSIGNED"
-	}
-
-	// Create members table without hard FK first to avoid immediate failure on type mismatches
-	ddl2 := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS day_shift_assignments_users (
-		id BIGINT AUTO_INCREMENT PRIMARY KEY,
-		day_shift_assignments_id %s NOT NULL,
-		user_id %s NOT NULL,
-		KEY idx_asg_id (day_shift_assignments_id),
-		KEY idx_user_id (user_id)
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`, asgCol, userCol)
-	if _, err := db.Exec(ddl2); err != nil {
-		return err
-	}
-
-	// Try adding foreign keys; ignore if it fails (log only)
-	if _, err := db.Exec(`ALTER TABLE day_shift_assignments_users ADD CONSTRAINT fk_asg_users_asg FOREIGN KEY (day_shift_assignments_id) REFERENCES day_shift_assignments(id)`); err != nil {
-		log.Println("warn: skipping fk_asg_users_asg:", err)
-	}
-	if _, err := db.Exec(`ALTER TABLE day_shift_assignments_users ADD CONSTRAINT fk_asg_users_user FOREIGN KEY (user_id) REFERENCES users(id)`); err != nil {
-		log.Println("warn: skipping fk_asg_users_user:", err)
-	}
-
 	return nil
 }
 

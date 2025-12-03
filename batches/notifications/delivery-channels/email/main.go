@@ -137,23 +137,13 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 
 // fetchDueTasks returns tasks whose effective deadline is within [now, end of the day after tomorrow]
 func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
-	eff := "TIMESTAMP(deadline, CASE " +
-		"WHEN deadline_until='MORNING' THEN '07:59:59' " +
-		"WHEN deadline_until='P1' THEN '10:30:00' " +
-		"WHEN deadline_until='P2' THEN '12:10:00' " +
-		"WHEN deadline_until='P3' THEN '14:30:00' " +
-		"WHEN deadline_until='P4' THEN '16:10:00' " +
-		"WHEN deadline_until='P5' THEN '17:50:00' " +
-		"WHEN deadline_until='P6' THEN '19:30:00' " +
-		"WHEN deadline_until='P7' THEN '21:10:00' " +
-		"WHEN deadline_until='P8' THEN '22:50:00' " +
-		"ELSE '23:59:59' END)"
-	start := now
-	end := time.Date(now.Year(), now.Month(), now.Day()+2, 23, 59, 59, 0, now.Location())
+	// Date-only window: include deadlines between today and day-after-tomorrow
+	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endDate := time.Date(now.Year(), now.Month(), now.Day()+2, 0, 0, 0, 0, now.Location())
 	rows, err := db.Query(
 		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
-			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE "+eff+" BETWEEN ? AND ? ORDER BY "+eff+" ASC",
-		start, end,
+			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline BETWEEN ? AND ? ORDER BY t.deadline ASC",
+		startDate, endDate,
 	)
 	if err != nil {
 		return nil, err
@@ -331,6 +321,10 @@ func periodIndex(s string) int {
 		return 7
 	case "P8":
 		return 8
+	case "P9":
+		return 9
+	case "P10":
+		return 10
 	default:
 		return 0
 	}

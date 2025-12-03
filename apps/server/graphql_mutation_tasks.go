@@ -175,7 +175,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					if vv == "" {
 						vv = "NONE"
 					}
-					if vv != "NONE" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" {
+					if vv != "NONE" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
 						return nil, fmt.Errorf("invalid deadline_since")
 					}
 					rec.DeadlineSince = vv
@@ -185,7 +185,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					if vv == "" {
 						vv = "NONE"
 					}
-					if vv != "NONE" && vv != "MORNING" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" {
+					if vv != "NONE" && vv != "MORNING" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
 						return nil, fmt.Errorf("invalid deadline_until")
 					}
 					rec.DeadlineUntil = vv

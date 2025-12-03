@@ -63,10 +63,6 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := ensureQueueTable(db); err != nil {
-		log.Fatalf("ensure notifications_queue: %v", err)
-	}
-
 	// Prefer TZ from env (e.g., Asia/Tokyo)
 	now := time.Now()
 	if tz := strings.TrimSpace(os.Getenv("TIMEZONE")); tz != "" {
@@ -76,26 +72,13 @@ func main() {
 	}
 	items := make([]NotifyItem, 0, 256)
 
-	// 期限が近い課題（今日〜あさってまでの「実際の締切時刻」）を抽出
-	// サーバーと同じロジック（deadline + deadline_until の合成）で絞り込む
-	eff := "TIMESTAMP(deadline, CASE " +
-		"WHEN deadline_until='MORNING' THEN '07:59:59' " +
-		"WHEN deadline_until='P1' THEN '10:30:00' " +
-		"WHEN deadline_until='P2' THEN '12:10:00' " +
-		"WHEN deadline_until='P3' THEN '14:30:00' " +
-		"WHEN deadline_until='P4' THEN '16:10:00' " +
-		"WHEN deadline_until='P5' THEN '17:50:00' " +
-		"WHEN deadline_until='P6' THEN '19:30:00' " +
-		"WHEN deadline_until='P7' THEN '21:10:00' " +
-		"WHEN deadline_until='P8' THEN '22:50:00' " +
-		"ELSE '23:59:59' END)"
-	start := now
-	// Include up to the end of the day-after-tomorrow so that 明後日の課題 are covered
-	end := time.Date(now.Year(), now.Month(), now.Day()+2, 23, 59, 59, 0, now.Location())
+	// 期限が近い課題（今日〜あさってまでの「日付」）を抽出（DATEのみ）
+	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endDate := time.Date(now.Year(), now.Month(), now.Day()+2, 0, 0, 0, 0, now.Location())
 	rows, err := db.Query(
 		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
-			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE "+eff+" BETWEEN ? AND ?",
-		start, end,
+			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline BETWEEN ? AND ?",
+		startDate, endDate,
 	)
 	if err != nil {
 		log.Println("query tasks (effective window):", err)
@@ -298,6 +281,10 @@ func periodIndex(s string) int {
 		return 7
 	case "P8":
 		return 8
+	case "P9":
+		return 9
+	case "P10":
+		return 10
 	default:
 		return 0
 	}
@@ -393,40 +380,6 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		}
 	}
 	return ids, device, typePrefs
-}
-
-// targetDates returns business dates for notifications: today, next biz day, and the following biz day
-// Note: business-day helpers removed for tasks; weekendsも含めて締切を判定
-
-func ensureQueueTable(db *sql.DB) error {
-	ddl := `CREATE TABLE IF NOT EXISTS notifications_queue (
-		id BIGINT AUTO_INCREMENT PRIMARY KEY,
-		kind VARCHAR(32) NOT NULL,
-		when_label VARCHAR(32) NOT NULL,
-		subject VARCHAR(255) NOT NULL,
-		title TEXT,
-		body TEXT,
-		meta TEXT NULL,
-		badges_json TEXT NULL,
-		user_id BIGINT NULL,
-		channel VARCHAR(32) NULL,
-		status VARCHAR(32) NULL,
-		error_message TEXT NULL,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		processed_at DATETIME NULL,
-		INDEX idx_processed_at (processed_at)
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
-	if _, err := db.Exec(ddl); err != nil {
-		return err
-	}
-	// Add columns if table existed without them
-	if _, err := db.Exec(`ALTER TABLE notifications_queue ADD COLUMN IF NOT EXISTS meta TEXT NULL`); err != nil {
-		log.Println("alter add meta:", err)
-	}
-	if _, err := db.Exec(`ALTER TABLE notifications_queue ADD COLUMN IF NOT EXISTS badges_json TEXT NULL`); err != nil {
-		log.Println("alter add badges_json:", err)
-	}
-	return nil
 }
 
 // buildBadgesJSON builds badges JSON based on task attributes

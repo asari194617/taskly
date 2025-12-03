@@ -250,29 +250,6 @@ func ensureTasksSchema() {
 	}
 }
 
-// ensureTasksTeamsLogsTable creates the tasks_teams_logs table if it does not exist yet.
-// This protects integrations that write to this table even when external SQL migrations are not applied.
-func ensureTasksTeamsLogsTable() {
-	// Create without FK to avoid cross-environment mismatches; add index on task_id
-	const ddl = `CREATE TABLE IF NOT EXISTS tasks_teams_logs (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-  task_id BIGINT UNSIGNED NOT NULL,
-  teams_message_id VARCHAR(255) NULL,
-  teams_conversation_id VARCHAR(255) NULL,
-  is_success BOOLEAN NOT NULL DEFAULT FALSE,
-  callback_url TEXT NULL,
-  attempts INT NOT NULL DEFAULT 0,
-  last_status VARCHAR(32) NULL,
-  last_error TEXT NULL,
-  last_response_status INT NULL,
-  last_response_body TEXT NULL,
-  INDEX idx_tasks_teams_logs_task_id (task_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`
-	if err := DB.Exec(ddl).Error; err != nil {
-		log.Printf("migration warning: create tasks_teams_logs failed: %v", err)
-	}
-}
-
 // runMigrations executes SQL migrations from migrations folder if not already applied
 func runMigrations() {
 	type migrationFile struct {
@@ -1353,7 +1330,7 @@ func displayBoolJa(b bool) string {
 func displaySinceJa(since string) string {
 	v := strings.ToUpper(strings.TrimSpace(since))
 	switch v {
-	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8":
+	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10":
 		return strings.TrimPrefix(v, "P") + "限"
 	case "NONE", "":
 		return "指定なし"
@@ -1371,9 +1348,7 @@ func displayUntilJa(until string) string {
 		return "昼休みまで"
 	case "AFTER_SCHOOL":
 		return "放課後まで"
-	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8":
-		return strings.TrimPrefix(v, "P") + "限まで"
-	case "P9", "P10":
+	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10":
 		return strings.TrimPrefix(v, "P") + "限まで"
 	case "NONE", "":
 		return "指定なし"
@@ -1450,45 +1425,13 @@ func buildTaskDeleteMessageJa(t Task) string {
 	return "この課題は削除されました。"
 }
 
-// ensureTasksCompletionTable creates the per-user task completion table if not exists.
-func ensureTasksCompletionTable() {
-	const ddl = `CREATE TABLE IF NOT EXISTS tasks_users_completions (
-  id BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL,
-  task_id BIGINT NOT NULL,
-  completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_user_task (user_id, task_id),
-  INDEX idx_task_user (task_id, user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
-	if err := DB.Exec(ddl).Error; err != nil {
-		log.Printf("migration warning: create tasks_users_completions failed: %v", err)
-	}
-}
-
 // Build SQL expression string for effective deadline timestamp
 func effectiveDeadlineExpr(alias string) string {
-	col := func(name string) string {
-		if alias != "" {
-			return alias + "." + name
-		}
-		return name
+	// Date-only ordering: use the DATE column directly
+	if alias != "" {
+		return alias + ".deadline"
 	}
-	// CONCAT(date, ' ', time) cast to datetime
-	return "TIMESTAMP(" + col("deadline") + ", CASE " +
-		"WHEN " + col("deadline_until") + "='MORNING' THEN '07:59:59' " +
-		"WHEN " + col("deadline_until") + "='LUNCH' THEN '13:00:00' " +
-		"WHEN " + col("deadline_until") + "='AFTER_SCHOOL' THEN '18:00:00' " +
-		"WHEN " + col("deadline_until") + "='P1' THEN '10:30:00' " +
-		"WHEN " + col("deadline_until") + "='P2' THEN '12:10:00' " +
-		"WHEN " + col("deadline_until") + "='P3' THEN '14:30:00' " +
-		"WHEN " + col("deadline_until") + "='P4' THEN '16:10:00' " +
-		"WHEN " + col("deadline_until") + "='P5' THEN '17:50:00' " +
-		"WHEN " + col("deadline_until") + "='P6' THEN '19:30:00' " +
-		"WHEN " + col("deadline_until") + "='P7' THEN '21:10:00' " +
-		"WHEN " + col("deadline_until") + "='P8' THEN '22:50:00' " +
-		"WHEN " + col("deadline_until") + "='P9' THEN '23:59:59' " +
-		"WHEN " + col("deadline_until") + "='P10' THEN '23:59:59' " +
-		"ELSE '23:59:59' END)"
+	return "deadline"
 }
 
 // Compute effective deadline timestamp in Go for the given task
@@ -1738,7 +1681,6 @@ func sendDiscordEmbeds(embeds []map[string]any) {
 // sendDiscordTaskEmbed builds and sends an embed for task events (created/updated/deleted)
 func sendDiscordTaskEmbed(action string, t Task, actor string) {
 	// Prepare fields
-	eff := effectiveDeadlineTime(t)
 	webURL := strings.TrimSpace(env("WEB_URL", ""))
 	title := "Task"
 	color := 5814783 // default bluish
@@ -1760,7 +1702,7 @@ func sendDiscordTaskEmbed(action string, t Task, actor string) {
 	}
 	fields := []map[string]any{
 		{"name": "ID", "value": fmt.Sprintf("%d", t.ID), "inline": true},
-		{"name": "Deadline", "value": eff.Format("2006-01-02 15:04"), "inline": true},
+		{"name": "Deadline", "value": t.Deadline.Format("2006-01-02"), "inline": true},
 		{"name": "Window", "value": suLabel, "inline": true},
 		{"name": "By", "value": actor, "inline": true},
 	}

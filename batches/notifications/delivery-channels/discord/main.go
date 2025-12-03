@@ -346,6 +346,10 @@ func periodIndex(s string) int {
 		return 7
 	case "P8":
 		return 8
+	case "P9":
+		return 9
+	case "P10":
+		return 10
 	default:
 		return 0
 	}
