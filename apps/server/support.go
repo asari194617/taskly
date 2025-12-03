@@ -189,6 +189,8 @@ func isSensitiveValue(v string) bool {
 
 // ensureDeadlineDateColumn alters tasks.deadline to DATE (from DATETIME) if necessary.
 // This keeps the legacy field date-only, matching current requirements.
+// Deprecated: migrations are handled exclusively via SQL files in apps/server/migrations
+// Remove in-process schema alteration.
 func ensureDeadlineDateColumn() {
 	// Best effort: MySQL syntax (GORM uses MySQL driver in this project).
 	// If tasks table/column doesn't exist yet (fresh DB), SELECT returns 0 rows and we skip.
@@ -204,14 +206,12 @@ func ensureDeadlineDateColumn() {
 			return
 		}
 	}
-	// Alter to DATE NULL
-	if err := DB.Exec("ALTER TABLE tasks MODIFY COLUMN deadline DATE NULL").Error; err != nil {
-		log.Printf("migration warning: alter tasks.deadline to DATE failed: %v", err)
-	}
+	// No in-process ALTER; handled by migrations.
 }
 
 // ensureTasksSchema verifies the tasks table has expected column data types for the new model.
 // If the table has no rows and types mismatch, it will drop and recreate the table.
+// Deprecated: schema verification is handled by migrations; do not modify at runtime.
 func ensureTasksSchema() {
 	// Check table exists
 	type res struct{ Cnt int }
@@ -237,333 +237,25 @@ func ensureTasksSchema() {
 			mismatch = true
 		}
 	}
-	if mismatch && rowCnt == 0 {
-		// Drop and recreate tasks table only (safe since no rows)
-		if err := DB.Migrator().DropTable("tasks"); err != nil {
-			log.Printf("migration warning: drop tasks failed: %v", err)
-			return
-		}
-		if err := DB.AutoMigrate(&Task{}); err != nil {
-			log.Printf("migration warning: recreate tasks failed: %v", err)
-			return
-		}
-	}
+	_ = mismatch
+	// No destructive changes; rely on migrations.
 }
 
 // runMigrations executes SQL migrations from migrations folder if not already applied
+// Deprecated: runtime migrations removed. Use SQL migrations only.
 func runMigrations() {
-	type migrationFile struct {
-		name       string
-		statements []string
-	}
-
-	// small helper to check column existence
-	hasColumn := func(table, column string) bool {
-		type res struct{ Cnt int }
-		var r res
-		_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?", table, column).Scan(&r).Error
-		return r.Cnt > 0
-	}
-
-	migrations := []migrationFile{
-		{
-			name: "0020_task_deadline_enums_extend",
-			statements: []string{
-				// Extend deadline_since to include P9,P10
-				"ALTER TABLE tasks MODIFY COLUMN deadline_since ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10') NOT NULL DEFAULT 'NONE'",
-				// Extend deadline_until to include LUNCH, AFTER_SCHOOL, P9, P10
-				"ALTER TABLE tasks MODIFY COLUMN deadline_until ENUM('NONE','MORNING','LUNCH','AFTER_SCHOOL','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10') NOT NULL DEFAULT 'NONE'",
-			},
-		},
-		{
-			name: "0019_email_suppressions",
-			statements: []string{
-				`CREATE TABLE IF NOT EXISTS email_suppressions (
-					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-					email VARCHAR(255) NOT NULL,
-					reason TEXT NULL,
-					suspended_until DATETIME NOT NULL,
-					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-					INDEX idx_email_suppressions_email (email),
-					INDEX idx_email_suppressions_until (suspended_until)
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
-			},
-		},
-		{
-			name: "0018_api_mcp_expiry",
-			statements: []string{
-				// Add expires_at to api_keys and mcps (nullable)
-				"ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS expires_at DATETIME NULL",
-				"ALTER TABLE mcps ADD COLUMN IF NOT EXISTS expires_at DATETIME NULL",
-			},
-		},
-		{
-			name: "0017_system_settings",
-			statements: []string{
-				`CREATE TABLE IF NOT EXISTS system_settings (
-					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-					` + "`key`" + ` VARCHAR(128) NOT NULL UNIQUE,
-					value TEXT NOT NULL,
-					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-					updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
-			},
-		},
-		{
-			name: "0016_moderation_flags",
-			statements: []string{
-				// Add is_hidden to tasks if missing
-				"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT 0",
-				// Create flagged_contents table
-				`CREATE TABLE IF NOT EXISTS flagged_contents (
-					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-					task_id BIGINT UNSIGNED NOT NULL,
-					category VARCHAR(64) NOT NULL,
-					severity VARCHAR(16) NOT NULL,
-					score DECIMAL(5,3) NULL,
-					threat BOOLEAN NOT NULL DEFAULT FALSE,
-					reason TEXT NULL,
-					model VARCHAR(64) NULL,
-					metadata JSON NULL,
-					snapshot JSON NULL,
-					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-					INDEX idx_flagged_contents_task_id (task_id),
-					INDEX idx_flagged_contents_created_at (created_at)
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
-				// Create user_reports table
-				`CREATE TABLE IF NOT EXISTS user_reports (
-					id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-					reporter_user_id BIGINT UNSIGNED NULL,
-					task_id BIGINT UNSIGNED NOT NULL,
-					reason VARCHAR(255) NOT NULL,
-					comment TEXT NULL,
-					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-					INDEX idx_user_reports_task_id (task_id),
-					INDEX idx_user_reports_reporter (reporter_user_id)
-				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
-			},
-		},
-		{
-			name: "0012_timestamp_sanitize",
-			statements: []string{
-				// Temporarily relax NO_ZERO_DATE validation so we can fix bad data
-				"SET @OLD_SQL_MODE = @@sql_mode",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
-				// Normalize existing rows that may have invalid date/time values before altering columns
-				"UPDATE users SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE tasks SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE tasks SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE api_keys SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE api_keys SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE permissions SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE permissions SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE blocks SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE blocks SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE role_users SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE passkeys SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE passkeys SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE day_shift_assignments SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE day_shift_assignments SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE business_calendar SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE business_calendar SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				"UPDATE web_push_subscriptions SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"UPDATE web_push_subscriptions SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00'",
-				// Restore SQL mode
-				"SET SESSION sql_mode=@OLD_SQL_MODE",
-			},
-		},
-		{
-			name: "0011_timestamp_defaults",
-			statements: []string{
-				// Ensure DB-level defaults and ON UPDATE for updated_at across core tables
-				"ALTER TABLE sessions MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE api_keys MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE permissions MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE blocks MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE tasks MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE passkeys MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE day_shift_assignments MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE business_calendar MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-				"ALTER TABLE role_users MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
-				// Tables created via AutoMigrate (ensure correct defaults)
-				"ALTER TABLE web_push_subscriptions MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-			},
-		},
-		{
-			name: "0013_role_users_timestamp_fix",
-			statements: []string{
-				"SET @OLD_SQL_MODE = @@sql_mode",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
-				"UPDATE role_users SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"ALTER TABLE role_users MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
-				"SET SESSION sql_mode=@OLD_SQL_MODE",
-			},
-		},
-		{
-			name: "0014_subjects_timestamp_fix",
-			statements: []string{
-				"SET @OLD_SQL_MODE = @@sql_mode",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
-				"UPDATE subjects SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00'",
-				"ALTER TABLE subjects MODIFY COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
-				"SET SESSION sql_mode=@OLD_SQL_MODE",
-			},
-		},
-		{
-			name: "0015_migrations_applied_at_fix",
-			statements: []string{
-				"SET @OLD_SQL_MODE = @@sql_mode",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_DATE',''))",
-				"SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'NO_ZERO_IN_DATE',''))",
-				"UPDATE migrations SET applied_at = NOW() WHERE applied_at IS NULL OR applied_at = '0000-00-00 00:00:00'",
-				"ALTER TABLE migrations MODIFY COLUMN applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
-				"SET SESSION sql_mode=@OLD_SQL_MODE",
-			},
-		},
-		{
-			name: "0010_business_calendar_date_index",
-			statements: []string{
-				// Create index if missing. MySQL 8 supports IF NOT EXISTS for indexes from 8.0.13+, but safer to try and ignore duplicate errors.
-				"CREATE INDEX idx_business_calendar_date ON business_calendar(date)",
-			},
-		},
-		{
-			name: "0006_task_type_enum_subject_i18n",
-			statements: []string{
-				"UPDATE tasks SET type = 'ONLINE' WHERE type IN ('Online', 'online', 'ONLINE')",
-				"UPDATE tasks SET type = 'FACE_TO_FACE' WHERE type IN ('Face-to-face', 'face-to-face', 'FACE_TO_FACE', 'Face to Face')",
-				"UPDATE tasks SET type = 'QUIZ' WHERE type IN ('Quiz', 'quiz', 'QUIZ', 'Test', 'test')",
-				"UPDATE tasks SET type = 'PRESENTATION' WHERE type IN ('Presentation', 'presentation', 'PRESENTATION')",
-				"UPDATE tasks SET type = 'SELF_STUDY' WHERE type IN ('Self-study', 'self-study', 'SELF_STUDY', 'Self-study/Preview', 'Preview')",
-				"UPDATE tasks SET type = 'OTHER' WHERE type IN ('Other', 'other', 'OTHER')",
-				"UPDATE tasks SET type = 'ONLINE' WHERE type IN ('オンライン', 'ｵﾝﾗｲﾝ')",
-				"UPDATE tasks SET type = 'FACE_TO_FACE' WHERE type IN ('対面', '対面授業', '授業')",
-				"UPDATE tasks SET type = 'QUIZ' WHERE type IN ('小テスト', '小ﾃｽﾄ', 'テスト', 'ﾃｽﾄ')",
-				"UPDATE tasks SET type = 'PRESENTATION' WHERE type IN ('プレゼン', 'ﾌﾟﾚｾﾞﾝ', 'プレゼンテーション', 'ﾌﾟﾚｾﾞﾝﾃｰｼｮﾝ', '発表')",
-				"UPDATE tasks SET type = 'SELF_STUDY' WHERE type IN ('予習', '自習', '自主学習', '予習・復習', '復習')",
-				"UPDATE tasks SET type = 'OTHER' WHERE type IN ('その他', 'ｿﾉ他')",
-				"DELETE FROM tasks WHERE type NOT IN ('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER')",
-				"ALTER TABLE tasks MODIFY COLUMN type ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER') NOT NULL DEFAULT 'OTHER'",
-				// MySQL 8.0+: IF NOT EXISTS is supported; harmless if already present
-				"ALTER TABLE subjects ADD COLUMN IF NOT EXISTS name_en VARCHAR(255) NULL",
-			},
-		},
-		{
-			name: "0007_subject_name_ja_backfill",
-			statements: []string{
-				// Add name_ja nullable first (ignore if exists)
-				"ALTER TABLE subjects ADD COLUMN IF NOT EXISTS name_ja VARCHAR(255) NULL",
-				// Backfill from legacy title where empty (only if legacy 'title' exists)
-				"UPDATE subjects SET name_ja = title WHERE (name_ja IS NULL OR name_ja = '') AND title IS NOT NULL AND title <> ''",
-				// Enforce NOT NULL after backfill
-				"ALTER TABLE subjects MODIFY COLUMN name_ja VARCHAR(255) NOT NULL",
-			},
-		},
-		{
-			name: "0008_subject_drop_title",
-			statements: []string{
-				// Ensure no NULL/empty name_ja before dropping title
-				"UPDATE subjects SET name_ja = title WHERE (name_ja IS NULL OR name_ja = '') AND title IS NOT NULL AND title <> ''",
-				// Drop legacy title column if exists
-				"ALTER TABLE subjects DROP COLUMN IF EXISTS title",
-			},
-		},
-	}
-
-	for _, m := range migrations {
-		// Check if already applied
-		var existing Migration
-		if err := DB.Where("name = ?", m.name).First(&existing).Error; err == nil {
-			continue // Already applied
-		}
-
-		// Execute migration statements one by one
-		log.Printf("Running migration: %s", m.name)
-		failed := false
-		// Determine presence of legacy column once per migration
-		titleExists := hasColumn("subjects", "title")
-		for _, stmt := range m.statements {
-			// Skip statements that reference legacy 'title' when it doesn't exist
-			if !titleExists && (strings.Contains(strings.ToLower(stmt), " name_ja = title ") || strings.Contains(strings.ToLower(stmt), "drop column title")) {
-				continue
-			}
-			if err := DB.Exec(stmt).Error; err != nil {
-				// Check if error is about column already existing (safe to ignore)
-				errMsg := err.Error()
-				if strings.Contains(errMsg, "Duplicate column") ||
-					strings.Contains(errMsg, "already exists") ||
-					strings.Contains(errMsg, "1060") || // MySQL error code for duplicate column
-					strings.Contains(errMsg, "Unknown column") ||
-					strings.Contains(errMsg, "1054") || // Unknown column
-					strings.Contains(errMsg, "doesn't exist") || // Table doesn't exist
-					strings.Contains(errMsg, "1146") || // MySQL error code for table doesn't exist
-					strings.Contains(errMsg, "Duplicate key name") || // duplicate index name
-					strings.Contains(errMsg, "1061") { // MySQL error code for duplicate key name
-					continue // Safe to ignore
-				}
-				log.Printf("Migration %s statement failed: %v\nStatement: %s", m.name, err, stmt)
-				failed = true
-				break
-			}
-
-			// Ensure new tables for generalized day shift groups exist
-			if err := DB.AutoMigrate(&DayShiftCycleGroup{}, &DayShiftCycleGroupMember{}); err != nil {
-				log.Printf("migration warning: automigrate day shift groups failed: %v", err)
-			}
-
-			// One-time data migration: convert existing pairs to groups if groups are empty
-			{
-				var existing Migration
-				if err := DB.Where("name = ?", "0009_dayshift_groups").First(&existing).Error; err != nil {
-					// Not applied yet
-					var groupsCnt int64
-					_ = DB.Model(&DayShiftCycleGroup{}).Count(&groupsCnt).Error
-					if groupsCnt == 0 {
-						var pairs []DayShiftCyclePair
-						_ = DB.Order("cycle_id ASC, position ASC, id ASC").Find(&pairs).Error
-						if len(pairs) > 0 {
-							// group by cycle and position similar to pairs
-							for _, p := range pairs {
-								g := DayShiftCycleGroup{CycleID: p.CycleID, Position: p.Position}
-								if err := DB.Create(&g).Error; err != nil {
-									log.Printf("migration warning: create group from pair failed: %v", err)
-									continue
-								}
-								_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User1ID, Position: 1}).Error
-								_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User2ID, Position: 2}).Error
-							}
-						}
-					}
-					DB.Create(&Migration{Name: "0009_dayshift_groups"})
-				}
-			}
-		}
-
-		if !failed {
-			// Record as applied
-			DB.Create(&Migration{Name: m.name})
-			log.Printf("Migration %s applied successfully", m.name)
-		}
-	}
-
-	// Always ensure generalized day shift group tables exist and perform one-time backfill if needed.
-	ensureDayShiftGroupSchemaAndBackfill()
+	// Deprecated: runtime migrations are disabled. Use SQL files in apps/server/migrations.
+	return
 }
 
 func ptrTime(t time.Time) *time.Time { return &t }
 
 // ensureDayShiftGroupSchemaAndBackfill guarantees the new generalized day shift
 // group tables exist and migrates legacy pairs into groups once.
+// Deprecated: handled externally.
 func ensureDayShiftGroupSchemaAndBackfill() {
 	// Create/alter tables idempotently
-	if err := DB.AutoMigrate(&DayShiftCycleGroup{}, &DayShiftCycleGroupMember{}); err != nil {
-		log.Printf("migration warning: automigrate day shift groups failed: %v", err)
-		// Even if this fails, return to avoid unexpected behavior
-		return
-	}
+	// No AutoMigrate here.
 
 	// One-time data migration: convert existing pairs to groups if not yet marked as applied
 	var existing Migration
@@ -595,7 +287,7 @@ func ensureDayShiftGroupSchemaAndBackfill() {
 		_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User1ID, Position: 1}).Error
 		_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User2ID, Position: 2}).Error
 	}
-	_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
+	// No migration markers written.
 }
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
@@ -932,9 +624,13 @@ func buildICSForUser(userID uint) string {
 		uIdx := periodIndex(t.DeadlineUntil)
 		if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "MORNING") {
 			label = "朝まで"
+		} else if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "LUNCH") {
+			label = "昼休みまで"
+		} else if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "AFTER_SCHOOL") {
+			label = "放課後まで"
 		} else if sIdx > 0 && uIdx > 0 {
 			if sIdx == uIdx {
-				label = fmt.Sprintf("%d限", sIdx)
+				label = fmt.Sprintf("%d限まで", sIdx)
 			} else if sIdx < uIdx {
 				label = fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
 			}

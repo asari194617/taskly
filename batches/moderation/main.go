@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/smtp"
@@ -15,6 +14,13 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"google.golang.org/genai"
+
+	"github.com/jhump/protoreflect/dynamic"
+	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
+	"github.com/jhump/protoreflect/grpcreflect"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 )
 
 type Task struct {
@@ -313,46 +319,97 @@ func smtpSendPlain(to, subject, text string) error {
 type Composed struct{ Subject, HTML, Text string }
 
 func composeModerationEmail(totalFlagged, autoHidden int, highlights []map[string]any) *Composed {
-	addr := strings.TrimSpace(os.Getenv("EMAIL_COMPOSE_HTTP_ADDR"))
+	addr := strings.TrimSpace(os.Getenv("EMAIL_COMPOSE_GRPC_ADDR"))
 	if addr == "" {
-		addr = "http://email-compose:50052"
+		addr = "email-compose:50051"
 	}
 	locale := strings.TrimSpace(os.Getenv("ADMIN_EMAIL_LOCALE"))
 	if locale == "" {
-		// Default to Japanese per app default; override via ADMIN_EMAIL_LOCALE=en
 		locale = "ja"
 	}
 	reviewURL := strings.TrimSpace(os.Getenv("ADMIN_REVIEW_URL"))
-	body := map[string]any{
-		"locale":        locale,
-		"app_name":      "Taskly",
-		"total_flagged": totalFlagged,
-		"auto_hidden":   autoHidden,
-		"review_url":    reviewURL,
-		"highlights":    highlights,
+	cc, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil
 	}
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", strings.TrimRight(addr, "/")+"/compose/moderation-alert", strings.NewReader(string(b)))
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 6 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil || resp == nil {
-		if resp != nil {
-			_ = resp.Body.Close()
+	defer cc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	rc := grpcreflect.NewClient(ctx, rpb.NewServerReflectionClient(cc))
+	defer rc.Reset()
+	svc, err := rc.ResolveService("emailcompose.EmailComposer")
+	if err != nil {
+		return nil
+	}
+	m := svc.FindMethodByName("ComposeModerationAlert")
+	if m == nil {
+		return nil
+	}
+	inDesc := m.GetInputType()
+	outDesc := m.GetOutputType()
+	in := dynamic.NewMessage(inDesc)
+	if f := inDesc.FindFieldByName("locale"); f != nil {
+		_ = in.TrySetField(f, locale)
+	}
+	if f := inDesc.FindFieldByName("app_name"); f != nil {
+		_ = in.TrySetField(f, "Taskly")
+	}
+	if f := inDesc.FindFieldByName("total_flagged"); f != nil {
+		_ = in.TrySetField(f, int32(totalFlagged))
+	}
+	if f := inDesc.FindFieldByName("auto_hidden"); f != nil {
+		_ = in.TrySetField(f, int32(autoHidden))
+	}
+	if f := inDesc.FindFieldByName("review_url"); f != nil {
+		_ = in.TrySetField(f, reviewURL)
+	}
+	if f := inDesc.FindFieldByName("highlights"); f != nil {
+		hDesc := f.GetMessageType()
+		for _, h := range highlights {
+			hm := dynamic.NewMessage(hDesc)
+			if hf := hDesc.FindFieldByName("id"); hf != nil {
+				if v, ok := h["id"]; ok {
+					_ = hm.TrySetField(hf, fmt.Sprintf("%v", v))
+				}
+			}
+			if hf := hDesc.FindFieldByName("title"); hf != nil {
+				_ = hm.TrySetField(hf, h["title"])
+			}
+			if hf := hDesc.FindFieldByName("category"); hf != nil {
+				_ = hm.TrySetField(hf, h["category"])
+			}
+			if hf := hDesc.FindFieldByName("severity"); hf != nil {
+				_ = hm.TrySetField(hf, h["severity"])
+			}
+			_ = in.TryAddRepeatedField(f, hm)
 		}
+	}
+	stub := grpcdyn.NewStub(cc)
+	respMsg, err := stub.InvokeRpc(ctx, m, in)
+	if err != nil || respMsg == nil {
 		return nil
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	var out struct{ Subject, Html, HTML, Text string }
-	if err := json.Unmarshal(raw, &out); err != nil {
+	out, _ := respMsg.(*dynamic.Message)
+	var subj, html, text string
+	if f := outDesc.FindFieldByName("subject"); f != nil {
+		if v, _ := out.TryGetField(f); v != nil {
+			subj, _ = v.(string)
+		}
+	}
+	if f := outDesc.FindFieldByName("html"); f != nil {
+		if v, _ := out.TryGetField(f); v != nil {
+			html, _ = v.(string)
+		}
+	}
+	if f := outDesc.FindFieldByName("text"); f != nil {
+		if v, _ := out.TryGetField(f); v != nil {
+			text, _ = v.(string)
+		}
+	}
+	if strings.TrimSpace(subj) == "" {
 		return nil
 	}
-	html := out.HTML
-	if html == "" {
-		html = out.Html
-	}
-	return &Composed{Subject: out.Subject, HTML: html, Text: out.Text}
+	return &Composed{Subject: subj, HTML: html, Text: text}
 }
 
 func smtpSendMultipart(to, subject, text, html string) error {

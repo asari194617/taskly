@@ -2,7 +2,6 @@ import "./tracing.js";
 import { initI18n } from "./i18n.js";
 import { startGrpcServer } from "./server.js";
 import { initSentry } from "./sentry.js";
-import { startHttpServer } from "./http.js";
 
 async function main() {
   // Load env
@@ -19,11 +18,8 @@ async function main() {
 
   // Start gRPC server
   await startGrpcServer({ host: HOST, port: PORT });
-  // Also start HTTP fallback
-  const HTTP_PORT = Number(env.EMAIL_COMPOSE_HTTP_PORT || 50052);
-  startHttpServer(HTTP_PORT);
   console.log(
-    `email-compose gRPC listening on ${HOST}:${PORT} and HTTP on ${HOST}:${HTTP_PORT} (env=${NODE_ENV})`
+    `email-compose gRPC listening on ${HOST}:${PORT} (env=${NODE_ENV})`
   );
 }
 

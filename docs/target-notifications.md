@@ -47,14 +47,14 @@ Queue Manager は、同一内容を email と webpush の 2 チャネルでそ�
 - 宛先解決: `users` テーブルの `email` を参照します。
   - `user_id` が NULL/0 の項目（例: 現状の dayshift）はスキップ対象です。
   - email 未登録の場合は送信できず、各アイテムは `status='error'` としてマークされます。
-- メール本文は `EMAIL_COMPOSE_HTTP_ADDR`（既定: `http://email-compose:50052`）の HTTP サービスにまとめて渡し、件名/テキスト/HTML を受け取って送信します。
+- メール本文の組み立ては email-compose の gRPC (`EMAIL_COMPOSE_GRPC_ADDR`、既定: `email-compose:50051`) 経由で行い、件名/テキスト/HTML を受け取って送信します。HTTP は使用しません。
 - 送信結果は `notifications_queue.status` に `sent`/`error` で反映され、`processed_at` が更新されます。
 
 必要な環境変数（抜粋）:
 
 - DB 接続: `DB_HOST`, `DB_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
 - SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`
-- その他: `EMAIL_COMPOSE_HTTP_ADDR`, `APP_NAME`, `LOCALE`
+- その他: `EMAIL_COMPOSE_GRPC_ADDR`, `APP_NAME`, `LOCALE`
 
 ### Web Push（webpush）
 

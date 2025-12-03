@@ -80,3 +80,32 @@ CREATE TABLE IF NOT EXISTS tasks_teams_logs (
   last_response_body TEXT NULL,
   FOREIGN KEY (task_id) REFERENCES tasks(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tasks_users_completions (
+  id BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  task_id BIGINT NOT NULL,
+  completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_user_task (user_id, task_id),
+  INDEX idx_task_user (task_id, user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS notifications_queue (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	kind VARCHAR(32) NOT NULL,
+	when_label VARCHAR(32) NOT NULL,
+	subject VARCHAR(255) NOT NULL,
+	title TEXT,
+	body TEXT,
+	meta TEXT NULL,
+	badges_json TEXT NULL,
+	user_id BIGINT NULL,
+	channel VARCHAR(32) NULL,
+	status VARCHAR(32) NULL,
+	error_message TEXT NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	processed_at DATETIME NULL,
+	INDEX idx_processed_at (processed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

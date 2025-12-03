@@ -1,13 +1,11 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -15,7 +13,13 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jhump/protoreflect/dynamic"
+	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
+	"github.com/jhump/protoreflect/grpcreflect"
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	"gorm.io/gorm"
 )
 
@@ -64,21 +68,10 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// generate code
 		code := fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
-		// Compose email via email-compose service (HTTP fallback)
-		compAddr := env("EMAIL_COMPOSE_HTTP_ADDR", "http://email-compose:50052")
-		reqBody := fmt.Sprintf(`{"locale":%q,"email":%q,"code":%q,"app_name":"Taskly"}`, "ja", email, code)
-		httpReq, _ := http.NewRequestWithContext(c.Context(), "POST", compAddr+"/compose/login-code", strings.NewReader(reqBody))
-		httpReq.Header.Set("Content-Type", "application/json")
+		// Compose email via email-compose service (gRPC)
 		var subject, html, text string
-		if resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(httpReq); err == nil && resp != nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			if resp.StatusCode == 200 {
-				var out struct{ Subject, Html, Text string }
-				if jsonErr := json.Unmarshal(body, &out); jsonErr == nil && strings.TrimSpace(out.Subject) != "" {
-					subject, html, text = out.Subject, out.Html, out.Text
-				}
-			}
+		if s, h, t, err := composeLoginCodeGRPC(c.Context(), env("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051"), "ja", email, code, "Taskly"); err == nil {
+			subject, html, text = s, h, t
 		}
 		// Fallback subject/body if composer failed
 		if subject == "" {
@@ -416,4 +409,69 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		return c.SendStatus(fiber.StatusNoContent)
 	})
+}
+
+// composeLoginCodeGRPC calls emailcompose.EmailComposer.ComposeLoginCode via gRPC reflection dynamically.
+func composeLoginCodeGRPC(ctx context.Context, addr, locale, email, code, appName string) (subject, html, text string, err error) {
+	cc, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return "", "", "", err
+	}
+	defer cc.Close()
+	rc := grpcreflect.NewClient(ctx, rpb.NewServerReflectionClient(cc))
+	defer rc.Reset()
+	svc, err := rc.ResolveService("emailcompose.EmailComposer")
+	if err != nil {
+		return "", "", "", err
+	}
+	m := svc.FindMethodByName("ComposeLoginCode")
+	if m == nil {
+		return "", "", "", fmt.Errorf("method not found")
+	}
+	inDesc := m.GetInputType()
+	outDesc := m.GetOutputType()
+	in := dynamic.NewMessage(inDesc)
+	// set fields
+	if f := inDesc.FindFieldByName("locale"); f != nil {
+		_ = in.TrySetField(f, locale)
+	}
+	if f := inDesc.FindFieldByName("email"); f != nil {
+		_ = in.TrySetField(f, email)
+	}
+	if f := inDesc.FindFieldByName("code"); f != nil {
+		_ = in.TrySetField(f, code)
+	}
+	if f := inDesc.FindFieldByName("app_name"); f != nil {
+		_ = in.TrySetField(f, appName)
+	}
+	stub := grpcdyn.NewStub(cc)
+	// InvokeRpc returns (proto.Message, error); capture the returned message and cast to *dynamic.Message
+	outMsg, err := stub.InvokeRpc(ctx, m, in)
+	if err != nil {
+		return "", "", "", err
+	}
+	dm, ok := outMsg.(*dynamic.Message)
+	if !ok {
+		return "", "", "", fmt.Errorf("unexpected response type")
+	}
+	// extract fields
+	if f := outDesc.FindFieldByName("subject"); f != nil {
+		if v, _ := dm.TryGetField(f); v != nil {
+			subject, _ = v.(string)
+		}
+	}
+	if f := outDesc.FindFieldByName("html"); f != nil {
+		if v, _ := dm.TryGetField(f); v != nil {
+			html, _ = v.(string)
+		}
+	}
+	if f := outDesc.FindFieldByName("text"); f != nil {
+		if v, _ := dm.TryGetField(f); v != nil {
+			text, _ = v.(string)
+		}
+	}
+	if strings.TrimSpace(subject) == "" {
+		return "", "", "", fmt.Errorf("empty subject from composer")
+	}
+	return subject, html, text, nil
 }
