@@ -118,6 +118,9 @@ export default function AdminDayShift() {
   const [currentIndex, setCurrentIndex] = React.useState<number>(0);
   const [savingIndex, setSavingIndex] = React.useState(false);
   const [predictPage, setPredictPage] = React.useState(1);
+  // current cycle id control
+  const [currentCycleId, setCurrentCycleId] = React.useState<string>("");
+  const [savingCycleId, setSavingCycleId] = React.useState(false);
 
   // edit members dialog state
   const [editOpen, setEditOpen] = React.useState(false);
@@ -241,6 +244,12 @@ export default function AdminDayShift() {
       gql<{ dayShiftIndex: number }>(`query{ dayShiftIndex }`)
         .then((d) => setCurrentIndex(d.dayShiftIndex ?? 0))
         .catch(() => setCurrentIndex(0));
+      gql<{ dayShiftCurrentCycle: number }>(`query{ dayShiftCurrentCycle }`)
+        .then((d) => {
+          const v = d.dayShiftCurrentCycle || 0;
+          setCurrentCycleId(v ? String(v) : "");
+        })
+        .catch(() => setCurrentCycleId(""));
     }
   }, [token, cyclePage]);
   React.useEffect(() => {
@@ -967,6 +976,38 @@ export default function AdminDayShift() {
               }
             }}
             disabled={savingIndex}
+          >
+            更新
+          </Button>
+        </Card>
+      </div>
+      {/* Current cycle id control */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-medium">現在のサイクルID</h2>
+        <p>自動選択される現在のサイクルIDをここで設定できます。</p>
+        <Card className="p-4 flex items-center gap-3">
+          <Input
+            type="number"
+            value={currentCycleId}
+            onChange={(e) => setCurrentCycleId(e.target.value)}
+            className="w-28"
+            placeholder="例: 12"
+          />
+          <Button
+            onClick={async () => {
+              try {
+                setSavingCycleId(true);
+                await gql<{ adminSetDayShiftCurrentCycle: boolean }>(
+                  `mutation($cid:Int!){ adminSetDayShiftCurrentCycle(cycle_id:$cid) }`,
+                  { cid: parseInt(currentCycleId || "0", 10) }
+                );
+                // reflect in autoCid for predictions
+                if (!cid) setAutoCid(currentCycleId);
+              } finally {
+                setSavingCycleId(false);
+              }
+            }}
+            disabled={savingCycleId || currentCycleId.trim() === ""}
           >
             更新
           </Button>
