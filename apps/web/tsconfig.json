@@ -12,6 +12,8 @@
     "moduleResolution": "Bundler",
     "allowJs": true,
     "resolveJsonModule": true,
-    "skipLibCheck": true
-  }
+    "noEmit": true,
+    "ignoreDeprecations": "6.0"
+  },
+  "exclude": ["dist", "public", "node_modules"]
 }

@@ -71,8 +71,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					until = "NONE"
 				}
 				// validate enums
-				validSince := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true}
-				validUntil := map[string]bool{"NONE": true, "MORNING": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true}
+				validSince := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
+				validUntil := map[string]bool{"NONE": true, "MORNING": true, "LUNCH": true, "AFTER_SHCOOL": true , "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
 				if !validSince[since] {
 					return nil, fmt.Errorf("invalid deadline_since")
 				}
