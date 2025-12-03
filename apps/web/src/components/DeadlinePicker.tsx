@@ -20,12 +20,12 @@ import {
 export type DeadlineMeta =
   | { kind: "none" }
   | { kind: "outside"; slot: "朝" | "昼休み" | "放課後" }
-  | { kind: "one"; period: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 }
-  | { kind: "two"; pair: "1,2" | "3,4" | "5,6" | "7,8" }
+  | { kind: "one"; period: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 }
+  | { kind: "two"; pair: "1,2" | "3,4" | "5,6" | "7,8" | "9,10" }
   | {
       kind: "range";
-      start: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-      end: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+      start: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+      end: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
     };
 
 type Props = {
@@ -35,8 +35,8 @@ type Props = {
 };
 
 const OUTSIDE_SLOTS = ["朝", "昼休み", "放課後"] as const;
-const ONE_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
-const TWO_OPTIONS = ["1,2", "3,4", "5,6", "7,8"] as const;
+const ONE_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const TWO_OPTIONS = ["1,2", "3,4", "5,6", "7,8", "9,10"] as const;
 
 export function DeadlinePicker({ date, meta, onChange }: Props) {
   const [open, setOpen] = React.useState(false);
@@ -56,16 +56,16 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
   const [outside, setOutside] = React.useState<"朝" | "昼休み" | "放課後">(
     meta?.kind === "outside" ? meta.slot : "朝"
   );
-  const [one, setOne] = React.useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(
+  const [one, setOne] = React.useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10>(
     meta?.kind === "one" ? meta.period : 1
   );
-  const [two, setTwo] = React.useState<"1,2" | "3,4" | "5,6" | "7,8">(
+  const [two, setTwo] = React.useState<"1,2" | "3,4" | "5,6" | "7,8" | "9,10">(
     meta?.kind === "two" ? meta.pair : "1,2"
   );
-  const [start, setStart] = React.useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(
-    meta?.kind === "range" ? meta.start : 1
-  );
-  const [end, setEnd] = React.useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(
+  const [start, setStart] = React.useState<
+    1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+  >(meta?.kind === "range" ? meta.start : 1);
+  const [end, setEnd] = React.useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10>(
     meta?.kind === "range" ? meta.end : 2
   );
 
@@ -321,11 +321,16 @@ export function sinceUntilFromMeta(
       if (meta.slot === "朝") {
         return { deadline_until: "MORNING" };
       }
-      // 昼休み/放課後は教務コマ外なので範囲は任意。ここでは NONE としておく
+      if (meta.slot === "昼休み") {
+        return { deadline_until: "LUNCH" };
+      }
+      if (meta.slot === "放課後") {
+        return { deadline_until: "AFTER_SCHOOL" };
+      }
       return { deadline_since: "NONE", deadline_until: "NONE" };
     }
     case "one": {
-      const p = Math.min(8, Math.max(1, meta.period));
+      const p = Math.min(10, Math.max(1, meta.period));
       return { deadline_since: toEnum(p), deadline_until: toEnum(p) };
     }
     case "two": {
@@ -334,13 +339,14 @@ export function sinceUntilFromMeta(
         "3,4": [3, 4],
         "5,6": [5, 6],
         "7,8": [7, 8],
+        "9,10": [9, 10],
       };
       const [s, e] = map[meta.pair];
       return { deadline_since: toEnum(s), deadline_until: toEnum(e) };
     }
     case "range": {
-      const s = Math.min(8, Math.max(1, meta.start));
-      const e = Math.min(8, Math.max(1, meta.end));
+      const s = Math.min(10, Math.max(1, meta.start));
+      const e = Math.min(10, Math.max(1, meta.end));
       const [ss, ee] = s <= e ? [s, e] : [e, s];
       return { deadline_since: toEnum(ss), deadline_until: toEnum(ee) };
     }
@@ -361,6 +367,9 @@ export function deriveLabelFromEnums(
   const s = norm(since);
   const u = norm(until);
   if (u === "MORNING") return l === "ja" ? `朝まで` : `until morning`;
+  if (u === "LUNCH") return l === "ja" ? `昼休みまで` : `until lunch`;
+  if (u === "AFTER_SCHOOL")
+    return l === "ja" ? `放課後まで` : `until after school`;
   const toNum = (v: string) =>
     v.startsWith("P") ? parseInt(v.slice(1), 10) : 0;
   const ps = toNum(s);
