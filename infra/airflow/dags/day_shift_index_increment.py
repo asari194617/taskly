@@ -110,6 +110,47 @@ def write_index(v: int) -> None:
         conn.close()
 
 
+def get_current_cycle_id_for_date(d: datetime) -> int:
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM day_shift_cycles WHERE begin_date <= %s AND finish_date >= %s ORDER BY finish_date DESC, id DESC LIMIT 1",
+                (d.date(), d.date()),
+            )
+            row = cur.fetchone()
+            if not row:
+                return 0
+            return int(row[0])
+    finally:
+        conn.close()
+
+def read_current_cycle_config() -> int:
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM configs WHERE `key`='day_shift_current_cycle' LIMIT 1")
+            row = cur.fetchone()
+            if not row or row[0] is None or str(row[0]).strip() == "":
+                return 0
+            try:
+                return int(row[0])
+            except Exception:
+                return 0
+    finally:
+        conn.close()
+
+def write_current_cycle_config(cid: int) -> None:
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE configs SET value=%s WHERE `key`='day_shift_current_cycle'", (str(cid),))
+            if cur.rowcount == 0:
+                cur.execute("INSERT INTO configs(`key`, `value`) VALUES('day_shift_current_cycle', %s) ON DUPLICATE KEY UPDATE value=VALUES(value)", (str(cid),))
+        conn.commit()
+    finally:
+        conn.close()
+
 def increment_if_needed(**context):
     now = datetime.now()
     # Batch runs at 03:00; check current day status
@@ -117,6 +158,12 @@ def increment_if_needed(**context):
         return
     if is_day_shift_off(now):
         return
+    # Reset index if cycle changed
+    db_cid = get_current_cycle_id_for_date(now)
+    cfg_cid = read_current_cycle_config()
+    if db_cid != 0 and db_cid != cfg_cid:
+        write_current_cycle_config(db_cid)
+        write_index(0)
     cur = read_index()
     write_index(cur + 1)
 

@@ -38,6 +38,39 @@ func env(key, def string) string {
 	return def
 }
 
+// --- Config helpers (configs table) ---
+func getConfigString(key string) (string, error) {
+	var row struct{ V string }
+	if err := DB.Raw("SELECT value AS v FROM configs WHERE `key`=? LIMIT 1", key).Scan(&row).Error; err != nil {
+		return "", err
+	}
+	return row.V, nil
+}
+
+func setConfigString(key, val string) error {
+	res := DB.Exec("UPDATE configs SET value=? WHERE `key`=?", val, key)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return DB.Exec("INSERT INTO configs(`key`,`value`) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)", key, val).Error
+	}
+	return nil
+}
+
+func getConfigInt(key string) (int, error) {
+	s, err := getConfigString(key)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(s) == "" {
+		return 0, nil
+	}
+	var n int
+	fmt.Sscanf(s, "%d", &n)
+	return n, nil
+}
+
 // --- JSON parsing & validation helpers ---
 func parseJSONStrict(c *fiber.Ctx, dst any) error {
 	dec := json.NewDecoder(bytes.NewReader(c.Body()))
@@ -1451,6 +1484,18 @@ func performDayShiftRotation(now time.Time) error {
 	}
 	if cyc == nil {
 		return nil
+	}
+	// If stored current cycle differs, reset index and update config
+	storedCIDStr, _ := getConfigString("day_shift_current_cycle")
+	storedCID := uint(0)
+	if strings.TrimSpace(storedCIDStr) != "" {
+		var x uint64
+		fmt.Sscanf(storedCIDStr, "%d", &x)
+		storedCID = uint(x)
+	}
+	if storedCID != cyc.ID {
+		_ = setConfigString("day_shift_current_cycle", fmt.Sprintf("%d", cyc.ID))
+		_ = setConfigString("day_shift_current_index", "0")
 	}
 	prev := prevBusinessDay(d)
 	if !prev.IsZero() {

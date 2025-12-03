@@ -86,6 +86,7 @@ export default function AdminDayShift() {
     (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [cycles, setCycles] = React.useState<Cycle[]>([]);
   const [cid, setCid] = React.useState<string>("");
+  const [autoCid, setAutoCid] = React.useState<string>("");
   const [groups, setGroups] = React.useState<Group[]>([]);
   const [begin, setBegin] = React.useState("");
   const [finish, setFinish] = React.useState("");
@@ -113,6 +114,10 @@ export default function AdminDayShift() {
   const pageSize = 10;
   const [cycleTotal, setCycleTotal] = React.useState(0);
   const [groupTotal, setGroupTotal] = React.useState(0);
+  // index config and prediction
+  const [currentIndex, setCurrentIndex] = React.useState<number>(0);
+  const [savingIndex, setSavingIndex] = React.useState(false);
+  const [predictPage, setPredictPage] = React.useState(1);
 
   // edit members dialog state
   const [editOpen, setEditOpen] = React.useState(false);
@@ -132,12 +137,18 @@ export default function AdminDayShift() {
       setLoadingCycles(true);
       const d = await gql<{
         adminDayshiftCyclesPaginated: { items: Cycle[]; total: number };
+        dayShiftCurrentCycle: number;
       }>(
-        `query($page:Int,$size:Int){ adminDayshiftCyclesPaginated(page:$page,page_size:$size){ items{ id begin_date finish_date description } total } }`,
+        `query($page:Int,$size:Int){
+          adminDayshiftCyclesPaginated(page:$page,page_size:$size){ items{ id begin_date finish_date description } total }
+          dayShiftCurrentCycle
+        }`,
         { page: cyclePage, size: pageSize }
       );
       setCycles(d.adminDayshiftCyclesPaginated?.items || []);
       setCycleTotal(d.adminDayshiftCyclesPaginated?.total || 0);
+      const curId = d.dayShiftCurrentCycle;
+      if (curId && !cid) setAutoCid(String(curId));
     } catch (e: any) {
       toast({
         variant: "destructive",
@@ -149,7 +160,8 @@ export default function AdminDayShift() {
     }
   }
   async function loadGroups() {
-    if (!cid) {
+    const active = cid || autoCid;
+    if (!active) {
       setGroups([]);
       return;
     }
@@ -159,7 +171,7 @@ export default function AdminDayShift() {
         adminDayshiftGroupsPaginated: { items: Group[]; total: number };
       }>(
         `query($cid:Int!,$page:Int,$size:Int){ adminDayshiftGroupsPaginated(cycle_id:$cid,page:$page,page_size:$size){ items{ id cycle_id position user_ids } total } }`,
-        { cid: Number(cid), page: groupPage, size: pageSize }
+        { cid: Number(active), page: groupPage, size: pageSize }
       );
       const arr = d.adminDayshiftGroupsPaginated?.items || [];
       setGroupTotal(d.adminDayshiftGroupsPaginated?.total || 0);
@@ -224,14 +236,25 @@ export default function AdminDayShift() {
     }
   }
   React.useEffect(() => {
-    if (token) loadCycles();
+    if (token) {
+      loadCycles();
+      gql<{ dayShiftIndex: number }>(`query{ dayShiftIndex }`)
+        .then((d) => setCurrentIndex(d.dayShiftIndex ?? 0))
+        .catch(() => setCurrentIndex(0));
+    }
   }, [token, cyclePage]);
   React.useEffect(() => {
     setGroupPage(1);
-  }, [cid]);
+  }, [cid, autoCid]);
   React.useEffect(() => {
+    const activeCid = cid || autoCid;
+    if (!activeCid) {
+      setGroups([]);
+      setGroupTotal(0);
+      return;
+    }
     loadGroups();
-  }, [cid, groupPage]);
+  }, [cid, autoCid, groupPage]);
   // Auto load assignments when cycle or range changes (if any filter provided)
   React.useEffect(() => {
     if (cid || assignStart || assignEnd) {
@@ -535,9 +558,101 @@ export default function AdminDayShift() {
           )}
         </Card>
       </div>
-      {/* Assignments section */}
+      {/* Prediction section (mod-based) */}
       <div className="space-y-3">
-        <h2 className="text-lg font-medium">割り当て（スナップショット）</h2>
+        <h2 className="text-lg font-medium">予測ペア（mod）</h2>
+        <Card className="p-0 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>#</TableHead>
+                <TableHead>Cycle</TableHead>
+                <TableHead>Group</TableHead>
+                <TableHead>Members</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(() => {
+                const selectedGroups = groups
+                  .filter((g) => String(g.cycle_id) === (cid || autoCid))
+                  .sort((a, b) => a.id - b.id);
+                if (!(cid || autoCid) || selectedGroups.length === 0) {
+                  return (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className="text-center text-sm text-muted-foreground"
+                      >
+                        サイクルを選択し、グループを追加してください
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                const start = (predictPage - 1) * pageSize;
+                const rows: React.ReactNode[] = [];
+                for (let i = 0; i < pageSize; i++) {
+                  const n = currentIndex + start + i; // n日目
+                  const gidx = n % selectedGroups.length;
+                  const g = selectedGroups[gidx];
+                  rows.push(
+                    <TableRow key={`pred-${n}`}>
+                      <TableCell>{n}</TableCell>
+                      <TableCell>{cid || autoCid}</TableCell>
+                      <TableCell>{g.id}</TableCell>
+                      <TableCell className="max-w-[420px] truncate">
+                        {g.user_ids
+                          .map((uid) => userLabel(userMap[uid]) || `ID:${uid}`)
+                          .join(", ")}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                return rows;
+              })()}
+            </TableBody>
+          </Table>
+          <div className="p-3">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPredictPage((p) => Math.max(1, p - 1));
+                    }}
+                  />
+                </PaginationItem>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink
+                      href="#"
+                      isActive={predictPage === i + 1}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setPredictPage(i + 1);
+                      }}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPredictPage((p) => p + 1);
+                    }}
+                  />
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        </Card>
         <Card className="p-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
@@ -824,6 +939,39 @@ export default function AdminDayShift() {
           </DialogContent>
         </Dialog>
       </div>
+      {/* Index config control */}
+      <div className="space-y-3">
+        <h2 className="text-lg font-medium">インデックス値</h2>
+        <p>
+          操作値は(n%グループ数)で決定されていますが、この現在のインデックス値を設定します。この操作は慎重に行ってください。
+        </p>
+        <Card className="p-4 flex items-center gap-3">
+          <Input
+            type="number"
+            value={String(currentIndex)}
+            onChange={(e) =>
+              setCurrentIndex(parseInt(e.target.value || "0", 10))
+            }
+            className="w-28"
+          />
+          <Button
+            onClick={async () => {
+              try {
+                setSavingIndex(true);
+                await gql<{ adminUpdateDayShiftIndex: boolean }>(
+                  `mutation($v:Int!){ adminUpdateDayShiftIndex(index:$v) }`,
+                  { v: currentIndex }
+                );
+              } finally {
+                setSavingIndex(false);
+              }
+            }}
+            disabled={savingIndex}
+          >
+            更新
+          </Button>
+        </Card>
+      </div>
       <div className="space-y-3">
         <h2 className="text-lg font-medium">グループ</h2>
         <Card className="p-4 space-y-4">
@@ -842,6 +990,9 @@ export default function AdminDayShift() {
                     {cid
                       ? cycles.find((c) => String(c.id) === cid)?.description ||
                         `ID: ${cid}`
+                      : autoCid
+                      ? (cycles.find((c) => String(c.id) === autoCid)
+                          ?.description || `ID: ${autoCid}`) + "（自動）"
                       : "サイクルを選択"}
                     <ChevronsUpDownIcon className="ml-2 h-4 w-4 opacity-50" />
                   </Button>

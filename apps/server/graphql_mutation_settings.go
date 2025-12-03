@@ -90,5 +90,36 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 		},
 	}
 
+	// Set current day shift cycle id (admin/manager)
+	fields["adminSetDayShiftCurrentCycle"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+				if !userFromSession(c) {
+					return false, fmt.Errorf("unauthorized")
+				}
+				u := c.Locals("user").(*User)
+				isAdmin, _ := userHasRole(u.ID, "admin")
+				isManager, _ := userHasRole(u.ID, "manager")
+				if !(isAdmin || isManager) {
+					return false, fmt.Errorf("forbidden")
+				}
+				cid := p.Args["cycle_id"].(int)
+				if cid < 0 {
+					cid = 0
+				}
+				if err := setConfigString("day_shift_current_cycle", fmt.Sprintf("%d", cid)); err != nil {
+					return false, fmt.Errorf("db")
+				}
+				_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.settings.set_day_shift_current_cycle"}).Error
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	return fields
 }
