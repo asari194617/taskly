@@ -72,7 +72,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				}
 				// validate enums
 				validSince := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
-				validUntil := map[string]bool{"NONE": true, "MORNING": true, "LUNCH": true, "AFTER_SHCOOL": true , "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
+				// Accept outside-of-class labels and period enums for deadline_until
+				validUntil := map[string]bool{"NONE": true, "MORNING": true, "LUNCH": true, "AFTER_SCHOOL": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
 				if !validSince[since] {
 					return nil, fmt.Errorf("invalid deadline_since")
 				}
@@ -185,7 +186,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					if vv == "" {
 						vv = "NONE"
 					}
-					if vv != "NONE" && vv != "MORNING" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
+					// Allow MORNING, LUNCH, AFTER_SCHOOL, or period enums
+					if vv != "NONE" && vv != "MORNING" && vv != "LUNCH" && vv != "AFTER_SCHOOL" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
 						return nil, fmt.Errorf("invalid deadline_until")
 					}
 					rec.DeadlineUntil = vv
