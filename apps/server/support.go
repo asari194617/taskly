@@ -290,6 +290,15 @@ func runMigrations() {
 
 	migrations := []migrationFile{
 		{
+			name: "0020_task_deadline_enums_extend",
+			statements: []string{
+				// Extend deadline_since to include P9,P10
+				"ALTER TABLE tasks MODIFY COLUMN deadline_since ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10') NOT NULL DEFAULT 'NONE'",
+				// Extend deadline_until to include LUNCH, AFTER_SCHOOL, P9, P10
+				"ALTER TABLE tasks MODIFY COLUMN deadline_until ENUM('NONE','MORNING','LUNCH','AFTER_SCHOOL','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10') NOT NULL DEFAULT 'NONE'",
+			},
+		},
+		{
 			name: "0019_email_suppressions",
 			statements: []string{
 				`CREATE TABLE IF NOT EXISTS email_suppressions (
@@ -1209,6 +1218,12 @@ func deriveDeadlineLabelEnum(since, until string) string {
 	if strings.EqualFold(until, "MORNING") {
 		return "朝まで"
 	}
+	if strings.EqualFold(until, "LUNCH") {
+		return "昼休みまで"
+	}
+	if strings.EqualFold(until, "AFTER_SCHOOL") {
+		return "放課後まで"
+	}
 	if sIdx > 0 && uIdx > 0 {
 		if sIdx == uIdx {
 			// Single-period window: show like "n限" (not "n限まで")
@@ -1245,6 +1260,10 @@ func periodIndex(s string) int {
 		return 7
 	case "P8":
 		return 8
+	case "P9":
+		return 9
+	case "P10":
+		return 10
 	default:
 		return 0
 	}
@@ -1255,6 +1274,10 @@ func endTimeForUntil(until string) (hour, min int) {
 	switch strings.ToUpper(strings.TrimSpace(until)) {
 	case "MORNING":
 		return 7, 59
+	case "LUNCH":
+		return 13, 00
+	case "AFTER_SCHOOL":
+		return 18, 00
 	case "P1":
 		return 10, 30
 	case "P2":
@@ -1271,6 +1294,10 @@ func endTimeForUntil(until string) (hour, min int) {
 		return 21, 10
 	case "P8":
 		return 22, 50
+	case "P9":
+		return 23, 59
+	case "P10":
+		return 23, 59
 	default:
 		return 23, 59
 	}
@@ -1340,7 +1367,13 @@ func displayUntilJa(until string) string {
 	switch v {
 	case "MORNING":
 		return "朝まで"
+	case "LUNCH":
+		return "昼休みまで"
+	case "AFTER_SCHOOL":
+		return "放課後まで"
 	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8":
+		return strings.TrimPrefix(v, "P") + "限まで"
+	case "P9", "P10":
 		return strings.TrimPrefix(v, "P") + "限まで"
 	case "NONE", "":
 		return "指定なし"
@@ -1443,6 +1476,8 @@ func effectiveDeadlineExpr(alias string) string {
 	// CONCAT(date, ' ', time) cast to datetime
 	return "TIMESTAMP(" + col("deadline") + ", CASE " +
 		"WHEN " + col("deadline_until") + "='MORNING' THEN '07:59:59' " +
+		"WHEN " + col("deadline_until") + "='LUNCH' THEN '13:00:00' " +
+		"WHEN " + col("deadline_until") + "='AFTER_SCHOOL' THEN '18:00:00' " +
 		"WHEN " + col("deadline_until") + "='P1' THEN '10:30:00' " +
 		"WHEN " + col("deadline_until") + "='P2' THEN '12:10:00' " +
 		"WHEN " + col("deadline_until") + "='P3' THEN '14:30:00' " +
@@ -1451,6 +1486,8 @@ func effectiveDeadlineExpr(alias string) string {
 		"WHEN " + col("deadline_until") + "='P6' THEN '19:30:00' " +
 		"WHEN " + col("deadline_until") + "='P7' THEN '21:10:00' " +
 		"WHEN " + col("deadline_until") + "='P8' THEN '22:50:00' " +
+		"WHEN " + col("deadline_until") + "='P9' THEN '23:59:59' " +
+		"WHEN " + col("deadline_until") + "='P10' THEN '23:59:59' " +
 		"ELSE '23:59:59' END)"
 }
 
@@ -1716,10 +1753,15 @@ func sendDiscordTaskEmbed(action string, t Task, actor string) {
 		title = "Task Deleted"
 		color = 0xe74c3c // red
 	}
+	// Human-readable label for since/until to avoid NONE/NONE display
+	suLabel := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
+	if strings.TrimSpace(suLabel) == "" {
+		suLabel = "指定なし"
+	}
 	fields := []map[string]any{
 		{"name": "ID", "value": fmt.Sprintf("%d", t.ID), "inline": true},
 		{"name": "Deadline", "value": eff.Format("2006-01-02 15:04"), "inline": true},
-		{"name": "Since/Until", "value": fmt.Sprintf("%s / %s", strings.ToUpper(t.DeadlineSince), strings.ToUpper(t.DeadlineUntil)), "inline": true},
+		{"name": "Window", "value": suLabel, "inline": true},
 		{"name": "By", "value": actor, "inline": true},
 	}
 	// Optional link to web app (no specific task page, so link to home if provided)

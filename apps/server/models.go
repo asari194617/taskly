@@ -143,9 +143,9 @@ type Task struct {
 	// Deadline date (required)
 	Deadline time.Time `gorm:"type:date;not null"`
 	// Canonical deadline window enums (relative to Deadline date)
-	// Allowed values: NONE, MORNING (until only), P1..P6
-	DeadlineSince string    `gorm:"type:ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
-	DeadlineUntil string    `gorm:"type:ENUM('NONE','MORNING','P1','P2','P3','P4','P5','P6','P7','P8');not null;default:'NONE'"`
+	// Allowed values: NONE, MORNING/LUNCH/AFTER_SCHOOL (until only), P1..P10
+	DeadlineSince string    `gorm:"type:ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10');not null;default:'NONE'"`
+	DeadlineUntil string    `gorm:"type:ENUM('NONE','MORNING','LUNCH','AFTER_SCHOOL','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10');not null;default:'NONE'"`
 	CreatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
