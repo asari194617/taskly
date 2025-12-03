@@ -1,11 +1,11 @@
 ---
 import Layout from "../../layouts/AppLayout.astro";
 import AdminGuard from "../../components/AdminGuard.astro";
-import DayShiftAdmin from "../../react/DayShiftAdmin";
+import AdminDayShift from "../../react/admin/DayShift";
 ---
-<Layout title="日直管理">
+<Layout title="日直管理 (GraphQL)">
   <AdminGuard />
   <section class="space-y-6">
-    <DayShiftAdmin client:load />
+    <AdminDayShift client:load />
   </section>
 </Layout>

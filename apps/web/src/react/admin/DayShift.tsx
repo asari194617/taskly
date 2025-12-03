@@ -1,3 +1,4 @@
+// removed initial simple implementation; keeping rich shadcn/ui version below
 "use client";
 import * as React from "react";
 import { Card } from "@/components/ui/card";
