@@ -356,3 +356,6 @@ type NotificationDevice struct {
 	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
 }
+
+// ConfigKV provides a simple key/value table used by settings
+// (configs table managed by SQL migrations; no GORM model to avoid AutoMigrate)

@@ -242,7 +242,7 @@ export default function TasksList() {
           { q: q || undefined },
           { signal: ac.signal }
         );
-        setItems(t.tasks.items);
+        setItems(t.tasks.items ?? []);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         const msg: string = e?.message || "";
@@ -271,6 +271,13 @@ export default function TasksList() {
           }
         }
         setError(msg || dict.tasks.loadFailed);
+      } finally {
+        // Ensure UI is interactive even if server returns no items structure
+        // If no error and no items were set, show an empty state instead of skeleton
+        // Avoid overwriting when items already populated or an error is shown
+        // Note: this runs only after non-aborted attempts
+        // Using functional updater to avoid race conditions
+        setItems((cur) => (cur == null && !error ? [] : cur));
       }
     })();
     return () => ac.abort();

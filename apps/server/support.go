@@ -277,7 +277,7 @@ func ensureTasksSchema() {
 // runMigrations executes SQL migrations from migrations folder if not already applied
 // Deprecated: runtime migrations removed. Use SQL migrations only.
 func runMigrations() {
-	// Deprecated: runtime migrations are disabled. Use SQL files in apps/server/migrations.
+	// No runtime migrations; managed externally via SQL and DB tooling.
 	return
 }
 

@@ -68,6 +68,10 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// generate code
 		code := fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
+		// In development, log the code for testing when email delivery is unreliable
+		if strings.ToLower(env("NODE_ENV", "development")) == "development" {
+			log.Printf("[DEV] Login code for %s: %s", email, code)
+		}
 		// Compose email via email-compose service (gRPC)
 		var subject, html, text string
 		if s, h, t, err := composeLoginCodeGRPC(c.Context(), env("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051"), "ja", email, code, "Taskly"); err == nil {

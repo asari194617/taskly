@@ -34,8 +34,22 @@ export default function ConsentPage() {
         以下のポリシーに同意の上、進んでください。
       </p>
       <div className="space-y-3">
-        <label className="flex items-center gap-3">
-          <Checkbox checked={tos} onCheckedChange={(v) => setTos(!!v)} />
+        <label
+          className="flex items-center gap-3"
+          onClick={(e) => {
+            // If the user clicked the inner anchor, let it navigate normally
+            const tgt = e.target as HTMLElement;
+            if (tgt && tgt.tagName === "A") return;
+            setTos((s) => !s);
+          }}
+        >
+          <Checkbox
+            checked={tos}
+            onCheckedChange={(v) => setTos(!!v)}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          />
           <span>
             <a href="/terms" target="_blank" className="underline">
               利用規約
@@ -43,8 +57,21 @@ export default function ConsentPage() {
             に同意します
           </span>
         </label>
-        <label className="flex items-center gap-3">
-          <Checkbox checked={pp} onCheckedChange={(v) => setPp(!!v)} />
+        <label
+          className="flex items-center gap-3"
+          onClick={(e) => {
+            const tgt = e.target as HTMLElement;
+            if (tgt && tgt.tagName === "A") return;
+            setPp((s) => !s);
+          }}
+        >
+          <Checkbox
+            checked={pp}
+            onCheckedChange={(v) => setPp(!!v)}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          />
           <span>
             <a href="/privacy" target="_blank" className="underline">
               プライバシーポリシー
@@ -52,8 +79,21 @@ export default function ConsentPage() {
             に同意します
           </span>
         </label>
-        <label className="flex items-center gap-3">
-          <Checkbox checked={sp} onCheckedChange={(v) => setSp(!!v)} />
+        <label
+          className="flex items-center gap-3"
+          onClick={(e) => {
+            const tgt = e.target as HTMLElement;
+            if (tgt && tgt.tagName === "A") return;
+            setSp((s) => !s);
+          }}
+        >
+          <Checkbox
+            checked={sp}
+            onCheckedChange={(v) => setSp(!!v)}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          />
           <span>
             <a href="/security" target="_blank" className="underline">
               セキュリティポリシー

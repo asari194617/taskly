@@ -244,12 +244,23 @@ export default function AdminDayShift() {
       gql<{ dayShiftIndex: number }>(`query{ dayShiftIndex }`)
         .then((d) => setCurrentIndex(d.dayShiftIndex ?? 0))
         .catch(() => setCurrentIndex(0));
+      // Try new query; fallback to legacy adminDayshiftCurrentCycle
       gql<{ dayShiftCurrentCycle: number }>(`query{ dayShiftCurrentCycle }`)
         .then((d) => {
           const v = d.dayShiftCurrentCycle || 0;
           setCurrentCycleId(v ? String(v) : "");
         })
-        .catch(() => setCurrentCycleId(""));
+        .catch(async () => {
+          try {
+            const dd = await gql<{
+              adminDayshiftCurrentCycle: { id: number } | null;
+            }>(`query{ adminDayshiftCurrentCycle{ id } }`);
+            const v = dd.adminDayshiftCurrentCycle?.id || 0;
+            setCurrentCycleId(v ? String(v) : "");
+          } catch {
+            setCurrentCycleId("");
+          }
+        });
     }
   }, [token, cyclePage]);
   React.useEffect(() => {
