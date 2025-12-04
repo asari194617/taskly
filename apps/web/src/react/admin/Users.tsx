@@ -99,6 +99,11 @@ export default function AdminUsers() {
   const [deleteHard, setDeleteHard] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState("");
 
+  // Block user dialog
+  const [openBlock, setOpenBlock] = React.useState(false);
+  const [blockTarget, setBlockTarget] = React.useState<AUser | null>(null);
+  const [blockReason, setBlockReason] = React.useState("");
+
   // Notification settings dialog/drawer
   const isMobile = useIsMobile();
   const [openNotif, setOpenNotif] = React.useState(false);
@@ -203,14 +208,23 @@ export default function AdminUsers() {
       });
     }
   }
-  async function blockUser(id: number) {
-    const reason = window.prompt("理由(任意)") || undefined;
+  function openBlockDialog(u: AUser) {
+    setBlockTarget(u);
+    setBlockReason("");
+    setOpenBlock(true);
+  }
+  async function submitBlock() {
+    if (!blockTarget) return;
     try {
       await gql<{ adminUserBlock: boolean }>(
         `mutation($id:Int!,$reason:String){ adminUserBlock(user_id:$id, reason:$reason) }`,
-        { id, reason }
+        { id: blockTarget.id, reason: blockReason || undefined }
       );
+      setOpenBlock(false);
+      setBlockTarget(null);
+      setBlockReason("");
       load();
+      toast({ title: "ブロックしました" });
     } catch (e: any) {
       toast({
         variant: "destructive",
@@ -988,7 +1002,7 @@ export default function AdminUsers() {
                         ) : (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={() => blockUser(u.id)}
+                            onClick={() => openBlockDialog(u)}
                           >
                             ブロック
                           </DropdownMenuItem>
@@ -1193,6 +1207,33 @@ export default function AdminUsers() {
           <DialogFooter>
             <Button variant="destructive" onClick={submitCustomRemove}>
               削除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Block User Dialog */}
+      <Dialog open={openBlock} onOpenChange={setOpenBlock}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ユーザーをブロック</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              対象: {blockTarget?.email || "-"}
+            </div>
+            <div>
+              <div className="text-sm mb-1">理由（任意）</div>
+              <Input
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+                placeholder="例: 規約違反"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="destructive" onClick={submitBlock}>
+              ブロック
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useToast } from "@/hooks/use-toast";
 
 type FlaggedRow = {
   id: number;
@@ -35,6 +36,7 @@ export default function Moderation() {
     default_auto_hide: "high",
     auto_hide_by_category: { threat: "medium" },
   });
+  const { toast } = useToast();
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -47,7 +49,10 @@ export default function Moderation() {
       if (pol) setPolicy(pol);
     } catch (e) {
       console.error(e);
-      alert("Load failed");
+      toast({
+        title: "Failed to load moderation data",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -65,7 +70,11 @@ export default function Moderation() {
       });
       await load();
     } catch (e) {
-      alert("Action failed");
+      toast({
+        title: "Action failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -77,9 +86,12 @@ export default function Moderation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(policy),
       });
-      alert("Saved");
+      toast({
+        title: "Policy saved",
+        description: "Moderation policy updated successfully.",
+      });
     } catch (e) {
-      alert("Save failed");
+      toast({ title: "Failed to save policy", variant: "destructive" });
     }
   };
 
