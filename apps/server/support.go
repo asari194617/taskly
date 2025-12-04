@@ -1485,7 +1485,7 @@ func performDayShiftRotation(now time.Time) error {
 	if cyc == nil {
 		return nil
 	}
-	// Track current cycle and 1-based index in configs (day_shift_current_cycle, day_shift_current_index)
+	// Respect current cycle from configs if set; server does not rotate or increment
 	storedCIDStr, _ := getConfigString("day_shift_current_cycle")
 	storedCID := uint(0)
 	if strings.TrimSpace(storedCIDStr) != "" {
@@ -1493,9 +1493,12 @@ func performDayShiftRotation(now time.Time) error {
 		fmt.Sscanf(storedCIDStr, "%d", &x)
 		storedCID = uint(x)
 	}
-	if storedCID != cyc.ID {
-		_ = setConfigString("day_shift_current_cycle", fmt.Sprintf("%d", cyc.ID))
-		_ = setConfigString("day_shift_current_index", "0")
+	if storedCID != 0 && storedCID != cyc.ID {
+		// Override with configured cycle
+		var confCyc DayShiftCycle
+		if err := DB.First(&confCyc, storedCID).Error; err == nil {
+			cyc = &confCyc
+		}
 	}
 	prev := prevBusinessDay(d)
 	if !prev.IsZero() {
@@ -1573,55 +1576,14 @@ func performDayShiftRotation(now time.Time) error {
 	}
 	// Determine today's index: increment stored index on each business day within the cycle.
 	// Index is 1-based and maps to groups sorted by position.
+	// Read current index (0-based). Server does not increment.
 	idxStr, _ := getConfigString("day_shift_current_index")
 	curIdx := 0
 	if strings.TrimSpace(idxStr) != "" {
 		fmt.Sscanf(idxStr, "%d", &curIdx)
 	}
-	// If new assignment day and within same cycle, advance index; wrap after full rotation
-	nextIdx := curIdx + 1
-	if nextIdx <= 0 {
-		nextIdx = 1
-	}
-	if len(groups) > 0 && nextIdx > len(groups) {
-		// Completed a full rotation → select next cycle and reset index to 1
-		// Find the next cycle by begin_date after current finish_date; fallback to current if none
-		var nextCyc DayShiftCycle
-		if err := DB.Where("begin_date > ?", cyc.FinishDate.Format("2006-01-02")).Order("begin_date ASC, id ASC").First(&nextCyc).Error; err == nil && nextCyc.ID != 0 {
-			_ = setConfigString("day_shift_current_cycle", fmt.Sprintf("%d", nextCyc.ID))
-			cyc = &nextCyc
-			// reload groups for the new cycle
-			groups = groups[:0]
-			var cfgGroups2 []DayShiftCycleGroup
-			_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups2).Error
-			if len(cfgGroups2) > 0 {
-				for _, g := range cfgGroups2 {
-					var members []DayShiftCycleGroupMember
-					_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&members).Error
-					if len(members) == 0 {
-						continue
-					}
-					arr := make([]uint, 0, len(members))
-					for _, m := range members {
-						arr = append(arr, m.UserID)
-					}
-					groups = append(groups, arr)
-				}
-			} else {
-				var cfgPairs2 []DayShiftCyclePair
-				_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgPairs2).Error
-				if len(cfgPairs2) > 0 {
-					for _, p := range cfgPairs2 {
-						groups = append(groups, []uint{p.User1ID, p.User2ID})
-					}
-				}
-			}
-		}
-		nextIdx = 1
-	}
-	_ = setConfigString("day_shift_current_index", fmt.Sprintf("%d", nextIdx))
-	// Select group by position order using 1-based index
-	grp := groups[(nextIdx-1)%len(groups)]
+	// Select group by position order using modulo of 0-based index
+	grp := groups[curIdx%len(groups)]
 	_ = DB.Where("day_shift_assignments_id = ?", today.ID).Delete(&DayShiftAssignmentUser{}).Error
 	for _, uid := range grp {
 		_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: today.ID, UserID: uid}).Error
