@@ -595,7 +595,7 @@ export default function AdminDayShift() {
               {(() => {
                 const selectedGroups = groups
                   .filter((g) => String(g.cycle_id) === (cid || autoCid))
-                  .sort((a, b) => a.id - b.id);
+                  .sort((a, b) => a.position - b.position || a.id - b.id);
                 if (!(cid || autoCid) || selectedGroups.length === 0) {
                   return (
                     <TableRow>
@@ -611,8 +611,11 @@ export default function AdminDayShift() {
                 const start = (predictPage - 1) * pageSize;
                 const rows: React.ReactNode[] = [];
                 for (let i = 0; i < pageSize; i++) {
-                  const n = currentIndex + start + i; // n日目
-                  const gidx = n % selectedGroups.length;
+                  const n = currentIndex + start + i; // 1始まりのインデックス値
+                  const gidx =
+                    (((n - 1) % selectedGroups.length) +
+                      selectedGroups.length) %
+                    selectedGroups.length;
                   const g = selectedGroups[gidx];
                   rows.push(
                     <TableRow key={`pred-${n}`}>
