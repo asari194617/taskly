@@ -1,0 +1,12 @@
+---
+import AdminReports from "@/react/AdminReports";
+import AdminGuard from "../../components/AdminGuard.astro";
+import Layout from "../../layouts/AppLayout.astro";
+---
+<Layout title="Admin Reports">
+  <AdminGuard />
+  <main class="container mx-auto p-4">
+    <AdminReports client:load />
+  </main>
+  
+</Layout>

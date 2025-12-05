@@ -48,6 +48,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -642,6 +647,42 @@ export default function TasksList() {
   const [deleteTargetId, setDeleteTargetId] = React.useState<number | null>(
     null
   );
+  // Report dialog state
+  const [reportOpen, setReportOpen] = React.useState(false);
+  const [reportTargetId, setReportTargetId] = React.useState<number | null>(
+    null
+  );
+  // Report form state (within action popover)
+  const [reportReason, setReportReason] = React.useState<string>("");
+  const [reportComment, setReportComment] = React.useState<string>("");
+  const [reportSubmittingId, setReportSubmittingId] = React.useState<
+    number | null
+  >(null);
+
+  async function submitReport(taskId: number) {
+    if (!reportReason.trim()) {
+      toast({ title: dict.toast.requiredFields });
+      return;
+    }
+    try {
+      setReportSubmittingId(taskId);
+      await gql<{ createUserReport: { id: number } }>(
+        `mutation($task_id:Int!,$reason:String!,$comment:String){ createUserReport(task_id:$task_id, reason:$reason, comment:$comment){ id } }`,
+        {
+          task_id: taskId,
+          reason: reportReason.trim(),
+          comment: reportComment.trim() || undefined,
+        }
+      );
+      toast({ title: dict.toast.created });
+      setReportReason("");
+      setReportComment("");
+    } catch (e: any) {
+      toast({ title: dict.toast.createFailed, description: e?.message || "" });
+    } finally {
+      setReportSubmittingId(null);
+    }
+  }
 
   if (error) {
     return (
@@ -1407,65 +1448,55 @@ export default function TasksList() {
                                 )}
                               </div>
                               <div className="flex items-center gap-2">
-                                {/* Desktop: grouped buttons */}
-                                <ButtonGroup className="hidden sm:flex">
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={() => beginEdit(t)}
-                                  >
-                                    <Pencil className="h-4 w-4 mr-1" />{" "}
-                                    {dict.tasks.edit}
-                                  </Button>
-                                  <ButtonGroupSeparator />
-                                  {(isAdmin || isManager) && (
+                                {/* Unified actions via Popover across sizes */}
+                                <Popover>
+                                  <PopoverTrigger asChild>
                                     <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => {
-                                        setDeleteTargetId(t.id);
-                                        setDeleteOpen(true);
-                                      }}
+                                      size="icon"
+                                      variant="ghost"
+                                      aria-label={dict.tasks.actions}
                                     >
-                                      <Trash2 className="h-4 w-4 mr-1" />{" "}
-                                      {dict.tasks.delete}
+                                      <MoreVertical className="h-4 w-4" />
                                     </Button>
-                                  )}
-                                </ButtonGroup>
-                                {/* Mobile: kebab menu */}
-                                <div className="sm:hidden">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-64" align="end">
+                                    <div className="flex flex-col gap-2">
                                       <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        aria-label={dict.tasks.actions}
-                                      >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
+                                        size="sm"
+                                        variant="secondary"
                                         onClick={() => beginEdit(t)}
                                       >
-                                        <Pencil className="h-4 w-4 mr-2" />{" "}
+                                        <Pencil className="h-4 w-4 mr-1" />{" "}
                                         {dict.tasks.edit}
-                                      </DropdownMenuItem>
+                                      </Button>
                                       {(isAdmin || isManager) && (
-                                        <DropdownMenuItem
-                                          className="text-destructive focus:text-destructive"
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
                                           onClick={() => {
                                             setDeleteTargetId(t.id);
                                             setDeleteOpen(true);
                                           }}
                                         >
-                                          <Trash2 className="h-4 w-4 mr-2" />{" "}
+                                          <Trash2 className="h-4 w-4 mr-1" />{" "}
                                           {dict.tasks.delete}
-                                        </DropdownMenuItem>
+                                        </Button>
                                       )}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
+                                      <div className="pt-2 border-t">
+                                        <Button
+                                          className="mt-2"
+                                          size="sm"
+                                          onClick={() => {
+                                            setReportTargetId(t.id);
+                                            setReportOpen(true);
+                                          }}
+                                        >
+                                          {dict.tasks.reportSubmit}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               </div>
                             </div>
                           )}
@@ -1489,6 +1520,58 @@ export default function TasksList() {
           }
         }}
       />
+      {/* Report dialog */}
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>{dict.tasks.reportSubmit}</DialogTitle>
+            <DialogDescription>
+              {dict.tasks.enterRequiredInfo}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="report-reason">
+                {dict.tasks.reportReasonLabel ?? "Reason"}
+              </Label>
+              <Input
+                id="report-reason"
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder={
+                  dict.tasks.reportReasonPlaceholder ??
+                  "Spam/Inappropriate/etc."
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="report-comment">
+                {dict.tasks.reportCommentLabel ?? "Comment"}
+              </Label>
+              <Input
+                id="report-comment"
+                value={reportComment}
+                onChange={(e) => setReportComment(e.target.value)}
+                placeholder={
+                  dict.tasks.reportCommentPlaceholder ?? "Optional details"
+                }
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  if (reportTargetId != null) {
+                    submitReport(reportTargetId);
+                  }
+                }}
+                disabled={reportTargetId != null && reportSubmittingId === reportTargetId}
+              >
+                {dict.tasks.reportSubmit}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

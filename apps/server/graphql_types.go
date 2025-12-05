@@ -10,6 +10,7 @@ import (
 // gqlTypes groups GraphQL object types used across Query and Mutation builders.
 type gqlTypes struct {
 	AdminUserType             *graphql.Object
+	UserReportType            *graphql.Object
 	NotificationSettingsType  *graphql.Object
 	NotificationDeviceType    *graphql.Object
 	NotificationTypePrefsType *graphql.Object
@@ -31,6 +32,17 @@ type gqlTypes struct {
 
 // createGQLTypes constructs all GraphQL types. Keep logic identical to original definitions.
 func createGQLTypes() *gqlTypes {
+	userReportType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "UserReport",
+		Fields: graphql.Fields{
+			"id":               &graphql.Field{Type: graphql.Int},
+			"reporter_user_id": &graphql.Field{Type: graphql.Int},
+			"task_id":          &graphql.Field{Type: graphql.NewNonNull(graphql.Int)},
+			"reason":           &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"comment":          &graphql.Field{Type: graphql.String},
+			"created_at":       &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+		},
+	})
 	notificationSettingsType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "NotificationSettings",
 		Fields: graphql.Fields{
@@ -276,6 +288,7 @@ func createGQLTypes() *gqlTypes {
 
 	return &gqlTypes{
 		AdminUserType:             adminUserType,
+		UserReportType:            userReportType,
 		NotificationSettingsType:  notificationSettingsType,
 		NotificationDeviceType:    notificationDeviceType,
 		NotificationTypePrefsType: notificationTypePrefsType,

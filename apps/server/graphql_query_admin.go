@@ -61,6 +61,95 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				return nil, fmt.Errorf("context missing")
 			},
 		},
+		"adminUserReports": &graphql.Field{
+			Type: graphql.NewList(t.UserReportType),
+			Args: graphql.FieldConfigArgument{
+				"limit":   &graphql.ArgumentConfig{Type: graphql.Int},
+				"offset":  &graphql.ArgumentConfig{Type: graphql.Int},
+				"task_id": &graphql.ArgumentConfig{Type: graphql.Int},
+			},
+			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*User)
+					isAdmin, _ := userHasRole(u.ID, "admin")
+					if !isAdmin {
+						return nil, fmt.Errorf("forbidden")
+					}
+					var reports []UserReport
+					q := DB.Model(&UserReport{})
+					if taskID, ok := p.Args["task_id"].(int); ok && taskID > 0 {
+						q = q.Where("task_id = ?", taskID)
+					}
+					if limit, ok := p.Args["limit"].(int); ok && limit > 0 {
+						q = q.Limit(limit)
+					} else {
+						q = q.Limit(50)
+					}
+					if offset, ok := p.Args["offset"].(int); ok && offset >= 0 {
+						q = q.Offset(offset)
+					}
+					q = q.Order("created_at DESC")
+					if err := q.Find(&reports).Error; err != nil {
+						return nil, err
+					}
+					out := make([]map[string]any, 0, len(reports))
+					for _, r := range reports {
+						var rep any = nil
+						if r.ReporterUserID != nil {
+							rep = int(*r.ReporterUserID)
+						}
+						out = append(out, map[string]any{
+							"id":               int(r.ID),
+							"reporter_user_id": rep,
+							"task_id":          int(r.TaskID),
+							"reason":           r.Reason,
+							"comment":          r.Comment,
+							"created_at":       r.CreatedAt.Format(time.RFC3339),
+						})
+					}
+					return out, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+		"adminUserReport": &graphql.Field{
+			Type: t.UserReportType,
+			Args: graphql.FieldConfigArgument{
+				"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			},
+			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
+					if !userFromSession(c) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*User)
+					isAdmin, _ := userHasRole(u.ID, "admin")
+					if !isAdmin {
+						return nil, fmt.Errorf("forbidden")
+					}
+					var report UserReport
+					if err := DB.First(&report, p.Args["id"].(int)).Error; err != nil {
+						return nil, err
+					}
+					var rep any = nil
+					if report.ReporterUserID != nil {
+						rep = int(*report.ReporterUserID)
+					}
+					return map[string]any{
+						"id":               int(report.ID),
+						"reporter_user_id": rep,
+						"task_id":          int(report.TaskID),
+						"reason":           report.Reason,
+						"comment":          report.Comment,
+						"created_at":       report.CreatedAt.Format(time.RFC3339),
+					}, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
 		// Notification type preferences
 		"adminUserNotificationTypePrefs": &graphql.Field{
 			Type: ntpType,

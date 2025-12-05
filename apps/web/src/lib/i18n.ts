@@ -185,6 +185,14 @@ export const t = (lang: Lang) => ({
     period: lang === "ja" ? "限" : "Period",
     until: lang === "ja" ? "まで" : "until",
     to: lang === "ja" ? "〜" : " to ",
+    // Report form
+    reportReasonLabel: lang === "ja" ? "通報理由" : "Report reason",
+    reportReasonPlaceholder:
+      lang === "ja" ? "スパム・不適切な内容など" : "Spam/Inappropriate/etc.",
+    reportCommentLabel: lang === "ja" ? "コメント" : "Comment",
+    reportCommentPlaceholder:
+      lang === "ja" ? "任意の詳細（任意）" : "Optional details",
+    reportSubmit: lang === "ja" ? "通報する" : "Report",
   },
   toast: {
     userInfoFetchError:
