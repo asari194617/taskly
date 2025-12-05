@@ -1564,7 +1564,10 @@ export default function TasksList() {
                     submitReport(reportTargetId);
                   }
                 }}
-                disabled={reportTargetId != null && reportSubmittingId === reportTargetId}
+                disabled={
+                  reportTargetId != null &&
+                  reportSubmittingId === reportTargetId
+                }
               >
                 {dict.tasks.reportSubmit}
               </Button>
