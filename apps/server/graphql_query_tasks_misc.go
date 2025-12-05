@@ -135,6 +135,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 							"type":                it.Type,
 							"is_require_hand_in":  it.IsRequireHandIn,
 							"self_check_required": it.SelfCheckRequired,
+							"is_hidden":           it.IsHidden,
 						}
 						out["deadline"] = it.Deadline.Format("2006-01-02")
 						out["deadline_since"] = it.DeadlineSince
