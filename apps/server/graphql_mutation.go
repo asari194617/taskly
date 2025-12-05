@@ -19,7 +19,7 @@ func buildRootMutation(t *gqlTypes) *graphql.Object {
 	merge(mutationFieldsDayShift(t))
 	merge(mutationFieldsSettings(t))
 	merge(mutationFieldsAdminUsers(t))
-	merge(mutationFieldsCalendar(t))
+	// Business calendar removed
 	merge(mutationFieldsKeys(t))
 	merge(mutationFieldsTasks(t))
 	merge(mutationFieldsAuth(t))

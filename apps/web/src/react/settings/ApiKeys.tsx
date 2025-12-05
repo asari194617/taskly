@@ -165,7 +165,7 @@ export default function SettingsApiKeys() {
     <SettingsShell>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">
+          <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">
             {dict.settingsApiKeys.heading}
           </h1>
           {HELP_URL && (

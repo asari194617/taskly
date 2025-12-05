@@ -149,7 +149,7 @@ export default function SettingsIcal() {
     <SettingsShell>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{dict.settingsIcal.heading}</h1>
+          <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">{dict.settingsIcal.heading}</h1>
           {HELP_URL && (
             <TooltipProvider>
               <Tooltip>

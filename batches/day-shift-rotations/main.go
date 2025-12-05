@@ -206,22 +206,9 @@ func fetchGroupsWithMembers(db *sql.DB, cycleID int64) ([]Pair, error) {
 }
 
 func fetchHolidays(db *sql.DB) (map[time.Time]struct{}, error) {
-	// Server schema: business_calendar(date, is_business_day)
-	// 祝日（非営業日）を取得
-	rows, err := db.Query(`SELECT date FROM business_calendar WHERE is_business_day = 0`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	m := make(map[time.Time]struct{})
-	for rows.Next() {
-		var d time.Time
-		if err := rows.Scan(&d); err != nil {
-			continue
-		}
-		m[dateOnly(d)] = struct{}{}
-	}
-	return m, nil
+	// Business calendar feature removed; treat weekends (Sat/Sun) as holidays only.
+	// Returns an empty set; caller should handle weekend checks.
+	return make(map[time.Time]struct{}), nil
 }
 
 func lastAssignedDateForCycle(db *sql.DB, cycleID int64) time.Time {

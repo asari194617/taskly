@@ -1,55 +1,52 @@
-# 通知アーキテクチャ（types × devices）
+# 通知設定・配信（2025-12-04 更新）
 
-本ドキュメントは通知機構を「通知種類（types）」と「デバイス（devices）」に分離した新アーキテクチャについてまとめます。旧 `notification_settings` は互換 API のみ残し、内部実装は devices/types へ移行済みです。
+通知機構は「通知種類（types）」と「デバイス（devices）」に分離されています。UI は `Notifications-copy.tsx` のモックに準拠し、種類は方法（メール/プッシュ）に共通です。
 
-## コンセプト
+## 通知方法（Methods）
 
-- 通知種類（Notification Types）
-  - 例: `TASK`, `DAYSHIFT`
-  - ユーザーごとに ON/OFF を保持します（テーブル: `notification_type_prefs`）。
-  - 既定値: すべて ON。
-- デバイス（Notification Devices）
-  - 例: `EMAIL`, `WEBPUSH`, 将来拡張: `IOS`, `ANDROID`
-  - ユーザーごとにチャネル（プラットフォーム）単位で ON/OFF と任意の `name`/`payload` を保持します（テーブル: `notification_devices`）。
-  - 既定値: `EMAIL`=ON, `WEBPUSH`=OFF。
-  - `updated_at` 列により最終更新を保持します。
+- Web Push: 単一のスイッチで有効/無効を切替。ブラウザ購読の登録/解除を行い、端末（device）行をミラーします。
+- Email: ユーザー単位の有効/無効。メールは配信時にオンザフライで合成（キュー投入なし）。
+
+## 通知の種類（Types：方法に共通）
+
+- 期限が近い課題（`TASK`）: ON/OFF。
+- 朝の通知（`TASK_MORNING`）: ON/OFF（朝バッチ枠で適用）。
+- 夕方の通知（`TASK_EVENING`）: ON/OFF（夕方バッチ枠で適用）。
+- 日直のお知らせ（`DAYSHIFT`）: ON/OFF。
+
+備考:
+
+- `TASK_MORNING`/`TASK_EVENING` は時間帯ゲート。未設定時は既定 ON。
+- 種類は方法に依存せず共通フラグです（メール/プッシュに同様に適用）。
 
 ## データモデル
 
-- `notification_type_prefs`
-  - `id`, `user_id`, `notification_type`(ENUM/TEXT), `is_enabled`(BOOL), `created_at`, `updated_at`
-- `notification_devices`
-  - `id`, `user_id`, `platform`(ENUM/TEXT: `EMAIL`/`WEBPUSH`/`IOS`/`ANDROID` ...), `name`(NULL 可), `payload`(NULL 可, JSON 推奨), `is_enabled`(BOOL), `created_at`, `updated_at`
+- `notification_type_prefs`: `id`, `user_id`, `notification_type`, `is_enabled`, `created_at`, `updated_at`
+- `notification_devices`: `id`, `user_id`, `platform`（`EMAIL`/`WEBPUSH` など）, `name`, `payload`, `is_enabled`, `created_at`, `updated_at`
+- `web_push_subscriptions`: ブラウザ Push 購読（`is_revoked` で無効化管理）。
+- `notifications_queue`: 配信チャネル共有キュー（現状 Web Push が使用）。
 
-マイグレーション:
+## サーバー API（REST）
 
-- `0007_drop_push_daily_enabled.sql`: 旧 `users.push_daily_enabled` を削除
-- `0008_notification_type_prefs.sql`: 種類プリファレンス作成
-- `0009_notification_devices.sql`: デバイス登録作成（`updated_at` 含む）
+- Methods:
+  - `GET /settings/notification-methods` → `{ email, webpush }`
+  - `POST /settings/notification-methods` body `{ email?: bool, webpush?: bool }`
+- Types:
+  - `GET /settings/notification-types` → `{ TASK, TASK_MORNING, TASK_EVENING, DAYSHIFT }`
+  - `POST /settings/notification-types` body `{ key: string, value: bool }`
+- Devices（Web Push）:
+  - `GET /push/devices` → `[ { id, name, is_enabled } ]`
+  - `POST /push/devices/:id` body `{ is_enabled: bool }`
+- Web Push 購読:
+  - `POST /push/subscribe`（購読登録＋デバイス enabled）
+  - `POST /push/unsubscribe`（購読解除＋デバイス disabled）
+- 旧互換:
+  - `GET/POST /settings/push`（内部的に Web Push デバイス enabled にマップ）
 
-## 互換 API（NotificationSettings の扱い）
+## フロントエンド
 
-- 旧 `NotificationSettings` は廃止。GraphQL 互換フィールド `adminUserNotificationSettings` は内部で devices の `EMAIL`/`WEBPUSH` を参照して返します。
-- `updated_at` 相当は、該当デバイス（EMAIL/WEBPUSH）の `updated_at` のうち最新を返す方針です。
-
-## GraphQL API
-
-クエリ:
-
-- `adminUserNotificationTypePrefs(user_id: Int!): NotificationTypePrefs`
-  - 例: `{ TASK, DAYSHIFT }`
-- `adminUserDevices(user_id: Int!): [NotificationDevice!]!`
-  - 例: `{ id user_id platform name payload is_enabled created_at updated_at }`
-- `adminUserNotificationSettings(user_id: Int!)`
-  - 互換: `{ email_enabled, webpush_enabled, updated_at }`（内部は devices 参照）
-
-ミューテーション:
-
-- `adminUserSetNotificationTypePref(user_id: Int!, notification_type: String!, enabled: Boolean!): Boolean!`
-- `adminUserCreateDevice(user_id: Int!, platform: String!, name: String, payload: String, is_enabled: Boolean!): ID!`
-- `adminUserUpdateDevice(device_id: Int!, platform: String, name: String, payload: String, is_enabled: Boolean): Boolean!`
-- `adminUserDeleteDevice(device_id: Int!): Boolean!`
-- 互換: `adminUserSetNotificationSettings(user_id: Int!, email_enabled: Boolean!, webpush_enabled: Boolean!): Boolean!`
+- `apps/web/src/react/settings/Notifications.tsx`: モック構成に準拠（通知方法/通知の種類/その他の設定、端末設定ダイアログ）。
+- 端末名は User-Agent から推定。
 
 サンプル:
 
@@ -83,28 +80,28 @@ mutation UpdatePrefs($id: Int!) {
 }
 ```
 
-## キュー処理（配信ロジック）
+## バッチ（Queue/Delivery）
 
-- キュー投入側（`batches/notifications/que-manager`）は以下の条件で配信対象を決定します:
-  1. 対象ユーザーの該当「通知種類」が ON であること（例: タスク通知なら `TASK`）。
-  2. 対象ユーザーに有効（`is_enabled=1`）なデバイスが存在するチャネルに対してメッセージを投入（`EMAIL`, `WEBPUSH` 等）。
-- これにより「種類 × デバイス」の掛け合わせで配信可否を制御できます。
+- Queue Manager（`batches/notifications/que-manager`）:
+  - タスク（今日〜あさって）を Web Push キューに投入。`TASK` を前提に、時間帯に応じて `TASK_MORNING`/`TASK_EVENING` を適用。
+  - 日直は存在時に `DAYSHIFT` を尊重して投入。
+  - Email はキュー投入せず、配信時合成。
+- Web Push Delivery（`batches/notifications/delivery-channels/web-push`）:
+  - `channel='webpush'` を購読に配信、処理済みクリーンアップ。
+- Email Delivery（`batches/notifications/delivery-channels/email`）:
+  - 現状はノーオペのスタブ（配信系へ引き継ぎ予定）。
 
-## 既定値の適用
+## 既定値
 
-- 新規ユーザー: type はすべて ON。`EMAIL` デバイスは ON、`WEBPUSH` は OFF（作成は必要に応じて）。
-- UI のトグル（管理画面）も同既定を前提に表示します。
+- デバイス: `Email=true`, `WebPush=false`。
+- 種類: `TASK`, `TASK_MORNING`, `TASK_EVENING`, `DAYSHIFT` は既定 ON。
 
-## 管理 UI
+## 運用
 
-- 画面: 管理 > Users（`apps/web/src/react/admin/Users.tsx`）
-  - 機能:
-    - 種類トグル（TASK/DAYSHIFT）
-    - デバイス一覧（ON/OFF 切替・削除・追加、`updated_at` 表示）
-    - 互換トグル（EMAIL/WEBPUSH）→ devices に反映
+- 互換 API や旧設定は段階的に devices/types へ集約。
+- 既存の Docker/CI はそのまま利用可能。
 
-## 既知の注意点・今後
+## 既知の注意点
 
-- `payload` は JSON 文字列推奨。UI 側でバリデーションを強化予定。
-- Mobile（`IOS`/`ANDROID`）は将来拡張用。現時点では配信実装は未接続。
-- 旧 `notification_settings` テーブルは不要。GraphQL 互換のみ存置。
+- `payload` は JSON を推奨（将来の拡張用）。
+- Mobile（`IOS`/`ANDROID`）は将来拡張枠。

@@ -134,15 +134,27 @@ func main() {
 
 	// Resolve eligible users and preferences
 	userIDs, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
+	// Determine delivery slot (morning vs evening) to respect per-time preferences
+	isMorning := now.Hour() < 12
 	// キューに投入（共通テーブル）: 各チャネルごとに投入（email, webpush）
 	for _, it := range items {
 		// tasks: expand to all users
 		if it.Kind == "task" && it.UserID == 0 {
 			for _, uid := range userIDs {
-				// type preference: TASK default ON
+				// type preference: TASK default ON + per-time gating
 				if tp, ok := typePrefs[uid]; ok {
 					if !tp["TASK"] {
 						continue
+					}
+					// Morning/evening sub-flags are optional; default true when absent
+					if isMorning {
+						if v, ok := tp["TASK_MORNING"]; ok && !v {
+							continue
+						}
+					} else {
+						if v, ok := tp["TASK_EVENING"]; ok && !v {
+							continue
+						}
 					}
 				}
 				pf := devicePrefs[uid]
@@ -338,8 +350,8 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		ids = append(ids, id)
 		// default device prefs
 		device[id] = userDevicePrefs{Email: true, WebPush: false}
-		// default type prefs: both enabled
-		typePrefs[id] = map[string]bool{"TASK": true, "DAYSHIFT": true}
+		// default type prefs: all enabled
+		typePrefs[id] = map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true}
 	}
 	// overlay per-user device settings
 	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)

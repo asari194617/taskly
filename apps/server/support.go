@@ -1308,10 +1308,7 @@ func checkPermission(userID uint, target, action string, ownerID *uint) (bool, e
 // (server no longer runs in-process schedulers; handled by Airflow)
 
 func isBusinessDay(d time.Time) bool {
-	var bc BusinessCalendar
-	if err := DB.Where("date = ?", d.Format("2006-01-02")).First(&bc).Error; err == nil {
-		return bc.IsBusinessDay
-	}
+	// Business calendar feature removed; consider Mon-Fri as business days.
 	wd := d.Weekday()
 	return wd != time.Saturday && wd != time.Sunday
 }
@@ -1631,7 +1628,7 @@ func nextBusinessDay(d time.Time) time.Time {
 
 func listActiveUsers() ([]User, error) {
 	var users []User
-	if err := DB.Where("is_deleted = 0 AND is_day_shift_active = 1").Order("id ASC").Find(&users).Error; err != nil {
+	if err := DB.Where("is_deleted = 0").Order("id ASC").Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil

@@ -132,7 +132,7 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		}
 		ids = append(ids, id)
 		device[id] = userDevicePrefs{Email: true, WebPush: false}
-		typePrefs[id] = map[string]bool{"TASK": true, "DAYSHIFT": true}
+		typePrefs[id] = map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true}
 	}
 	// device prefs overlay
 	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)

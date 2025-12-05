@@ -184,7 +184,7 @@ export default function SettingsMcp() {
     <SettingsShell>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{dict.settingsMcp.heading}</h1>
+          <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">{dict.settingsMcp.heading}</h1>
           {HELP_URL && (
             <TooltipProvider>
               <Tooltip>

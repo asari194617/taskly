@@ -262,14 +262,6 @@ type DayShiftAssignmentUser struct {
 	DayShiftAssignmentsID uint
 	UserID                uint
 }
-type BusinessCalendar struct {
-	ID            uint `gorm:"primaryKey"`
-	Date          time.Time
-	IsBusinessDay bool
-	Notes         *string
-	CreatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt     time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
-}
 
 // Deprecated: Legacy pair model kept only for migration/backfill.
 // Use DayShiftCycleGroup and DayShiftCycleGroupMember instead.

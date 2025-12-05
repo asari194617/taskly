@@ -19,7 +19,7 @@ func buildRootQuery(t *gqlTypes) *graphql.Object {
 	// Assemble query fields from topic modules
 	merge(queryFieldsDayShift(t))
 	merge(queryFieldsAdminUsers(t))
-	merge(queryFieldsCalendar(t))
+	// Business calendar removed
 	merge(queryFieldsSettings(t))
 	merge(queryFieldsTasks(t))
 	merge(queryFieldsMisc(t))

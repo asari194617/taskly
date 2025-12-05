@@ -217,7 +217,7 @@ export default function SettingsSecurity() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">
+        <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">
           {dict.settingsSecurity.heading}
         </h1>
         <Card className="p-4 space-y-3">

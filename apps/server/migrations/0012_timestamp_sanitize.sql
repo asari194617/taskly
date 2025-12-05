@@ -18,8 +18,6 @@ UPDATE passkeys SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL 
 UPDATE passkeys SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00';
 UPDATE day_shift_assignments SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00';
 UPDATE day_shift_assignments SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00';
-UPDATE business_calendar SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00';
-UPDATE business_calendar SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00';
 UPDATE web_push_subscriptions SET created_at = '1970-01-01 00:00:00' WHERE created_at IS NULL OR created_at = '0000-00-00 00:00:00';
 UPDATE web_push_subscriptions SET updated_at = IFNULL(updated_at, created_at) WHERE updated_at IS NULL OR updated_at = '0000-00-00 00:00:00';
 

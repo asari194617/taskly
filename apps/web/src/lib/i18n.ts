@@ -320,7 +320,7 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "タスクや日直の更新をメールで受け取ります。"
         : "Receive updates by email.",
-    webPush: lang === "ja" ? "Web Push" : "Web Push",
+    webPush: lang === "ja" ? "Web Push通知" : "Web Push",
     daily:
       lang === "ja"
         ? "毎日のプッシュ通知（朝のダイジェスト）"

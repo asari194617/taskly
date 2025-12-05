@@ -1,0 +1,15 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import SettingsNotifications from "@/react/settings/Notifications-copy";
+---
+<Layout title="Notifications">
+  <h1 class="sr-only" data-i18n-key="settingsNotifications.heading">通知設定</h1>
+  <SettingsNotifications client:load />
+  <script>
+    import { updateI18nTexts, watchLanguageChange } from "@/lib/i18n-dom";
+    import { requireAuth } from "@/lib/auth-guard";
+    requireAuth();
+    updateI18nTexts();
+    watchLanguageChange();
+  </script>
+</Layout>

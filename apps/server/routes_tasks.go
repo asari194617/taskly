@@ -51,8 +51,10 @@ func registerTasksRoutes(app *fiber.App) {
 		} else {
 			dbq = dbq.Where(eff+" >= ?", now)
 		}
-		// Hide moderated content from non-admins
-		if isAdmin, _ := userHasRole(u.ID, "admin"); !isAdmin {
+		// Hide moderated content from non-admin/manager
+		isAdmin, _ := userHasRole(u.ID, "admin")
+		isManager, _ := userHasRole(u.ID, "manager")
+		if !(isAdmin || isManager) {
 			dbq = dbq.Where("is_hidden = 0")
 		}
 		if qstr != "" {

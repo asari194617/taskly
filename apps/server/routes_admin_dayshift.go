@@ -40,34 +40,5 @@ func registerAdminDayShiftRoutes(app *fiber.App) {
 		return c.SendStatus(204)
 	})
 
-	// business calendar management (range updates)
-	app.Post("/admin/calendar/upsert-range", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		var body struct {
-			Start      string  `json:"start"`
-			End        string  `json:"end"`
-			IsBusiness bool    `json:"is_business_day"`
-			Notes      *string `json:"notes"`
-		}
-		if err := parseJSONStrict(c, &body); err != nil || body.Start == "" || body.End == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
-		}
-		s, e := body.Start, body.End
-		sd, err1 := time.Parse("2006-01-02", s)
-		ed, err2 := time.Parse("2006-01-02", e)
-		if err1 != nil || err2 != nil || sd.After(ed) {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid dates"})
-		}
-		for d := sd; !d.After(ed); d = d.Add(24 * time.Hour) {
-			var bc BusinessCalendar
-			if err := DB.Where("date = ?", d.Format("2006-01-02")).First(&bc).Error; err != nil {
-				bc = BusinessCalendar{Date: dateOnly(d), IsBusinessDay: body.IsBusiness, Notes: body.Notes}
-				_ = DB.Create(&bc).Error
-			} else {
-				bc.IsBusinessDay = body.IsBusiness
-				bc.Notes = body.Notes
-				_ = DB.Save(&bc).Error
-			}
-		}
-		return c.SendStatus(204)
-	})
+	// Business calendar feature removed
 }

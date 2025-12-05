@@ -20,16 +20,8 @@ def mysql_connect():
 
 
 def is_business_day(conn: pymysql.connections.Connection, d: date) -> bool:
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT is_business_day FROM business_calendar WHERE date = %s LIMIT 1",
-            (d.strftime("%Y-%m-%d"),),
-        )
-        row = cur.fetchone()
-        if row is None:
-            # Fallback: weekdays Mon-Fri are business days
-            return d.weekday() < 5
-        return bool(row.get("is_business_day", 0))
+    # Business calendar feature removed; always notify
+    return True
 
 
 def read_config(conn, key: str) -> str:
@@ -43,9 +35,7 @@ def notify_day_shift(**context):
     conn = mysql_connect()
     try:
         today = date.today()
-        if not is_business_day(conn, today):
-            print("Skip: not a business day")
-            return
+        # Always notify regardless of day-of-week
 
         # Read current cycle and index (0-based) from configs
         idx_str = read_config(conn, "day_shift_current_index").strip()
@@ -103,13 +93,36 @@ def notify_day_shift(**context):
             print("Skip: empty members")
             return
 
-        # Resolve user emails and send notifications (email only for now)
+        # Resolve user emails and check notification settings (default ON)
+        ids_csv = ",".join(str(uid) for uid in target_users)
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, display_name FROM users WHERE id IN (%s) AND is_deleted = 0",
-                (",".join(str(uid) for uid in target_users),),
+                f"SELECT id, email, display_name FROM users WHERE id IN ({ids_csv}) AND is_deleted = 0"
             )
-            users = cur.fetchall() or []
+            all_users = cur.fetchall() or []
+        # Filter by NotificationTypePref and NotificationDevice
+        enabled_users = []
+        for u in all_users:
+            uid = int(u.get("id"))
+            # Type off check: if a record exists with DAYSHIFT and is_enabled=0, skip
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT is_enabled FROM notification_type_prefs WHERE user_id=%s AND notification_type='DAYSHIFT' ORDER BY id DESC LIMIT 1",
+                    (uid,),
+                )
+                pref = cur.fetchone()
+            if pref is not None and int(pref.get("is_enabled", 1)) == 0:
+                continue
+            # Device check: must have at least one enabled device (EMAIL or WEBPUSH)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM notification_devices WHERE user_id=%s AND is_enabled=1 AND platform IN ('EMAIL','WEBPUSH')",
+                    (uid,),
+                )
+                dev = cur.fetchone()
+            if dev and int(dev.get("cnt", 0)) > 0:
+                enabled_users.append(u)
+        users = enabled_users
         if not users:
             print("Skip: users not found")
             return

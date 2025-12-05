@@ -25,13 +25,3 @@ CREATE TABLE IF NOT EXISTS day_shift_assignments_users (
   FOREIGN KEY (day_shift_assignments_id) REFERENCES day_shift_assignments(id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS business_calendar (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  date DATE NOT NULL,
-  is_business_day BOOLEAN NOT NULL,
-  notes TEXT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uniq_bc_date (date)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

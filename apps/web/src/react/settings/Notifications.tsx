@@ -1,4 +1,5 @@
 "use client";
+import { AlertCircleIcon } from "lucide-react";
 import * as React from "react";
 import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
@@ -6,6 +7,23 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useLang } from "@/react/LanguageProvider";
 import { toast } from "@/hooks/use-toast";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
@@ -23,6 +41,7 @@ function urlB64ToUint8Array(base64String: string) {
 
 export default function SettingsNotifications() {
   const { dict } = useLang();
+  const [isOpenWebPushModal, setIsOpenWebPushModal] = React.useState(false);
   const [emailOn, setEmailOn] = React.useState(true);
   const [pushOn, setPushOn] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -30,21 +49,53 @@ export default function SettingsNotifications() {
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
   const [dailyEnabled, setDailyEnabled] = React.useState<boolean>(true);
+  const [typeTask, setTypeTask] = React.useState<boolean>(true);
+  const [typeMorning, setTypeMorning] = React.useState<boolean>(true);
+  const [typeEvening, setTypeEvening] = React.useState<boolean>(true);
+  const [typeDayShift, setTypeDayShift] = React.useState<boolean>(true);
+  const [devices, setDevices] = React.useState<
+    Array<{ id: number; name: string; is_enabled: boolean }>
+  >([]);
 
   React.useEffect(() => {
-    // Load push settings
     (async () => {
       try {
         const token = localStorage.getItem("api_token") || "";
-        const res = await fetch(`${apiBase}/settings/push`, {
-          headers: {
-            Authorization: token ? `Bearer ${token}` : "",
-            "X-Client-Platform": "web",
-          },
+        const h = {
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        } as any;
+        // methods
+        const m = await fetch(`${apiBase}/settings/notification-methods`, {
+          headers: h,
         });
+        if (m.ok) {
+          const j = await m.json();
+          if (typeof j.email === "boolean") setEmailOn(j.email);
+          if (typeof j.webpush === "boolean") setPushOn(j.webpush);
+        }
+        // legacy daily map
+        const res = await fetch(`${apiBase}/settings/push`, { headers: h });
         if (res.ok) {
           const data = await res.json();
           setDailyEnabled(!!data?.daily_enabled);
+        }
+        // types
+        const t = await fetch(`${apiBase}/settings/notification-types`, {
+          headers: h,
+        });
+        if (t.ok) {
+          const jj = await t.json();
+          setTypeTask(jj?.TASK !== false);
+          setTypeMorning(jj?.TASK_MORNING !== false);
+          setTypeEvening(jj?.TASK_EVENING !== false);
+          setTypeDayShift(jj?.DAYSHIFT !== false);
+        }
+        // devices
+        const d = await fetch(`${apiBase}/push/devices`, { headers: h });
+        if (d.ok) {
+          const arr = await d.json();
+          if (Array.isArray(arr)) setDevices(arr);
         }
       } catch {}
     })();
@@ -189,11 +240,94 @@ export default function SettingsNotifications() {
   const togglePush = async (next: boolean) => {
     setLoading(true);
     try {
-      if (next) await subscribe();
-      else await unsubscribe();
+      // Update server-side method first
+      const token = localStorage.getItem("api_token") || "";
+      await fetch(`${apiBase}/settings/notification-methods`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ webpush: next }),
+      });
+      if (next) {
+        await subscribe();
+      } else {
+        // best-effort: unsubscribe current device
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            await fetch(`${apiBase}/push/unsubscribe`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: token ? `Bearer ${token}` : "",
+                "X-Client-Platform": "web",
+              },
+              body: JSON.stringify({ endpoint: sub.endpoint }),
+            });
+            await sub.unsubscribe();
+          }
+        } catch {}
+      }
+      // Mirror legacy daily flag
+      await saveDaily(next);
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleEmail = async (next: boolean) => {
+    setEmailOn(next);
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      await fetch(`${apiBase}/settings/notification-methods`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ email: next }),
+      });
+    } catch {}
+  };
+
+  const toggleType = async (key: string, next: boolean) => {
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      await fetch(`${apiBase}/settings/notification-types`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ [key]: next }),
+      });
+    } catch {}
+  };
+
+  const toggleDevice = async (id: number, next: boolean) => {
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      const res = await fetch(`${apiBase}/push/devices/${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ is_enabled: next }),
+      });
+      if (res.ok) {
+        setDevices((prev) =>
+          prev.map((d) => (d.id === id ? { ...d, is_enabled: next } : d))
+        );
+      }
+    } catch {}
   };
 
   const testPush = async () => {
@@ -247,58 +381,180 @@ export default function SettingsNotifications() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">
+        <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">
           {dict.settingsNotifications.heading}
         </h1>
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>{dict.settingsNotifications.emailDesc}</div>
-            <Switch checked={emailOn} onCheckedChange={setEmailOn} />
-          </div>
-        </Card>
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="space-y-6">
-              <div className="font-medium">
-                {dict.settingsNotifications.webPush}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                  <div>
-                    <div className="text-sm">
-                      {dict.settingsNotifications.daily}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {dict.settingsNotifications.serverDefault}:{" "}
-                      {import.meta.env.PUBLIC_PUSH_DIGEST_TIME || "07:45"}
-                    </div>
-                  </div>
-                  <Switch checked={dailyEnabled} onCheckedChange={saveDaily} />
+        <Accordion type="multiple" className="w-full">
+          <AccordionItem value="item-1">
+            <AccordionTrigger>通知方法</AccordionTrigger>
+            <AccordionContent className="flex flex-col gap-4 text-balance">
+              <Card className="p-4 space-y-3">
+                <div className="font-bold flex items-center justify-between">
+                  <div>メール</div>
+                  <Switch checked={emailOn} onCheckedChange={toggleEmail} />
                 </div>
-                {dict.settingsNotifications.emailDesc}
-              </div>
-              {perm === "denied" && (
-                <div className="text-xs text-red-500 mt-1">
-                  {dict.settingsNotifications.blocked}
+              </Card>
+              <Card className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    Webプッシュ通知
+                  </p>
+                  <Switch
+                    checked={pushOn}
+                    onCheckedChange={togglePush}
+                    disabled={loading || perm === "denied"}
+                  />
                 </div>
-              )}
-            </div>
-            <Switch
-              checked={pushOn}
-              onCheckedChange={togglePush}
-              disabled={loading || perm === "denied"}
-            />
+                <div className="flex items-center justify-end">
+                  <Dialog
+                    open={isOpenWebPushModal}
+                    onOpenChange={setIsOpenWebPushModal}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        disabled={!pushOn || perm === "denied"}
+                      >
+                        通知端末の設定
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>通知端末の設定</DialogTitle>
+                        <DialogDescription>
+                          Web
+                          Push通知設定をしている各端末で、通知を受け取るかどうかを設定できます。
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-4">
+                        {devices.map((d) => (
+                          <Card key={d.id} className="p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <small className="text-sm leading-none font-medium">
+                                {d.name || "Web Push"}
+                              </small>
+                              <Switch
+                                checked={!!d.is_enabled}
+                                onCheckedChange={(v) => toggleDevice(d.id, v)}
+                              />
+                            </div>
+                          </Card>
+                        ))}
+                        {devices.length === 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            この端末で一度Webプッシュ通知を有効化すると表示されます。
+                          </div>
+                        )}
+                      </div>
+                      <DialogFooter className="sm:justify-start">
+                        <DialogClose asChild>
+                          <Button type="button" variant="secondary">
+                            閉じる
+                          </Button>
+                        </DialogClose>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="item-2">
+            <AccordionTrigger>通知の種類</AccordionTrigger>
+            <AccordionContent className="flex flex-col gap-4 text-balance">
+              <Card className="p-4 space-y-3">
+                {/* 期限が近い課題 */}
+                <div className="flex items-center justify-between">
+                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    期限が近い課題
+                  </p>
+                  <Switch
+                    checked={typeTask}
+                    onCheckedChange={(v) => {
+                      setTypeTask(v);
+                      toggleType("TASK", v);
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="ml-1 leading-7 [&:not(:first-child)]:mt-6">
+                    朝の通知
+                  </p>
+                  <Switch
+                    checked={typeMorning}
+                    disabled={!typeTask}
+                    onCheckedChange={(v) => {
+                      setTypeMorning(v);
+                      toggleType("TASK_MORNING", v);
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="ml-1 leading-7 [&:not(:first-child)]:mt-6">
+                    夕方の通知
+                  </p>
+                  <Switch
+                    checked={typeEvening}
+                    disabled={!typeTask}
+                    onCheckedChange={(v) => {
+                      setTypeEvening(v);
+                      toggleType("TASK_EVENING", v);
+                    }}
+                  />
+                </div>
+              </Card>
+              <Card className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    日直のお知らせ
+                  </p>
+                  <Switch
+                    checked={typeDayShift}
+                    onCheckedChange={(v) => {
+                      setTypeDayShift(v);
+                      toggleType("DAYSHIFT", v);
+                    }}
+                  />
+                </div>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+        <Alert>
+          <AlertCircleIcon />
+          <AlertTitle>
+            通知を受け取るには、通知方法と通知の種類の両方が有効である必要があります。
+          </AlertTitle>
+          <AlertDescription>
+            いずれかが無効の場合、配信されません。また、Webプッシュ通知を有効にするには、ブラウザの通知許可設定で「許可」にする必要があります。
+          </AlertDescription>
+        </Alert>
+        <Accordion type="multiple" className="w-full">
+          <AccordionItem value="item-3">
+            <AccordionTrigger>その他の設定</AccordionTrigger>
+            <AccordionContent className="flex flex-col gap-4 text-balance">
+              <Card className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    テスト通知
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => testPush()}
+                    disabled={!pushOn || loading}
+                  >
+                    {dict.settingsNotifications.sendTest}
+                  </Button>
+                </div>
+              </Card>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+        {perm === "denied" && (
+          <div className="text-xs text-red-500 mt-1">
+            {dict.settingsNotifications.blocked}
           </div>
-          <div className="flex gap-2 justify-end">
-            <Button
-              variant="secondary"
-              onClick={testPush}
-              disabled={!pushOn || loading}
-            >
-              {dict.settingsNotifications.sendTest}
-            </Button>
-          </div>
-        </Card>
+        )}
       </div>
     </SettingsShell>
   );

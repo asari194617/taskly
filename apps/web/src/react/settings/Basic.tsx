@@ -122,7 +122,7 @@ export default function SettingsBasic() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="text-xl font-semibold">{dict.settingsBasic.heading}</h1>
+        <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">{dict.settingsBasic.heading}</h1>
         <Card className="p-4 space-y-3">
           <div className="space-y-1">
             <Label htmlFor="email">{dict.settingsBasic.email}</Label>

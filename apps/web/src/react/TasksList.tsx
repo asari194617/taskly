@@ -94,6 +94,7 @@ type Task = {
   is_require_hand_in?: boolean;
   self_check_required?: boolean;
   is_completed?: boolean;
+  is_hidden?: boolean;
 };
 type Subject = { id: number; name_ja: string; name_en?: string | null };
 
@@ -238,7 +239,7 @@ export default function TasksList() {
     (async () => {
       try {
         const t = await gql<{ tasks: { items: Task[] } }>(
-          `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required is_completed } } }`,
+          `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required is_completed is_hidden } } }`,
           { q: q || undefined },
           { signal: ac.signal }
         );
@@ -1370,6 +1371,9 @@ export default function TasksList() {
                                   )}
                                   {t.self_check_required && (
                                     <Badge>{dict.tasks.selfCheckBadge}</Badge>
+                                  )}
+                                  {(isAdmin || isManager) && t.is_hidden && (
+                                    <Badge variant="outline">非表示</Badge>
                                   )}
                                 </div>
                                 <div className="font-medium">{t.title}</div>
