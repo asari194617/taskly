@@ -123,7 +123,7 @@ export async function createApp(pool: DBPool) {
   app.get("/users/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
     const [rows] = await pool.query(
-      "SELECT id, email, display_name, is_deleted, is_day_shift_active, notification_lang, is_registered, is_agreed_policies, created_at FROM users WHERE id = ? LIMIT 1",
+      "SELECT id, email, display_name, is_deleted, notification_lang, is_registered, is_agreed_policies, created_at FROM users WHERE id = ? LIMIT 1",
       [id]
     );
     if (!rows || rows.length === 0)
@@ -146,8 +146,6 @@ export async function createApp(pool: DBPool) {
     maybe("display_name");
     if (body.is_deleted !== undefined)
       up("is_deleted", body.is_deleted ? 1 : 0);
-    if (body.is_day_shift_active !== undefined)
-      up("is_day_shift_active", body.is_day_shift_active ? 1 : 0);
     maybe("notification_lang");
     if (body.is_registered !== undefined)
       up("is_registered", body.is_registered ? 1 : 0);

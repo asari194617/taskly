@@ -1,14 +1,6 @@
 -- Manual sync migration to align schema with hand-written migrations
 -- Safe conditional changes using information_schema
 
--- users: drop is_day_shift_active; add updated_at with ON UPDATE
-DO BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_day_shift_active') THEN
-    SET @sql := 'ALTER TABLE users DROP COLUMN is_day_shift_active';
-    PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-  END IF;
-END;
-
 DO BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'updated_at') THEN
     SET @sql := 'ALTER TABLE users ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';

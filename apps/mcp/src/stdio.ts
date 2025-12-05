@@ -141,7 +141,6 @@ const tools: Record<
           properties: {
             display_name: { type: "string" },
             is_deleted: { type: "boolean" },
-            is_day_shift_active: { type: "boolean" },
             notification_lang: { type: "string" },
             is_registered: { type: "boolean" },
             is_agreed_policies: { type: "boolean" },
