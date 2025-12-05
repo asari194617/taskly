@@ -6,9 +6,9 @@ services:
       - ../.env
     environment: # DB接続情報は、コンテナ内でのポートとコンテナ外のポートが異なるため、共通化せずに指定
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
-      MYSQL_USER: ${MYSQL_USER:-taskly}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
       - "3060:3306" # MySQL
     command:
@@ -69,9 +69,9 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
-      MYSQL_USER: ${MYSQL_USER:-taskly}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
   # web and mcp can be added later
   mcp:
     build: ../apps/mcp
@@ -107,14 +107,14 @@ services:
       # MySQL connection for DAGs
       MYSQL_HOST: db
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
-      MYSQL_USER: ${MYSQL_USER:-taskly}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DB_HOST: db
       DB_PORT: 3306
-      DB_NAME: ${MYSQL_DATABASE:-taskly}
-      DB_USER: ${MYSQL_USER:-taskly}
-      DB_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
       DD_TRACE_AGENT_PORT: "8126"
@@ -170,14 +170,14 @@ services:
       # MySQL connection for DAGs
       MYSQL_HOST: db
       MYSQL_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
-      MYSQL_USER: ${MYSQL_USER:-taskly}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DB_HOST: db
       DB_PORT: 3306
-      DB_NAME: ${MYSQL_DATABASE:-taskly}
-      DB_USER: ${MYSQL_USER:-taskly}
-      DB_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
       DD_TRACE_AGENT_PORT: "8126"

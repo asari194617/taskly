@@ -48,7 +48,7 @@ batches/que-manager/que-manager
 batches/notifications/que-manager/que-manager
 batches/notifications/delivery-channels/discord/discord
 batches/notifications/delivery-channels/email/email
-batches/notifications/delivery-channels/webpush/webpush
+batches/notifications/delivery-channels/web-push/web-push
 
 apps/dmarc-processor/dmarc-processor
 apps/server/server
