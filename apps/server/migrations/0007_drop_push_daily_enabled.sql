@@ -1,2 +1,2 @@
--- Drop obsolete push_daily_enabled column if it exists
-ALTER TABLE users DROP COLUMN IF EXISTS push_daily_enabled;
+-- Drop obsolete push_daily_enabled column; executor ignores 'unknown column' errors for idempotency
+ALTER TABLE users DROP COLUMN push_daily_enabled;

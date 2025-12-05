@@ -5,6 +5,11 @@
 -- 3. Convert type column to ENUM
 -- 4. Add name_en to subjects for English translations
 
+-- Ensure the type column exists before mapping
+-- Add type column if missing (runner ignores duplicate column errors)
+ALTER TABLE tasks
+  ADD COLUMN type VARCHAR(32) NOT NULL DEFAULT 'OTHER';
+
 -- Step 1: Map common localized strings to ENUM values
 -- English mappings
 UPDATE tasks SET type = 'ONLINE' WHERE type IN ('Online', 'online', 'ONLINE');
@@ -31,5 +36,6 @@ ALTER TABLE tasks
   MODIFY COLUMN type ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER') NOT NULL DEFAULT 'OTHER';
 
 -- Step 4: Add name_en column to subjects for English translations
+-- Add subjects.name_en if missing (runner ignores duplicate column/index)
 ALTER TABLE subjects 
-  ADD COLUMN IF NOT EXISTS name_en VARCHAR(255) NULL AFTER title;
+  ADD COLUMN name_en VARCHAR(255) NULL AFTER title;

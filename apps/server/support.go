@@ -20,6 +20,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -274,11 +275,180 @@ func ensureTasksSchema() {
 	// No destructive changes; rely on migrations.
 }
 
-// runMigrations executes SQL migrations from migrations folder if not already applied
-// Deprecated: runtime migrations removed. Use SQL migrations only.
 func runMigrations() {
-	// No runtime migrations; managed externally via SQL and DB tooling.
-	return
+	// Manual SQL migrations runner (no AutoMigrate). Applies .sql files once.
+	// 1) Locate migrations directory
+	dir := strings.TrimSpace(env("MIGRATIONS_DIR", ""))
+	if dir == "" {
+		// Try common locations for local/dev and container runtimes
+		candidates := []string{
+			"./migrations",
+			"/app/migrations",
+			"../apps/server/migrations",
+		}
+		for _, c := range candidates {
+			if st, err := os.Stat(c); err == nil && st.IsDir() {
+				dir = c
+				break
+			}
+		}
+	}
+	if dir == "" {
+		log.Printf("migrations: directory not found; skipping")
+		return
+	}
+
+	// 2) Ensure migrations table exists
+	if err := DB.Exec(`CREATE TABLE IF NOT EXISTS migrations (
+		id BIGINT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL UNIQUE,
+		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error; err != nil {
+		log.Printf("migrations: ensure table failed: %v", err)
+		return
+	}
+
+	// 3) Load applied migration names
+	type row struct{ Name string }
+	var applied []row
+	_ = DB.Raw("SELECT name FROM migrations").Scan(&applied).Error
+	appliedSet := map[string]struct{}{}
+	for _, r := range applied {
+		appliedSet[r.Name] = struct{}{}
+	}
+
+	// 4) Read .sql files sorted
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		log.Printf("migrations: readdir %s: %v", dir, err)
+		return
+	}
+	// Simple lexicographic order is fine (0001_.., 0002_..)
+	// filepath is needed for absolute join
+	var files []string
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		lower := strings.ToLower(name)
+		if strings.HasSuffix(lower, ".sql") {
+			files = append(files, filepath.Join(dir, name))
+		}
+	}
+	if len(files) == 0 {
+		return
+	}
+	// Sort for deterministic order
+	// (os.ReadDir returns sorted by filename in Go 1.20+, but be explicit)
+	for i := 0; i < len(files)-1; i++ {
+		for j := i + 1; j < len(files); j++ {
+			if files[j] < files[i] {
+				files[i], files[j] = files[j], files[i]
+			}
+		}
+	}
+
+	// 5) Apply pending files
+	for _, fp := range files {
+		name := filepath.Base(fp)
+		if _, ok := appliedSet[name]; ok {
+			continue
+		}
+		// Pre-flight: ensure base tables exist before applying first migration to avoid FK create order issues
+		if name == "0001_init.sql" {
+			// Create users and subjects upfront if missing
+			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS users (
+			  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			  email VARCHAR(255) NOT NULL UNIQUE,
+			  display_name VARCHAR(255),
+			  hashed_password VARCHAR(255) NULL,
+			  is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
+			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS subjects (
+			  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			  title VARCHAR(255) NOT NULL,
+			  expires_at DATETIME,
+			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
+		}
+		b, err := os.ReadFile(fp)
+		if err != nil {
+			log.Printf("migrations: read %s: %v", name, err)
+			return
+		}
+		if err := execSQLBatch(string(b)); err != nil {
+			log.Printf("migrations: apply %s failed: %v", name, err)
+			return
+		}
+		if err := DB.Exec("INSERT INTO migrations(name) VALUES(?)", name).Error; err != nil {
+			log.Printf("migrations: record %s failed: %v", name, err)
+			return
+		}
+		log.Printf("migrations: applied %s", name)
+	}
+}
+
+// execSQLBatch splits a SQL file by ';' and executes statements sequentially.
+// This is a minimal splitter suited for our simple DDL/DML migrations without procedures.
+func execSQLBatch(sqlText string) error {
+	// Normalize newlines and remove BOM if present
+	s := strings.TrimSpace(sqlText)
+	if strings.HasPrefix(s, "\uFEFF") {
+		s = strings.TrimPrefix(s, "\uFEFF")
+	}
+	// Remove single-line comments starting with --
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, "--") {
+			lines[i] = ""
+		}
+	}
+	s = strings.Join(lines, "\n")
+	// Remove simple block comments /* ... */ (non-nested)
+	for {
+		start := strings.Index(s, "/*")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start+2:], "*/")
+		if end < 0 {
+			break
+		}
+		s = s[:start] + s[start+2+end+2:]
+	}
+	parts := strings.Split(s, ";")
+	// Disable FK checks during batch to allow creating tables out of order
+	if err := DB.Exec("SET FOREIGN_KEY_CHECKS=0").Error; err != nil {
+		return err
+	}
+	for _, p := range parts {
+		stmt := strings.TrimSpace(p)
+		if stmt == "" {
+			continue
+		}
+		if err := DB.Exec(stmt).Error; err != nil {
+			msg := strings.ToLower(err.Error())
+			// Ignore idempotent errors for already-existing or already-removed schema elements
+			// - duplicate column (1060)
+			// - duplicate key/index (1061)
+			// - drop unknown column/key (1091)
+			// - fulltext index exists (treated as duplicate key)
+			// - unknown table when dropping or altering (1051)
+			if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "errno: 1060") || strings.Contains(msg, "duplicate key") || strings.Contains(msg, "errno: 1061") || strings.Contains(msg, "unknown column") || strings.Contains(msg, "errno: 1091") || strings.Contains(msg, "can't drop") || strings.Contains(msg, "unknown table") || strings.Contains(msg, "errno: 1051") {
+				continue
+			}
+			// Re-enable before returning
+			_ = DB.Exec("SET FOREIGN_KEY_CHECKS=1").Error
+			return err
+		}
+	}
+	if err := DB.Exec("SET FOREIGN_KEY_CHECKS=1").Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func ptrTime(t time.Time) *time.Time { return &t }

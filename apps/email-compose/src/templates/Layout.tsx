@@ -35,7 +35,8 @@ export function Layout({
         <div className="container">
           <div className="card">{children}</div>
           <div className="footer">
-            This is an automated message. Please do not reply.
+            <img src="https://cdn.taskly.iy0306.com/assets/logo.jpg" alt="ロゴ" />
+            これは自動送信されたメールです。監視されていないメールボックスのため、返信しないでください。
           </div>
         </div>
       </body>

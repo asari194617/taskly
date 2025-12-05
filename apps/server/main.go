@@ -76,14 +76,8 @@ func main() {
 	// Run pending migrations first (includes timestamp sanitize/defaults)
 	runMigrations()
 
-	// Auto-migrate core models (create missing tables/columns after migrations)
-	_ = DB.AutoMigrate(&Session{}, &RoleUser{}, &Permission{}, &Block{}, &APIKey{}, &Subject{}, &Task{}, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &IcalKey{}, &DayShiftCyclePair{}, &MCP{}, &Log{}, &WebPushSubscription{}, &WebPushVAPID{}, &Migration{}, &FlaggedContent{}, &UserReport{}, &NotificationTypePref{}, &NotificationDevice{})
-	// Ensure new group-based day shift schema exists even if SQL migrations are not applied
-	ensureDayShiftGroupSchemaAndBackfill()
-	// Ensure legacy tasks.deadline column is DATE (not DATETIME)
-	ensureDeadlineDateColumn()
-	// If tasks is empty and schema mismatches new enums/date, drop and recreate safely
-	ensureTasksSchema()
+	// AutoMigrate is disabled per policy; rely on SQL migrations only.
+	// Ensure only read-only helpers after runMigrations.
 
 	// Sentry initialization (optional)
 	if dsn := env("SENTRY_DSN", ""); dsn != "" {

@@ -41,6 +41,27 @@ export default function MailCode() {
     const update = () => setRemain(secondsUntilResend(email));
     update();
     const t = setInterval(update, 1000);
+    // Auto-send code on first render if allowed (no cooldown and not already sent)
+    (async () => {
+      const canSendNow = secondsUntilResend(email) <= 0 && !st?.ok;
+      if (email && canSendNow) {
+        try {
+          setSending(true);
+          setMessage(null);
+          const r = await requestMailCode(email);
+          if (r.ok) {
+            setMessage("確認コードを送信しました。メールをご確認ください。");
+            setRemain(DEFAULT_RESEND_COOLDOWN_SEC);
+          } else if (r.error) {
+            setMessage(r.error);
+          }
+        } catch (e: any) {
+          setMessage(e.message || "エラーが発生しました");
+        } finally {
+          setSending(false);
+        }
+      }
+    })();
     return () => clearInterval(t);
   }, [email]);
 

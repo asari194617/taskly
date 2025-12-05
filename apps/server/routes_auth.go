@@ -387,8 +387,6 @@ func registerAuthRoutes(app *fiber.App) {
 		if !u.IsRegistered {
 			_ = DB.Model(&User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
 		}
-		// Optionally record DB session (hashed)
-		DB.AutoMigrate(&Session{})
 		// Store hash of token and associated user id for DB-fallback validation
 		DB.Create(&Session{UserID: u.ID, ClientPlatform: plat, HashedToken: sha256Hex([]byte(token)), ExpiresAt: ptrTime(time.Now().Add(ttl))})
 

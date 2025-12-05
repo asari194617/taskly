@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   deadline DATE,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (added_user_id) REFERENCES users(id),
-  FOREIGN KEY (subject_id) REFERENCES subjects(id)
+  INDEX idx_tasks_added_user_id (added_user_id),
+  INDEX idx_tasks_subject_id (subject_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS ical_keys (

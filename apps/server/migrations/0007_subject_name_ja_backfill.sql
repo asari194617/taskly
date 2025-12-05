@@ -1,7 +1,8 @@
 -- Add name_ja to subjects, backfill from legacy title, enforce NOT NULL
 
+-- Executor ignores duplicate column errors for idempotency
 ALTER TABLE subjects
-  ADD COLUMN IF NOT EXISTS name_ja VARCHAR(255) NULL;
+  ADD COLUMN name_ja VARCHAR(255) NULL;
 
 -- Backfill from legacy title if present
 UPDATE subjects

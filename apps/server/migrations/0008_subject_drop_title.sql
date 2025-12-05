@@ -7,4 +7,5 @@ UPDATE subjects
     AND title IS NOT NULL AND title <> '';
 
 -- Drop legacy column if exists
-ALTER TABLE subjects DROP COLUMN IF EXISTS title;
+-- Executor ignores unknown column errors for idempotency
+ALTER TABLE subjects DROP COLUMN title;

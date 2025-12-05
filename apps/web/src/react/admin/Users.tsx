@@ -1059,7 +1059,7 @@ export default function AdminUsers() {
 
       {isMobile ? (
         <Drawer open={openEdit} onOpenChange={setOpenEdit}>
-          <DrawerContent>
+          <DrawerContent onOpenAutoFocus={(e) => e.preventDefault()}>
             <DrawerHeader className="text-left">
               <DrawerTitle>ユーザー編集</DrawerTitle>
             </DrawerHeader>
@@ -1073,7 +1073,7 @@ export default function AdminUsers() {
         </Drawer>
       ) : (
         <Dialog open={openEdit} onOpenChange={setOpenEdit}>
-          <DialogContent>
+          <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>ユーザー編集</DialogTitle>
             </DialogHeader>
@@ -1088,7 +1088,7 @@ export default function AdminUsers() {
       {/* Notification Settings: Responsive Drawer+Dialog */}
       {isMobile ? (
         <Drawer open={openNotif} onOpenChange={setOpenNotif}>
-          <DrawerContent>
+          <DrawerContent onOpenAutoFocus={(e) => e.preventDefault()}>
             <DrawerHeader className="text-left">
               <DrawerTitle>通知設定</DrawerTitle>
               <DrawerDescription>詳細設定とデバイス管理</DrawerDescription>
@@ -1103,7 +1103,7 @@ export default function AdminUsers() {
         </Drawer>
       ) : (
         <Dialog open={openNotif} onOpenChange={setOpenNotif}>
-          <DialogContent>
+          <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>通知設定</DialogTitle>
             </DialogHeader>
@@ -1116,7 +1116,7 @@ export default function AdminUsers() {
       )}
 
       <Dialog open={openDelete} onOpenChange={setOpenDelete}>
-        <DialogContent>
+        <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>ユーザー削除</DialogTitle>
           </DialogHeader>
@@ -1162,7 +1162,7 @@ export default function AdminUsers() {
 
       {/* Custom Role Add Dialog */}
       <Dialog open={openCustomAdd} onOpenChange={setOpenCustomAdd}>
-        <DialogContent>
+        <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>カスタムロールを追加</DialogTitle>
           </DialogHeader>
@@ -1187,7 +1187,7 @@ export default function AdminUsers() {
 
       {/* Custom Role Remove Dialog */}
       <Dialog open={openCustomRemove} onOpenChange={setOpenCustomRemove}>
-        <DialogContent>
+        <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>カスタムロールを削除</DialogTitle>
           </DialogHeader>
@@ -1214,7 +1214,7 @@ export default function AdminUsers() {
 
       {/* Block User Dialog */}
       <Dialog open={openBlock} onOpenChange={setOpenBlock}>
-        <DialogContent>
+        <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>ユーザーをブロック</DialogTitle>
           </DialogHeader>

@@ -64,14 +64,8 @@ const canonical = typeof Astro.url !== 'undefined' ? Astro.url.toString() : unde
           height: 1.5rem;
           width: auto;
         }
-        .logo>path {
-          fill: black;
-        }
-        @media (prefers-color-scheme: dark) {
-          .logo>path {
-            fill: white;
-          }
-        }
+        .logo>path { fill: black; }
+        .dark .logo>path { fill: white; }
       </style>
       <a href="/" class="font-semibold">
         <svg width="558" height="160" viewBox="0 0 558 160" fill="none" xmlns="http://www.w3.org/2000/svg" class="logo">

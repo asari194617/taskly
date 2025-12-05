@@ -1,7 +1,8 @@
 -- Add moderation support: is_hidden on tasks, flagged_contents and user_reports tables
 
+-- Executor ignores duplicate column errors
 ALTER TABLE tasks
-  ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN NOT NULL DEFAULT 0;
+  ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS flagged_contents (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
