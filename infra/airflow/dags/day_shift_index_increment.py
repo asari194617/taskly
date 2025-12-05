@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import requests
 import icalendar
 import os
+from typing import Optional, List, Dict
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -125,6 +126,25 @@ def get_current_cycle_id_for_date(d: datetime) -> int:
     finally:
         conn.close()
 
+
+def discord_embed(title: str, description: Optional[str] = None, fields: Optional[List[Dict]] = None, color: int = 0x3498DB):
+    url = DISCORD_WEBHOOK_URL
+    if not url:
+        return
+    payload = {"embeds": [{
+        "title": title,
+        "color": color,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }]}
+    if description:
+        payload["embeds"][0]["description"] = description
+    if fields:
+        payload["embeds"][0]["fields"] = fields
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception:
+        pass
+
 def read_current_cycle_config() -> int:
     conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
     try:
@@ -153,19 +173,69 @@ def write_current_cycle_config(cid: int) -> None:
 
 def increment_if_needed(**context):
     now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    before = read_index()
+
     # Batch runs at 03:00; check current day status
     if is_holiday(now):
+        discord_embed(
+            title="Day Shift Index Skipped",
+            description="本日は休日のためインクリメントを行いませんでした。",
+            fields=[
+                {"name": "Date", "value": today_str, "inline": True},
+                {"name": "Before", "value": str(before), "inline": True},
+                {"name": "After", "value": str(before), "inline": True},
+                {"name": "Reason", "value": "Holiday/Weekend", "inline": False},
+            ],
+            color=0xE67E22,
+        )
         return
     if is_day_shift_off(now):
+        discord_embed(
+            title="Day Shift Index Skipped",
+            description="学校カレンダーにより本日は日直業務を行わないためスキップしました。",
+            fields=[
+                {"name": "Date", "value": today_str, "inline": True},
+                {"name": "Before", "value": str(before), "inline": True},
+                {"name": "After", "value": str(before), "inline": True},
+                {"name": "Reason", "value": "DAY_SHIFT_OFF (School Calendar)", "inline": False},
+            ],
+            color=0xE67E22,
+        )
         return
+
     # Reset index if cycle changed
     db_cid = get_current_cycle_id_for_date(now)
     cfg_cid = read_current_cycle_config()
     if db_cid != 0 and db_cid != cfg_cid:
         write_current_cycle_config(db_cid)
         write_index(0)
-    cur = read_index()
-    write_index(cur + 1)
+        discord_embed(
+            title="Day Shift Cycle Changed",
+            description="有効なサイクルの変更を検知し、インデックスをリセットしました。",
+            fields=[
+                {"name": "Date", "value": today_str, "inline": True},
+                {"name": "Old Cycle ID", "value": str(cfg_cid), "inline": True},
+                {"name": "New Cycle ID", "value": str(db_cid), "inline": True},
+                {"name": "Index Reset", "value": f"{before} → 0", "inline": False},
+            ],
+            color=0x9B59B6,
+        )
+        return
+
+    after = before + 1
+    write_index(after)
+    discord_embed(
+        title="Day Shift Index Incremented",
+        description="日直インデックスをインクリメントしました。",
+        fields=[
+            {"name": "Date", "value": today_str, "inline": True},
+            {"name": "Cycle ID", "value": str(db_cid or cfg_cid or 0), "inline": True},
+            {"name": "Before", "value": str(before), "inline": True},
+            {"name": "After", "value": str(after), "inline": True},
+        ],
+        color=0x2ECC71,
+    )
 
 
 def send_830_notifications(**context):

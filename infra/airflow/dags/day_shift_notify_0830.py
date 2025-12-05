@@ -1,5 +1,6 @@
 from datetime import datetime, date
 import os
+import requests
 import pymysql
 
 from airflow import DAG
@@ -54,7 +55,21 @@ def notify_day_shift(**context):
                 if row:
                     cur_cid = int(row["id"])  # use detected cycle but do not persist here
         if cur_cid == 0:
-            print("Skip: no active cycle")
+            # No active cycle; send diagnostic embed and return
+            hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+            if hook:
+                requests.post(hook, json={
+                    "embeds": [{
+                        "title": "Day Shift Notification Skipped",
+                        "description": "有効な日直サイクルが存在しないため、本日の通知をスキップしました。",
+                        "color": 0xE67E22,
+                        "fields": [
+                            {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                            {"name": "Reason", "value": "No active cycle", "inline": False},
+                        ],
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }]
+                }, timeout=5)
             return
 
         # Load groups for the cycle ordered by position asc, id asc
@@ -73,7 +88,21 @@ def notify_day_shift(**context):
                 )
                 pairs = cur.fetchall() or []
             if not pairs:
-                print("Skip: no groups/pairs configured")
+                hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+                if hook:
+                    requests.post(hook, json={
+                        "embeds": [{
+                            "title": "Day Shift Notification Skipped",
+                            "description": "グループ/ペアが設定されていないため、本日の通知をスキップしました。",
+                            "color": 0xE67E22,
+                            "fields": [
+                                {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                                {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
+                                {"name": "Reason", "value": "No groups/pairs", "inline": False},
+                            ],
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        }]
+                    }, timeout=5)
                 return
             # Build users list from pairs
             target_users = [p.get("user1_id"), p.get("user2_id")] if pairs else []
@@ -90,7 +119,21 @@ def notify_day_shift(**context):
             target_users = [int(m["user_id"]) for m in members]
 
         if not target_users:
-            print("Skip: empty members")
+            hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+            if hook:
+                requests.post(hook, json={
+                    "embeds": [{
+                        "title": "Day Shift Notification Skipped",
+                        "description": "本日の担当メンバーが空のため、通知をスキップしました。",
+                        "color": 0xE67E22,
+                        "fields": [
+                            {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                            {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
+                            {"name": "Reason", "value": "Empty group members", "inline": False},
+                        ],
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }]
+                }, timeout=5)
             return
 
         # Resolve user emails and check notification settings (default ON)
@@ -124,7 +167,21 @@ def notify_day_shift(**context):
                 enabled_users.append(u)
         users = enabled_users
         if not users:
-            print("Skip: users not found")
+            hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+            if hook:
+                requests.post(hook, json={
+                    "embeds": [{
+                        "title": "Day Shift Notification Skipped",
+                        "description": "通知対象のユーザーが見つからないため、通知をスキップしました。",
+                        "color": 0xE67E22,
+                        "fields": [
+                            {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                            {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
+                            {"name": "Reason", "value": "No eligible users", "inline": False},
+                        ],
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }]
+                }, timeout=5)
             return
 
         # Compose and send email via SMTP settings in env (simple direct send)
@@ -133,7 +190,28 @@ def notify_day_shift(**context):
         names = ", ".join(u.get("display_name") or u.get("email") for u in users)
         body = f"本日({today.strftime('%Y-%m-%d')})の日直: {names}"
         print(body)
-        # TODO: integrate with notifications_queue or direct SMTP send
+        # Discord embeds: report notified users
+        hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+        if hook:
+            fields = [
+                {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
+                {"name": "Users", "value": names or "(none)", "inline": False},
+                {"name": "Count", "value": str(len(users)), "inline": True},
+            ]
+            try:
+                requests.post(hook, json={
+                    "embeds": [{
+                        "title": "Day Shift Notified",
+                        "description": subject,
+                        "color": 0x3498DB,
+                        "fields": fields,
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }]
+                }, timeout=5)
+            except Exception:
+                pass
+        # TODO: integrate with notifications_queue or direct SMTP/WebPush send
     finally:
         try:
             conn.close()

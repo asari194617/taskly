@@ -104,6 +104,17 @@ services:
       AIRFLOW__WEBSERVER__WEB_SERVER_HOST: 0.0.0.0
       AIRFLOW__WEBSERVER__BASE_URL: https://airflow-taskly.iy0306.com
       AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
+      # MySQL connection for DAGs
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
+      MYSQL_USER: ${MYSQL_USER:-taskly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-taskly}
+      DB_USER: ${MYSQL_USER:-taskly}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
       DD_TRACE_AGENT_PORT: "8126"
@@ -122,7 +133,7 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-webserver.pid; (airflow db init || airflow db upgrade || true); exec airflow webserver",
+        "rm -f /opt/airflow/airflow-webserver.pid; (airflow db init || airflow db upgrade || true); airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow webserver",
       ]
   email-compose:
     build: ../apps/email-compose
@@ -156,6 +167,17 @@ services:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      # MySQL connection for DAGs
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-taskly}
+      MYSQL_USER: ${MYSQL_USER:-taskly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-taskly}
+      DB_USER: ${MYSQL_USER:-taskly}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-taskly_password}
       # Datadog APM and Sentry config (enable via env file or override here)
       DD_SERVICE: taskly-airflow
       DD_TRACE_AGENT_PORT: "8126"
@@ -172,7 +194,7 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-scheduler.pid; (airflow db init || airflow db upgrade || true); exec airflow scheduler",
+        "rm -f /opt/airflow/airflow-scheduler.pid; (airflow db init || airflow db upgrade || true); airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow scheduler",
       ]
 volumes:
   db-data:

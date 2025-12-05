@@ -38,4 +38,6 @@ ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/co
 RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     sentry-sdk \
     ddtrace \
-    apache-airflow-providers-discord
+    apache-airflow-providers-discord \
+    pymysql \
+    icalendar
