@@ -14,18 +14,18 @@ import (
 )
 
 type Task struct {
-	ID                uint
-	AddedUserID       uint
-	SubjectID         uint
-	SubjectName       string
-	Type              string
-	Title             string
-	Description       *string
-	Deadline          time.Time
-	DeadlineSince     string
-	DeadlineUntil     string
-	IsRequireHandIn   bool
-	SelfCheckRequired bool
+	ID                  uint
+	AddedUserID         uint
+	SubjectID           uint
+	SubjectName         string
+	Type                string
+	Title               string
+	Description         *string
+	Deadline            time.Time
+	DeadlineSince       string
+	DeadlineUntil       string
+	IsRequireHandIn     bool
+	IsSelfCheckRequired bool
 }
 
 type userDevicePrefs struct{ Email, WebPush bool }
@@ -153,7 +153,7 @@ func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	end := time.Date(now.Year(), now.Month(), now.Day()+2, 0, 0, 0, 0, now.Location())
 	rows, err := db.Query(
-		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.self_check_required "+
+		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.is_self_check_required "+
 			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline BETWEEN ? AND ? ORDER BY t.deadline ASC",
 		start, end,
 	)
@@ -165,7 +165,7 @@ func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
 	for rows.Next() {
 		var t Task
 		var desc sql.NullString
-		if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.SelfCheckRequired); err != nil {
+		if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.IsSelfCheckRequired); err != nil {
 			continue
 		}
 		if desc.Valid {
@@ -359,7 +359,7 @@ func buildBadges(t Task) []string {
 	if t.IsRequireHandIn {
 		out = append(out, "提出必須")
 	}
-	if t.SelfCheckRequired {
+	if t.IsSelfCheckRequired {
 		out = append(out, "自己採点")
 	}
 	return out

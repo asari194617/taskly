@@ -37,7 +37,7 @@ components:
           enum: [ONLINE, FACE_TO_FACE, QUIZ, PRESENTATION, SELF_STUDY, OTHER]
         is_require_hand_in:
           type: boolean
-        self_check_required:
+        is_self_check_required:
           type: boolean
         deadline:
           type: string
@@ -121,7 +121,7 @@ paths:
                 description: { type: string, nullable: true }
                 type: { type: string }
                 is_require_hand_in: { type: boolean }
-                self_check_required: { type: boolean }
+                is_self_check_required: { type: boolean }
                 deadline: { type: string, format: date }
                 deadline_since: { type: string }
                 deadline_until: { type: string }
@@ -153,7 +153,7 @@ paths:
                 description: { type: string, nullable: true }
                 type: { type: string, nullable: true }
                 is_require_hand_in: { type: boolean, nullable: true }
-                self_check_required: { type: boolean, nullable: true }
+                is_self_check_required: { type: boolean, nullable: true }
                 deadline: { type: string, format: date, nullable: true }
                 deadline_since: { type: string, nullable: true }
                 deadline_until: { type: string, nullable: true }

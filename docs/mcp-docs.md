@@ -7,7 +7,7 @@
 MCP stdio ブリッジ経由で以下のツールが利用できます。
 
 - tasks_list: { limit?, offset?, search? }
-- tasks_create: { title, subject_id, deadline, description?, type?, is_require_hand_in?, self_check_required?, deadline_since?, deadline_until? }
+- tasks_create: { title, subject_id, deadline, description?, type?, is_require_hand_in?, is_self_check_required?, deadline_since?, deadline_until? }
 - tasks_update: { id, patch: {...} }
 - tasks_delete: { id }
 - user_get: { id }

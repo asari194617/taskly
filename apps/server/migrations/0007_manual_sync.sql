@@ -20,13 +20,13 @@ DO BEGIN
   END IF;
 END;
 
--- tasks: self_check_required boolean not null; deadline DATE; enums for since/until
+-- tasks: is_self_check_required boolean not null; deadline DATE; enums for since/until
 DO BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'self_check_required' AND DATA_TYPE <> 'tinyint') THEN
-    SET @sql := 'ALTER TABLE tasks MODIFY COLUMN self_check_required TINYINT(1) NOT NULL DEFAULT 0';
+  IF EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'is_self_check_required' AND DATA_TYPE <> 'tinyint') THEN
+    SET @sql := 'ALTER TABLE tasks MODIFY COLUMN is_self_check_required TINYINT(1) NOT NULL DEFAULT 0';
     PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-  ELSEIF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'self_check_required') THEN
-    SET @sql := 'ALTER TABLE tasks ADD COLUMN self_check_required TINYINT(1) NOT NULL DEFAULT 0 AFTER is_require_hand_in';
+  ELSEIF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'is_self_check_required') THEN
+    SET @sql := 'ALTER TABLE tasks ADD COLUMN is_self_check_required TINYINT(1) NOT NULL DEFAULT 0 AFTER is_require_hand_in';
     PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
   END IF;
 END;

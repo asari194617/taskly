@@ -1131,8 +1131,8 @@ func buildTaskUpdateMessageJa(before Task, after Task) string {
 		fmt.Fprintf(b, "・要提出: %s → %s\n", displayBoolJa(before.IsRequireHandIn), displayBoolJa(after.IsRequireHandIn))
 	}
 	// Self check
-	if before.SelfCheckRequired != after.SelfCheckRequired {
-		fmt.Fprintf(b, "・自己チェック: %s → %s\n", displayBoolJa(before.SelfCheckRequired), displayBoolJa(after.SelfCheckRequired))
+	if before.IsSelfCheckRequired != after.IsSelfCheckRequired {
+		fmt.Fprintf(b, "・自己チェック: %s → %s\n", displayBoolJa(before.IsSelfCheckRequired), displayBoolJa(after.IsSelfCheckRequired))
 	}
 	// Deadline date
 	if !before.Deadline.Equal(after.Deadline) {

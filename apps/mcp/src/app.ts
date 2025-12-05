@@ -49,7 +49,7 @@ export async function createApp(pool: DBPool) {
     );
     const offset = Math.max(Number((req.query as any)?.offset ?? 0), 0);
     let sql =
-      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks";
+      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks";
     const params: any[] = [];
     if (q) {
       sql += " WHERE title LIKE ? OR description LIKE ?";
@@ -65,7 +65,7 @@ export async function createApp(pool: DBPool) {
     const body = req.body as any;
     const userId = (req as any).userId as number;
     const [res] = await pool.execute(
-      `INSERT INTO tasks (added_user_id, title, subject_id, description, type, is_require_hand_in, self_check_required, deadline, deadline_since, deadline_until)
+      `INSERT INTO tasks (added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
@@ -74,7 +74,7 @@ export async function createApp(pool: DBPool) {
         body.description ?? null,
         body.type ?? "OTHER",
         body.is_require_hand_in ? 1 : 0,
-        body.self_check_required ? 1 : 0,
+        body.is_self_check_required ? 1 : 0,
         body.deadline,
         body.deadline_since ?? "NONE",
         body.deadline_until ?? "NONE",
@@ -101,8 +101,8 @@ export async function createApp(pool: DBPool) {
     maybe("type");
     if (body.is_require_hand_in !== undefined)
       up("is_require_hand_in", body.is_require_hand_in ? 1 : 0);
-    if (body.self_check_required !== undefined)
-      up("self_check_required", body.self_check_required ? 1 : 0);
+    if (body.is_self_check_required !== undefined)
+      up("is_self_check_required", body.is_self_check_required ? 1 : 0);
     maybe("deadline");
     maybe("deadline_since");
     maybe("deadline_until");

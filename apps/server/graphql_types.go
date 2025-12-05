@@ -123,20 +123,20 @@ func createGQLTypes() *gqlTypes {
 	taskType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Task",
 		Fields: graphql.Fields{
-			"id":                  &graphql.Field{Type: graphql.Int},
-			"title":               &graphql.Field{Type: graphql.String},
-			"subject_id":          &graphql.Field{Type: graphql.Int},
-			"description":         &graphql.Field{Type: graphql.String},
-			"type":                &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
-			"is_require_hand_in":  &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
-			"self_check_required": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
-			"deadline":            &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
-			"deadline_since":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
-			"deadline_until":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
-			"is_completed":        &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
-			"is_hidden":           &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
-			"created_at":          &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
-			"updated_at":          &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"id":                     &graphql.Field{Type: graphql.Int},
+			"title":                  &graphql.Field{Type: graphql.String},
+			"subject_id":             &graphql.Field{Type: graphql.Int},
+			"description":            &graphql.Field{Type: graphql.String},
+			"type":                   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"is_require_hand_in":     &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"is_self_check_required": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"deadline":               &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
+			"deadline_since":         &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
+			"deadline_until":         &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
+			"is_completed":           &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"is_hidden":              &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"created_at":             &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"updated_at":             &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 		},
 	})
 

@@ -92,7 +92,7 @@ type Task = {
   description?: string | null;
   type?: string | null;
   is_require_hand_in?: boolean;
-  self_check_required?: boolean;
+  is_self_check_required?: boolean;
   is_completed?: boolean;
   is_hidden?: boolean;
 };
@@ -239,7 +239,7 @@ export default function TasksList() {
     (async () => {
       try {
         const t = await gql<{ tasks: { items: Task[] } }>(
-          `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required is_completed is_hidden } } }`,
+          `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_completed is_hidden } } }`,
           { q: q || undefined },
           { signal: ac.signal }
         );
@@ -253,7 +253,7 @@ export default function TasksList() {
             const t2 = await gql<{
               tasks: { items: Omit<Task, "is_completed">[] };
             }>(
-              `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required } } }`,
+              `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required } } }`,
               { q: q || undefined },
               { signal: ac.signal }
             );
@@ -454,7 +454,7 @@ export default function TasksList() {
     try {
       const res = await gql<{ createTask: Task }>(
         `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
-          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in self_check_required }
+          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required }
         }`,
         {
           title: newTitle.trim(),
@@ -496,7 +496,7 @@ export default function TasksList() {
     setEditDate(t.deadline || "");
     setEditMeta(null);
     setEditRequire(!!t.is_require_hand_in);
-    setEditSelfCheck(!!t.self_check_required);
+    setEditSelfCheck(!!t.is_self_check_required);
     setEditType(t.type || "");
     setEditDesc(t.description || "");
   }
@@ -521,7 +521,7 @@ export default function TasksList() {
               deadline: editDate || null,
               // keep since/until in local state if needed (not shown here)
               is_require_hand_in: editRequire,
-              self_check_required: editSelfCheck,
+              is_self_check_required: editSelfCheck,
               type: editType,
               description: editDesc,
             }
@@ -531,7 +531,7 @@ export default function TasksList() {
     try {
       await gql<{ updateTask: Task }>(
         `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
-          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id }
+          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id }
         }`,
         {
           id,
@@ -1369,7 +1369,7 @@ export default function TasksList() {
                                       {dict.tasks.requireHandIn}
                                     </Badge>
                                   )}
-                                  {t.self_check_required && (
+                                  {t.is_self_check_required && (
                                     <Badge>{dict.tasks.selfCheckBadge}</Badge>
                                   )}
                                   {(isAdmin || isManager) && t.is_hidden && (

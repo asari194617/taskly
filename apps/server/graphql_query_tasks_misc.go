@@ -128,14 +128,14 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					outItems := make([]map[string]any, 0, len(items))
 					for _, it := range items {
 						out := map[string]any{
-							"id":                  it.ID,
-							"title":               it.Title,
-							"subject_id":          it.SubjectID,
-							"description":         it.Description,
-							"type":                it.Type,
-							"is_require_hand_in":  it.IsRequireHandIn,
-							"self_check_required": it.SelfCheckRequired,
-							"is_hidden":           it.IsHidden,
+							"id":                     it.ID,
+							"title":                  it.Title,
+							"subject_id":             it.SubjectID,
+							"description":            it.Description,
+							"type":                   it.Type,
+							"is_require_hand_in":     it.IsRequireHandIn,
+							"is_self_check_required": it.IsSelfCheckRequired,
+							"is_hidden":              it.IsHidden,
 						}
 						out["deadline"] = it.Deadline.Format("2006-01-02")
 						out["deadline_since"] = it.DeadlineSince

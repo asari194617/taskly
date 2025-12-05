@@ -114,7 +114,7 @@ func registerTasksRoutes(app *fiber.App) {
 			Deadline        string  `json:"deadline"`       // YYYY-MM-DD, required
 			DeadlineSince   *string `json:"deadline_since"` // ENUM: NONE,P1..P6
 			DeadlineUntil   *string `json:"deadline_until"` // ENUM: NONE,MORNING,P1..P6
-			SelfCheck       *bool   `json:"self_check_required"`
+			SelfCheck       *bool   `json:"is_self_check_required"`
 		}
 		if err := c.BodyParser(&body); err != nil || body.Title == "" || body.SubjectID == 0 || strings.TrimSpace(body.Deadline) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -132,7 +132,7 @@ func registerTasksRoutes(app *fiber.App) {
 			rec.IsRequireHandIn = *body.IsRequireHandIn
 		}
 		if body.SelfCheck != nil {
-			rec.SelfCheckRequired = *body.SelfCheck
+			rec.IsSelfCheckRequired = *body.SelfCheck
 		}
 		if body.DeadlineSince != nil && strings.TrimSpace(*body.DeadlineSince) != "" {
 			rec.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
@@ -164,7 +164,7 @@ func registerTasksRoutes(app *fiber.App) {
 			Description     *string `json:"description"`
 			Type            *string `json:"type"`
 			IsRequireHandIn *bool   `json:"is_require_hand_in"`
-			SelfCheck       *bool   `json:"self_check_required"`
+			SelfCheck       *bool   `json:"is_self_check_required"`
 			Deadline        *string `json:"deadline"`       // YYYY-MM-DD
 			DeadlineSince   *string `json:"deadline_since"` // ENUM
 			DeadlineUntil   *string `json:"deadline_until"` // ENUM
@@ -188,7 +188,7 @@ func registerTasksRoutes(app *fiber.App) {
 			rec.IsRequireHandIn = *body.IsRequireHandIn
 		}
 		if body.SelfCheck != nil {
-			rec.SelfCheckRequired = *body.SelfCheck
+			rec.IsSelfCheckRequired = *body.SelfCheck
 		}
 		if body.Deadline != nil {
 			if strings.TrimSpace(*body.Deadline) == "" {

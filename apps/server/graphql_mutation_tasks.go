@@ -18,15 +18,15 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 	fields["createTask"] = &graphql.Field{
 		Type: taskType,
 		Args: graphql.FieldConfigArgument{
-			"title":               &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
-			"subject_id":          &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-			"description":         &graphql.ArgumentConfig{Type: graphql.String},
-			"type":                &graphql.ArgumentConfig{Type: graphql.String},
-			"is_require_hand_in":  &graphql.ArgumentConfig{Type: graphql.Boolean},
-			"self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
-			"deadline":            &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
-			"deadline_since":      &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
-			"deadline_until":      &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
+			"title":                  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"subject_id":             &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"description":            &graphql.ArgumentConfig{Type: graphql.String},
+			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
+			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
+			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
+			"deadline":               &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
+			"deadline_since":         &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
+			"deadline_until":         &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -49,7 +49,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				typ, _ := p.Args["type"].(string)
 				typ = normalizeTaskType(typ)
 				irh, _ := p.Args["is_require_hand_in"].(bool)
-				scr, _ := p.Args["self_check_required"].(bool)
+				scr, _ := p.Args["is_self_check_required"].(bool)
 				deadlineStr, _ := p.Args["deadline"].(string)
 				deadlineStr = strings.TrimSpace(deadlineStr)
 				if deadlineStr == "" {
@@ -80,7 +80,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !validUntil[until] {
 					return nil, fmt.Errorf("invalid deadline_until")
 				}
-				rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, SelfCheckRequired: scr, Deadline: dateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
+				rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, IsSelfCheckRequired: scr, Deadline: dateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -89,18 +89,18 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				// Async Discord notification (embed) to align with REST create
 				go sendDiscordTaskEmbed("created", rec, u.Email)
 				out := map[string]any{
-					"id":                  rec.ID,
-					"title":               rec.Title,
-					"subject_id":          rec.SubjectID,
-					"description":         rec.Description,
-					"type":                rec.Type,
-					"is_require_hand_in":  rec.IsRequireHandIn,
-					"self_check_required": rec.SelfCheckRequired,
-					"deadline":            rec.Deadline.Format("2006-01-02"),
-					"deadline_since":      rec.DeadlineSince,
-					"deadline_until":      rec.DeadlineUntil,
-					"created_at":          rec.CreatedAt.Format(time.RFC3339),
-					"updated_at":          rec.UpdatedAt.Format(time.RFC3339),
+					"id":                     rec.ID,
+					"title":                  rec.Title,
+					"subject_id":             rec.SubjectID,
+					"description":            rec.Description,
+					"type":                   rec.Type,
+					"is_require_hand_in":     rec.IsRequireHandIn,
+					"is_self_check_required": rec.IsSelfCheckRequired,
+					"deadline":               rec.Deadline.Format("2006-01-02"),
+					"deadline_since":         rec.DeadlineSince,
+					"deadline_until":         rec.DeadlineUntil,
+					"created_at":             rec.CreatedAt.Format(time.RFC3339),
+					"updated_at":             rec.UpdatedAt.Format(time.RFC3339),
 				}
 				return out, nil
 			}
@@ -111,16 +111,16 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 	fields["updateTask"] = &graphql.Field{
 		Type: taskType,
 		Args: graphql.FieldConfigArgument{
-			"id":                  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
-			"title":               &graphql.ArgumentConfig{Type: graphql.String},
-			"subject_id":          &graphql.ArgumentConfig{Type: graphql.Int},
-			"description":         &graphql.ArgumentConfig{Type: graphql.String},
-			"type":                &graphql.ArgumentConfig{Type: graphql.String},
-			"is_require_hand_in":  &graphql.ArgumentConfig{Type: graphql.Boolean},
-			"self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
-			"deadline":            &graphql.ArgumentConfig{Type: graphql.String}, // YYYY-MM-DD
-			"deadline_since":      &graphql.ArgumentConfig{Type: graphql.String},
-			"deadline_until":      &graphql.ArgumentConfig{Type: graphql.String},
+			"id":                     &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"title":                  &graphql.ArgumentConfig{Type: graphql.String},
+			"subject_id":             &graphql.ArgumentConfig{Type: graphql.Int},
+			"description":            &graphql.ArgumentConfig{Type: graphql.String},
+			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
+			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
+			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
+			"deadline":               &graphql.ArgumentConfig{Type: graphql.String}, // YYYY-MM-DD
+			"deadline_since":         &graphql.ArgumentConfig{Type: graphql.String},
+			"deadline_until":         &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
@@ -158,8 +158,8 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if v, ok := p.Args["is_require_hand_in"].(bool); ok {
 					rec.IsRequireHandIn = v
 				}
-				if v, ok := p.Args["self_check_required"].(bool); ok {
-					rec.SelfCheckRequired = v
+				if v, ok := p.Args["is_self_check_required"].(bool); ok {
+					rec.IsSelfCheckRequired = v
 				}
 				if v, ok := p.Args["deadline"].(string); ok {
 					vv := strings.TrimSpace(v)
@@ -203,18 +203,18 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				// Async Discord notification (embed) to align with REST update
 				go sendDiscordTaskEmbed("updated", rec, u.Email)
 				out := map[string]any{
-					"id":                  rec.ID,
-					"title":               rec.Title,
-					"subject_id":          rec.SubjectID,
-					"description":         rec.Description,
-					"type":                rec.Type,
-					"is_require_hand_in":  rec.IsRequireHandIn,
-					"self_check_required": rec.SelfCheckRequired,
-					"deadline":            rec.Deadline.Format("2006-01-02"),
-					"deadline_since":      rec.DeadlineSince,
-					"deadline_until":      rec.DeadlineUntil,
-					"created_at":          rec.CreatedAt.Format(time.RFC3339),
-					"updated_at":          rec.UpdatedAt.Format(time.RFC3339),
+					"id":                     rec.ID,
+					"title":                  rec.Title,
+					"subject_id":             rec.SubjectID,
+					"description":            rec.Description,
+					"type":                   rec.Type,
+					"is_require_hand_in":     rec.IsRequireHandIn,
+					"is_self_check_required": rec.IsSelfCheckRequired,
+					"deadline":               rec.Deadline.Format("2006-01-02"),
+					"deadline_since":         rec.DeadlineSince,
+					"deadline_until":         rec.DeadlineUntil,
+					"created_at":             rec.CreatedAt.Format(time.RFC3339),
+					"updated_at":             rec.UpdatedAt.Format(time.RFC3339),
 				}
 				return out, nil
 			}
