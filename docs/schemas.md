@@ -25,7 +25,6 @@
 | `display_name`        | `VARCHAR(255)` |                                     | 表示名                     |
 | `hashed_password`     | `VARCHAR(255)` | NULL                                | パスワードハッシュ（任意） |
 | `is_deleted`          | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 退会/削除フラグ            |
-| `is_day_shift_active` | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 当番機能の有効化           |
 | `display_lang`        | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | UI 表示言語                |
 | `notification_lang`   | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | 通知の言語                 |
 | `email_code_allowed`  | `BOOLEAN`      | NOT NULL, DEFAULT TRUE              | メールコードログインの許可 |

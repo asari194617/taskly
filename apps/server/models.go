@@ -15,7 +15,6 @@ type User struct {
 	HashedPassword   *string   `gorm:"size:255"`
 	EmailCodeAllowed bool      `gorm:"default:true"`
 	IsDeleted        bool      `gorm:"default:false"`
-	IsDayShiftActive bool      `gorm:"default:false"`
 	NotificationLang string    `gorm:"size:5;not null;default:'ja'"`
 	IsRegistered     bool      `gorm:"default:false"`
 	IsAgreedPolicies bool      `gorm:"default:false"`

@@ -89,7 +89,12 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					rec.NotificationLang = "ja"
 				}
 				if err := DB.Create(&rec).Error; err != nil {
-					return nil, fmt.Errorf("db")
+					// 重複メールなどの一般的なDBエラーを判別して、人間が読める文言を返す
+					msg := err.Error()
+					if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
+						return nil, fmt.Errorf("メールアドレスは既に存在します")
+					}
+					return nil, fmt.Errorf("db: %s", msg)
 				}
 				_ = DB.Create(&Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.create:%d", rec.ID)}).Error
 				return map[string]any{"id": rec.ID}, nil
@@ -143,7 +148,12 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					rec := User{Email: email, DisplayName: dn, NotificationLang: lang}
 					if err := DB.Create(&rec).Error; err != nil {
-						errs = append(errs, fmt.Sprintf("line %d: db", i+1))
+						msg := err.Error()
+						if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
+							errs = append(errs, fmt.Sprintf("line %d: duplicate email", i+1))
+						} else {
+							errs = append(errs, fmt.Sprintf("line %d: db: %s", i+1, msg))
+						}
 						continue
 					}
 					created++
