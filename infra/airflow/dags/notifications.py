@@ -18,7 +18,34 @@ except Exception:
 # Adjust cmd paths to your environment.
 
 def build_cmd(app):
-    return f"cd /workspace/batches/{app} && go run ."
+    # Echo key envs for diagnostics, then run. For email channel, do SMTP reachability pre-check via openssl s_client.
+    base = (
+        "set -euo pipefail; "
+        "echo '--- SMTP ENV ---'; env | grep -E '^(SMTP_|EMAIL_COMPOSE_|APP_NAME|LOCALE)' || true; "
+    )
+    if app == "notifications/delivery-channels/email":
+        # Determine STARTTLS usage and port from env; default to starttls:587 for Resend/SendGrid.
+        # Fail early with a clear log line if SMTP is unreachable.
+        precheck = (
+            "SMTP_HOST=\"${SMTP_HOST:-smtp.sendgrid.net}\"; "
+            "SMTP_PORT=\"${SMTP_PORT:-587}\"; "
+            "SMTP_TLS=\"${SMTP_TLS:-starttls}\"; "
+            "echo \"SMTP precheck: host=$SMTP_HOST port=$SMTP_PORT tls=$SMTP_TLS\"; "
+            "apk add --no-cache openssl >/dev/null 2>&1 || true; "
+            "if [ \"$SMTP_TLS\" = \"starttls\" ]; then "
+            "  if ! echo QUIT | openssl s_client -connect \"$SMTP_HOST:$SMTP_PORT\" -starttls smtp -crlf -quiet >/dev/null 2>&1; then "
+            "    echo '\n[ERROR] SMTP到達不可: STARTTLSハンドシェイク失敗' >&2; exit 2; "
+            "  fi; "
+            "else "
+            "  if ! echo QUIT | openssl s_client -connect \"$SMTP_HOST:$SMTP_PORT\" -crlf -quiet >/dev/null 2>&1; then "
+            "    echo '\n[ERROR] SMTP到達不可: TLSなし接続失敗' >&2; exit 2; "
+            "  fi; "
+            "fi; "
+        )
+        run = f"cd /workspace/batches/{app} && go run ."
+        return base + precheck + run
+    # Default path (discord, queue-manager, etc.)
+    return base + f"cd /workspace/batches/{app} && go run ."
 
 with DAG(
     dag_id="notifications",
@@ -76,6 +103,9 @@ with DAG(
             "SMTP_USER": os.environ.get("SMTP_USER", os.environ.get("SMTP_FROM", "noreply@taskly.local")),
             "SMTP_PASSWORD": os.environ.get("SMTP_PASSWORD", ""),
             "SMTP_TLS": os.environ.get("SMTP_TLS", "starttls"),
+            "SMTP_TIMEOUT": os.environ.get("SMTP_TIMEOUT", "60"),
+            # Some SMTP providers require auth only when password exists; pass through a flag if needed.
+            "SMTP_USE_AUTH": os.environ.get("SMTP_USE_AUTH", "auto"),  # auto | always | never
             "EMAIL_COMPOSE_HTTP_ADDR": os.environ.get("EMAIL_COMPOSE_HTTP_ADDR", "http://email-compose:50052"),
             "APP_NAME": os.environ.get("APP_NAME", "Taskly"),
             "LOCALE": os.environ.get("LOCALE", "ja"),

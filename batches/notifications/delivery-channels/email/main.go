@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"crypto/tls"
+	"net"
+	"net/smtp"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -71,8 +75,49 @@ func main() {
 
 // computeLiveDigestGroups collects due tasks and expands them to per-user email digests
 func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
-	// For now, return no groups; composition pipeline handled elsewhere.
-	return map[int64][]QueueItem{}, nil
+	now := time.Now()
+	tasks, err := fetchDueTasks(db, now)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasks) == 0 {
+		return map[int64][]QueueItem{}, nil
+	}
+	ids, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
+	groups := make(map[int64][]QueueItem, len(ids))
+	for _, uid := range ids {
+		dp := devicePrefs[uid]
+		if !dp.Email {
+			continue
+		}
+		tp := typePrefs[uid]
+		// デフォルトは配信する。明示的にfalseのものだけ除外
+		allowTask := true
+		if v, ok := tp["TASK"]; ok {
+			allowTask = v
+		}
+		if !allowTask {
+			continue
+		}
+		// ユーザー向けのタスクを全て入れる（仕様に従い、値がない等の場合は配信）
+		items := make([]QueueItem, 0, len(tasks))
+		for _, t := range tasks {
+			items = append(items, QueueItem{
+				ID:        int64(t.ID),
+				WhenLabel: whenLabel(now, t.Deadline),
+				Subject:   valueOr(t.SubjectName, ""),
+				Title:     t.Title,
+				Body:      buildBodyFromTask(t),
+				Meta:      sql.NullString{Valid: t.Description != nil && strings.TrimSpace(*t.Description) != "", String: valueOr(ptrStr(t.Description), "")},
+				Badges:    sql.NullString{Valid: true, String: buildBadgesJSON(t)},
+				UserID:    sql.NullInt64{Valid: true, Int64: int64(uid)},
+			})
+		}
+		if len(items) > 0 {
+			groups[int64(uid)] = items
+		}
+	}
+	return groups, nil
 }
 
 // fetchDueTasks returns tasks whose effective deadline is within [now, end of the day after tomorrow]
@@ -308,10 +353,71 @@ func displayTaskTypeJaLocal(e string) string {
 }
 
 func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
-	// Temporarily no-op to ensure batch compiles. Delivery handled by other pipeline.
-	_ = uid
-	_ = group
-	return nil
+	// Resolve recipient email
+	to, err := resolveRecipientEmail(db, sql.NullInt64{Valid: true, Int64: uid})
+	if err != nil || strings.TrimSpace(to) == "" {
+		return fmt.Errorf("no recipient for uid=%d", uid)
+	}
+	// Build subject/body via composer payload (basic text)
+	locale := valueOr(os.Getenv("LOCALE"), "ja")
+	appName := valueOr(os.Getenv("APP_NAME"), "Taskly")
+	payload := buildComposePayload(locale, appName, group)
+	subj := fmt.Sprintf("[%s] 今日・あすの課題まとめ", appName)
+	body, _ := json.MarshalIndent(payload, "", "  ")
+
+	// Send via SMTP (supports STARTTLS)
+	smtpHost := valueOr(os.Getenv("SMTP_HOST"), "localhost")
+	smtpPort := valueOr(os.Getenv("SMTP_PORT"), "25")
+	from := valueOr(os.Getenv("SMTP_FROM"), "noreply@taskly.local")
+	user := valueOr(os.Getenv("SMTP_USER"), from)
+	pass := os.Getenv("SMTP_PASSWORD")
+	useTLS := strings.EqualFold(valueOr(os.Getenv("SMTP_TLS"), "none"), "starttls")
+
+	addr := fmt.Sprintf("%s:%s", smtpHost, smtpPort)
+	// Dial TCP
+	conn, err := net.DialTimeout("tcp", addr, time.Duration(parseInt(valueOr(os.Getenv("SMTP_TIMEOUT"), "60")))*time.Second)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	// Create SMTP client
+	c, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	if useTLS {
+		cfg := &tls.Config{ServerName: smtpHost, MinVersion: tls.VersionTLS12}
+		if err = c.StartTLS(cfg); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(pass) != "" {
+		if err = c.Auth(smtp.PlainAuth("", user, pass, smtpHost)); err != nil {
+			return err
+		}
+	}
+	if err = c.Mail(from); err != nil {
+		return err
+	}
+	if err = c.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	// Simple MIME
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n", from, to, subj, string(body))
+	if _, err = w.Write([]byte(msg)); err != nil {
+		return err
+	}
+	if err = w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 type composePayload struct {
@@ -388,4 +494,29 @@ func valueOr(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// helpers
+func parseInt(s string) int {
+	i := 0
+	fmt.Sscanf(strings.TrimSpace(s), "%d", &i)
+	if i <= 0 {
+		i = 60
+	}
+	return i
+}
+func ptrStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+func buildBodyFromTask(t Task) string {
+	// 簡易本文: 件名と締切だけ
+	d := deadlineLabel(t, t.Deadline)
+	desc := ""
+	if t.Description != nil {
+		desc = *t.Description
+	}
+	return fmt.Sprintf("%s\n締切: %s\n%s", t.Title, d, desc)
 }
