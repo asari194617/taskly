@@ -346,16 +346,6 @@
 | `created_at`       | `DATETIME`        | NOT NULL, DEFAULT CURRENT_TIMESTAMP                                                              |            |
 | インデックス       |                   | `INDEX idx_user_reports_task_id (task_id)`, `INDEX idx_user_reports_reporter (reporter_user_id)` |            |
 
-### `system_settings`: システム設定（KV）
-
-| フィールド名 | 型                | 属性                                                            | 詳細 |
-| ------------ | ----------------- | --------------------------------------------------------------- | ---- |
-| `id`         | `BIGINT UNSIGNED` | PK, AUTO_INCREMENT                                              |      |
-| `key`        | `VARCHAR(128)`    | UNIQUE, NOT NULL                                                | キー |
-| `value`      | `TEXT`            | NOT NULL                                                        | 値   |
-| `created_at` | `DATETIME`        | NOT NULL, DEFAULT CURRENT_TIMESTAMP                             |      |
-| `updated_at` | `DATETIME`        | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |      |
-
 ### `email_suppressions`: メール一時停止
 
 | フィールド名      | 型                | 属性                                                                                                 | 詳細           |

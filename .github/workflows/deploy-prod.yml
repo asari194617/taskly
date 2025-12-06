@@ -103,7 +103,11 @@ jobs:
           set -eu
           tmpenv=$(mktemp)
           printf "%s" "$PROD_ENV" > "$tmpenv"
+          # Upload to project root
           scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/.env"
+          # Also upload a copy to infra/ for docker-compose context differences
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" "mkdir -p '$PROD_WORKDIR/infra'"
+          scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/infra/.env"
           rm -f "$tmpenv"
 
       - name: Remote deploy

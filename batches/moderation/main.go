@@ -249,7 +249,7 @@ type ModerationPolicy struct {
 
 func loadPolicy(db *sql.DB) ModerationPolicy {
 	p := ModerationPolicy{DefaultAutoHide: "high", AutoHideByCat: map[string]string{"threat": "medium"}}
-	row := db.QueryRow(`SELECT value FROM system_settings WHERE ` + "`key`" + ` = 'moderation_policy'`)
+	row := db.QueryRow(`SELECT value FROM configs WHERE ` + "`key`" + ` = 'moderation_policy'`)
 	var val string
 	if err := row.Scan(&val); err != nil || strings.TrimSpace(val) == "" {
 		return p

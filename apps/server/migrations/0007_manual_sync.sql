@@ -30,10 +30,6 @@ ALTER TABLE tasks MODIFY COLUMN deadline_until ENUM('NONE','MORNING','LUNCH','AF
 -- ical_keys.expires_at: add column
 ALTER TABLE ical_keys ADD COLUMN expires_at DATETIME NULL AFTER description;
 
--- Drop system_settings table
--- Drop system_settings table if present (executor ignores unknown table errors)
-DROP TABLE system_settings;
-
 -- Create web_push_vapid
 CREATE TABLE IF NOT EXISTS web_push_vapid (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
