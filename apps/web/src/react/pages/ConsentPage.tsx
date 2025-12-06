@@ -45,7 +45,7 @@ export default function ConsentPage() {
         >
           <Checkbox checked={tos} />
           <span>
-            <a href="/terms" target="_blank" className="underline">
+            <a href="https://ritzy-lift-e38.notion.site/28ba3874f8c880a783ddf9d39aea1242?source=copy_link" target="_blank" className="underline">
               利用規約
             </a>
             に同意します
@@ -61,7 +61,7 @@ export default function ConsentPage() {
         >
           <Checkbox checked={pp} />
           <span>
-            <a href="/privacy" target="_blank" className="underline">
+            <a href="https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03?source=copy_link" target="_blank" className="underline">
               プライバシーポリシー
             </a>
             に同意します
@@ -77,7 +77,7 @@ export default function ConsentPage() {
         >
           <Checkbox checked={sp} />
           <span>
-            <a href="/security" target="_blank" className="underline">
+            <a href="https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f?source=copy_link" target="_blank" className="underline">
               セキュリティポリシー
             </a>
             に同意します
