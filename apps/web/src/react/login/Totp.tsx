@@ -21,6 +21,11 @@ export default function Totp() {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
 
+  const isValidTotp = React.useMemo(
+    () => /^(\d{6})$/.test(totp.trim()),
+    [totp]
+  );
+
   const doLogin = async () => {
     setMessage(null);
     setLoading(true);
@@ -67,13 +72,27 @@ export default function Totp() {
             type="text"
             inputMode="numeric"
             value={totp}
-            onChange={(e) => setTotp(e.target.value)}
+            onChange={(e) => {
+              // accept only digits, max 6
+              const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+              setTotp(next);
+            }}
+            onKeyDown={async (e) => {
+              if (e.key === "Enter" && !loading && email && isValidTotp) {
+                e.preventDefault();
+                await doLogin();
+              }
+            }}
             placeholder="123456"
             autoComplete="one-time-code"
           />
         </div>
         <div className="flex gap-2">
-          <Button type="button" onClick={doLogin} disabled={loading || !email}>
+          <Button
+            type="button"
+            onClick={doLogin}
+            disabled={loading || !email || !isValidTotp}
+          >
             続行
           </Button>
           <Button
