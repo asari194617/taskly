@@ -14,7 +14,6 @@ import {
   LogOut,
   Settings,
 } from "lucide-react";
-import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { t, type Lang } from "@/lib/i18n";
