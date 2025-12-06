@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS day_shift_assignments (
   UNIQUE KEY uniq_day_cycle (date, cycle_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS day_shift_assignments_users (
+CREATE TABLE IF NOT EXISTS day_shift_assignment_users (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   day_shift_assignments_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,

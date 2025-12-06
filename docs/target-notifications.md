@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS notifications_queue (
 - 日直（dayshift）の宛先展開は未実装です。
   - 現状: Queue Manager は `user_id = 0` でキュー投入。メール/プッシュは `user_id` が無いものをスキップするため配信されません。
   - 対応案（いずれか）:
-    1. Queue Manager 側で `day_shift_assignments_users` から担当者の `user_id` を解決して複数行投入する。
+    1. Queue Manager 側で `day_shift_assignment_users` から担当者の `user_id` を解決して複数行投入する。
     2. 各配信チャネル側で `kind='dayshift'` かつ `user_id=0` を受け取ったら担当者を展開して送る（その後、元行は `skipped`/`sent` の扱いを検討）。
 - 配信のユーザー設定（チャネルごとの ON/OFF、配信時間帯、言語/ロケール等）は今後の拡張余地があります。現状はデフォルト有効で、ユーザーのメールが未登録/無効の場合のみ送れません。
 - 1 回の処理で扱う件数は 200 件に制限しています（実装上の上限）。大量通知が想定される場合はスケジュール頻度や並列度の調整を検討してください。

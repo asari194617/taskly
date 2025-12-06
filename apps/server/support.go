@@ -863,7 +863,7 @@ func buildICSForUser(userID uint) string {
 	}
 	_ = DB.Table("day_shift_assignments a").
 		Select("a.id, a.date").
-		Joins("JOIN day_shift_assignments_users u ON u.day_shift_assignments_id = a.id").
+		Joins("JOIN day_shift_assignment_users u ON u.day_shift_assignments_id = a.id").
 		Where("u.user_id = ?", userID).Order("a.date ASC").Limit(500).Scan(&asgs).Error
 	for _, a := range asgs {
 		// Represent day shift as an all-day event on the assignment date

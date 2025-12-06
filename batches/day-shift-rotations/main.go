@@ -71,7 +71,7 @@ func main() {
 				log.Println("assign:", err)
 				continue
 			}
-			// also reflect members for the group on that date into day_shift_assignments_users
+			// also reflect members for the group on that date into day_shift_assignment_users
 			if err := upsertAssignmentMembers(db, asgID, p.UserIDs); err != nil {
 				log.Println("assign members:", err)
 			}
@@ -249,12 +249,12 @@ func upsertAssignmentMembers(db *sql.DB, assignmentID int64, userIDs []int64) er
 		}
 	}()
 	// clear existing members for the assignment id
-	if _, err = tx.Exec(`DELETE FROM day_shift_assignments_users WHERE day_shift_assignments_id = ?`, assignmentID); err != nil {
+	if _, err = tx.Exec(`DELETE FROM day_shift_assignment_users WHERE day_shift_assignments_id = ?`, assignmentID); err != nil {
 		return err
 	}
 	// insert all
 	for _, uid := range userIDs {
-		if _, err = tx.Exec(`INSERT INTO day_shift_assignments_users(day_shift_assignments_id, user_id) VALUES(?,?)`, assignmentID, uid); err != nil {
+		if _, err = tx.Exec(`INSERT INTO day_shift_assignment_users(day_shift_assignments_id, user_id) VALUES(?,?)`, assignmentID, uid); err != nil {
 			return err
 		}
 	}
