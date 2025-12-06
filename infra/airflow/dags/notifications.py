@@ -3,6 +3,15 @@ from airflow import DAG
 from common import discord_failure_callback, discord_success_callback
 from airflow.operators.bash import BashOperator
 import os
+try:
+    from dotenv import load_dotenv
+    env_path = "/opt/airflow/.env"
+    if os.path.exists(env_path):
+        load_dotenv(env_path, override=False)
+    else:
+        load_dotenv(override=False)
+except Exception:
+    pass
 
 # Runs queue manager and email delivery at 07:00 and 17:00 JST daily
 # Assumes docker container context where `go run` works, or built binaries available.
@@ -29,8 +38,13 @@ with DAG(
             "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
             "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
             "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
-            "DB_HOST": os.environ.get("DB_HOST", "db"),
-            "DB_PORT": os.environ.get("DB_PORT", "3306"),
+            "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
+            "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
+            "DB_USER": os.environ.get("DB_USER", os.environ.get("MYSQL_USER", "taskly")),
+            "DB_PASSWORD": os.environ.get("DB_PASSWORD", os.environ.get("MYSQL_PASSWORD", "taskly_password")),
+            "DB_NAME": os.environ.get("DB_NAME", os.environ.get("MYSQL_DATABASE", "taskly")),
+            "MYSQL_HOST": os.environ.get("MYSQL_HOST", os.environ.get("DB_HOST", "db")),
+            "MYSQL_PORT": os.environ.get("MYSQL_PORT", os.environ.get("DB_PORT", "3306")),
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
             "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
             "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
@@ -45,8 +59,13 @@ with DAG(
             "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
             "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
             "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
-            "DB_HOST": os.environ.get("DB_HOST", "db"),
-            "DB_PORT": os.environ.get("DB_PORT", "3306"),
+            "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
+            "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
+            "DB_USER": os.environ.get("DB_USER", os.environ.get("MYSQL_USER", "taskly")),
+            "DB_PASSWORD": os.environ.get("DB_PASSWORD", os.environ.get("MYSQL_PASSWORD", "taskly_password")),
+            "DB_NAME": os.environ.get("DB_NAME", os.environ.get("MYSQL_DATABASE", "taskly")),
+            "MYSQL_HOST": os.environ.get("MYSQL_HOST", os.environ.get("DB_HOST", "db")),
+            "MYSQL_PORT": os.environ.get("MYSQL_PORT", os.environ.get("DB_PORT", "3306")),
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
             "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
             "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
