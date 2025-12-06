@@ -20,10 +20,6 @@ def mysql_connect():
     )
 
 
-def is_business_day(conn: pymysql.connections.Connection, d: date) -> bool:
-    # Business calendar feature removed; always notify
-    return True
-
 
 def read_config(conn, key: str) -> str:
     with conn.cursor() as cur:
