@@ -40,4 +40,5 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     ddtrace \
     apache-airflow-providers-discord \
     pymysql \
-    icalendar
+    icalendar \
+    python-dotenv

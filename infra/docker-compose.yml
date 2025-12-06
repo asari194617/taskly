@@ -105,11 +105,6 @@ services:
       AIRFLOW__WEBSERVER__BASE_URL: https://airflow-taskly.iy0306.com
       AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
       # MySQL connection for DAGs
-      MYSQL_HOST: db
-      MYSQL_PORT: 3306
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DB_HOST: db
       DB_PORT: 3306
       DB_NAME: ${MYSQL_DATABASE}
@@ -127,6 +122,7 @@ services:
     volumes:
       - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
+      - ../.env:/opt/airflow/.env:ro
       - ..:/workspace
     # Clean stale PID, initialize/upgrade DB once, then start webserver
     command:
@@ -188,6 +184,7 @@ services:
     volumes:
       - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
+      - ../.env:/opt/airflow/.env:ro
       - ..:/workspace
     # Clean stale PID, initialize/upgrade DB once, then start scheduler
     command:

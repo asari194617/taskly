@@ -12,6 +12,18 @@ __all__ = [
     "discord_notify",
 ]
 
+# Load environment variables from mounted .env if available
+try:
+    from dotenv import load_dotenv
+    env_path = "/opt/airflow/.env"
+    if os.path.exists(env_path):
+        load_dotenv(env_path, override=False)
+    else:
+        load_dotenv(override=False)
+except Exception:
+    # Do not fail DAG import if python-dotenv is missing
+    pass
+
 # Initialize Sentry SDK if DSN is provided (works alongside Airflow Sentry provider)
 try:
     import sentry_sdk
