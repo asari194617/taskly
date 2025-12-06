@@ -35,7 +35,7 @@ export function Layout({
         <div className="container">
           <div className="card">{children}</div>
           <div className="footer">
-            <img src="https://cdn.taskly.iy0306.com/assets/logo.jpg" alt="ロゴ" />
+            <img src="https://cdn.taskly.iy0306.com/assets/logo.jpg" alt="ロゴ" width={69.75} height={20} />
             これは自動送信されたメールです。監視されていないメールボックスのため、返信しないでください。
           </div>
         </div>

@@ -9,9 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"bytes"
 	"crypto/tls"
 	"net"
 	"net/smtp"
+	"context"
+
+	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
+	dynmsg "github.com/jhump/protoreflect/dynamic"
+	protoparse "github.com/jhump/protoreflect/desc/protoparse"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -86,12 +94,14 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 	ids, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
 	groups := make(map[int64][]QueueItem, len(ids))
 	for _, uid := range ids {
+		if isUserBlocked(db, uid) {
+			continue
+		}
 		dp := devicePrefs[uid]
 		if !dp.Email {
 			continue
 		}
 		tp := typePrefs[uid]
-		// デフォルトは配信する。明示的にfalseのものだけ除外
 		allowTask := true
 		if v, ok := tp["TASK"]; ok {
 			allowTask = v
@@ -99,7 +109,6 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 		if !allowTask {
 			continue
 		}
-		// ユーザー向けのタスクを全て入れる（仕様に従い、値がない等の場合は配信）
 		items := make([]QueueItem, 0, len(tasks))
 		for _, t := range tasks {
 			items = append(items, QueueItem{
@@ -172,14 +181,12 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		if del {
 			continue
 		}
-		if isUserBlocked(db, id) {
-			continue
-		}
 		ids = append(ids, id)
-		device[id] = userDevicePrefs{Email: true, WebPush: false}
-		typePrefs[id] = map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true}
+		// default device prefs: email/webpush true unless overridden
+		device[id] = userDevicePrefs{Email: true, WebPush: true}
+		typePrefs[id] = make(map[string]bool)
 	}
-	// device prefs overlay
+	// device overrides
 	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
 	if err == nil {
 		defer rows2.Close()
@@ -358,12 +365,14 @@ func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 	if err != nil || strings.TrimSpace(to) == "" {
 		return fmt.Errorf("no recipient for uid=%d", uid)
 	}
-	// Build subject/body via composer payload (basic text)
+	// Build subject/body via email-compose HTTP
 	locale := valueOr(os.Getenv("LOCALE"), "ja")
 	appName := valueOr(os.Getenv("APP_NAME"), "Taskly")
-	payload := buildComposePayload(locale, appName, group)
-	subj := fmt.Sprintf("[%s] 今日・あすの課題まとめ", appName)
-	body, _ := json.MarshalIndent(payload, "", "  ")
+	html, text, err := composeTaskDigestGRPC(locale, appName, group)
+	if err != nil {
+		return fmt.Errorf("compose failed: %w", err)
+	}
+	subj := "[Taskly]期限が近い課題"
 
 	// Send via SMTP (supports STARTTLS)
 	smtpHost := valueOr(os.Getenv("SMTP_HOST"), "localhost")
@@ -409,9 +418,25 @@ func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 	if err != nil {
 		return err
 	}
-	// Simple MIME
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n", from, to, subj, string(body))
-	if _, err = w.Write([]byte(msg)); err != nil {
+	// MIME (multipart/alternative: text + html)
+	boundary := "taskly-boundary-42"
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "From: %s\r\n", from)
+	fmt.Fprintf(&buf, "To: %s\r\n", to)
+	fmt.Fprintf(&buf, "Subject: %s\r\n", subj)
+	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", boundary)
+	// text part
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n\r\n")
+	fmt.Fprintf(&buf, "%s\r\n", text)
+	// html part
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	fmt.Fprintf(&buf, "Content-Type: text/html; charset=utf-8\r\n\r\n")
+	fmt.Fprintf(&buf, "%s\r\n", html)
+	// end
+	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
+	if _, err = w.Write(buf.Bytes()); err != nil {
 		return err
 	}
 	if err = w.Close(); err != nil {
@@ -448,6 +473,82 @@ func buildComposePayload(locale, appName string, items []QueueItem) composePaylo
 		out.Items = append(out.Items, m)
 	}
 	return out
+}
+
+// composeTaskDigestGRPC calls email-compose gRPC (with server reflection) to render digest
+func composeTaskDigestGRPC(locale, appName string, items []QueueItem) (html string, text string, err error) {
+	addr := strings.TrimSpace(os.Getenv("EMAIL_COMPOSE_GRPC_ADDR"))
+	if addr == "" {
+		addr = "email-compose:50051"
+	}
+	cc, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return "", "", err
+	}
+	defer cc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(parseInt(valueOr(os.Getenv("SMTP_TIMEOUT"), "60")))*time.Second)
+	defer cancel()
+
+	// Load proto descriptor from file (no server reflection required)
+	// Expected path within repo: apps/email-compose/src/proto/email.proto
+	protoDir := "/workspace/apps/email-compose/src/proto"
+	if _, errStat := os.Stat(protoDir); errStat != nil {
+		// fallback to local relative path for non-container runs
+		protoDir = "../../../apps/email-compose/src/proto"
+	}
+	parser := protoparse.Parser{ImportPaths: []string{protoDir}}
+	fds, perr := parser.ParseFiles("email.proto")
+	if perr != nil || len(fds) == 0 {
+		return "", "", fmt.Errorf("proto parse error: %v", perr)
+	}
+	fd := fds[0]
+	svc := fd.FindService("emailcompose.EmailComposer")
+	if svc == nil {
+		return "", "", fmt.Errorf("service emailcompose.EmailComposer not found in proto")
+	}
+	m := svc.FindMethodByName("ComposeTaskDigest")
+	if m == nil {
+		return "", "", fmt.Errorf("ComposeTaskDigest not found")
+	}
+	payload := buildComposePayload(locale, appName, items)
+	factory := dynmsg.NewMessageFactoryWithDefaults()
+	reqMsgDyn := factory.NewMessage(m.GetInputType()).(*dynmsg.Message)
+	reqMsgDyn.SetFieldByName("locale", payload.Locale)
+	reqMsgDyn.SetFieldByName("app_name", payload.AppName)
+	itmMsgDesc := m.GetInputType().FindFieldByName("items").GetMessageType()
+	for _, it := range payload.Items {
+		itm := factory.NewMessage(itmMsgDesc).(*dynmsg.Message)
+		itm.SetFieldByName("when_label", it["when_label"]) 
+		itm.SetFieldByName("subject", it["subject"]) 
+		itm.SetFieldByName("title", it["title"]) 
+		if v, ok := it["body"]; ok { itm.SetFieldByName("body", v) }
+		if v, ok := it["meta"]; ok { itm.SetFieldByName("meta", v) }
+		if v, ok := it["badges"]; ok {
+			if arr, ok := v.([]map[string]any); ok {
+				bdMsgDesc := itmMsgDesc.FindFieldByName("badges").GetMessageType()
+				for _, b := range arr {
+					bm := factory.NewMessage(bdMsgDesc).(*dynmsg.Message)
+					bm.SetFieldByName("label", b["label"]) 
+					if vv, ok := b["variant"]; ok { bm.SetFieldByName("variant", vv) }
+					itm.AddRepeatedFieldByName("badges", bm)
+				}
+			}
+		}
+		reqMsgDyn.AddRepeatedFieldByName("items", itm)
+	}
+	stub := grpcdyn.NewStub(cc)
+	resp, err := stub.InvokeRpc(ctx, m, reqMsgDyn)
+	if err != nil {
+		return "", "", err
+	}
+	if dm, ok := resp.(*dynmsg.Message); ok {
+		h := dm.GetFieldByName("html")
+		t := dm.GetFieldByName("text")
+		hs, _ := h.(string)
+		ts, _ := t.(string)
+		return hs, ts, nil
+	}
+	return "", "", fmt.Errorf("unexpected response type")
 }
 
 // (HTTP composer removed. Using gRPC instead.)
