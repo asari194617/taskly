@@ -43,7 +43,7 @@ export default function ConsentPage() {
             setTos((s) => !s);
           }}
         >
-          <Checkbox checked={tos} onCheckedChange={(v) => setTos(!!v)} />
+          <Checkbox checked={tos} />
           <span>
             <a href="/terms" target="_blank" className="underline">
               利用規約
@@ -59,7 +59,7 @@ export default function ConsentPage() {
             setPp((s) => !s);
           }}
         >
-          <Checkbox checked={pp} onCheckedChange={(v) => setPp(!!v)} />
+          <Checkbox checked={pp} />
           <span>
             <a href="/privacy" target="_blank" className="underline">
               プライバシーポリシー
@@ -75,7 +75,7 @@ export default function ConsentPage() {
             setSp((s) => !s);
           }}
         >
-          <Checkbox checked={sp} onCheckedChange={(v) => setSp(!!v)} />
+          <Checkbox checked={sp} />
           <span>
             <a href="/security" target="_blank" className="underline">
               セキュリティポリシー
