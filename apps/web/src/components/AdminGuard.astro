@@ -9,12 +9,14 @@
     "http://localhost:3063";
   (async () => {
     try {
+      const url = new URL(location.href);
+      const debug = url.searchParams.get("debug_admin_guard") === "1";
       const token = localStorage.getItem("api_token") || "";
       if (!token) {
         const next = encodeURIComponent(
           location.pathname + location.search + location.hash
         );
-        location.href = `/login?next=${next}`;
+        if (!debug) location.href = `/login?next=${next}`;
         return;
       }
       const headers = {
@@ -42,7 +44,16 @@
           const next = encodeURIComponent(
             location.pathname + location.search + location.hash
           );
-          location.href = `/login?next=${next}`;
+          if (!debug) location.href = `/login?next=${next}`;
+          if (debug) {
+            const msg = `認証エラー（HTTP ${res.status}）。API=${API_BASE}\nAuthorization=${headers["Authorization"]}`;
+            const el = document.getElementById("admin-guard-error");
+            if (el) {
+              el.textContent = msg;
+              el.style.display = "block";
+            }
+            console.error(msg);
+          }
           return;
         } else {
           // それ以外は画面にエラー表示
@@ -54,6 +65,7 @@
           } else {
             alert(msg);
           }
+          if (debug) console.error(msg);
           return;
         }
       }
@@ -64,7 +76,12 @@
           .map((e) => e?.extensions?.code)
           .filter(Boolean);
         const isAuthError = codes.some((c) =>
-          ["UNAUTHENTICATED", "TOKEN_EXPIRED", "FORBIDDEN"].includes(String(c))
+          [
+            "UNAUTHENTICATED",
+            "TOKEN_EXPIRED",
+            "FORBIDDEN",
+            "PERMISSION_DENIED",
+          ].includes(String(c))
         );
         if (isAuthError) {
           // 認証系エラーはトークン破棄してログインへ
@@ -74,7 +91,17 @@
           const next = encodeURIComponent(
             location.pathname + location.search + location.hash
           );
-          location.href = `/login?next=${next}`;
+          if (!debug) location.href = `/login?next=${next}`;
+          if (debug) {
+            const firstMsg = json.errors[0]?.message || "";
+            const el = document.getElementById("admin-guard-error");
+            const msg = `GraphQL認証系エラー: ${firstMsg} code=${codes.join(",")}`;
+            if (el) {
+              el.textContent = msg;
+              el.style.display = "block";
+            }
+            console.error(msg, json.errors);
+          }
           return;
         } else {
           // その他のGraphQLエラーはメッセージ表示
@@ -87,24 +114,43 @@
           } else {
             alert(`エラー: ${firstMsg}`);
           }
+          if (debug) console.error("GraphQLエラー詳細", json.errors);
           return;
         }
       }
       const me = json?.data?.me;
       if (!(me && (me.is_admin || me.is_manager))) {
         // 権限なし → 403 ページへ
-        location.href = "/403";
+        if (!debug) location.href = "/403";
+        if (debug) {
+          const el = document.getElementById("admin-guard-error");
+          const msg = `権限不足: is_admin=${me?.is_admin} is_manager=${me?.is_manager}`;
+          if (el) {
+            el.textContent = msg;
+            el.style.display = "block";
+          }
+          console.warn(msg, me);
+        }
         return;
       }
     } catch (e) {
       // Network or runtime error: treat as unauthenticated
-      try {
-        localStorage.removeItem("api_token");
-      } catch {}
-      const next = encodeURIComponent(
-        location.pathname + location.search + location.hash
-      );
-      location.href = `/login?next=${next}`;
+      const msg = `ネットワークまたは実行時エラー: ${e?.message || e}`;
+      const el = document.getElementById("admin-guard-error");
+      if (el) {
+        el.textContent = msg;
+        el.style.display = "block";
+      }
+      console.error(msg, e);
+      if (!debug) {
+        try {
+          localStorage.removeItem("api_token");
+        } catch {}
+        const next = encodeURIComponent(
+          location.pathname + location.search + location.hash
+        );
+        location.href = `/login?next=${next}`;
+      }
     }
   })();
 </script>
