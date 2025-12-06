@@ -1,15 +1,15 @@
 -- Day shift core tables
 CREATE TABLE IF NOT EXISTS day_shift_cycles (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   begin_date DATE NOT NULL,
   finish_date DATE NOT NULL,
   description VARCHAR(255) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS day_shift_assignments (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   date DATE NOT NULL,
-  cycle_id BIGINT NOT NULL,
+  cycle_id BIGINT UNSIGNED NOT NULL,
   status ENUM('assigned','completed','unfulfilled') NOT NULL DEFAULT 'assigned',
   notes TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS day_shift_assignments (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS day_shift_assignment_users (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  day_shift_assignments_id BIGINT NOT NULL,
-  user_id BIGINT NOT NULL,
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  day_shift_assignments_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
   FOREIGN KEY (day_shift_assignments_id) REFERENCES day_shift_assignments(id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

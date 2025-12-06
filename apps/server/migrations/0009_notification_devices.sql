@@ -1,7 +1,7 @@
 -- Per-user notification devices registry
 CREATE TABLE IF NOT EXISTS notification_devices (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  user_id BIGINT NOT NULL,
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
   name VARCHAR(255) NULL,
   platform ENUM('EMAIL','WEBPUSH','IOS','ANDROID') NOT NULL,
   payload JSON NULL,

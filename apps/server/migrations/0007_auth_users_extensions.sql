@@ -10,7 +10,7 @@ ALTER TABLE users
 
 -- Login codes for email-based authentication
 CREATE TABLE IF NOT EXISTS login_codes (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   email VARCHAR(255) NOT NULL,
   hashed_code VARCHAR(255) NOT NULL,
   expires_at DATETIME NOT NULL,
@@ -24,6 +24,6 @@ CREATE TABLE IF NOT EXISTS login_codes (
 
 -- Ensure sessions table has user_id column used by application
 ALTER TABLE sessions
-  ADD COLUMN user_id BIGINT NULL;
+  ADD COLUMN user_id BIGINT UNSIGNED NULL;
 ALTER TABLE sessions
   ADD INDEX idx_sessions_user (user_id);

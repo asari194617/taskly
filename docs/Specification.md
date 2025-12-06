@@ -126,8 +126,8 @@ A simple, fast class management service.
     ```sql
     -- パスキー (WebAuthn)
     CREATE TABLE passkeys (
-        id BIGINT PRIMARY KEY AUTO_INCREMENT,
-        user_id BIGINT NOT NULL,
+        id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+        user_id BIGINT UNSIGNED NOT NULL,
         credential_id VARCHAR(255) UNIQUE NOT NULL, -- クレデンシャルID
         public_key TEXT NOT NULL,
         sign_count BIGINT NOT NULL,
@@ -139,8 +139,8 @@ A simple, fast class management service.
     
     -- TOTP (Authenticator App)
     CREATE TABLE totp_secrets (
-        id BIGINT PRIMARY KEY AUTO_INCREMENT,
-        user_id BIGINT NOT NULL UNIQUE, -- 通常ユーザー1人につき1つ
+        id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+        user_id BIGINT UNSIGNED NOT NULL UNIQUE, -- 通常ユーザー1人につき1つ
         secret VARCHAR(255) NOT NULL, -- 暗号化して保存
         is_active BOOLEAN NOT NULL DEFAULT FALSE,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -149,8 +149,8 @@ A simple, fast class management service.
     
     -- リカバリーコード
     CREATE TABLE recovery_codes (
-        id BIGINT PRIMARY KEY AUTO_INCREMENT,
-        user_id BIGINT NOT NULL,
+        id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+        user_id BIGINT UNSIGNED NOT NULL,
         hashed_code VARCHAR(255) NOT NULL, -- ハッシュ化して保存
         is_used BOOLEAN NOT NULL DEFAULT FALSE,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

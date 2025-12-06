@@ -79,7 +79,7 @@ Queue Manager は、同一内容を email と webpush の 2 チャネルでそ�
 
 ```sql
 CREATE TABLE IF NOT EXISTS notifications_queue (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   kind VARCHAR(32) NOT NULL,
   when_label VARCHAR(32) NOT NULL,
   subject VARCHAR(255) NOT NULL,

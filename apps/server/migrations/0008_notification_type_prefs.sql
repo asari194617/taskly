@@ -1,7 +1,7 @@
 -- Per-user notification type preferences
 CREATE TABLE IF NOT EXISTS notification_type_prefs (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  user_id BIGINT NOT NULL,
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
   notification_type ENUM('TASK','DAYSHIFT') NOT NULL,
   is_enabled TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

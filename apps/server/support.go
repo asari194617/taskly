@@ -359,7 +359,7 @@ func runMigrations() {
 		if name == "0001_init.sql" {
 			// Create users and subjects upfront if missing
 			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS users (
-			  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
 			  email VARCHAR(255) NOT NULL UNIQUE,
 			  display_name VARCHAR(255),
 			  hashed_password VARCHAR(255) NULL,
@@ -367,7 +367,7 @@ func runMigrations() {
 			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
 			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS subjects (
-			  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+			  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
 			  title VARCHAR(255) NOT NULL,
 			  expires_at DATETIME,
 			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
