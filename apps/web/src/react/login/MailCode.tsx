@@ -123,6 +123,7 @@ export default function MailCode() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="123456"
+            autoComplete="one-time-code"
           />
         </div>
         <div className="flex gap-2">

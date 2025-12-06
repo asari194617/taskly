@@ -101,6 +101,7 @@ export default function Password() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
+            autoComplete="current-password"
           />
           <div className="flex gap-2">
             <Button

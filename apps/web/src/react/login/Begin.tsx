@@ -87,6 +87,7 @@ export default function Begin() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
+            autoComplete="email"
           />
           <div className="flex gap-2">
             <Button type="button" onClick={go} disabled={loading || !email}>

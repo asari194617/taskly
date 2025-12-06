@@ -69,6 +69,7 @@ export default function Totp() {
             value={totp}
             onChange={(e) => setTotp(e.target.value)}
             placeholder="123456"
+            autoComplete="one-time-code"
           />
         </div>
         <div className="flex gap-2">
