@@ -80,3 +80,14 @@ CREATE TABLE IF NOT EXISTS day_shift_cycle_group_members (
   INDEX(group_id),
   INDEX(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- day_shift_cycle_group_membersの外部キー制約を追加
+ALTER TABLE day_shift_cycle_group_members
+  ADD CONSTRAINT fk_dscgm_group
+    FOREIGN KEY (group_id)
+    REFERENCES day_shift_cycle_groups(id)
+    ON DELETE CASCADE,
+  ADD CONSTRAINT fk_dscgm_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE CASCADE;
