@@ -263,17 +263,6 @@ type DayShiftAssignmentUser struct {
 	UserID                uint
 }
 
-// Deprecated: Legacy pair model kept only for migration/backfill.
-// Use DayShiftCycleGroup and DayShiftCycleGroupMember instead.
-type DayShiftCyclePair struct {
-	ID        uint      `gorm:"primaryKey"`
-	CycleID   uint      `gorm:"index;not null"`
-	User1ID   uint      `gorm:"not null"`
-	User2ID   uint      `gorm:"not null"`
-	Position  int       `gorm:"default:0"`
-	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
-}
-
 // Generalized day shift group (supports 2 or more users per position)
 type DayShiftCycleGroup struct {
 	ID        uint      `gorm:"primaryKey"`

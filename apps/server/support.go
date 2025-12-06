@@ -475,22 +475,6 @@ func ensureDayShiftGroupSchemaAndBackfill() {
 		_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
 		return
 	}
-
-	var pairs []DayShiftCyclePair
-	if err := DB.Order("cycle_id ASC, position ASC, id ASC").Find(&pairs).Error; err != nil {
-		log.Printf("migration warning: fetch pairs for backfill failed: %v", err)
-		return
-	}
-	for _, p := range pairs {
-		g := DayShiftCycleGroup{CycleID: p.CycleID, Position: p.Position}
-		if err := DB.Create(&g).Error; err != nil {
-			log.Printf("migration warning: create group from pair failed: %v", err)
-			continue
-		}
-		_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User1ID, Position: 1}).Error
-		_ = DB.Create(&DayShiftCycleGroupMember{GroupID: g.ID, UserID: p.User2ID, Position: 2}).Error
-	}
-	// No migration markers written.
 }
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
@@ -1715,16 +1699,6 @@ func performDayShiftRotation(now time.Time) error {
 		}
 	}
 	if len(groups) == 0 {
-		// Fallback to legacy pairs config
-		var cfgPairs []DayShiftCyclePair
-		_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgPairs).Error
-		if len(cfgPairs) > 0 {
-			for _, p := range cfgPairs {
-				groups = append(groups, []uint{p.User1ID, p.User2ID})
-			}
-		}
-	}
-	if len(groups) == 0 {
 		// Auto compute groups from active users using env group size (default 2)
 		actUsers, err := listActiveUsers()
 		if err != nil || len(actUsers) < 1 {
@@ -1737,9 +1711,9 @@ func performDayShiftRotation(now time.Time) error {
 			}
 		}
 		groups = computeGroups(actUsers, gs)
-	}
-	if len(groups) == 0 {
-		return nil
+		if len(groups) == 0 {
+			return nil
+		}
 	}
 	// Determine today's index: increment stored index on each business day within the cycle.
 	// Index is 1-based and maps to groups sorted by position.

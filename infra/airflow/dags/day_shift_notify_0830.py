@@ -76,32 +76,22 @@ def notify_day_shift(**context):
             )
             groups = cur.fetchall() or []
         if not groups:
-            # Fallback to legacy pairs
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, position, user1_id, user2_id FROM day_shift_cycle_pairs WHERE cycle_id = %s ORDER BY position ASC, id ASC",
-                    (cur_cid,),
-                )
-                pairs = cur.fetchall() or []
-            if not pairs:
-                hook = os.getenv("DISCORD_WEBHOOK_URL", "")
-                if hook:
-                    requests.post(hook, json={
-                        "embeds": [{
-                            "title": "Day Shift Notification Skipped",
-                            "description": "グループ/ペアが設定されていないため、本日の通知をスキップしました。",
-                            "color": 0xE67E22,
-                            "fields": [
-                                {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
-                                {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
-                                {"name": "Reason", "value": "No groups/pairs", "inline": False},
-                            ],
-                            "timestamp": datetime.utcnow().isoformat() + "Z",
-                        }]
-                    }, timeout=5)
-                return
-            # Build users list from pairs
-            target_users = [p.get("user1_id"), p.get("user2_id")] if pairs else []
+            hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+            if hook:
+                requests.post(hook, json={
+                    "embeds": [{
+                        "title": "Day Shift Notification Skipped",
+                        "description": "グループが設定されていないため、本日の通知をスキップしました。",
+                        "color": 0xE67E22,
+                        "fields": [
+                            {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                            {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
+                            {"name": "Reason", "value": "No groups/pairs", "inline": False},
+                        ],
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }]
+                }, timeout=5)
+            return
         else:
             # Select group via modulo
             g = groups[cur_idx % len(groups)]

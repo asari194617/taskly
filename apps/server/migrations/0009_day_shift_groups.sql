@@ -1,6 +1,5 @@
 -- Create generalized day shift group tables (replacing legacy pairs)
 -- Note: This migration creates schema only; data backfill from legacy
--- day_shift_cycle_pairs (if any) should be handled separately to avoid
 -- failures on fresh databases where the legacy table does not exist.
 
 CREATE TABLE IF NOT EXISTS day_shift_cycle_groups (
