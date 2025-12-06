@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"bytes"
+	"context"
 	"crypto/tls"
 	"net"
 	"net/smtp"
-	"context"
 
-	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
-	dynmsg "github.com/jhump/protoreflect/dynamic"
 	protoparse "github.com/jhump/protoreflect/desc/protoparse"
+	dynmsg "github.com/jhump/protoreflect/dynamic"
+	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -518,18 +518,24 @@ func composeTaskDigestGRPC(locale, appName string, items []QueueItem) (html stri
 	itmMsgDesc := m.GetInputType().FindFieldByName("items").GetMessageType()
 	for _, it := range payload.Items {
 		itm := factory.NewMessage(itmMsgDesc).(*dynmsg.Message)
-		itm.SetFieldByName("when_label", it["when_label"]) 
-		itm.SetFieldByName("subject", it["subject"]) 
-		itm.SetFieldByName("title", it["title"]) 
-		if v, ok := it["body"]; ok { itm.SetFieldByName("body", v) }
-		if v, ok := it["meta"]; ok { itm.SetFieldByName("meta", v) }
+		itm.SetFieldByName("when_label", it["when_label"])
+		itm.SetFieldByName("subject", it["subject"])
+		itm.SetFieldByName("title", it["title"])
+		if v, ok := it["body"]; ok {
+			itm.SetFieldByName("body", v)
+		}
+		if v, ok := it["meta"]; ok {
+			itm.SetFieldByName("meta", v)
+		}
 		if v, ok := it["badges"]; ok {
 			if arr, ok := v.([]map[string]any); ok {
 				bdMsgDesc := itmMsgDesc.FindFieldByName("badges").GetMessageType()
 				for _, b := range arr {
 					bm := factory.NewMessage(bdMsgDesc).(*dynmsg.Message)
-					bm.SetFieldByName("label", b["label"]) 
-					if vv, ok := b["variant"]; ok { bm.SetFieldByName("variant", vv) }
+					bm.SetFieldByName("label", b["label"])
+					if vv, ok := b["variant"]; ok {
+						bm.SetFieldByName("variant", vv)
+					}
 					itm.AddRepeatedFieldByName("badges", bm)
 				}
 			}
