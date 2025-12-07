@@ -44,9 +44,8 @@ func main() {
 		return
 	}
 
-	vapidPrivate := os.Getenv("VAPID_PRIVATE_KEY")
-	vapidPublic := os.Getenv("VAPID_PUBLIC_KEY")
-	vapidSubject := valueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
+	// Prefer DB-stored VAPID keys when available, falling back to env.
+	vapidPublic, vapidPrivate, vapidSubject := loadVAPIDFromDB(db)
 	if strings.TrimSpace(vapidPrivate) == "" || strings.TrimSpace(vapidPublic) == "" {
 		log.Println("missing VAPID keys; skipping web push")
 		return
@@ -93,7 +92,41 @@ func main() {
 }
 
 func fetchPendingWebPushQueue(db *sql.DB) ([]QueueItem, error) {
-	rows, err := db.Query(`SELECT id, when_label, subject, title, body, user_id FROM notifications_queue WHERE processed_at IS NULL AND (channel = 'webpush') ORDER BY id ASC LIMIT 200`)
+	// notifications_queue.user_id を起点に、以下の条件でフィルタします:
+	// - blocks によるブロック中ユーザーを除外
+	// - notification_type_prefs で該当 type が is_enabled=0 のユーザーを除外
+	//   (レコードがない場合は配信OK)
+	// - notification_devices で WEBPUSH デバイスが is_enabled=1 のユーザーに限定
+	//   (レコードがないユーザーには配信しない)
+	// - web_push_subscriptions に有効な購読があるユーザーに限定
+	rows, err := db.Query(`
+		SELECT q.id, q.when_label, q.subject, q.title, q.body, q.user_id
+		FROM notifications_queue q
+		JOIN users u ON u.id = q.user_id
+		LEFT JOIN blocks b
+		  ON b.user_id = u.id
+		 AND (b.expires_at IS NULL OR b.expires_at > NOW())
+		LEFT JOIN notification_type_prefs ntp
+		  ON ntp.user_id = u.id
+		 AND ntp.notification_type IN ('TASK','DAYSHIFT')
+		LEFT JOIN notification_devices nd
+		  ON nd.user_id = u.id
+		 AND nd.platform = 'WEBPUSH'
+		 AND nd.is_enabled = 1
+		JOIN web_push_subscriptions wps
+		  ON wps.user_id = u.id
+		WHERE q.processed_at IS NULL
+		  AND q.channel = 'webpush'
+		  AND COALESCE(u.is_deleted, 0) = 0
+		  AND b.id IS NULL
+		  AND (
+		    ntp.id IS NULL
+		    OR (ntp.notification_type = 'TASK' AND ntp.is_enabled = 1 AND q.kind = 'task')
+		    OR (ntp.notification_type = 'DAYSHIFT' AND ntp.is_enabled = 1 AND q.kind = 'dayshift')
+		  )
+		  AND nd.id IS NOT NULL
+		ORDER BY q.id ASC
+		LIMIT 200`)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +160,22 @@ func fetchUserSubscriptions(db *sql.DB, userID sql.NullInt64) ([]WebPushSubscrip
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// loadVAPIDFromDB loads keys from web_push_vapid if present, otherwise from env.
+func loadVAPIDFromDB(db *sql.DB) (pub, priv, subj string) {
+	row := db.QueryRow(`SELECT public_key, private_key FROM web_push_vapid ORDER BY id DESC LIMIT 1`)
+	var p, s string
+	if err := row.Scan(&p, &s); err == nil && strings.TrimSpace(p) != "" && strings.TrimSpace(s) != "" {
+		pub = p
+		priv = s
+		subj = valueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
+		return
+	}
+	priv = os.Getenv("VAPID_PRIVATE_KEY")
+	pub = os.Getenv("VAPID_PUBLIC_KEY")
+	subj = valueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
+	return
 }
 
 func markQueueProcessed(db *sql.DB, id int64) error {

@@ -13,15 +13,16 @@ try:
 except Exception:
     pass
 
-# Runs queue manager and email delivery at 07:00 and 17:00 JST daily
-# Assumes docker container context where `go run` works, or built binaries available.
-# Adjust cmd paths to your environment.
+# Runs queue manager and delivery channels (email / webpush / discord)
+# at 07:00 and 17:00 JST daily. Assumes docker container context where
+# `go run` works, or built binaries available. Adjust cmd paths to your
+# environment.
 
 def build_cmd(app):
     # Echo key envs for diagnostics, then run. For email channel, do SMTP reachability pre-check via openssl s_client.
     base = (
         "set -euo pipefail; "
-        "echo '--- SMTP ENV ---'; env | grep -E '^(SMTP_|EMAIL_COMPOSE_|APP_NAME|LOCALE)' || true; "
+        "echo '--- NOTIFICATIONS ENV ---'; env | grep -E '^(SMTP_|EMAIL_COMPOSE_|APP_NAME|LOCALE|WEB_URL|VAPID_)' || true; "
     )
     if app == "notifications/delivery-channels/email":
         # Determine STARTTLS usage and port from env; default to starttls:587 for Resend/SendGrid.
@@ -44,7 +45,7 @@ def build_cmd(app):
         )
         run = f"cd /workspace/batches/{app} && go run ."
         return base + precheck + run
-    # Default path (discord, queue-manager, etc.)
+    # Default path (discord, web-push, queue-manager, etc.)
     return base + f"cd /workspace/batches/{app} && go run ."
 
 with DAG(
@@ -112,6 +113,33 @@ with DAG(
         },
     )
 
+    webpush_delivery = BashOperator(
+        task_id="webpush_delivery",
+        bash_command=build_cmd("notifications/delivery-channels/web-push"),
+        env={
+            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
+            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
+            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
+            # DB settings
+            "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
+            "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
+            "DB_USER": os.environ.get("DB_USER", os.environ.get("MYSQL_USER", "taskly")),
+            "DB_PASSWORD": os.environ.get("DB_PASSWORD", os.environ.get("MYSQL_PASSWORD", "taskly_password")),
+            "DB_NAME": os.environ.get("DB_NAME", os.environ.get("MYSQL_DATABASE", "taskly")),
+            "MYSQL_HOST": os.environ.get("MYSQL_HOST", os.environ.get("DB_HOST", "db")),
+            "MYSQL_PORT": os.environ.get("MYSQL_PORT", os.environ.get("DB_PORT", "3306")),
+            "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
+            "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
+            "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
+            "TIMEZONE": os.environ.get("TIMEZONE", "Asia/Tokyo"),
+            # WebPush specific
+            "WEB_URL": os.environ.get("WEB_URL", "https://app.taskly.local"),
+            "VAPID_PUBLIC_KEY": os.environ.get("VAPID_PUBLIC_KEY", ""),
+            "VAPID_PRIVATE_KEY": os.environ.get("VAPID_PRIVATE_KEY", ""),
+            "VAPID_SUBJECT": os.environ.get("VAPID_SUBJECT", "mailto:noreply@taskly.local"),
+        },
+    )
+
     discord_delivery = BashOperator(
         task_id="discord_delivery",
         bash_command=build_cmd("notifications/delivery-channels/discord"),
@@ -135,4 +163,4 @@ with DAG(
         },
     )
 
-    queue_manager.set_downstream([email_delivery, discord_delivery])
+    queue_manager.set_downstream([email_delivery, webpush_delivery, discord_delivery])
