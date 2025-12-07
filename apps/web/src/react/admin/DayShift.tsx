@@ -527,15 +527,17 @@ export default function AdminDayShift() {
       </div>
       {/* Prediction section (mod-based) */}
       <div className="space-y-3">
-        <h2 className="text-lg font-medium">予測ペア（mod）</h2>
+        <h2 className="text-lg font-medium">自分以降の順番予測</h2>
         <Alert>
           <AlertTitle>インデックスとグループの対応について</AlertTitle>
           <AlertDescription>
-            現在のインデックス値はサーバー側と同じく0始まりで扱われます。 行の
-            <code>#</code>列は「内部インデックス値 + 1」を示し、どの行も
-            <code>(内部インデックス値 % グループ数)</code>
-            で担当グループが決まります。
-            ページを進めてもグループとメンバーはこの規則に従い周期的に繰り返されます。
+            現在のインデックス値はサーバー側と同じく0始まりで扱われます。
+            下の表は「現在のインデックス値の担当者」を1行目として、そこから先の順番を表示します。
+            各行の担当グループは、内部インデックス値
+            <code>(currentIndex + オフセット)</code>に対して
+            <code>(内部インデックス値 % グループ数)</code>で決まります。
+            ページを進めると内部インデックス値も進み、それに応じてグループやメンバー、
+            サイクルIDも順番どおりに変化します。
           </AlertDescription>
         </Alert>
         <Card className="p-0 overflow-x-auto">
@@ -568,16 +570,25 @@ export default function AdminDayShift() {
                 const start = (predictPage - 1) * pageSize;
                 const rows: React.ReactNode[] = [];
                 for (let i = 0; i < pageSize; i++) {
-                  const logicalIndex = currentIndex + start + i; // サーバー側と同じ0始まりのインデックス
-                  const gidx =
-                    ((logicalIndex % selectedGroups.length) +
-                      selectedGroups.length) %
-                    selectedGroups.length;
-                  const g = selectedGroups[gidx];
+                  const offset = start + i; // 「自分から何番目か」を表すオフセット
+                  const logicalIndex = currentIndex + offset; // サーバー側と同じ0始まりのインデックス
+
+                  if (logicalIndex < 0) continue;
+
+                  const totalGroups = selectedGroups.length;
+                  const cycleOffset = Math.floor(logicalIndex / totalGroups);
+                  const groupIndexInCycle =
+                    ((logicalIndex % totalGroups) + totalGroups) % totalGroups;
+                  const g = selectedGroups[groupIndexInCycle];
+
+                  const cycleDisplayId = (() => {
+                    const base = Number(cid || autoCid) || 0;
+                    return base ? base + cycleOffset : base;
+                  })();
                   rows.push(
                     <TableRow key={`pred-${logicalIndex}`}>
-                      <TableCell>{logicalIndex + 1}</TableCell>
-                      <TableCell>{cid || autoCid}</TableCell>
+                      <TableCell>{offset + 1}</TableCell>
+                      <TableCell>{cycleDisplayId || "-"}</TableCell>
                       <TableCell>{g.id}</TableCell>
                       <TableCell className="max-w-[420px] truncate">
                         {g.user_ids
