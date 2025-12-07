@@ -118,18 +118,17 @@ func main() {
 
 	// 日直（前日/当日）
 	for _, d := range []time.Time{businessPrev(now), now} {
-		row := db.QueryRow(`SELECT date FROM day_shift_assignments WHERE date = ?`, dateOnly(d).Format("2006-01-02"))
-		var date time.Time
-		if err := row.Scan(&date); err == nil {
-			items = append(items, NotifyItem{
-				Kind:      "dayshift",
-				WhenLabel: whenLabel(now, date),
-				Subject:   "日直",
-				Title:     "日直の担当日です",
-				Body:      "本日は日直の担当日です。よろしくお願いします。",
-				UserID:    0, // 配信チャネル側で担当者に展開する
-			})
-		}
+		// 旧仕様では day_shift_assignments の存在チェックを行っていたが、
+		// 現在はインデックスとグループで担当を決定するため、
+		// 前営業日/当日の2件を常にキューに入れる。
+		items = append(items, NotifyItem{
+			Kind:      "dayshift",
+			WhenLabel: whenLabel(now, d),
+			Subject:   "日直",
+			Title:     "日直の担当日です",
+			Body:      "本日は日直の担当日です。よろしくお願いします。",
+			UserID:    0, // 配信チャネル側で担当者に展開する
+		})
 	}
 
 	// Resolve eligible users and preferences

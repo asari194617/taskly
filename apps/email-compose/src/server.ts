@@ -4,6 +4,7 @@ import * as protoLoader from "@grpc/proto-loader";
 import { render } from "@react-email/render";
 import { LoginCodeEmail } from "./templates/LoginCode.js";
 import { ModerationAlertEmail } from "./templates/ModerationAlert.js";
+import { DayShiftSkipEmail } from "./templates/DayShiftSkip.js";
 import {
   TaskDigestEmail,
   type TaskDigestItem,
@@ -125,6 +126,43 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
         const subject = t("emails:moderation_alert.subject", { appName });
+
+        callback(null, { subject, html, text });
+      } catch (err) {
+        callback(
+          {
+            code: grpc.status.INTERNAL,
+            message: (err as Error).message,
+          } as any,
+          null
+        );
+      }
+    },
+    ComposeDayShiftSkip: (
+      call: grpc.ServerUnaryCall<any, any>,
+      callback: grpc.sendUnaryData<any>
+    ) => {
+      try {
+        const locale = (call.request?.locale as string) || "ja";
+        const appName = (call.request?.app_name as string) || "Taskly";
+        const todayDate = (call.request?.today_date as string) || "";
+        const todayNames = (call.request?.today_names as string) || "";
+        const nextDate = (call.request?.next_date as string) || "";
+        const nextNames = (call.request?.next_names as string) || "";
+
+        const t: (k: string, o?: any) => string = (key: string, o?: any) =>
+          translate(key, { lng: locale, ...(o || {}) });
+        const element = DayShiftSkipEmail({
+          appName,
+          todayDate,
+          todayNames,
+          nextDate,
+          nextNames,
+          t,
+        });
+        const html = render(element, { pretty: true });
+        const text = render(element, { plainText: true });
+        const subject = t("emails:dayshift_skip.subject", { appName });
 
         callback(null, { subject, html, text });
       } catch (err) {

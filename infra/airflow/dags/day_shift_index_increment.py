@@ -111,6 +111,39 @@ def write_index(v: int) -> None:
         conn.close()
 
 
+def read_increment_skip_flag() -> bool:
+    """Return True when configs.day_shift_index_increment_skip is truthy.
+
+    Any non-empty, non-"0", non-"false" (case-insensitive) value is treated
+    as enabled. This keeps semantics simple while allowing future extensions.
+    """
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM configs WHERE `key`='day_shift_index_increment_skip' LIMIT 1")
+            row = cur.fetchone()
+            if not row or row[0] is None:
+                return False
+            v = str(row[0]).strip().lower()
+            if v == "" or v == "0" or v == "false" or v == "no":
+                return False
+            return True
+    finally:
+        conn.close()
+
+
+def clear_increment_skip_flag() -> None:
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE configs SET value='' WHERE `key`='day_shift_index_increment_skip'"
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_current_cycle_id_for_date(d: datetime) -> int:
     conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
     try:
@@ -220,6 +253,24 @@ def increment_if_needed(**context):
                 {"name": "Index Reset", "value": f"{before} → 0", "inline": False},
             ],
             color=0x9B59B6,
+        )
+        return
+
+    # Honor one-shot skip flag for business days. The flag is ignored on
+    # holidays/DAY_SHIFT_OFF above so that it naturally carries over to the
+    # next business day.
+    if read_increment_skip_flag():
+        clear_increment_skip_flag()
+        discord_embed(
+            title="Day Shift Index Skipped",
+            description="スキップフラグによりインクリメントを行いませんでした。",
+            fields=[
+                {"name": "Date", "value": today_str, "inline": True},
+                {"name": "Before", "value": str(before), "inline": True},
+                {"name": "After", "value": str(before), "inline": True},
+                {"name": "Reason", "value": "day_shift_index_increment_skip flag", "inline": False},
+            ],
+            color=0xE67E22,
         )
         return
 

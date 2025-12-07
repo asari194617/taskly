@@ -24,7 +24,6 @@ type gqlTypes struct {
 	McpInfoType               *graphql.Object
 	LogItemType               *graphql.Object
 	DayShiftCycleType         *graphql.Object
-	DayShiftAssignmentType    *graphql.Object
 	DayShiftGroupType         *graphql.Object
 	DayShiftCycleListType     *graphql.Object
 	DayShiftGroupListType     *graphql.Object
@@ -234,16 +233,6 @@ func createGQLTypes() *gqlTypes {
 			"description": &graphql.Field{Type: graphql.String},
 		},
 	})
-	dayShiftAssignmentType := graphql.NewObject(graphql.ObjectConfig{
-		Name: "DayShiftAssignment",
-		Fields: graphql.Fields{
-			"id":       &graphql.Field{Type: graphql.Int},
-			"date":     &graphql.Field{Type: graphql.String},
-			"cycle_id": &graphql.Field{Type: graphql.Int},
-			"status":   &graphql.Field{Type: graphql.String},
-			"user_ids": &graphql.Field{Type: graphql.NewList(graphql.Int)},
-		},
-	})
 	dayShiftGroupType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "DayShiftGroup",
 		Fields: graphql.Fields{
@@ -302,7 +291,6 @@ func createGQLTypes() *gqlTypes {
 		McpInfoType:               mcpInfoType,
 		LogItemType:               logItemType,
 		DayShiftCycleType:         dayShiftCycleType,
-		DayShiftAssignmentType:    dayShiftAssignmentType,
 		DayShiftGroupType:         dayShiftGroupType,
 		DayShiftCycleListType:     dayShiftCycleListType,
 		DayShiftGroupListType:     dayShiftGroupListType,

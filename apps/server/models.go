@@ -247,22 +247,7 @@ type DayShiftCycle struct {
 	FinishDate  time.Time
 	Description string `gorm:"size:255"`
 }
-type DayShiftAssignment struct {
-	ID        uint `gorm:"primaryKey"`
-	Date      time.Time
-	CycleID   uint
-	Status    string `gorm:"size:16"`
-	Notes     *string
-	CreatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP;autoUpdateTime"`
-}
-type DayShiftAssignmentUser struct {
-	ID                    uint `gorm:"primaryKey"`
-	DayShiftAssignmentsID uint
-	UserID                uint
-}
 
-// Generalized day shift group (supports 2 or more users per position)
 type DayShiftCycleGroup struct {
 	ID        uint      `gorm:"primaryKey"`
 	CycleID   uint      `gorm:"index;not null"`

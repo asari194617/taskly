@@ -28,7 +28,7 @@ func setupTestApp(t *testing.T) (*fiber.App, string) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Block{}, &APIKey{}, &Subject{} /* omit Task for sqlite */, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &DayShiftAssignment{}, &DayShiftAssignmentUser{}, &IcalKey{}, &MCP{}, &Log{}, &DayShiftCycleGroup{}, &DayShiftCycleGroupMember{}, &Migration{}); err != nil {
+	if err := DB.AutoMigrate(&User{}, &Session{}, &RoleUser{}, &Block{}, &APIKey{}, &Subject{} /* omit Task for sqlite */, &ApiActionLog{}, &TOTPSecret{}, &RecoveryCode{}, &Passkey{}, &LoginCode{}, &DayShiftCycle{}, &IcalKey{}, &MCP{}, &Log{}, &DayShiftCycleGroup{}, &DayShiftCycleGroupMember{}, &Migration{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// miniredis for sessions

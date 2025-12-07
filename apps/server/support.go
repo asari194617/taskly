@@ -72,6 +72,21 @@ func getConfigInt(key string) (int, error) {
 	return n, nil
 }
 
+// getConfigBool returns a boolean-like flag from configs table.
+// "", "0", "false", "no" (case-insensitive) are treated as false;
+// any other non-empty value is true.
+func getConfigBool(key string) (bool, error) {
+	s, err := getConfigString(key)
+	if err != nil {
+		return false, err
+	}
+	v := strings.TrimSpace(strings.ToLower(s))
+	if v == "" || v == "0" || v == "false" || v == "no" {
+		return false, nil
+	}
+	return true, nil
+}
+
 // --- JSON parsing & validation helpers ---
 func parseJSONStrict(c *fiber.Ctx, dst any) error {
 	dec := json.NewDecoder(bytes.NewReader(c.Body()))
@@ -273,6 +288,109 @@ func ensureTasksSchema() {
 	}
 	_ = mismatch
 	// No destructive changes; rely on migrations.
+}
+
+// resolveDayShiftTodayAndNextMembers returns the users for today and the
+// "next" day based on the provided base index and current cycle. baseIndex is
+// interpreted the same way as in the Airflow DAGs: it is 0-based and used with
+// modulo over the ordered groups.
+func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMembers []*User, nextMembers []*User, err error) {
+	// Detect current cycle by date (same as DAG behavior)
+	todayDate := today.Format("2006-01-02")
+	var cidRow struct{ ID uint }
+	if err = DB.Raw("SELECT id AS id FROM day_shift_cycles WHERE begin_date <= ? AND finish_date >= ? ORDER BY finish_date DESC, id DESC LIMIT 1", todayDate, todayDate).Scan(&cidRow).Error; err != nil {
+		return nil, nil, err
+	}
+	if cidRow.ID == 0 {
+		return []*User{}, []*User{}, nil
+	}
+	cycleID := cidRow.ID
+
+	// Load ordered groups for the cycle
+	var groups []struct {
+		ID       uint
+		Position int
+	}
+	if err = DB.Raw("SELECT id AS id, position AS position FROM day_shift_cycle_groups WHERE cycle_id=? ORDER BY position ASC, id ASC", cycleID).Scan(&groups).Error; err != nil {
+		return nil, nil, err
+	}
+	if len(groups) == 0 {
+		return []*User{}, []*User{}, nil
+	}
+
+	idx := baseIndex
+	if idx < 0 {
+		idx = 0
+	}
+	giToday := idx % len(groups)
+	giNext := (idx + 1) % len(groups)
+	gidToday := groups[giToday].ID
+	gidNext := groups[giNext].ID
+
+	// helper to load members for a group
+	loadMembers := func(gid uint) ([]*User, error) {
+		var memberRows []struct {
+			UserID uint
+		}
+		if err := DB.Raw("SELECT user_id AS user_id FROM day_shift_cycle_group_members WHERE group_id=? ORDER BY position ASC, id ASC", gid).Scan(&memberRows).Error; err != nil {
+			return nil, err
+		}
+		if len(memberRows) == 0 {
+			return []*User{}, nil
+		}
+		ids := make([]uint, 0, len(memberRows))
+		for _, mr := range memberRows {
+			ids = append(ids, mr.UserID)
+		}
+		var users []*User
+		if err := DB.Where("id IN ? AND is_deleted = 0", ids).Find(&users).Error; err != nil {
+			return nil, err
+		}
+		return users, nil
+	}
+
+	if todayMembers, err = loadMembers(gidToday); err != nil {
+		return nil, nil, err
+	}
+	if nextMembers, err = loadMembers(gidNext); err != nil {
+		return nil, nil, err
+	}
+	return todayMembers, nextMembers, nil
+}
+
+// joinUserNames joins display names (falling back to email) for logs/Discord/email.
+func joinUserNames(users []*User) string {
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		name := strings.TrimSpace(u.DisplayName)
+		if name == "" {
+			name = u.Email
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// sendDayShiftSkipEmail is currently a lightweight stub. The actual email
+// rendering is handled by the email-compose service; here we simply log the
+// intended recipients and dates for observability. Wiring a full mail send
+// pipeline can be done later by following the composeLoginCodeGRPC pattern.
+func sendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMembers, nextMembers []*User) error {
+	subject := fmt.Sprintf("[Taskly] 日直スキップ: %s", today.Format("2006-01-02"))
+	sentry.AddBreadcrumb(&sentry.Breadcrumb{
+		Category: "dayshift_skip_email",
+		Message:  subject,
+		Data: map[string]any{
+			"today":        today.Format("2006-01-02"),
+			"next":         next.Format("2006-01-02"),
+			"todayMembers": joinUserNames(todayMembers),
+			"nextMembers":  joinUserNames(nextMembers),
+		},
+		Level: sentry.LevelInfo,
+	})
+	return nil
 }
 
 func runMigrations() {
@@ -1651,35 +1769,7 @@ func performDayShiftRotation(now time.Time) error {
 			cyc = &confCyc
 		}
 	}
-	prev := prevBusinessDay(d)
-	if !prev.IsZero() {
-		var prevAsg DayShiftAssignment
-		if err := DB.Where("date = ?", prev.Format("2006-01-02")).First(&prevAsg).Error; err == nil {
-			if strings.EqualFold(prevAsg.Status, "unfulfilled") {
-				var today DayShiftAssignment
-				if err := DB.Where("date = ?", d.Format("2006-01-02")).First(&today).Error; err != nil {
-					today = DayShiftAssignment{Date: time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location()), Status: "assigned", CycleID: cyc.ID}
-					if err := DB.Create(&today).Error; err != nil {
-						return err
-					}
-				}
-				var prevUsers []DayShiftAssignmentUser
-				_ = DB.Where("day_shift_assignments_id = ?", prevAsg.ID).Find(&prevUsers).Error
-				_ = DB.Where("day_shift_assignments_id = ?", today.ID).Delete(&DayShiftAssignmentUser{}).Error
-				for _, pu := range prevUsers {
-					_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: today.ID, UserID: pu.UserID}).Error
-				}
-				return nil
-			}
-		}
-	}
-	var today DayShiftAssignment
-	if err := DB.Where("date = ?", d.Format("2006-01-02")).First(&today).Error; err != nil {
-		today = DayShiftAssignment{Date: time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location()), Status: "assigned", CycleID: cyc.ID}
-		if err := DB.Create(&today).Error; err != nil {
-			return err
-		}
-	}
+	// Legacy assignment-table-based carry-over from previous business day removed.
 	// Prefer new group configuration if present
 	var cfgGroups []DayShiftCycleGroup
 	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups).Error
@@ -1715,20 +1805,9 @@ func performDayShiftRotation(now time.Time) error {
 			return nil
 		}
 	}
-	// Determine today's index: increment stored index on each business day within the cycle.
-	// Index is 1-based and maps to groups sorted by position.
-	// Read current index (0-based). Server does not increment.
-	idxStr, _ := getConfigString("day_shift_current_index")
-	curIdx := 0
-	if strings.TrimSpace(idxStr) != "" {
-		fmt.Sscanf(idxStr, "%d", &curIdx)
-	}
-	// Select group by position order using modulo of 0-based index
-	grp := groups[curIdx%len(groups)]
-	_ = DB.Where("day_shift_assignments_id = ?", today.ID).Delete(&DayShiftAssignmentUser{}).Error
-	for _, uid := range grp {
-		_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: today.ID, UserID: uid}).Error
-	}
+	// Determine today's index via configs; actual assignment expansion is handled
+	// by downstream index-based batches, so server no longer persists per-day
+	// day_shift_assignments rows here.
 	return nil
 }
 
@@ -1843,7 +1922,10 @@ func businessDaysBetween(start time.Time, end time.Time) int {
 	return 0
 }
 
-// Decide whether to rotate day shift based on Gemini API analysis of subject/body
+// Decide whether to rotate day shift based on Gemini API analysis of subject/body.
+// Returns true when rotation/skip should occur. This version preserves the
+// legacy signature and logic; higher-level code is responsible for deciding
+// whether the rotation is "today" or "tomorrow" based on additional cues.
 func shouldRotateByGemini(subject, body string) bool {
 	// 1) Strong heuristic first (Japanese keywords)
 	s := strings.ToLower(subject + "\n" + body)
@@ -1913,137 +1995,8 @@ func notifyDayShiftRotationDiscord(target time.Time) {
 
 // Shift all assignments from the next business day after 'start' one business day forward,
 // and ensure today's users are also assigned to that next business day.
-func pushAssignmentsOneDayForward(start time.Time) error {
-	start = dateOnly(start)
-	next := nextBusinessDay(start)
-	if next.IsZero() {
-		return nil
-	}
-	// Load all assignments on/after next within current cycle if any (or for next 60 days)
-	end := next.AddDate(0, 0, 60)
-	if cyc, err := getCurrentCycle(start); err == nil && cyc != nil && cyc.FinishDate.After(next) {
-		end = dateOnly(cyc.FinishDate)
-	}
-	var items []DayShiftAssignment
-	if err := DB.Where("date BETWEEN ? AND ?", next.Format("2006-01-02"), end.Format("2006-01-02")).Order("date ASC").Find(&items).Error; err != nil {
-		return err
-	}
-	// Iterate in reverse to move forward safely
-	for i := len(items) - 1; i >= 0; i-- {
-		cur := items[i]
-		dest := nextBusinessDay(cur.Date)
-		if dest.IsZero() {
-			continue
-		}
-		var destAsg DayShiftAssignment
-		err := DB.Where("date = ?", dest.Format("2006-01-02")).First(&destAsg).Error
-		if err == nil {
-			var curUsers []DayShiftAssignmentUser
-			_ = DB.Where("day_shift_assignments_id = ?", cur.ID).Find(&curUsers).Error
-			for _, u := range curUsers {
-				var cnt int64
-				_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", destAsg.ID, u.UserID).Count(&cnt).Error
-				if cnt == 0 {
-					_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: destAsg.ID, UserID: u.UserID}).Error
-				}
-			}
-			_ = DB.Delete(&DayShiftAssignment{}, cur.ID).Error
-		} else {
-			_ = DB.Model(&DayShiftAssignment{}).Where("id = ?", cur.ID).Update("date", dateOnly(dest)).Error
-		}
-	}
-	// Copy today's users to next business day as well
-	var today DayShiftAssignment
-	if err := DB.Where("date = ?", start.Format("2006-01-02")).First(&today).Error; err == nil {
-		var todayUsers []DayShiftAssignmentUser
-		_ = DB.Where("day_shift_assignments_id = ?", today.ID).Find(&todayUsers).Error
-		var dest DayShiftAssignment
-		if err := DB.Where("date = ?", next.Format("2006-01-02")).First(&dest).Error; err != nil {
-			cyc, _ := getCurrentCycle(next)
-			dest = DayShiftAssignment{Date: next, Status: "assigned"}
-			if cyc != nil {
-				dest.CycleID = cyc.ID
-			}
-			_ = DB.Create(&dest).Error
-		}
-		for _, u := range todayUsers {
-			var cnt int64
-			_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", dest.ID, u.UserID).Count(&cnt).Error
-			if cnt == 0 {
-				_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: dest.ID, UserID: u.UserID}).Error
-			}
-		}
-	}
-	return nil
-}
 
-// Shift all assignments from the previous business day before 'start' one business day backward,
-// and ensure today's users are also assigned to that previous business day.
-func pushAssignmentsOneDayBackward(start time.Time) error {
-	start = dateOnly(start)
-	prev := prevBusinessDay(start)
-	if prev.IsZero() {
-		return nil
-	}
-	// Load all assignments on/before prev within current cycle if any (or for previous 60 days)
-	begin := prev.AddDate(0, 0, -60)
-	if cyc, err := getCurrentCycle(start); err == nil && cyc != nil && cyc.BeginDate.Before(prev) {
-		begin = dateOnly(cyc.BeginDate)
-	}
-	var items []DayShiftAssignment
-	if err := DB.Where("date BETWEEN ? AND ?", begin.Format("2006-01-02"), prev.Format("2006-01-02")).Order("date ASC").Find(&items).Error; err != nil {
-		return err
-	}
-	// Iterate in ascending order to move backward safely
-	for i := 0; i < len(items); i++ {
-		cur := items[i]
-		dest := prevBusinessDay(cur.Date)
-		if dest.IsZero() {
-			continue
-		}
-		var destAsg DayShiftAssignment
-		err := DB.Where("date = ?", dest.Format("2006-01-02")).First(&destAsg).Error
-		if err == nil {
-			// merge users then delete current assignment
-			var curUsers []DayShiftAssignmentUser
-			_ = DB.Where("day_shift_assignments_id = ?", cur.ID).Find(&curUsers).Error
-			for _, u := range curUsers {
-				var cnt int64
-				_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", destAsg.ID, u.UserID).Count(&cnt).Error
-				if cnt == 0 {
-					_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: destAsg.ID, UserID: u.UserID}).Error
-				}
-			}
-			_ = DB.Delete(&DayShiftAssignment{}, cur.ID).Error
-		} else {
-			// simply move the date backward
-			_ = DB.Model(&DayShiftAssignment{}).Where("id = ?", cur.ID).Update("date", dateOnly(dest)).Error
-		}
-	}
-	// Copy today's users to previous business day as well
-	var today DayShiftAssignment
-	if err := DB.Where("date = ?", start.Format("2006-01-02")).First(&today).Error; err == nil {
-		var todayUsers []DayShiftAssignmentUser
-		_ = DB.Where("day_shift_assignments_id = ?", today.ID).Find(&todayUsers).Error
-		var dest DayShiftAssignment
-		if err := DB.Where("date = ?", prev.Format("2006-01-02")).First(&dest).Error; err != nil {
-			cyc, _ := getCurrentCycle(prev)
-			dest = DayShiftAssignment{Date: prev, Status: "assigned"}
-			if cyc != nil {
-				dest.CycleID = cyc.ID
-			}
-			_ = DB.Create(&dest).Error
-		}
-		for _, u := range todayUsers {
-			var cnt int64
-			_ = DB.Model(&DayShiftAssignmentUser{}).Where("day_shift_assignments_id = ? AND user_id = ?", dest.ID, u.UserID).Count(&cnt).Error
-			if cnt == 0 {
-				_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: dest.ID, UserID: u.UserID}).Error
-			}
-		}
-	}
-	return nil
-}
+// Legacy backward-shift helper also depended on day_shift_assignments; keep signature but no-op.
 
 // captureError reports error to Sentry if DSN is configured
 func captureError(err error) {

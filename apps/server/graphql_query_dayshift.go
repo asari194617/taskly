@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
@@ -11,72 +10,12 @@ import (
 
 // queryFieldsDayShift returns GraphQL fields related to day shift (assignments, groups, cycles).
 func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
-	dayShiftAssignmentType := t.DayShiftAssignmentType
 	dayShiftGroupType := t.DayShiftGroupType
 	dayShiftCycleType := t.DayShiftCycleType
 	dayShiftCycleListType := t.DayShiftCycleListType
 	dayShiftGroupListType := t.DayShiftGroupListType
 
 	return graphql.Fields{
-		// Day shift: assignments list (by cycle or date range)
-		"adminDayshiftAssignments": &graphql.Field{
-			Type: graphql.NewList(dayShiftAssignmentType),
-			Args: graphql.FieldConfigArgument{
-				"cycle_id": &graphql.ArgumentConfig{Type: graphql.Int},
-				"start":    &graphql.ArgumentConfig{Type: graphql.String},
-				"end":      &graphql.ArgumentConfig{Type: graphql.String},
-			},
-			Resolve: func(p graphql.ResolveParams) (any, error) {
-				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
-					}
-					dbq := DB.Model(&DayShiftAssignment{})
-					if v, ok := p.Args["cycle_id"].(int); ok && v > 0 {
-						dbq = dbq.Where("cycle_id = ?", v)
-					}
-					if s, ok := p.Args["start"].(string); ok && strings.TrimSpace(s) != "" {
-						if _, err := time.Parse("2006-01-02", s); err == nil {
-							dbq = dbq.Where("date >= ?", s)
-						}
-					}
-					if e, ok := p.Args["end"].(string); ok && strings.TrimSpace(e) != "" {
-						if _, err := time.Parse("2006-01-02", e); err == nil {
-							dbq = dbq.Where("date <= ?", e)
-						}
-					}
-					var items []DayShiftAssignment
-					if err := dbq.Order("date ASC").Find(&items).Error; err != nil {
-						return nil, err
-					}
-					// build user_ids per assignment
-					out := make([]map[string]any, 0, len(items))
-					for _, it := range items {
-						var mems []DayShiftAssignmentUser
-						_ = DB.Where("day_shift_assignments_id = ?", it.ID).Order("id ASC").Find(&mems).Error
-						ids := make([]int, 0, len(mems))
-						for _, m := range mems {
-							ids = append(ids, int(m.UserID))
-						}
-						out = append(out, map[string]any{
-							"id":       it.ID,
-							"date":     it.Date.Format("2006-01-02"),
-							"cycle_id": it.CycleID,
-							"status":   it.Status,
-							"user_ids": ids,
-						})
-					}
-					return out, nil
-				}
-				return nil, fmt.Errorf("context missing")
-			},
-		},
 		// IDs only for groups (to help reordering with server-side pagination)
 		"adminDayshiftGroupIds": &graphql.Field{
 			Type: graphql.NewList(graphql.Int),

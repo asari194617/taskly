@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,127 +12,6 @@ import (
 // mutationFieldsDayShift groups DayShift-related mutations.
 func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 	fields := graphql.Fields{}
-
-	fields["adminDayshiftUpdateAssignmentMembers"] = &graphql.Field{
-		Type: graphql.Boolean,
-		Args: graphql.FieldConfigArgument{
-			"date":     &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
-			"user_ids": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.Int)))},
-		},
-		Resolve: func(p graphql.ResolveParams) (any, error) {
-			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
-				}
-				ds := strings.TrimSpace(p.Args["date"].(string))
-				dd, err := time.Parse("2006-01-02", ds)
-				if err != nil {
-					return false, fmt.Errorf("invalid date")
-				}
-				var asg DayShiftAssignment
-				if err := DB.Where("date = ?", ds).First(&asg).Error; err != nil {
-					// create if not exists within current cycle
-					cyc, _ := getCurrentCycle(dd)
-					asg = DayShiftAssignment{Date: dateOnly(dd), Status: "assigned"}
-					if cyc != nil {
-						asg.CycleID = cyc.ID
-					}
-					_ = DB.Create(&asg).Error
-				}
-				_ = DB.Where("day_shift_assignments_id = ?", asg.ID).Delete(&DayShiftAssignmentUser{}).Error
-				raw, _ := p.Args["user_ids"].([]any)
-				for _, v := range raw {
-					var id int
-					switch t := v.(type) {
-					case int:
-						id = t
-					case int64:
-						id = int(t)
-					case float64:
-						id = int(t)
-					}
-					_ = DB.Create(&DayShiftAssignmentUser{DayShiftAssignmentsID: asg.ID, UserID: uint(id)}).Error
-				}
-				return true, nil
-			}
-			return false, fmt.Errorf("context missing")
-		},
-	}
-
-	fields["adminDayshiftDeleteAssignment"] = &graphql.Field{
-		Type: graphql.Boolean,
-		Args: graphql.FieldConfigArgument{"date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
-		Resolve: func(p graphql.ResolveParams) (any, error) {
-			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
-				}
-				ds := strings.TrimSpace(p.Args["date"].(string))
-				var asg DayShiftAssignment
-				if err := DB.Where("date = ?", ds).First(&asg).Error; err != nil {
-					return false, fmt.Errorf("not found")
-				}
-				_ = DB.Where("day_shift_assignments_id = ?", asg.ID).Delete(&DayShiftAssignmentUser{}).Error
-				if err := DB.Delete(&DayShiftAssignment{}, asg.ID).Error; err != nil {
-					return false, fmt.Errorf("db")
-				}
-				return true, nil
-			}
-			return false, fmt.Errorf("context missing")
-		},
-	}
-
-	fields["adminDayshiftShift"] = &graphql.Field{
-		Type: graphql.Boolean,
-		Args: graphql.FieldConfigArgument{
-			"start":     &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
-			"direction": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // forward | backward
-		},
-		Resolve: func(p graphql.ResolveParams) (any, error) {
-			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
-				}
-				ds := strings.TrimSpace(p.Args["start"].(string))
-				dt, err := time.Parse("2006-01-02", ds)
-				if err != nil {
-					return false, fmt.Errorf("invalid date")
-				}
-				dir := strings.ToLower(strings.TrimSpace(fmt.Sprint(p.Args["direction"])))
-				if dir == "forward" {
-					if err := pushAssignmentsOneDayForward(dt); err != nil {
-						return false, err
-					}
-					return true, nil
-				} else if dir == "backward" {
-					if err := pushAssignmentsOneDayBackward(dt); err != nil {
-						return false, err
-					}
-					return true, nil
-				}
-				return false, fmt.Errorf("invalid direction")
-			}
-			return false, fmt.Errorf("context missing")
-		},
-	}
 
 	fields["adminDayshiftUpdateGroupMembers"] = &graphql.Field{
 		Type: graphql.Boolean,
@@ -381,54 +259,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 	}
 
 	// Send day shift notification for a specific date and notify Discord asynchronously
-	fields["adminDayshiftNotify"] = &graphql.Field{
-		Type: graphql.Boolean,
-		Args: graphql.FieldConfigArgument{
-			"date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
-		},
-		Resolve: func(p graphql.ResolveParams) (any, error) {
-			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
-				}
-				ds := strings.TrimSpace(p.Args["date"].(string))
-				dt, err := time.Parse("2006-01-02", ds)
-				if err != nil {
-					return false, fmt.Errorf("invalid date")
-				}
-				// Resolve assigned users for the date
-				var asg DayShiftAssignment
-				if err := DB.Where("date = ?", ds).First(&asg).Error; err != nil {
-					return false, fmt.Errorf("assignment not found")
-				}
-				var members []DayShiftAssignmentUser
-				_ = DB.Where("day_shift_assignments_id = ?", asg.ID).Find(&members).Error
-				names := make([]string, 0, len(members))
-				for _, m := range members {
-					var usr User
-					if err := DB.Select("email", "display_name").First(&usr, m.UserID).Error; err == nil {
-						if strings.TrimSpace(usr.DisplayName) != "" {
-							names = append(names, usr.DisplayName)
-						} else {
-							names = append(names, usr.Email)
-						}
-					}
-				}
-				// Async Discord embed
-				go sendDiscordDayShiftNotifyEmbed(dt, names, u.Email)
-				// Future: trigger actual notification to assigned users (email/push) here
-				_ = DB.Create(&Log{UserID: &u.ID, Action: "admin.dayshift.notify"}).Error
-				return true, nil
-			}
-			return false, fmt.Errorf("context missing")
-		},
-	}
+	// Old adminDayshiftNotify mutation relied on day_shift_assignments; removed in favor of index-based pipeline.
 
 	return fields
 }

@@ -5,6 +5,7 @@ service EmailComposer {
   rpc ComposeLoginCode (ComposeLoginCodeRequest) returns (ComposeResponse) {}
   rpc ComposeTaskDigest (ComposeTaskDigestRequest) returns (ComposeResponse) {}
   rpc ComposeModerationAlert (ComposeModerationAlertRequest) returns (ComposeResponse) {}
+  rpc ComposeDayShiftSkip (ComposeDayShiftSkipRequest) returns (ComposeResponse) {}
 }
 
 message ComposeLoginCodeRequest {
@@ -54,4 +55,13 @@ message ComposeModerationAlertRequest {
   int32 auto_hidden = 4;
   string review_url = 5;
   repeated ModerationHighlight highlights = 6;
+}
+
+message ComposeDayShiftSkipRequest {
+  string locale = 1; // 'en' or 'ja'
+  string app_name = 2;
+  string today_date = 3; // YYYY-MM-DD
+  string today_names = 4; // comma separated display names
+  string next_date = 5; // YYYY-MM-DD
+  string next_names = 6; // comma separated display names
 }
