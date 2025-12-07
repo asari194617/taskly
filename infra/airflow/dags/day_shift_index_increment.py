@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import icalendar
 import os
@@ -204,8 +204,13 @@ def write_current_cycle_config(cid: int) -> None:
     finally:
         conn.close()
 
+JST = timezone(timedelta(hours=9))
+
+
 def increment_if_needed(**context):
-    now = datetime.now()
+    # Use JST so that "today" is evaluated in Japan local time,
+    # independent of the Airflow scheduler's server timezone.
+    now = datetime.now(JST)
     today_str = now.strftime("%Y-%m-%d")
     before = read_index()
 
@@ -297,7 +302,7 @@ def send_830_notifications(**context):
 with DAG(
     dag_id="day_shift_index_increment",
     start_date=datetime(2025, 1, 1),
-    schedule_interval="0 3 * * *",
+    schedule_interval="0 18 * * *",
     catchup=False,
     default_args={"owner": "taskly"},
 ) as dag:
