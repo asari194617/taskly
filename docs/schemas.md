@@ -18,19 +18,19 @@
 
 ### `users`: ユーザー情報
 
-| フィールド名          | 型             | 属性                                | 詳細                       |
-| --------------------- | -------------- | ----------------------------------- | -------------------------- |
-| `id`                  | `BIGINT`       | PK, AUTO_INCREMENT                  | ユーザー ID                |
-| `email`               | `VARCHAR(255)` | UNIQUE, NOT NULL                    | メールアドレス             |
-| `display_name`        | `VARCHAR(255)` |                                     | 表示名                     |
-| `hashed_password`     | `VARCHAR(255)` | NULL                                | パスワードハッシュ（任意） |
-| `is_deleted`          | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 退会/削除フラグ            |
-| `display_lang`        | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | UI 表示言語                |
-| `notification_lang`   | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | 通知の言語                 |
-| `email_code_allowed`  | `BOOLEAN`      | NOT NULL, DEFAULT TRUE              | メールコードログインの許可 |
-| `is_registered`       | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 登録完了フラグ             |
-| `is_agreed_policies`  | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 規約同意フラグ             |
-| `created_at`          | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 作成日時                   |
+| フィールド名         | 型             | 属性                                | 詳細                       |
+| -------------------- | -------------- | ----------------------------------- | -------------------------- |
+| `id`                 | `BIGINT`       | PK, AUTO_INCREMENT                  | ユーザー ID                |
+| `email`              | `VARCHAR(255)` | UNIQUE, NOT NULL                    | メールアドレス             |
+| `display_name`       | `VARCHAR(255)` |                                     | 表示名                     |
+| `hashed_password`    | `VARCHAR(255)` | NULL                                | パスワードハッシュ（任意） |
+| `is_deleted`         | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 退会/削除フラグ            |
+| `display_lang`       | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | UI 表示言語                |
+| `notification_lang`  | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | 通知の言語                 |
+| `email_code_allowed` | `BOOLEAN`      | NOT NULL, DEFAULT TRUE              | メールコードログインの許可 |
+| `is_registered`      | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 登録完了フラグ             |
+| `is_agreed_policies` | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 規約同意フラグ             |
+| `created_at`         | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 作成日時                   |
 
 ### `subjects`: 科目
 
@@ -53,11 +53,12 @@
 | `subject_id` | `BIGINT` | FK(subjects.id), NOT NULL | 科目 ID |
 | `description` | `TEXT` | NULL | 詳細説明 |
 | `is_require_hand_in` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | 提出必須か |
-| `deadline` | `DATE` | NULL | 期日（旧） |
-| `deadline_since` | `ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10')` | NOT NULL, DEFAULT 'NONE' | 期日の開始コマ（拡張済み） |
-| `deadline_until` | `ENUM('NONE','MORNING','LUNCH','AFTER_SCHOOL','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10')` | NOT NULL, DEFAULT 'NONE' | 期日の終了帯/コマ（拡張済み） |
+| `is_self_check_required` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | 自己確認必須か |
+| `is_hidden` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | モデレーションにより非表示か |
+| `deadline` | `DATE` | NOT NULL | 期日 |
+| `deadline_since` | `ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10')` | NOT NULL, DEFAULT 'NONE' | 期日の開始コマ |
+| `deadline_until` | `ENUM('NONE','MORNING','LUNCH','AFTER_SCHOOL','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10')` | NOT NULL, DEFAULT 'NONE' | 期日の終了帯/コマ |
 | `type` | `ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER')` | NOT NULL, DEFAULT 'OTHER' | 課題種別 |
-| `is_hidden` | `BOOLEAN` | NOT NULL, DEFAULT 0 | モデレーションにより非表示か |
 | `created_at` | `DATETIME` | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 作成日時 |
 | `updated_at` | `DATETIME` | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新日時 |
 
@@ -76,6 +77,7 @@
 | `user_id`     | `BIGINT`       | FK(users.id), NOT NULL              | ユーザー         |
 | `token`       | `VARCHAR(255)` | UNIQUE, NOT NULL                    | アクセストークン |
 | `description` | `VARCHAR(255)` | NULL                                | 説明             |
+| `expires_at`  | `DATETIME`     | NULL                                | 期限             |
 | `created_at`  | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP |                  |
 
 ### `passkeys`: WebAuthn パスキー
@@ -151,7 +153,7 @@
 | `client_platform` | `VARCHAR(64)`  | NOT NULL                                                        | クライアント種別     |
 | `hashed_token`    | `VARCHAR(255)` | NOT NULL                                                        | トークン（ハッシュ） |
 | `expires_at`      | `DATETIME`     | NULL                                                            | 期限                 |
-| `user_id`         | `BIGINT`       | FK(users.id), NULL                                              | 所有ユーザー         |
+| `user_id`         | `BIGINT`       | FK(users.id), NOT NULL                                          | 所有ユーザー         |
 | `created_at`      | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP                             |                      |
 | `updated_at`      | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |                      |
 
@@ -271,7 +273,74 @@
 | `day_shift_assignments_id` | `BIGINT` | FK(day_shift_assignments.id), NOT NULL | 割当     |
 | `user_id`                  | `BIGINT` | FK(users.id), NOT NULL                 | ユーザー |
 
-<!-- Business calendar feature removed. -->
+### `day_shift_cycle_groups`: 当番サイクルグループ
+
+| フィールド名 | 型         | 属性                                | 詳細     |
+| ------------ | ---------- | ----------------------------------- | -------- |
+| `id`         | `BIGINT`   | PK, AUTO_INCREMENT                  |          |
+| `cycle_id`   | `BIGINT`   | NOT NULL                            | サイクル |
+| `position`   | `INT`      | NOT NULL, DEFAULT 0                 | 位置     |
+| `created_at` | `DATETIME` | NOT NULL, DEFAULT CURRENT_TIMESTAMP |          |
+
+### `day_shift_cycle_group_members`: 当番サイクルグループメンバー
+
+| フィールド名 | 型         | 属性                                | 詳細     |
+| ------------ | ---------- | ----------------------------------- | -------- |
+| `id`         | `BIGINT`   | PK, AUTO_INCREMENT                  |          |
+| `group_id`   | `BIGINT`   | NOT NULL                            | グループ |
+| `user_id`    | `BIGINT`   | NOT NULL                            | ユーザー |
+| `position`   | `INT`      | NOT NULL, DEFAULT 0                 | 位置     |
+| `created_at` | `DATETIME` | NOT NULL, DEFAULT CURRENT_TIMESTAMP |          |
+
+### `web_push_subscriptions`: Web Push サブスクリプション
+
+| フィールド名 | 型              | 属性                                                            | 詳細           |
+| ------------ | --------------- | --------------------------------------------------------------- | -------------- |
+| `id`         | `BIGINT`        | PK, AUTO_INCREMENT                                              |                |
+| `user_id`    | `BIGINT`        | NOT NULL                                                        | ユーザー       |
+| `endpoint`   | `VARCHAR(1024)` | NOT NULL                                                        | エンドポイント |
+| `p256dh`     | `VARCHAR(1024)` | NOT NULL                                                        | P256dh         |
+| `auth`       | `VARCHAR(255)`  | NOT NULL                                                        | Auth           |
+| `created_at` | `DATETIME`      | NOT NULL, DEFAULT CURRENT_TIMESTAMP                             |                |
+| `updated_at` | `DATETIME`      | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |                |
+
+### `web_push_vapid`: Web Push VAPID
+
+| フィールド名  | 型             | 属性                                | 詳細   |
+| ------------- | -------------- | ----------------------------------- | ------ |
+| `id`          | `BIGINT`       | PK, AUTO_INCREMENT                  |        |
+| `public_key`  | `VARCHAR(255)` | NOT NULL                            | 公開鍵 |
+| `private_key` | `VARCHAR(255)` | NOT NULL                            | 秘密鍵 |
+| `created_at`  | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP |        |
+
+### `mcps`: MCP 統合トークン
+
+| フィールド名   | 型             | 属性                                | 詳細     |
+| -------------- | -------------- | ----------------------------------- | -------- |
+| `id`           | `BIGINT`       | PK, AUTO_INCREMENT                  |          |
+| `user_id`      | `BIGINT`       | NOT NULL                            | ユーザー |
+| `hashed_token` | `VARCHAR(255)` | NULL                                | トークン |
+| `description`  | `VARCHAR(255)` | NULL                                | 説明     |
+| `expires_at`   | `DATETIME`     | NULL                                | 期限     |
+| `created_at`   | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP |          |
+
+### `migrations`: マイグレーション追跡
+
+| フィールド名 | 型             | 属性                                | 詳細     |
+| ------------ | -------------- | ----------------------------------- | -------- |
+| `id`         | `BIGINT`       | PK, AUTO_INCREMENT                  |          |
+| `name`       | `VARCHAR(255)` | UNIQUE, NOT NULL                    | 名前     |
+| `applied_at` | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 適用日時 |
+
+### `system_settings`: システム設定
+
+| フィールド名 | 型             | 属性                                                            | 詳細 |
+| ------------ | -------------- | --------------------------------------------------------------- | ---- |
+| `id`         | `BIGINT`       | PK, AUTO_INCREMENT                                              |      |
+| `key`        | `VARCHAR(128)` | UNIQUE, NOT NULL                                                | キー |
+| `value`      | `TEXT`         | NOT NULL                                                        | 値   |
+| `created_at` | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP                             |      |
+| `updated_at` | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |      |
 
 ### `notification_type_prefs`: 通知タイプ設定（ユーザー別）
 
