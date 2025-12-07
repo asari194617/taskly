@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Popover,
   PopoverContent,
@@ -527,6 +528,16 @@ export default function AdminDayShift() {
       {/* Prediction section (mod-based) */}
       <div className="space-y-3">
         <h2 className="text-lg font-medium">予測ペア（mod）</h2>
+        <Alert>
+          <AlertTitle>インデックスとグループの対応について</AlertTitle>
+          <AlertDescription>
+            現在のインデックス値はサーバー側と同じく0始まりで扱われます。 行の
+            <code>#</code>列は「内部インデックス値 + 1」を示し、どの行も
+            <code>(内部インデックス値 % グループ数)</code>
+            で担当グループが決まります。
+            ページを進めてもグループとメンバーはこの規則に従い周期的に繰り返されます。
+          </AlertDescription>
+        </Alert>
         <Card className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
@@ -557,15 +568,15 @@ export default function AdminDayShift() {
                 const start = (predictPage - 1) * pageSize;
                 const rows: React.ReactNode[] = [];
                 for (let i = 0; i < pageSize; i++) {
-                  const n = currentIndex + start + i; // 1始まりのインデックス値
+                  const logicalIndex = currentIndex + start + i; // サーバー側と同じ0始まりのインデックス
                   const gidx =
-                    (((n - 1) % selectedGroups.length) +
+                    ((logicalIndex % selectedGroups.length) +
                       selectedGroups.length) %
                     selectedGroups.length;
                   const g = selectedGroups[gidx];
                   rows.push(
-                    <TableRow key={`pred-${n}`}>
-                      <TableCell>{n}</TableCell>
+                    <TableRow key={`pred-${logicalIndex}`}>
+                      <TableCell>{logicalIndex + 1}</TableCell>
                       <TableCell>{cid || autoCid}</TableCell>
                       <TableCell>{g.id}</TableCell>
                       <TableCell className="max-w-[420px] truncate">
