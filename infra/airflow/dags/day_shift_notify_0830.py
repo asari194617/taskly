@@ -207,7 +207,7 @@ def notify_day_shift(**context):
 with DAG(
     dag_id="day_shift_notify_0830",
     start_date=datetime(2025, 1, 1),
-    schedule_interval="30 8 * * *",
+    schedule_interval="30 23 * * *",
     catchup=False,
     default_args={"owner": "taskly"},
 ) as dag:
