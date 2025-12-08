@@ -160,6 +160,56 @@ def get_current_cycle_id_for_date(d: datetime) -> int:
         conn.close()
 
 
+def resolve_next_day_shift_members(index: int, cycle_id: int) -> str:
+    """Resolve display names for the group that will be on duty for the given index.
+
+    This mirrors the server-side logic: index is 0-based and the group is
+    selected by (index % number_of_groups) within the active cycle. Members are
+    resolved from day_shift_cycle_group_members and users, skipping deleted users.
+    """
+    if cycle_id == 0:
+        return ""
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            # Fetch ordered groups for this cycle
+            cur.execute(
+                "SELECT id FROM day_shift_cycle_groups WHERE cycle_id=%s ORDER BY position ASC, id ASC",
+                (cycle_id,),
+            )
+            groups = [row[0] for row in cur.fetchall() or []]
+            if not groups:
+                return ""
+            base = max(index, 0)
+            gidx = base % len(groups)
+            target_gid = groups[gidx]
+
+            # Fetch member user IDs for the target group
+            cur.execute(
+                "SELECT user_id FROM day_shift_cycle_group_members WHERE group_id=%s ORDER BY id ASC",
+                (target_gid,),
+            )
+            uids = [row[0] for row in cur.fetchall() or []]
+            if not uids:
+                return ""
+
+            # Resolve user display names (or email as fallback), skipping deleted users
+            format_strings = ",".join(["%s"] * len(uids))
+            cur.execute(
+                f"SELECT id, COALESCE(NULLIF(TRIM(display_name), ''), email) AS name, deleted_at "
+                f"FROM users WHERE id IN ({format_strings})",
+                tuple(uids),
+            )
+            names = []
+            for uid, name, deleted_at in cur.fetchall() or []:
+                if deleted_at is not None:
+                    continue
+                names.append(name or f"ID:{uid}")
+            return ", ".join(names)
+    finally:
+        conn.close()
+
+
 def discord_embed(title: str, description: Optional[str] = None, fields: Optional[List[Dict]] = None, color: int = 0x3498DB):
     url = DISCORD_WEBHOOK_URL
     if not url:
@@ -281,14 +331,22 @@ def increment_if_needed(**context):
 
     after = before + 1
     write_index(after)
+    # Resolve next day's members based on the incremented index and current cycle
+    effective_cid = db_cid or cfg_cid or 0
+    next_members = resolve_next_day_shift_members(after, effective_cid)
     discord_embed(
         title="Day Shift Index Incremented",
         description="日直インデックスをインクリメントしました。",
         fields=[
             {"name": "Date", "value": today_str, "inline": True},
-            {"name": "Cycle ID", "value": str(db_cid or cfg_cid or 0), "inline": True},
+            {"name": "Cycle ID", "value": str(effective_cid), "inline": True},
             {"name": "Before", "value": str(before), "inline": True},
             {"name": "After", "value": str(after), "inline": True},
+            {
+                "name": "Next Members",
+                "value": next_members or "(メンバー情報が取得できませんでした)",
+                "inline": False,
+            },
         ],
         color=0x2ECC71,
     )
