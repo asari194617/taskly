@@ -196,13 +196,13 @@ def resolve_next_day_shift_members(index: int, cycle_id: int) -> str:
             # Resolve user display names (or email as fallback), skipping deleted users
             format_strings = ",".join(["%s"] * len(uids))
             cur.execute(
-                f"SELECT id, COALESCE(NULLIF(TRIM(display_name), ''), email) AS name, deleted_at "
+                f"SELECT id, COALESCE(NULLIF(TRIM(display_name), ''), email) AS name, is_deleted "
                 f"FROM users WHERE id IN ({format_strings})",
                 tuple(uids),
             )
             names = []
-            for uid, name, deleted_at in cur.fetchall() or []:
-                if deleted_at is not None:
+            for uid, name, is_deleted in cur.fetchall() or []:
+                if is_deleted:
                     continue
                 names.append(name or f"ID:{uid}")
             return ", ".join(names)

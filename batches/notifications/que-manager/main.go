@@ -301,15 +301,6 @@ func periodIndex(s string) int {
 	}
 }
 
-func isUserDeleted(db *sql.DB, uid uint) bool {
-	row := db.QueryRow(`SELECT is_deleted FROM users WHERE id = ?`, uid)
-	var del sql.NullBool
-	if err := row.Scan(&del); err != nil {
-		return false
-	}
-	return del.Valid && del.Bool
-}
-
 func isUserBlocked(db *sql.DB, uid uint) bool {
 	row := db.QueryRow(`SELECT COUNT(1) FROM blocks WHERE user_id = ? AND (expires_at IS NULL OR expires_at > NOW())`, uid)
 	var cnt int
