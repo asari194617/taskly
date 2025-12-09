@@ -63,12 +63,10 @@ func main() {
 	}
 	defer db.Close()
 
-	// Prefer TZ from env (e.g., Asia/Tokyo)
+	// Always use Asia/Tokyo (JST)
 	now := time.Now()
-	if tz := strings.TrimSpace(os.Getenv("TIMEZONE")); tz != "" {
-		if loc, err := time.LoadLocation(tz); err == nil {
-			now = now.In(loc)
-		}
+	if loc, err := time.LoadLocation("Asia/Tokyo"); err == nil {
+		now = now.In(loc)
 	}
 	items := make([]NotifyItem, 0, 256)
 
