@@ -959,26 +959,6 @@ func buildICSForUser(userID uint) string {
 		b.WriteString(fmt.Sprintf("DTEND;VALUE=DATE:%s\r\n", dtEnd))
 		b.WriteString("END:VEVENT" + crlf)
 	}
-	var asgs []struct {
-		ID   uint
-		Date time.Time
-	}
-	_ = DB.Table("day_shift_assignments a").
-		Select("a.id, a.date").
-		Joins("JOIN day_shift_assignment_users u ON u.day_shift_assignments_id = a.id").
-		Where("u.user_id = ?", userID).Order("a.date ASC").Limit(500).Scan(&asgs).Error
-	for _, a := range asgs {
-		// Represent day shift as an all-day event on the assignment date
-		b.WriteString("BEGIN:VEVENT" + crlf)
-		b.WriteString(fmt.Sprintf("UID:ds-%d@taskly\r\n", a.ID))
-		b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", now))
-		b.WriteString("SUMMARY:Day Shift\r\n")
-		// Optional description could include info — keep minimal
-		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", icalEscape("日直")))
-		b.WriteString(fmt.Sprintf("DTSTART;VALUE=DATE:%s\r\n", a.Date.Format("20060102")))
-		b.WriteString(fmt.Sprintf("DTEND;VALUE=DATE:%s\r\n", a.Date.AddDate(0, 0, 1).Format("20060102")))
-		b.WriteString("END:VEVENT" + crlf)
-	}
 	b.WriteString("END:VCALENDAR" + crlf)
 	return b.String()
 }
