@@ -1,5 +1,9 @@
 from datetime import datetime, date
 import os
+import smtplib
+from email.header import Header
+from email.mime.text import MIMEText
+
 import requests
 import pymysql
 
@@ -26,6 +30,67 @@ def read_config(conn, key: str) -> str:
         cur.execute("SELECT value FROM configs WHERE `key`=%s LIMIT 1", (key,))
         row = cur.fetchone()
         return (row or {}).get("value", "")
+
+
+def send_day_shift_emails(users, subject: str, body: str) -> None:
+    """Send day shift notification emails via SMTP.
+
+    - Uses the same env vars as other components:
+      SMTP_HOST, SMTP_PORT, SMTP_FROM, SMTP_USER, SMTP_PASSWORD,
+      SMTP_TLS ("starttls" to enable), SMTP_TIMEOUT.
+    - Sends a single email with all recipients in the To header.
+    """
+
+    # Collect recipient addresses
+    to_addrs = []
+    for u in users:
+        email = (u.get("email") or "").strip()
+        if email:
+            to_addrs.append(email)
+
+    if not to_addrs:
+        return
+
+    smtp_host = os.getenv("SMTP_HOST", "localhost")
+    smtp_port = int(os.getenv("SMTP_PORT", "25"))
+    from_addr = os.getenv("SMTP_FROM", "noreply@taskly.local")
+    smtp_user = os.getenv("SMTP_USER", from_addr)
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    smtp_tls = os.getenv("SMTP_TLS", "").strip().lower()
+    timeout = int(os.getenv("SMTP_TIMEOUT", "60"))
+
+    msg = MIMEText(body, _subtype="plain", _charset="utf-8")
+    msg["Subject"] = str(Header(subject, "utf-8"))
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(to_addrs)
+
+    try:
+        with smtplib.SMTP(host=smtp_host, port=smtp_port, timeout=timeout) as smtp:
+            try:
+                smtp.ehlo()
+            except Exception:
+                pass
+
+            if smtp_tls == "starttls":
+                try:
+                    smtp.starttls()
+                    smtp.ehlo()
+                except Exception:
+                    # If STARTTLS negotiation fails, abort sending to avoid plain-text fallthrough.
+                    print("[DayShift] SMTP STARTTLS failed; aborting send.")
+                    return
+
+            if smtp_pass.strip():
+                try:
+                    smtp.login(smtp_user, smtp_pass)
+                except Exception as e:
+                    print(f"[DayShift] SMTP login failed: {e}")
+                    return
+
+            smtp.sendmail(from_addr, to_addrs, msg.as_string())
+    except Exception as e:
+        # Log but do not raise to avoid failing the DAG run entirely.
+        print(f"[DayShift] SMTP send failed: {e}")
 
 
 def notify_day_shift(**context):
@@ -176,6 +241,9 @@ def notify_day_shift(**context):
         names = ", ".join(u.get("display_name") or u.get("email") for u in users)
         body = f"本日({today.strftime('%Y-%m-%d')})の日直: {names}"
         print(body)
+
+        # Actually send email to all target users via SMTP.
+        send_day_shift_emails(users, subject, body)
         # Discord embeds: report notified users
         hook = os.getenv("DISCORD_WEBHOOK_URL", "")
         if hook:
@@ -197,7 +265,7 @@ def notify_day_shift(**context):
                 }, timeout=5)
             except Exception:
                 pass
-        # TODO: integrate with notifications_queue or direct SMTP/WebPush send
+            # TODO: integrate with notifications_queue or direct SMTP/WebPush send
     finally:
         try:
             conn.close()
