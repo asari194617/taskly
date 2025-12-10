@@ -34,8 +34,19 @@ export default function Password() {
         },
         body: JSON.stringify({ email }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const text = await res.text();
+      if (!res.ok) {
+        try {
+          const err = JSON.parse(text);
+          if (err?.error === "user_not_found") {
+            throw new Error("このメールアドレスのユーザーは存在しません");
+          }
+        } catch {
+          // ignore json parse error
+        }
+        throw new Error(text || "エラーが発生しました");
+      }
+      const data = text ? JSON.parse(text) : {};
       const passkey =
         !!data?.passkey_enabled ||
         (Array.isArray(data?.methods) && data.methods.includes("passkey"));
@@ -73,7 +84,12 @@ export default function Password() {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+      if (!res.ok) {
+        if (data?.error === "user_not_found") {
+          throw new Error("このメールアドレスのユーザーは存在しません");
+        }
+        throw new Error(data?.error || JSON.stringify(data));
+      }
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         await postLoginRedirect();

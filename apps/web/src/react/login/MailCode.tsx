@@ -94,7 +94,12 @@ export default function MailCode() {
         body: JSON.stringify({ email, code }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+      if (!res.ok) {
+        if (data?.error === "user_not_found") {
+          throw new Error("このメールアドレスのユーザーは存在しません");
+        }
+        throw new Error(data?.error || JSON.stringify(data));
+      }
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         await postLoginRedirect();

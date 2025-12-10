@@ -32,8 +32,19 @@ export default function Passkey() {
         },
         body: JSON.stringify({ email }),
       });
-      if (!beginRes.ok) throw new Error(await beginRes.text());
-      const raw = await beginRes.json();
+      const beginText = await beginRes.text();
+      if (!beginRes.ok) {
+        try {
+          const err = JSON.parse(beginText);
+          if (err?.error === "not found") {
+            throw new Error("このメールアドレスのユーザーは存在しません");
+          }
+        } catch {
+          // ignore json parse error
+        }
+        throw new Error(beginText || "エラーが発生しました");
+      }
+      const raw = beginText ? JSON.parse(beginText) : {};
       // go-webauthn may respond with { publicKey: {...} }
       const pubkey = raw?.publicKey ?? raw ?? {};
 
@@ -85,7 +96,12 @@ export default function Passkey() {
         body: JSON.stringify(payload),
       });
       const data = await finishRes.json();
-      if (!finishRes.ok) throw new Error(data?.error || "passkey login failed");
+      if (!finishRes.ok) {
+        if (data?.error === "user_not_found") {
+          throw new Error("このメールアドレスのユーザーは存在しません");
+        }
+        throw new Error(data?.error || "passkey login failed");
+      }
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         await postLoginRedirect();

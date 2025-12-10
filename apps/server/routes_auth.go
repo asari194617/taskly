@@ -195,11 +195,23 @@ func registerAuthRoutes(app *fiber.App) {
 		if err := parseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
-		if !isEmail(body.Email) {
+		email := strings.ToLower(strings.TrimSpace(body.Email))
+		if !isEmail(email) {
 			return validationError(c, map[string]string{"email": "invalid email"})
 		}
 		var u User
-		hasUser := DB.Where("email = ?", body.Email).First(&u).Error == nil
+		if err := DB.Where("email = ?", email).First(&u).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				// User must already exist for login; do not auto-create
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user_not_found"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		// Treat logically deleted users as non-existent for login
+		if u.IsDeleted {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user_not_found"})
+		}
+		hasUser := true
 		hasPassword := false
 		if hasUser && u.HashedPassword != nil && *u.HashedPassword != "" {
 			hasPassword = true
@@ -228,7 +240,7 @@ func registerAuthRoutes(app *fiber.App) {
 		if hasPassword {
 			methods = append(methods, "password")
 		}
-		if !hasUser || (hasUser && u.EmailCodeAllowed) {
+		if u.EmailCodeAllowed {
 			methods = append(methods, "email_code")
 		}
 		if totpEnabled {
@@ -240,12 +252,13 @@ func registerAuthRoutes(app *fiber.App) {
 		if passkeyEnabled {
 			methods = append(methods, "passkey")
 		}
-		return c.JSON(fiber.Map{"has_password": hasPassword, "totp_enabled": totpEnabled, "passkey_enabled": passkeyEnabled, "email_login_enabled": func() bool {
-			if hasUser {
-				return u.EmailCodeAllowed
-			}
-			return true
-		}(), "methods": methods})
+		return c.JSON(fiber.Map{
+			"has_password":        hasPassword,
+			"totp_enabled":        totpEnabled,
+			"passkey_enabled":     passkeyEnabled,
+			"email_login_enabled": u.EmailCodeAllowed,
+			"methods":             methods,
+		})
 	})
 
 	// login
@@ -260,20 +273,21 @@ func registerAuthRoutes(app *fiber.App) {
 		if err := parseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
-		if !isEmail(body.Email) {
+		email := strings.ToLower(strings.TrimSpace(body.Email))
+		if !isEmail(email) {
 			return validationError(c, map[string]string{"email": "invalid email"})
 		}
-		// Lookup user or create placeholder
+		// Lookup user; do not auto-create for non-existing accounts
 		var u User
-		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
+		if err := DB.Where("email = ?", email).First(&u).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				u = User{Email: body.Email, DisplayName: body.Email}
-				if err := DB.Create(&u).Error; err != nil {
-					return c.Status(500).JSON(fiber.Map{"error": "db"})
-				}
-			} else {
-				return c.Status(500).JSON(fiber.Map{"error": "db"})
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
 			}
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		// Treat logically deleted users as non-existent for login
+		if u.IsDeleted {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
 		}
 		ip := c.IP()
 		// IP rate limit (max 20 req/10min)

@@ -44,7 +44,12 @@ export default function Totp() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+      if (!res.ok) {
+        if (data?.error === "user_not_found") {
+          throw new Error("このメールアドレスのユーザーは存在しません");
+        }
+        throw new Error(data?.error || JSON.stringify(data));
+      }
       sessionStorage.removeItem("login_pw");
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
