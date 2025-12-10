@@ -194,7 +194,7 @@ def notify_day_shift(**context):
                 f"SELECT id, email, display_name FROM users WHERE id IN ({ids_csv}) AND is_deleted = 0"
             )
             all_users = cur.fetchall() or []
-        # Filter by NotificationTypePref and NotificationDevice
+        # Filter by NotificationTypePref and EMAIL device overrides
         enabled_users = []
         for u in all_users:
             uid = int(u.get("id"))
@@ -207,15 +207,19 @@ def notify_day_shift(**context):
                 pref = cur.fetchone()
             if pref is not None and int(pref.get("is_enabled", 1)) == 0:
                 continue
-            # Device check: must have at least one enabled device (EMAIL or WEBPUSH)
+            # EMAIL device check:
+            #   - default: enabled even when no record exists in notification_devices
+            #   - if there is an EMAIL record with is_enabled = 0, treat as disabled
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM notification_devices WHERE user_id=%s AND is_enabled=1 AND platform IN ('EMAIL','WEBPUSH')",
+                    "SELECT is_enabled FROM notification_devices WHERE user_id=%s AND platform='EMAIL' ORDER BY id DESC LIMIT 1",
                     (uid,),
                 )
                 dev = cur.fetchone()
-            if dev and int(dev.get("cnt", 0)) > 0:
-                enabled_users.append(u)
+            if dev is not None and int(dev.get("is_enabled", 1)) == 0:
+                continue
+
+            enabled_users.append(u)
         users = enabled_users
         if not users:
             hook = os.getenv("DISCORD_WEBHOOK_URL", "")
