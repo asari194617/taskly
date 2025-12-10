@@ -6,13 +6,16 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { getApiBase } from "@/lib/api";
 import { gql } from "@/lib/graphql";
@@ -105,7 +108,6 @@ export default function SettingsBasic() {
   }
 
   async function deleteAccount() {
-    if (!confirm("本当にアカウントを削除しますか？")) return;
     try {
       await gql<{ deleteMe: boolean }>(`mutation{ deleteMe }`);
       localStorage.removeItem("api_token");
@@ -122,7 +124,9 @@ export default function SettingsBasic() {
   return (
     <SettingsShell>
       <div className="space-y-6">
-        <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">{dict.settingsBasic.heading}</h1>
+        <h1 className="scroll-m-20 text-2xl font-bold tracking-tight text-balance">
+          {dict.settingsBasic.heading}
+        </h1>
         <Card className="p-4 space-y-3">
           <div className="space-y-1">
             <Label htmlFor="email">{dict.settingsBasic.email}</Label>
@@ -168,26 +172,32 @@ export default function SettingsBasic() {
               {dict.settingsBasic.irreversible}
             </div>
           </div>
-          <Dialog>
-            <DialogTrigger asChild>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
               <Button variant="destructive">
                 {dict.settingsBasic.deleteAccount}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
                   {dict.settingsBasic.deleteConfirmTitle}
-                </DialogTitle>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="secondary">{dict.common.cancel}</Button>
-                <Button variant="destructive" onClick={deleteAccount}>
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {dict.settingsBasic.irreversible}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{dict.common.cancel}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={deleteAccount}
+                >
                   {dict.common.delete}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </Card>
       </div>
     </SettingsShell>

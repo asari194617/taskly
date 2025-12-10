@@ -53,6 +53,17 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 type AUser = {
   id: number;
@@ -436,13 +447,33 @@ export default function AdminUsers() {
                         {new Date(d.updated_at).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          className="text-destructive"
-                          onClick={() => deleteDevice(d.id)}
-                        >
-                          削除
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="text-destructive"
+                            >
+                              削除
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>デバイス削除</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                このデバイスを削除しますか？
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => deleteDevice(d.id)}
+                              >
+                                削除
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </TableCell>
                     </TableRow>
                   ))
@@ -703,7 +734,6 @@ export default function AdminUsers() {
   }
 
   async function deleteDevice(devId: number) {
-    if (!window.confirm("このデバイスを削除しますか？")) return;
     try {
       await gql<{ adminUserDeleteDevice: boolean }>(
         `mutation($id:Int!){ adminUserDeleteDevice(device_id:$id) }`,
