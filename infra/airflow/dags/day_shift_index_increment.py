@@ -144,6 +144,24 @@ def clear_increment_skip_flag() -> None:
         conn.close()
 
 
+def set_skip_notifications_flag() -> None:
+    """Set configs.skip_day_shift_notifications to "1" (upsert).
+
+    This flag is consumed as a one-shot skip by the 08:30
+    notification DAG (day_shift_notify_0830).
+    """
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO configs(`key`, `value`) VALUES('skip_day_shift_notifications', '1') "
+                "ON DUPLICATE KEY UPDATE value='1'",
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_current_cycle_id_for_date(d: datetime) -> int:
     conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
     try:
@@ -266,6 +284,7 @@ def increment_if_needed(**context):
 
     # Batch runs at 03:00; check current day status
     if is_holiday(now):
+        set_skip_notifications_flag()
         discord_embed(
             title="Day Shift Index Skipped",
             description="本日は休日のためインクリメントを行いませんでした。",
@@ -279,6 +298,7 @@ def increment_if_needed(**context):
         )
         return
     if is_day_shift_off(now):
+        set_skip_notifications_flag()
         discord_embed(
             title="Day Shift Index Skipped",
             description="学校カレンダーにより本日は日直業務を行わないためスキップしました。",
@@ -292,6 +312,25 @@ def increment_if_needed(**context):
         )
         return
 
+    # Honor one-shot skip flag for business days. The flag is ignored on
+    # holidays/DAY_SHIFT_OFF above so that it naturally carries over to the
+    # next business day.
+    if read_increment_skip_flag():
+        clear_increment_skip_flag()
+        set_skip_notifications_flag()
+        discord_embed(
+            title="Day Shift Index Skipped",
+            description="スキップフラグによりインクリメントを行いませんでした。",
+            fields=[
+                {"name": "Date", "value": today_str, "inline": True},
+                {"name": "Before", "value": str(before), "inline": True},
+                {"name": "After", "value": str(before), "inline": True},
+                {"name": "Reason", "value": "day_shift_index_increment_skip flag", "inline": False},
+            ],
+            color=0xE67E22,
+        )
+        return
+    
     # Reset index if cycle changed
     db_cid = get_current_cycle_id_for_date(now)
     cfg_cid = read_current_cycle_config()
@@ -308,24 +347,6 @@ def increment_if_needed(**context):
                 {"name": "Index Reset", "value": f"{before} → 0", "inline": False},
             ],
             color=0x9B59B6,
-        )
-        return
-
-    # Honor one-shot skip flag for business days. The flag is ignored on
-    # holidays/DAY_SHIFT_OFF above so that it naturally carries over to the
-    # next business day.
-    if read_increment_skip_flag():
-        clear_increment_skip_flag()
-        discord_embed(
-            title="Day Shift Index Skipped",
-            description="スキップフラグによりインクリメントを行いませんでした。",
-            fields=[
-                {"name": "Date", "value": today_str, "inline": True},
-                {"name": "Before", "value": str(before), "inline": True},
-                {"name": "After", "value": str(before), "inline": True},
-                {"name": "Reason", "value": "day_shift_index_increment_skip flag", "inline": False},
-            ],
-            color=0xE67E22,
         )
         return
 

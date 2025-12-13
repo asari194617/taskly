@@ -99,6 +99,40 @@ def notify_day_shift(**context):
         today = date.today()
         # Always notify regardless of day-of-week
 
+        # Global skip flag via configs.skip_day_shift_notifications
+        skip_flag = read_config(conn, "skip_day_shift_notifications").strip()
+        if skip_flag == "1":
+            # One-shot flag: remove after reading so it only applies once
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM configs WHERE `key`=%s",
+                        ("skip_day_shift_notifications",),
+                    )
+            except Exception as e:
+                print(f"[DayShift] Failed to delete skip_day_shift_notifications config: {e}")
+
+            hook = os.getenv("DISCORD_WEBHOOK_URL", "")
+            if hook:
+                try:
+                    requests.post(hook, json={
+                        "embeds": [{
+                            "title": "Day Shift Notification Skipped",
+                            "description": "skip_day_shift_notifications が有効なため、本日の通知をスキップしました。",
+                            "color": 0xE67E22,
+                            "fields": [
+                                {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
+                                {"name": "Config Key", "value": "skip_day_shift_notifications", "inline": True},
+                                {"name": "Config Value", "value": skip_flag or "(empty)", "inline": True},
+                                {"name": "Reason", "value": "Skip flag enabled", "inline": False},
+                            ],
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        }]
+                    }, timeout=5)
+                except Exception:
+                    pass
+            return
+
         # Read current cycle and index (0-based) from configs
         idx_str = read_config(conn, "day_shift_current_index").strip()
         cur_idx = int(idx_str) if idx_str.isdigit() else 0
@@ -132,6 +166,8 @@ def notify_day_shift(**context):
                     }]
                 }, timeout=5)
             return
+        
+        
 
         # Load groups for the cycle ordered by position asc, id asc
         with conn.cursor() as cur:
