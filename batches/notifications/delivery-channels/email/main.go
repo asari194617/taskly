@@ -621,9 +621,5 @@ func ptrStr(p *string) string {
 func buildBodyFromTask(t Task) string {
 	// 簡易本文: 件名と締切だけ
 	d := deadlineLabel(t, t.Deadline)
-	desc := ""
-	if t.Description != nil {
-		desc = *t.Description
-	}
-	return fmt.Sprintf("%s\n締切: %s\n%s", t.Title, d, desc)
+	return fmt.Sprintf("締切: %s\n", d)
 }
