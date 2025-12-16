@@ -318,7 +318,12 @@ func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMe
 		return []*User{}, []*User{}, nil
 	}
 
-	idx := baseIndex
+	// configs.day_shift_current_index は 0 始まりのインデックスですが、
+	// 実運用上「現在の担当」を 1 始まりのカウンタとして扱っているため、
+	// ここでは 1 を引いた値を基準として today/next を解決する。
+	// これにより、Airflow 側のインクリメントロジックと突き合わせたときに
+	// 「今日」と「次のメンバー」が 1 つ後ろにずれる問題を防ぐ。
+	idx := baseIndex - 1
 	if idx < 0 {
 		idx = 0
 	}
