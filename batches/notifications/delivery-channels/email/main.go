@@ -84,6 +84,10 @@ func main() {
 // computeLiveDigestGroups collects due tasks and expands them to per-user email digests
 func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 	now := time.Now()
+	// Normalize to Asia/Tokyo to align with DATE-based deadlines
+	if loc, err := time.LoadLocation("Asia/Tokyo"); err == nil {
+		now = now.In(loc)
+	}
 	tasks, err := fetchDueTasks(db, now)
 	if err != nil {
 		return nil, err

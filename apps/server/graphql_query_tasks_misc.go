@@ -55,7 +55,9 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					var cursorDeadline *time.Time
 					if s, _ := p.Args["cursor_deadline"].(string); s != "" {
 						if t, err := time.Parse(time.RFC3339, s); err == nil {
-							cursorDeadline = &t
+							// Normalize to date-only to match DATE type column
+							day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+							cursorDeadline = &day
 						}
 					}
 					var cursorID uint
@@ -65,12 +67,14 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 						}
 					}
 					dbq := DB.Model(&Task{})
-					now := time.Now()
+					// Use date-only for comparison because deadline is DATE type
+					today := time.Now()
+					today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
 					eff := effectiveDeadlineExpr("")
 					if overdue {
-						dbq = dbq.Where(eff+" < ?", now)
+						dbq = dbq.Where(eff+" < ?", today)
 					} else {
-						dbq = dbq.Where(eff+" >= ?", now)
+						dbq = dbq.Where(eff+" >= ?", today)
 					}
 					if strings.TrimSpace(qstr) != "" {
 						like := "%" + strings.TrimSpace(qstr) + "%"
@@ -102,7 +106,8 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					if len(items) > limit {
 						last := items[limit-1]
 						items = items[:limit]
-						ed := effectiveDeadlineTime(last)
+						// Use date-only deadline for cursor because column is DATE type
+						ed := time.Date(last.Deadline.Year(), last.Deadline.Month(), last.Deadline.Day(), 0, 0, 0, 0, last.Deadline.Location())
 						nextCursor = map[string]string{"cursor_deadline": ed.Format(time.RFC3339), "cursor_id": fmt.Sprintf("%d", last.ID)}
 					}
 					// serialize
