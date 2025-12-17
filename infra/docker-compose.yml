@@ -56,6 +56,7 @@ services:
       # コンテナ間通信では localhost:3061 ではなく、サービス名:ポート を利用する
       REDIS_ADDR: redis:6379
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
+      TZ: Asia/Tokyo
   dmarc-processor:
     build: ../apps/dmarc-processor
     container_name: taskly-dmarc-processor
