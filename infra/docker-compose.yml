@@ -119,6 +119,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
       WEB_URL: http://localhost:3063
+      TZ: Asia/Tokyo
     ports:
       - "3065:8080"
     volumes:
