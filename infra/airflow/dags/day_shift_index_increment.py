@@ -62,15 +62,50 @@ def is_day_shift_off(d: datetime) -> bool:
             # No school calendar configured; cannot detect DAY_SHIFT_OFF
             return False
         cal = fetch_ics(SCHOOL_CAL_URL)
+        target_date = d.date()
         for comp in cal.walk("vevent"):
-            dtstart = comp.get("dtstart").dt
-            dt = datetime(dtstart.year, dtstart.month, dtstart.day)
-            if dt.date() == d.date():
-                desc = comp.get("description") or ""
-                if isinstance(desc, bytes):
-                    desc = desc.decode("utf-8", errors="ignore")
-                if "DAY_SHIFT_OFF" in desc:
-                    return True
+            # Description に DAY_SHIFT_OFF を含む予定のみを対象とする
+            desc = comp.get("description") or ""
+            if isinstance(desc, bytes):
+                desc = desc.decode("utf-8", errors="ignore")
+            if "DAY_SHIFT_OFF" not in desc:
+                continue
+
+            dtstart_prop = comp.get("dtstart")
+            if not dtstart_prop:
+                continue
+
+            dtstart = dtstart_prop.dt
+            if isinstance(dtstart, datetime):
+                start_date = dtstart.date()
+            else:
+                start_date = dtstart
+
+            # 期間イベントの場合は、当日がその期間内に含まれているかを判定する
+            end_date = start_date
+            dtend_prop = comp.get("dtend")
+            duration_prop = comp.get("duration")
+
+            if dtend_prop is not None:
+                dtend = dtend_prop.dt
+                if isinstance(dtend, datetime):
+                    end_date_candidate = dtend.date()
+                else:
+                    end_date_candidate = dtend
+
+                # RFC 5545 に従い、DTEND は非包含とみなし、開始日と異なる場合は 1 日戻す
+                if end_date_candidate > start_date:
+                    end_date = end_date_candidate - timedelta(days=1)
+                else:
+                    end_date = start_date
+            elif duration_prop is not None:
+                duration_value = getattr(duration_prop, "dt", duration_prop)
+                if isinstance(duration_value, timedelta) and duration_value.days > 0:
+                    # duration は経過時間なので、開始日 + duration - 1 日を最終日とする
+                    end_date = start_date + duration_value - timedelta(days=1)
+
+            if start_date <= target_date <= end_date:
+                return True
         return False
     except Exception as e:
         # On failure, do NOT block increment (spec says proceed)
