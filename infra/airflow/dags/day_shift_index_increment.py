@@ -81,7 +81,6 @@ def is_day_shift_off(d: datetime) -> bool:
             else:
                 start_date = dtstart
 
-            # 期間イベントの場合は、当日がその期間内に含まれているかを判定する
             end_date = start_date
             dtend_prop = comp.get("dtend")
             duration_prop = comp.get("duration")
