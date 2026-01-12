@@ -36,7 +36,10 @@ def is_holiday(d: datetime) -> bool:
     if is_weekend(d):
         return True
     # Holidays via JapanHolidays (optional; if not configured, skip)
-    holiday_ics_url = os.environ.get("JAPAN_HOLIDAYS_ICS_URL", "")
+    # 優先: 環境変数 JAPAN_HOLIDAYS_ICS_URL（明示的に ICS を指定）
+    # フォールバック: 定数 JAPAN_HOLIDAY_URL（祝日カレンダー）
+    # holiday_ics_url = os.environ.get("JAPAN_HOLIDAYS_ICS_URL", "") or JAPAN_HOLIDAY_URL
+    holiday_ics_url = JAPAN_HOLIDAY_URL
     if holiday_ics_url:
         try:
             cal = fetch_ics(holiday_ics_url)
