@@ -96,9 +96,10 @@ export function Layout({
             </Section>
             {/* フッター */}
             <Section className="pt-6">
-              <p className="text-xs text-center text-gray-500 m-0">
-                {resolvedFooter} 
-                このメールは自動送信されています。{date}時点での情報です。追加、更新、または削除される場合があります。
+              <p className="text-xs text-center text-gray-300 m-0">
+                {resolvedFooter}<br />
+                このメールは自動送信されています。このメールアドレスに返信いただいても、メールを確認できません。<br />
+                {date}時点での情報です。追加、更新、または削除される場合があります。
               </p>
             </Section>
           </Section>
