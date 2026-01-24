@@ -256,17 +256,17 @@ func deriveDeadlineLabelEnum(since, until string) string {
 	sIdx := periodIndex(since)
 	uIdx := periodIndex(until)
 	if strings.EqualFold(until, "MORNING") {
-		return "朝まで"
+		return "朝"
 	}
 	if uIdx > 0 && (sIdx == 0 || sIdx == uIdx) {
-		return fmt.Sprintf("%d限まで", uIdx)
+		return fmt.Sprintf("%d限", uIdx)
 	}
 	if sIdx > 0 && uIdx > 0 {
 		if sIdx == uIdx {
-			return fmt.Sprintf("%d限まで", uIdx)
+			return fmt.Sprintf("%d限", uIdx)
 		}
 		if sIdx < uIdx {
-			return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
+			return fmt.Sprintf("%d〜%d限", sIdx, uIdx)
 		}
 	}
 	return ""
