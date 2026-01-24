@@ -80,8 +80,8 @@ func registerAuthRoutes(app *fiber.App) {
 		// Fallback subject/body if composer failed
 		if subject == "" {
 			subject = "Taskly Login Code"
-			html = buildEmailHTML("ログインコード", fmt.Sprintf("<p>以下の6桁コードを入力してください。</p><div style=\"font-family:ui-monospace, Menlo, Consolas, monospace; font-size:20px; letter-spacing:4px; font-weight:700;\">%s</div><p style=\"color:#666;\">5分以内に入力してください。</p>", code))
-			text = fmt.Sprintf("Your login code is: %s\nIt expires in 5 minutes.\n", code)
+			text = fmt.Sprintf("ログインコード: %s\n5分以内に入力してください。\n", code)
+			html = text
 		}
 		smtpHost := env("SMTP_HOST", "localhost")
 		smtpPort := env("SMTP_PORT", "25")

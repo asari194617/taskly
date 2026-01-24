@@ -45,8 +45,8 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
 
         const { t } = await getT("day-shift", locale);
         const element = await DayShiftEmail({ members, events, locale });
-        const html = render(element, { pretty: true });
-        const text = render(element, { plainText: true });
+        const html = await render(element, { pretty: true });
+        const text = await render(element, { plainText: true });
         const subject = t("title");
 
         callback(null, { subject, html, text });
@@ -72,8 +72,8 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
 
         const { t } = await getT("login-code", locale);
         const element = await LoginCodeEmail({ appName, code, email, locale });
-        const html = render(element, { pretty: true });
-        const text = render(element, { plainText: true });
+        const html = await render(element, { pretty: true });
+        const text = await render(element, { plainText: true });
         const subject = t("subject");
 
         callback(null, { subject, html, text });
@@ -100,8 +100,8 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
 
         const { t } = await getT("tasks-digest", locale);
         const element = await TaskDigestEmail({ items, locale });
-        const html = render(element, { pretty: true });
-        const text = render(element, { plainText: true });
+        const html = await render(element, { pretty: true });
+        const text = await render(element, { plainText: true });
 
         let subject: string;
         if (items.length === 1) {
@@ -154,8 +154,8 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
           highlights,
           locale,
         });
-        const html = render(element, { pretty: true });
-        const text = render(element, { plainText: true });
+        const html = await render(element, { pretty: true });
+        const text = await render(element, { plainText: true });
         const subject = t("subject", { appName });
 
         callback(null, { subject, html, text });
@@ -189,8 +189,8 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
           nextNames,
           locale,
         });
-        const html = render(element, { pretty: true });
-        const text = render(element, { plainText: true });
+        const html = await render(element, { pretty: true });
+        const text = await render(element, { plainText: true });
         const subject = t("subject", { appName });
 
         callback(null, { subject, html, text });
