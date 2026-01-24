@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/smtp"
@@ -13,13 +14,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jhump/protoreflect/desc/protoparse"
 	"github.com/jhump/protoreflect/dynamic"
 	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
-	"github.com/jhump/protoreflect/grpcreflect"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	rpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	"gorm.io/gorm"
 )
 
@@ -434,11 +434,24 @@ func composeLoginCodeGRPC(ctx context.Context, addr, locale, email, code, appNam
 		return "", "", "", err
 	}
 	defer cc.Close()
-	rc := grpcreflect.NewClient(ctx, rpb.NewServerReflectionClient(cc))
-	defer rc.Reset()
-	svc, err := rc.ResolveService("emailcompose.EmailComposer")
-	if err != nil {
-		return "", "", "", err
+
+	// Load proto descriptor from embedded email.proto (no server reflection required)
+	parser := protoparse.Parser{
+		Accessor: func(filename string) (io.ReadCloser, error) {
+			if filename != "email.proto" {
+				return nil, fmt.Errorf("proto not found: %s", filename)
+			}
+			return io.NopCloser(strings.NewReader(emailComposeProto)), nil
+		},
+	}
+	fds, perr := parser.ParseFiles("email.proto")
+	if perr != nil || len(fds) == 0 {
+		return "", "", "", fmt.Errorf("proto parse error: %v", perr)
+	}
+	fd := fds[0]
+	svc := fd.FindService("emailcompose.EmailComposer")
+	if svc == nil {
+		return "", "", "", fmt.Errorf("service emailcompose.EmailComposer not found in proto")
 	}
 	m := svc.FindMethodByName("ComposeLoginCode")
 	if m == nil {
@@ -491,3 +504,80 @@ func composeLoginCodeGRPC(ctx context.Context, addr, locale, email, code, appNam
 	}
 	return subject, html, text, nil
 }
+
+const emailComposeProto = `syntax = "proto3";
+package emailcompose;
+
+service EmailComposer {
+  rpc ComposeLoginCode (ComposeLoginCodeRequest) returns (ComposeResponse) {}
+  rpc ComposeTaskDigest (ComposeTaskDigestRequest) returns (ComposeResponse) {}
+  rpc ComposeModerationAlert (ComposeModerationAlertRequest) returns (ComposeResponse) {}
+  rpc ComposeDayShift (ComposeDayShiftRequest) returns (ComposeResponse) {}
+  rpc ComposeDayShiftSkip (ComposeDayShiftSkipRequest) returns (ComposeResponse) {}
+}
+
+message ComposeLoginCodeRequest {
+  string locale = 1; // 'en' or 'ja'
+  string email = 2;  // recipient for personalization
+  string code = 3;   // login code
+  string app_name = 4;
+}
+
+message ComposeResponse {
+  string subject = 1;
+  string html = 2;
+  string text = 3;
+}
+
+message TaskDigestBadge {
+  string label = 1;
+  string variant = 2; // "gray" | "red" | "blue"
+}
+
+message TaskDigestItem {
+  string when_label = 1;
+  string subject = 2;
+  string title = 3;
+  string body = 4;
+  string meta = 5;
+  repeated TaskDigestBadge badges = 6;
+}
+
+message ComposeTaskDigestRequest {
+  string locale = 1;  // 'en' or 'ja'
+  string app_name = 2; // e.g. Taskly
+  repeated TaskDigestItem items = 3;
+}
+
+message ModerationHighlight {
+  string id = 1;
+  string title = 2;
+  string category = 3;
+  string severity = 4;
+}
+
+message ComposeModerationAlertRequest {
+  string locale = 1; // 'en' or 'ja'
+  string app_name = 2;
+  int32 total_flagged = 3;
+  int32 auto_hidden = 4;
+  string review_url = 5;
+  repeated ModerationHighlight highlights = 6;
+}
+
+message ComposeDayShiftRequest {
+  string locale = 1; // 'en' or 'ja'
+  string app_name = 2; // e.g. Taskly
+  repeated string members = 3;
+  repeated string events = 4;
+}
+
+message ComposeDayShiftSkipRequest {
+  string locale = 1; // 'en' or 'ja'
+  string app_name = 2;
+  string today_date = 3; // YYYY-MM-DD
+  string today_names = 4; // comma separated display names
+  string next_date = 5; // YYYY-MM-DD
+  string next_names = 6; // comma separated display names
+}
+`

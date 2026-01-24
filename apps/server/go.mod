@@ -11,11 +11,13 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.7
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/graphql-go/graphql v0.8.1
+	github.com/jhump/protoreflect v1.17.0
 	github.com/pquerna/otp v1.4.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/redis/go-redis/v9 v9.7.3
 	golang.org/x/crypto v0.39.0
 	google.golang.org/genai v1.33.0
+	google.golang.org/grpc v1.72.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.74.6
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/driver/sqlite v1.5.7
@@ -79,7 +81,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
-	github.com/jhump/protoreflect v1.17.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -137,12 +138,12 @@ require (
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250425173222-7b384671a197 // indirect
-	google.golang.org/grpc v1.72.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
