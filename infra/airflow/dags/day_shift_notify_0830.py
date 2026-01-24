@@ -2,10 +2,19 @@ from datetime import datetime, date
 import os
 import smtplib
 from email.header import Header
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import requests
 import pymysql
+try:
+    import grpc
+    from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
+except Exception:  # pragma: no cover - allow DAG to load without optional deps
+    grpc = None
+    descriptor_pb2 = None
+    descriptor_pool = None
+    message_factory = None
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -32,7 +41,105 @@ def read_config(conn, key: str) -> str:
         return (row or {}).get("value", "")
 
 
-def send_day_shift_emails(users, subject: str, body: str) -> None:
+_email_compose_messages = None
+
+
+def _get_email_compose_messages():
+    global _email_compose_messages
+    if _email_compose_messages is not None:
+        return _email_compose_messages
+
+    if descriptor_pb2 is None or descriptor_pool is None or message_factory is None:
+        raise RuntimeError("protobuf modules are not available")
+
+    file_proto = descriptor_pb2.FileDescriptorProto()
+    file_proto.name = "emailcompose_dynamic.proto"
+    file_proto.package = "emailcompose"
+    file_proto.syntax = "proto3"
+
+    # ComposeResponse
+    msg = file_proto.message_type.add()
+    msg.name = "ComposeResponse"
+    field = msg.field.add()
+    field.name = "subject"
+    field.number = 1
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+    field = msg.field.add()
+    field.name = "html"
+    field.number = 2
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+    field = msg.field.add()
+    field.name = "text"
+    field.number = 3
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+
+    # ComposeDayShiftRequest
+    msg = file_proto.message_type.add()
+    msg.name = "ComposeDayShiftRequest"
+    field = msg.field.add()
+    field.name = "locale"
+    field.number = 1
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+    field = msg.field.add()
+    field.name = "app_name"
+    field.number = 2
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+    field = msg.field.add()
+    field.name = "members"
+    field.number = 3
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_REPEATED
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+    field = msg.field.add()
+    field.name = "events"
+    field.number = 4
+    field.label = descriptor_pb2.FieldDescriptorProto.LABEL_REPEATED
+    field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(file_proto)
+    factory = message_factory.MessageFactory(pool)
+    ComposeDayShiftRequest = factory.GetPrototype(
+        pool.FindMessageTypeByName("emailcompose.ComposeDayShiftRequest")
+    )
+    ComposeResponse = factory.GetPrototype(
+        pool.FindMessageTypeByName("emailcompose.ComposeResponse")
+    )
+
+    _email_compose_messages = (ComposeDayShiftRequest, ComposeResponse)
+    return _email_compose_messages
+
+
+def compose_day_shift_email_via_grpc(members, events, locale: str, app_name: str):
+    if grpc is None:
+        raise RuntimeError("grpc module is not available")
+    ComposeDayShiftRequest, ComposeResponse = _get_email_compose_messages()
+    addr = os.getenv("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051").strip()
+    timeout = int(os.getenv("EMAIL_COMPOSE_GRPC_TIMEOUT", "10"))
+
+    req = ComposeDayShiftRequest(
+        locale=locale,
+        app_name=app_name,
+        members=members,
+        events=events,
+    )
+
+    with grpc.insecure_channel(addr) as channel:
+        method = channel.unary_unary(
+            "/emailcompose.EmailComposer/ComposeDayShift",
+            request_serializer=ComposeDayShiftRequest.SerializeToString,
+            response_deserializer=ComposeResponse.FromString,
+        )
+        res = method(req, timeout=timeout)
+
+    return res.subject, res.html, res.text
+
+
+def send_day_shift_emails(users, subject: str, text_body: str, html_body: str) -> None:
     """Send day shift notification emails via SMTP.
 
     - Uses the same env vars as other components:
@@ -59,7 +166,12 @@ def send_day_shift_emails(users, subject: str, body: str) -> None:
     smtp_tls = os.getenv("SMTP_TLS", "").strip().lower()
     timeout = int(os.getenv("SMTP_TIMEOUT", "60"))
 
-    msg = MIMEText(body, _subtype="plain", _charset="utf-8")
+    if html_body:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(text_body, _subtype="plain", _charset="utf-8"))
+        msg.attach(MIMEText(html_body, _subtype="html", _charset="utf-8"))
+    else:
+        msg = MIMEText(text_body, _subtype="plain", _charset="utf-8")
     msg["Subject"] = str(Header(subject, "utf-8"))
     msg["From"] = from_addr
     msg["To"] = ", ".join(to_addrs)
@@ -275,15 +387,36 @@ def notify_day_shift(**context):
                 }, timeout=5)
             return
 
-        # Compose and send email via SMTP settings in env (simple direct send)
+        # Compose HTML/text via email-compose gRPC (React Email)
         # For production, consider queueing notifications in notifications_queue.
+        members = [
+            (u.get("display_name") or u.get("email") or "").strip()
+            for u in users
+            if (u.get("display_name") or u.get("email") or "").strip()
+        ]
+        locale = "ja"
+        app_name = "Taskly"
+        events = []
+
+        names = ", ".join(members)
         subject = "[Taskly] 本日の日直のお知らせ"
-        names = ", ".join(u.get("display_name") or u.get("email") for u in users)
-        body = f"本日({today.strftime('%Y-%m-%d')})の日直: {names}"
-        print(body)
+        text_body = f"本日({today.strftime('%Y-%m-%d')})の日直: {names}"
+        html_body = ""
+
+        try:
+            subject, html_body, text_body = compose_day_shift_email_via_grpc(
+                members=members,
+                events=events,
+                locale=locale,
+                app_name=app_name,
+            )
+        except Exception as e:
+            print(f"[DayShift] email-compose gRPC failed: {e}")
+
+        print(text_body)
 
         # Actually send email to all target users via SMTP.
-        send_day_shift_emails(users, subject, body)
+        send_day_shift_emails(users, subject, text_body, html_body)
         # Discord embeds: report notified users
         hook = os.getenv("DISCORD_WEBHOOK_URL", "")
         if hook:

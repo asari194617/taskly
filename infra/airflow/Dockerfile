@@ -39,6 +39,8 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     sentry-sdk \
     ddtrace \
     apache-airflow-providers-discord \
+    grpcio \
+    protobuf \
     pymysql \
     icalendar \
     python-dotenv
