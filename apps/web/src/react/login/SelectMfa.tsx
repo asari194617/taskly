@@ -55,10 +55,9 @@ export default function SelectMfa() {
         const recovery =
           Array.isArray(data?.methods) && data.methods.includes("recovery");
         // If password was entered earlier, email code should not be offered
-        const pw = sessionStorage.getItem("login_pw") || "";
         setOptions({
           passkey,
-          emailCode: pw ? false : emailCode,
+          emailCode: emailCode,
           totp,
           recovery,
         });
