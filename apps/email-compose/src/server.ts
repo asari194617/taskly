@@ -68,10 +68,9 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
         const locale = (call.request?.locale as string) || "en";
         const email = call.request?.email as string;
         const code = call.request?.code as string;
-        const appName = (call.request?.app_name as string) || "Taskly";
 
         const { t } = await getT("login-code", locale);
-        const element = await LoginCodeEmail({ appName, code, email, locale });
+        const element = await LoginCodeEmail({ code, email, locale });
         const html = await render(element, { pretty: true });
         const text = await render(element, { plainText: true });
         const subject = t("subject");
@@ -93,7 +92,6 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
     ) => {
       try {
         const locale = (call.request?.locale as string) || "ja";
-        const appName = (call.request?.app_name as string) || "Taskly";
         const items: TaskDigestItem[] = Array.isArray(call.request?.items)
           ? (call.request.items as TaskDigestItem[])
           : [];
@@ -132,7 +130,6 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
     ) => {
       try {
         const locale = (call.request?.locale as string) || "ja";
-        const appName = (call.request?.app_name as string) || "Taskly";
         const totalFlagged = Number(call.request?.total_flagged || 0);
         const autoHidden = Number(call.request?.auto_hidden || 0);
         const reviewUrl = (call.request?.review_url as string) || "";
@@ -147,7 +144,6 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
 
         const { t } = await getT("moderation-alert", locale);
         const element = await ModerationAlertEmail({
-          appName,
           totalFlagged,
           autoHidden,
           reviewUrl,
@@ -156,7 +152,7 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
         });
         const html = await render(element, { pretty: true });
         const text = await render(element, { plainText: true });
-        const subject = t("subject", { appName });
+        const subject = t("subject");
 
         callback(null, { subject, html, text });
       } catch (err) {
@@ -175,7 +171,6 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
     ) => {
       try {
         const locale = (call.request?.locale as string) || "ja";
-        const appName = (call.request?.app_name as string) || "Taskly";
         const todayDate = (call.request?.today_date as string) || "";
         const todayNames = (call.request?.today_names as string) || "";
         const nextDate = (call.request?.next_date as string) || "";
@@ -191,7 +186,7 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
         });
         const html = await render(element, { pretty: true });
         const text = await render(element, { plainText: true });
-        const subject = t("subject", { appName });
+        const subject = t("subject");
 
         callback(null, { subject, html, text });
       } catch (err) {

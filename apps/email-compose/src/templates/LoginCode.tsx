@@ -1,14 +1,13 @@
 import * as React from "react";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
+import { Section, Text, Hr } from "@react-email/components";
 
 export async function LoginCodeEmail({
-  appName,
   code,
   email,
   locale,
 }: {
-  appName: string;
   code: string;
   email: string;
   locale?: string;
@@ -17,15 +16,16 @@ export async function LoginCodeEmail({
   const title = t("subject");
   return (
     <Layout title={title} locale={locale}>
-      <div className="header">{appName}</div>
-      <div className="content">
-        <p>{t("greeting", { email })}</p>
-        <p className="muted">{t("intro")}</p>
-        <p>
-          <span className="code">{code}</span>
-        </p>
-        <p className="muted">{t("expiry")}</p>
-      </div>
+      <Section>
+        <Text>{t("greeting", { email })}</Text>
+        <Text className="text-muted">{t("intro")}</Text>
+        <Text>
+          <span className="text-lg font-bold">{code}</span>
+        </Text>
+        <Hr />
+        <Text className="text-muted">{t("expiry")}</Text>
+        <Text className="text-muted">{t("no_share")}</Text>
+      </Section>
     </Layout>
   );
 }

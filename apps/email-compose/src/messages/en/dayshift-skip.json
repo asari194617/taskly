@@ -1,5 +1,5 @@
 {
-  "subject": "{{appName}} Day shift skipped",
+  "subject": "Day shift skipped",
   "intro": "Today's day shift has been skipped ({{date}}).",
   "today_line": "Today ({{date}}): {{names}}",
   "next_line": "Next ({{date}}): {{names}}",

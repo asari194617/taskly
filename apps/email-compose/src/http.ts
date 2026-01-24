@@ -18,9 +18,8 @@ export function startHttpServer(port: number) {
         const locale = (body.locale as string) || "en";
         const email = (body.email as string) || "";
         const code = (body.code as string) || "";
-        const appName = (body.app_name as string) || "Taskly";
         const { t } = await getT("login-code", locale);
-        const element = await LoginCodeEmail({ appName, code, email, locale });
+        const element = await LoginCodeEmail({ code, email, locale });
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
         const subject = t("subject");
@@ -46,7 +45,6 @@ export function startHttpServer(port: number) {
         }> = Array.isArray(body.highlights) ? body.highlights : [];
         const { t } = await getT("moderation-alert", locale);
         const element = await ModerationAlertEmail({
-          appName,
           totalFlagged,
           autoHidden,
           reviewUrl,
@@ -66,7 +64,6 @@ export function startHttpServer(port: number) {
         for await (const ch of req) chunks.push(ch as Buffer);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         const locale = (body.locale as string) || "ja";
-        const appName = (body.app_name as string) || "Taskly";
         const items: TaskDigestItem[] = Array.isArray(body.items)
           ? body.items
           : [];

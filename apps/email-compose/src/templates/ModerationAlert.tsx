@@ -1,6 +1,7 @@
 import * as React from "react";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
+import { Text, Section, Link } from "@react-email/components";
 
 type Highlight = {
   id?: string | number;
@@ -10,14 +11,12 @@ type Highlight = {
 };
 
 export async function ModerationAlertEmail({
-  appName,
   totalFlagged,
   autoHidden,
   reviewUrl,
   highlights,
   locale,
 }: {
-  appName: string;
   totalFlagged: number;
   autoHidden: number;
   reviewUrl?: string;
@@ -29,18 +28,17 @@ export async function ModerationAlertEmail({
   const hs = Array.isArray(highlights) ? highlights.slice(0, 5) : [];
   return (
     <Layout title={title} locale={locale}>
-      <div className="header">{appName}</div>
-      <div className="content">
-        <p className="muted">{t("intro")}</p>
-        <p>
+      <Section>
+        <Text className="text-muted">{t("intro")}</Text>
+        <Text>
           {t("summary", {
             total: totalFlagged,
             hidden: autoHidden,
           })}
-        </p>
+        </Text>
         {hs.length > 0 && (
-          <div>
-            <p className="muted">{t("highlights")}</p>
+          <Section>
+            <Text className="text-muted">{t("highlights")}</Text>
             <ul>
               {hs.map((h, i) => (
                 <li key={i}>
@@ -50,17 +48,17 @@ export async function ModerationAlertEmail({
                 </li>
               ))}
             </ul>
-          </div>
+          </Section>
         )}
         {reviewUrl ? (
-          <p>
-            <a className="button" href={reviewUrl}>
+          <Text>
+            <Link className="button" href={reviewUrl}>
               {t("review_button")}
-            </a>
-          </p>
+            </Link>
+          </Text>
         ) : null}
-        <p className="muted">{t("details_note")}</p>
-      </div>
+        <Text className="muted">{t("details_note")}</Text>
+      </Section>
     </Layout>
   );
 }

@@ -1,5 +1,5 @@
 {
-  "subject": "{{appName}} Moderation alert",
+  "subject": "Moderation alert",
   "title": "Moderation alert",
   "intro": "Daily moderation run summary.",
   "summary": "Flagged: {{total}} item(s). Auto-hidden: {{hidden}}.",
