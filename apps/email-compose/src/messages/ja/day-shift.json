@@ -1,0 +1,10 @@
+{
+  "title": "本日の日直です",
+  "preview": "本日の日直です。よろしくお願いします。",
+  "intro": "本日の日直ですので、お知らせします。よろしくお願いします。",
+  "table_title": "本日の日直メンバー、イベント情報",
+  "members_label": "日直メンバー",
+  "events_label": "イベント情報",
+  "events_none": "なし",
+  "notification_prefs_can_change": "この通知設定は設定画面から変更できます。"
+}

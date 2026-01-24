@@ -1,0 +1,8 @@
+{
+  "subject": "{{appName}} Day shift skipped",
+  "intro": "Today's day shift has been skipped ({{date}}).",
+  "today_line": "Today ({{date}}): {{names}}",
+  "next_line": "Next ({{date}}): {{names}}",
+  "none_label": "(none)",
+  "details_note": "If this looks incorrect, please check the settings."
+}

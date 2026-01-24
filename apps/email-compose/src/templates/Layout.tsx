@@ -1,46 +1,111 @@
 import * as React from "react";
-import { Html } from "@react-email/components";
+import {
+  Html,
+  Font,
+  Head,
+  Section,
+  Tailwind,
+  pixelBasedPreset,
+  Heading,
+  Preview,
+  Img,
+} from "@react-email/components";
 
 // Simple base HTML with neutral styling similar to shadcn/ui typography
 export function Layout({
   children,
   title,
+  preview,
+  locale,
+  footerNote,
 }: {
   children: React.ReactNode;
   title: string;
+  preview?: string;
+  locale?: string;
+  footerNote?: string;
 }) {
+  const datetime = new Date();
+  // デフォルトのままだとmm/dd/yyyy形式になるので、yyyy/mm/dd形式で構成
+  const date = datetime.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric"
+  }).concat("/").concat(
+    datetime.toLocaleString("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      month: "2-digit"
+    })
+  ).concat("/").concat(
+    datetime.toLocaleString("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      day: "2-digit"
+    })
+  );
+
+  const resolvedFooter = footerNote?.replace("{{date}}", date) || "";
   return (
-    <Html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta httpEquiv="x-ua-compatible" content="ie=edge" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <Html
+      lang={locale || "en"}
+      style={{
+        backgroundColor: "#f7f7f7",
+      }}
+    >
+      {preview && <Preview>{preview}</Preview>}
+      <Head>
         <title>{title}</title>
-        <style>
-          {`
-            :root { color-scheme: light only; }
-            body { margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: #f8fafc; color: #0f172a; }
-            .container { max-width: 640px; margin: 0 auto; padding: 24px; }
-            .card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
-            .header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; font-weight: 600; font-size: 18px; }
-            .content { padding: 24px; font-size: 14px; line-height: 1.6; }
-            .muted { color: #64748b; }
-            .button { display: inline-block; background: #111827; color: white; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; }
-            .code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: #f1f5f9; border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; }
-            .footer { text-align: center; padding: 16px; color: #94a3b8; font-size: 12px; }
-          `}
-        </style>
-      </head>
-      <body>
-        <div className="container">
-          <div className="card">{children}</div>
-          <div className="footer">
-            <img src="https://cdn.taskly.iy0306.com/assets/logo.jpg" alt="ロゴ" width={69.75} height={20} />
-            <br />
-            これは自動送信されたメールです。監視されていないメールボックスのため、返信しないでください。
-          </div>
-        </div>
-      </body>
+        <Font
+          fontFamily="Roboto"
+          fallbackFontFamily="Verdana"
+          webFont={{
+            url: "https://fonts.gstatic.com/s/roboto/v27/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.woff2",
+            format: "woff2",
+          }}
+          fontWeight={400}
+          fontStyle="normal"
+        />
+      </Head>
+      <Section>
+        <Tailwind
+          config={{
+            presets: [pixelBasedPreset],
+            theme: {
+              extend: {
+                colors: {
+                  brand: "#1155cc",
+                },
+              },
+            },
+          }}
+        >
+          {/* コンテンツ */}
+          <Section className="w-full max-w-sm">
+            <Section className="rounded-xl bg-white p-4">
+              <Img
+                src="https://cdn.taskly.iy0306.com/assets/logo.jpg"
+                alt="Taskly Logo"
+                className="mb-2 h-5"
+              />
+              {/* ヘッダー */}
+              <Heading
+                as="h1"
+                className="text-primary font-bold text-lg m-0 pb-2"
+              >
+                {title}
+              </Heading>
+              {children}
+            </Section>
+            {/* フッター */}
+            <Section className="pt-6">
+              <p className="text-xs text-center text-gray-500 m-0">
+                {resolvedFooter} 
+                このメールは自動送信されています。{date}時点での情報です。追加、更新、または削除される場合があります。
+              </p>
+            </Section>
+          </Section>
+        </Tailwind>
+      </Section>
     </Html>
   );
 }
+
+export default Layout;

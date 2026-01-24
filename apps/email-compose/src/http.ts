@@ -6,7 +6,7 @@ import {
   TaskDigestEmail,
   type TaskDigestItem,
 } from "./templates/TaskDigest.js";
-import { t as translate } from "./i18n.js";
+import { getT } from "./get-t.js";
 
 export function startHttpServer(port: number) {
   const server = http.createServer(async (req, res) => {
@@ -19,12 +19,11 @@ export function startHttpServer(port: number) {
         const email = (body.email as string) || "";
         const code = (body.code as string) || "";
         const appName = (body.app_name as string) || "Taskly";
-        const t: (k: string, o?: any) => string = (key: string, o?: any) =>
-          translate(key, { lng: locale, ...(o || {}) });
-        const element = LoginCodeEmail({ appName, code, email, t });
+        const { t } = await getT("login-code", locale);
+        const element = await LoginCodeEmail({ appName, code, email, locale });
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
-        const subject = t("emails:login_code.subject");
+        const subject = t("subject");
         const out = JSON.stringify({ subject, html, text });
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json");
@@ -45,19 +44,18 @@ export function startHttpServer(port: number) {
           severity?: string;
           id?: string | number;
         }> = Array.isArray(body.highlights) ? body.highlights : [];
-        const t: (k: string, o?: any) => string = (key: string, o?: any) =>
-          translate(key, { lng: locale, ...(o || {}) });
-        const element = ModerationAlertEmail({
+        const { t } = await getT("moderation-alert", locale);
+        const element = await ModerationAlertEmail({
           appName,
           totalFlagged,
           autoHidden,
           reviewUrl,
           highlights,
-          t,
+          locale,
         });
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
-        const subject = t("emails:moderation_alert.subject", { appName });
+        const subject = t("subject", { appName });
         const out = JSON.stringify({ subject, html, text });
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json");
@@ -72,17 +70,20 @@ export function startHttpServer(port: number) {
         const items: TaskDigestItem[] = Array.isArray(body.items)
           ? body.items
           : [];
-        const t: (k: string, o?: any) => string = (key: string, o?: any) =>
-          translate(key, { lng: locale, ...(o || {}) });
-        const element = TaskDigestEmail({ appName, items, t });
+        const { t } = await getT("tasks-digest", locale);
+        const element = await TaskDigestEmail({ appName, items, locale });
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
         let subject: string;
         if (items.length === 1) {
           const i = items[0];
-          subject = `【${i.when_label}まで】${i.subject}: ${i.title}`;
+          subject = t("single.title", {
+            when: i.when_label,
+            subject: i.subject,
+            task: i.title,
+          });
         } else {
-          subject = `期限が近い課題が${items.length}件あります`;
+          subject = t("multi.title", { count: items.length });
         }
         const out = JSON.stringify({ subject, html, text });
         res.statusCode = 200;

@@ -1,25 +1,52 @@
 import i18next from "i18next";
-import Backend from "i18next-fs-backend";
-import path from "node:path";
+import resourcesToBackend from "i18next-resources-to-backend";
+import { initReactI18next } from "react-i18next";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 
-export async function initI18n(localesDir: string) {
-  await i18next.use(Backend).init({
-    backend: {
-      loadPath: path.join(localesDir, "{{lng}}/{{ns}}.json"),
-    },
-    lng: "en",
-    fallbackLng: "en",
-    preload: ["en", "ja"],
-    ns: ["common", "emails"],
-    defaultNS: "common",
-    interpolation: {
-      escapeValue: false,
-    },
-    returnNull: false,
-    returnEmptyString: true,
-  });
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+let messagesDir = path.join(__dirname, "messages");
+let initPromise: Promise<void> | null = null;
+
+export async function initI18n(dir?: string) {
+  if (dir) messagesDir = dir;
+  if (!initPromise) {
+    initPromise = i18next
+      .use(initReactI18next)
+      .use(
+        resourcesToBackend(async (language, namespace) => {
+          const filePath = path.join(
+            messagesDir,
+            language,
+            `${namespace}.json`,
+          );
+          const raw = await readFile(filePath, "utf8");
+          return JSON.parse(raw);
+        }),
+      )
+      .init({
+        supportedLngs: ["en", "ja"],
+        fallbackLng: "en",
+        lng: undefined,
+        preload: typeof window === "undefined" ? ["en", "ja"] : [],
+        ns: [
+          "common",
+          "login-code",
+          "moderation-alert",
+          "tasks-digest",
+          "dayshift-skip",
+          "day-shift",
+        ],
+        defaultNS: "common",
+        interpolation: {
+          escapeValue: false,
+        },
+        returnNull: false,
+        returnEmptyString: true,
+      });
+  }
+  await initPromise;
 }
 
-export function t(key: string, options?: Record<string, unknown>): string {
-  return String(i18next.t(key, options as any));
-}
+export { i18next };

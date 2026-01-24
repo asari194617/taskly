@@ -1,0 +1,8 @@
+{
+  "subject": "日直スキップのお知らせ",
+  "intro": "{{date}} の日直はスキップされました。",
+  "today_line": "本日（{{date}}）: {{names}}",
+  "next_line": "次回（{{date}}）: {{names}}",
+  "none_label": "（なし）",
+  "details_note": "内容に誤りがある場合はお知らせください。"
+}

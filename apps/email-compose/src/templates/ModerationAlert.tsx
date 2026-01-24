@@ -1,4 +1,5 @@
 import * as React from "react";
+import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
 
 type Highlight = {
@@ -8,37 +9,38 @@ type Highlight = {
   severity?: string;
 };
 
-export function ModerationAlertEmail({
+export async function ModerationAlertEmail({
   appName,
   totalFlagged,
   autoHidden,
   reviewUrl,
   highlights,
-  t,
+  locale,
 }: {
   appName: string;
   totalFlagged: number;
   autoHidden: number;
   reviewUrl?: string;
   highlights?: Highlight[];
-  t: (k: string, o?: any) => string;
+  locale?: string;
 }) {
-  const title = `${appName} - ${t("emails:moderation_alert.title")}`;
+  const { t } = await getT("moderation-alert", locale);
+  const title = t("title");
   const hs = Array.isArray(highlights) ? highlights.slice(0, 5) : [];
   return (
-    <Layout title={title}>
+    <Layout title={title} locale={locale}>
       <div className="header">{appName}</div>
       <div className="content">
-        <p className="muted">{t("emails:moderation_alert.intro")}</p>
+        <p className="muted">{t("intro")}</p>
         <p>
-          {t("emails:moderation_alert.summary", {
+          {t("summary", {
             total: totalFlagged,
             hidden: autoHidden,
           })}
         </p>
         {hs.length > 0 && (
           <div>
-            <p className="muted">{t("emails:moderation_alert.highlights")}</p>
+            <p className="muted">{t("highlights")}</p>
             <ul>
               {hs.map((h, i) => (
                 <li key={i}>
@@ -53,12 +55,14 @@ export function ModerationAlertEmail({
         {reviewUrl ? (
           <p>
             <a className="button" href={reviewUrl}>
-              {t("emails:moderation_alert.review_button")}
+              {t("review_button")}
             </a>
           </p>
         ) : null}
-        <p className="muted">{t("emails:moderation_alert.footer_note")}</p>
+        <p className="muted">{t("details_note")}</p>
       </div>
     </Layout>
   );
 }
+
+export default ModerationAlertEmail;

@@ -1,45 +1,43 @@
 import * as React from "react";
+import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
+import { Container } from "@react-email/components";
 
-export function DayShiftSkipEmail({
-  appName,
+export const DayShiftSkipEmail = async ({
   todayDate,
   todayNames,
   nextDate,
   nextNames,
-  t,
+  locale,
 }: {
-  appName: string;
   todayDate: string;
   todayNames: string;
   nextDate: string;
   nextNames: string;
-  t: (k: string, o?: any) => string;
-}) {
-  const title = `${appName} - ${t("emails:dayshift_skip.subject", {
-    appName,
-  })}`;
+  locale?: string;
+}) => {
+  const { t } = await getT("dayshift-skip", locale);
+  const title = t("subject");
   return (
-    <Layout title={title}>
-      <div className="header">{appName}</div>
-      <div className="content">
-        <p className="muted">
-          {t("emails:dayshift_skip.intro", { date: todayDate })}
-        </p>
+    <Layout title={title} locale={locale}>
+      <Container className="content">
+        <p className="muted">{t("intro", { date: todayDate })}</p>
         <p>
-          {t("emails:dayshift_skip.today_line", {
+          {t("today_line", {
             date: todayDate,
-            names: todayNames || "(none)",
+            names: todayNames || t("none_label"),
           })}
         </p>
         <p>
-          {t("emails:dayshift_skip.next_line", {
+          {t("next_line", {
             date: nextDate,
-            names: nextNames || "(none)",
+            names: nextNames || t("none_label"),
           })}
         </p>
-        <p className="muted">{t("emails:dayshift_skip.footer_note")}</p>
-      </div>
+        <p className="muted">{t("details_note")}</p>
+      </Container>
     </Layout>
   );
-}
+};
+
+export default DayShiftSkipEmail;

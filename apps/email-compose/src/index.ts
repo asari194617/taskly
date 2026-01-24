@@ -11,7 +11,7 @@ async function main() {
   const NODE_ENV = env.NODE_ENV || "development";
 
   // i18n
-  await initI18n(process.cwd() + "/dist/locales");
+  await initI18n(process.cwd() + "/dist/messages");
 
   // Sentry
   initSentry();
@@ -19,7 +19,7 @@ async function main() {
   // Start gRPC server
   await startGrpcServer({ host: HOST, port: PORT });
   console.log(
-    `email-compose gRPC listening on ${HOST}:${PORT} (env=${NODE_ENV})`
+    `email-compose gRPC listening on ${HOST}:${PORT} (env=${NODE_ENV})`,
   );
 }
 

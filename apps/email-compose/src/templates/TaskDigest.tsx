@@ -1,125 +1,125 @@
 import * as React from "react";
-import { Container, Section, Heading, Text, Hr } from "@react-email/components";
+import { Container, Section, Heading, Text } from "@react-email/components";
+import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
 
-export type TaskDigestItem = {
-  when_label: string; // 今日/あす/あさって/日付
+export interface TaskDigestItem {
+  whenLabel: string; // 今日/あす/あさって/日付
   subject: string; // 教科名
   title: string; // 課題名
   body?: string; // 詳細説明
   meta?: string; // 教科 + 日付 + ラベルなど（例: "国語 2025/11/04 朝まで"）
-  badges?: Array<{ label: string; variant?: "gray" | "red" | "blue" }>; // 先頭のバッジ行（任意）
+  badges?: {
+    label: string;
+    variant?: "gray" | "red" | "blue";
+  }[]; // 先頭のバッジ行（任意）
+}
+
+// 重複した"まで まで"を1つにまとめる
+const normalizeBody = (s?: string) => {
+  if (!s) return "";
+  return s.replace(/(まで)(\s*まで)+/g, "$1");
 };
 
-export function TaskDigestEmail({
-  appName = "Taskly",
+export async function TaskDigestEmail({
   items,
-  t,
+  locale,
 }: {
-  appName?: string;
   items: TaskDigestItem[];
-  t: (k: string, o?: any) => string;
+  locale?: string;
 }) {
-  // normalize duplicated suffix like "まで まで" -> "まで"
-  const normalizeBody = (s?: string) => {
-    if (!s) return "";
-    return s.replace(/(まで)(\s*まで)+/g, "$1");
-  };
-  const safeItems = items.map((it) => ({
-    ...it,
-    body: normalizeBody(it.body),
-  }));
+  const { t } = await getT("tasks-digest", locale);
+  let safeItems = items;
+
+  // React EmailのPreviewは必須の配列に対してもundefinedを渡すので、Previewかどうかの判定を行う
+  // プレビューなら、ダミーデータを入れる
+  if (items === undefined) {
+    console.log("Rendering TaskDigestEmail preview with dummy data");
+    safeItems = [
+      {
+        whenLabel: "今日",
+        subject: "数理演習2",
+        title: "三角関数2のテスト",
+        body: "三角関数1の範囲を含む",
+        meta: "2025/11/03 1~2限まで",
+      },
+      {
+        whenLabel: "あす",
+        subject: "数理演習1",
+        title: "図形の再提出",
+        body: "",
+        meta: "2025/11/04 3~4限まで",
+      },
+      {
+        whenLabel: "あさって",
+        subject: "ディジタル工学基礎",
+        title: "(再評価対象者のみ)課題提出",
+        body: "",
+        meta: "2025/11/05 夜まで",
+        badges: [{ label: "提出必須", variant: "red" }],
+      },
+    ];
+  }
+
   const isSingle = safeItems.length === 1;
   const i = safeItems[0];
   const title = isSingle
-    ? `${appName} - ${t("emails:tasks_digest.single.title", {
-        when: i.when_label,
+    ? t("single.title", {
+        when: i.whenLabel,
         subject: i.subject,
         task: i.title,
-      })}`
-    : `${appName} - ${t("emails:tasks_digest.multi.title", {
+      })
+    : t("multi.title", {
         count: safeItems.length,
-      })}`;
+      });
+
+  safeItems = safeItems.map((it) => ({
+    ...it,
+    body: normalizeBody(it.body),
+  }));
 
   // group by when_label to resemble the Tasks list sections
   const grouped = new Map<string, TaskDigestItem[]>();
   for (const it of safeItems) {
-    const key = it.when_label || "";
+    const key = it.whenLabel || "";
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(it);
   }
 
-  const badgeStyle = (variant: "gray" | "red" | "blue" = "gray") => {
+  const badgeClass = (variant: "gray" | "red" | "blue" = "gray") => {
     switch (variant) {
       case "red":
-        return {
-          backgroundColor: "#FEE2E2",
-          color: "#991B1B",
-        } as React.CSSProperties;
+        return "bg-red-100 text-red-800";
       case "blue":
-        return {
-          backgroundColor: "#DBEAFE",
-          color: "#1D4ED8",
-        } as React.CSSProperties;
+        return "bg-blue-100 text-blue-700";
       default:
-        return {
-          backgroundColor: "#F3F4F6",
-          color: "#111827",
-        } as React.CSSProperties;
+        return "bg-gray-100 text-gray-900";
     }
   };
 
   return (
-    <Layout title={title}>
-      <Container style={{ padding: 4 }}>
-        <Section style={{ paddingTop: 8, paddingBottom: 8 }}>
-          <Heading as="h1" style={{ margin: 0, fontSize: 18 }}>
-            {isSingle
-              ? t("emails:tasks_digest.single.title", {
-                  when: i.when_label,
-                  subject: i.subject,
-                  task: i.title,
-                })
-              : t("emails:tasks_digest.multi.title", {
-                  count: safeItems.length,
-                })}
-          </Heading>
-        </Section>
-
+    <Layout title={title} locale={locale} footerNote={t("details_note")}>
+      <Container className="p-1">
         {[...grouped.entries()].map(([heading, list], gi) => (
           <React.Fragment key={gi}>
-            <Section
-              style={{ paddingTop: gi === 0 ? 4 : 16, paddingBottom: 6 }}
-            >
-              <Text style={{ margin: 0, color: "#6B7280", fontWeight: 600 }}>
-                {heading}
-              </Text>
+            <Section className={gi === 0 ? "pt-1 pb-1.5" : "pt-4 pb-1.5"}>
+              <Text className="m-0 text-gray-500 font-semibold">{heading}</Text>
             </Section>
             <Section>
               {list.map((x, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    border: "1px solid #E5E7EB",
-                    borderRadius: 10,
-                    padding: 16,
-                    marginBottom: 12,
-                  }}
+                  className="border border-gray-200 rounded-[10px] p-4 mb-3"
                 >
                   {/* badges row (optional) */}
                   {x.badges && x.badges.length > 0 ? (
-                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <div className="flex gap-2 mb-2">
                       {x.badges.map((b, bi) => (
                         <span
                           key={bi}
-                          style={{
-                            display: "inline-block",
-                            padding: "4px 8px",
-                            borderRadius: 9999,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            ...badgeStyle(b.variant),
-                          }}
+                          className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${badgeClass(
+                            b.variant,
+                          )}`}
                         >
                           {b.label}
                         </span>
@@ -128,33 +128,25 @@ export function TaskDigestEmail({
                   ) : null}
 
                   {/* title */}
-                  <Text style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-                    {x.title}
-                  </Text>
+                  <Text className="m-0 text-base font-semibold">{x.title}</Text>
 
                   {/* meta line: subject + date text */}
-                  <Text style={{ margin: 0, marginTop: 4, color: "#6B7280" }}>
+                  <Text className="m-0 mt-1 text-gray-500">
                     {x.meta ?? x.subject}
                   </Text>
 
                   {/* description */}
                   {x.body ? (
-                    <Text style={{ margin: 0, marginTop: 6, color: "#6B7280" }}>
-                      {x.body}
-                    </Text>
+                    <Text className="m-0 mt-1.5 text-gray-500">{x.body}</Text>
                   ) : null}
                 </div>
               ))}
             </Section>
           </React.Fragment>
         ))}
-
-        <Section style={{ paddingTop: 8 }}>
-          <Text style={{ color: "#6B7280" }}>
-            {t("emails:tasks_digest.footer_note")}
-          </Text>
-        </Section>
       </Container>
     </Layout>
   );
 }
+
+export default TaskDigestEmail;

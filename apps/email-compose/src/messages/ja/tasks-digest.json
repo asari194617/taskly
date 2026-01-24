@@ -1,0 +1,9 @@
+{
+  "single": {
+    "title": "【{{when}}まで】{{subject}}: {{task}}"
+  },
+  "multi": {
+    "title": "期限が近い課題が{{count}}件あります"
+  },
+  "details_note": "設定はアプリ内の通知から変更できます。"
+}
