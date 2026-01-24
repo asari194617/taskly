@@ -19,7 +19,7 @@ import (
 
 // mustInitDB opens a MySQL connection using env() variables and migrates the base model.
 func mustInitDB() *gorm.DB {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4,utf8",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4,utf8&loc=Asia%%2FTokyo",
 		env("MYSQL_USER", "taskly"),
 		env("MYSQL_PASSWORD", "taskly_password"),
 		env("DB_HOST", "127.0.0.1"),
