@@ -11,7 +11,6 @@ import {
   Img,
 } from "@react-email/components";
 
-// Simple base HTML with neutral styling similar to shadcn/ui typography
 export function Layout({
   children,
   title,
@@ -27,16 +26,17 @@ export function Layout({
 }) {
   const datetime = new Date();
   // デフォルトのままだとmm/dd/yyyy形式になるので、yyyy/mm/dd形式で構成
-  const date = datetime.toLocaleString("ja-JP", {
+  // jaで取得すると"2024年/6月/1日"のようになるため、en-JPロケールを使用
+  const date = datetime.toLocaleString("en-JP", {
     timeZone: "Asia/Tokyo",
-    year: "numeric"
+    year: "numeric",
   }).concat("/").concat(
-    datetime.toLocaleString("ja-JP", {
+    datetime.toLocaleString("en-JP", {
       timeZone: "Asia/Tokyo",
       month: "2-digit"
     })
   ).concat("/").concat(
-    datetime.toLocaleString("ja-JP", {
+    datetime.toLocaleString("en-JP", {
       timeZone: "Asia/Tokyo",
       day: "2-digit"
     })

@@ -89,11 +89,11 @@ export async function TaskDigestEmail({
   const badgeClass = (variant: "gray" | "red" | "blue" = "gray") => {
     switch (variant) {
       case "red":
-        return "bg-red-100 text-red-800";
+        return "bg-red-100 text-red-800 border-red-300";
       case "blue":
-        return "bg-blue-100 text-blue-700";
+        return "bg-blue-100 text-blue-700 border-blue-300";
       default:
-        return "bg-gray-100 text-gray-900";
+        return "bg-gray-100 text-gray-900 border-gray-300";
     }
   };
 
@@ -117,7 +117,7 @@ export async function TaskDigestEmail({
                       {x.badges.map((b, bi) => (
                         <span
                           key={bi}
-                          className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${badgeClass(
+                          className={`inline-block px-2 py-[1px] rounded border text-xs font-semibold ${badgeClass(
                             b.variant,
                           )}`}
                         >
@@ -132,12 +132,12 @@ export async function TaskDigestEmail({
 
                   {/* meta line: subject + date text */}
                   <Text className="m-0 mt-1 text-gray-500">
-                    {x.meta ?? x.subject}
+                    {x.subject} {x.meta}
                   </Text>
 
                   {/* description */}
                   {x.body ? (
-                    <Text className="m-0 mt-1.5 text-gray-500">{x.body}</Text>
+                    <Text className="m-0 mt-1.5 p-0 text-gray-500">{x.body}</Text>
                   ) : null}
                 </div>
               ))}
