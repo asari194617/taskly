@@ -1,4 +1,4 @@
-import i18next from "i18next";
+import i18next, { type InitOptions } from "i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
 import { initReactI18next } from "react-i18next";
 import * as path from "node:path";
@@ -12,10 +12,31 @@ let initPromise: Promise<void> | null = null;
 export async function initI18n(dir?: string) {
   if (dir) messagesDir = dir;
   if (!initPromise) {
+    const options: InitOptions = {
+      supportedLngs: ["en", "ja"],
+      fallbackLng: "en",
+      lng: undefined,
+      preload: ["en", "ja"],
+      ns: [
+        "common",
+        "login-code",
+        "moderation-alert",
+        "tasks-digest",
+        "dayshift-skip",
+        "day-shift",
+      ],
+      defaultNS: "common",
+      interpolation: {
+        escapeValue: false,
+      },
+      returnNull: false,
+      returnEmptyString: true,
+    };
+
     initPromise = i18next
       .use(initReactI18next)
       .use(
-        resourcesToBackend(async (language, namespace) => {
+        resourcesToBackend(async (language: string, namespace: string) => {
           const filePath = path.join(
             messagesDir,
             language,
@@ -25,26 +46,8 @@ export async function initI18n(dir?: string) {
           return JSON.parse(raw);
         }),
       )
-      .init({
-        supportedLngs: ["en", "ja"],
-        fallbackLng: "en",
-        lng: undefined,
-        preload: typeof window === "undefined" ? ["en", "ja"] : [],
-        ns: [
-          "common",
-          "login-code",
-          "moderation-alert",
-          "tasks-digest",
-          "dayshift-skip",
-          "day-shift",
-        ],
-        defaultNS: "common",
-        interpolation: {
-          escapeValue: false,
-        },
-        returnNull: false,
-        returnEmptyString: true,
-      });
+      .init(options)
+      .then(() => undefined);
   }
   await initPromise;
 }

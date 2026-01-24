@@ -71,14 +71,14 @@ export function startHttpServer(port: number) {
           ? body.items
           : [];
         const { t } = await getT("tasks-digest", locale);
-        const element = await TaskDigestEmail({ appName, items, locale });
+        const element = await TaskDigestEmail({ items, locale });
         const html = render(element, { pretty: true });
         const text = render(element, { plainText: true });
         let subject: string;
         if (items.length === 1) {
           const i = items[0];
           subject = t("single.title", {
-            when: i.when_label,
+            when: i.whenLabel,
             subject: i.subject,
             task: i.title,
           });
