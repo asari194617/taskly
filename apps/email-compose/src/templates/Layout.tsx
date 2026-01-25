@@ -79,7 +79,7 @@ export function Layout({
         >
           {/* コンテンツ */}
           <Section className="w-full max-w-md">
-            <Section className="rounded-xl bg-white p-4 border border-slate-400">
+            <Section className="rounded-xl bg-white p-4 border border-neutral-200">
               <Img
                 src="https://cdn.taskly.iy0306.com/assets/logo.jpg"
                 alt="Taskly Logo"
