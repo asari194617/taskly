@@ -296,6 +296,9 @@ func deriveDeadlineLabelEnum(since, until string) string {
 			return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
 		}
 	}
+	if strings.EqualFold(until, "LUNCH") {
+		return "昼休みまで"
+	}
 	if strings.EqualFold(until, "AFTER_SCHOOL") {
 		return "放課後まで"
 	}
