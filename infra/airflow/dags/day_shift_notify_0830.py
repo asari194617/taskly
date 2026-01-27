@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import os
 import smtplib
 from email.header import Header
@@ -7,6 +7,10 @@ from email.mime.text import MIMEText
 
 import requests
 import pymysql
+try:
+    import icalendar
+except Exception:  # pragma: no cover - allow DAG to load without optional deps
+    icalendar = None
 try:
     import grpc
     from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
@@ -42,6 +46,70 @@ def read_config(conn, key: str) -> str:
 
 
 _email_compose_messages = None
+
+
+SCHOOL_CAL_URL = os.environ.get("SCHOOL_CAL_URL", "").strip()
+SCHOOL_CAL_TIMEOUT = 10
+
+
+def fetch_ics(url: str) -> "icalendar.Calendar":
+    if icalendar is None:
+        raise RuntimeError("icalendar module is not available")
+    resp = requests.get(url, timeout=SCHOOL_CAL_TIMEOUT)
+    resp.raise_for_status()
+    return icalendar.Calendar.from_ical(resp.content)
+
+
+def list_events_for_date(target_date: date) -> list[str]:
+    if not SCHOOL_CAL_URL:
+        return []
+    try:
+        cal = fetch_ics(SCHOOL_CAL_URL)
+        seen = set()
+        events = []
+        for comp in cal.walk("vevent"):
+            summary = comp.get("summary") or ""
+            if isinstance(summary, bytes):
+                summary = summary.decode("utf-8", errors="ignore")
+            summary = str(summary).strip()
+            if not summary:
+                continue
+
+            dtstart_prop = comp.get("dtstart")
+            if not dtstart_prop:
+                continue
+            dtstart = dtstart_prop.dt
+            if isinstance(dtstart, datetime):
+                start_date = dtstart.date()
+            else:
+                start_date = dtstart
+
+            end_date = start_date
+            dtend_prop = comp.get("dtend")
+            duration_prop = comp.get("duration")
+
+            if dtend_prop is not None:
+                dtend = dtend_prop.dt
+                if isinstance(dtend, datetime):
+                    end_date_candidate = dtend.date()
+                else:
+                    end_date_candidate = dtend
+                if end_date_candidate > start_date:
+                    end_date = end_date_candidate - timedelta(days=1)
+            elif duration_prop is not None:
+                duration_value = getattr(duration_prop, "dt", duration_prop)
+                if isinstance(duration_value, timedelta) and duration_value.days > 0:
+                    end_date = start_date + duration_value - timedelta(days=1)
+
+            if start_date <= target_date <= end_date:
+                if summary not in seen:
+                    events.append(summary)
+                    seen.add(summary)
+
+        return events
+    except Exception as e:
+        print(f"[DayShift] School calendar fetch failed: {e}")
+        return []
 
 
 def _get_email_compose_messages():
@@ -396,7 +464,7 @@ def notify_day_shift(**context):
         ]
         locale = "ja"
         app_name = "Taskly"
-        events = []
+        events = list_events_for_date(today)
 
         names = ", ".join(members)
         subject = "[Taskly] 本日の日直のお知らせ"
