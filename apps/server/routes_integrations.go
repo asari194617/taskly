@@ -306,8 +306,8 @@ func registerIntegrationRoutes(app *fiber.App) {
 				{"name": "Subject", "value": body.Subject, "inline": false},
 			}
 			sendDiscordEmbeds([]map[string]any{{
-				"title":       "Day Shift Skip Request Accepted",
-				"description": "Gemini 判定により日直スキップリクエストを受理しました。",
+				"title":       "Day Shift Continue Request Accepted",
+				"description": "日直継続リクエストを受理しました。",
 				"color":       0x1ABC9C,
 				"fields":      fields,
 				"timestamp":   time.Now().UTC().Format(time.RFC3339),
