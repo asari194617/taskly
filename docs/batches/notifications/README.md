@@ -73,27 +73,6 @@ Queue Manager は、同一内容を email と webpush の 2 チャネルでそ�
   - JST では 07:00 と 17:00 に相当します。
 - Queue Manager の `now` は `TIMEZONE`（既定: `Asia/Tokyo`）で計算されます。
 
-## 通知キューテーブル（自動作成）
-
-`batches/notifications/que-manager/main.go` は起動時に次のテーブルを存在しなければ作成します。
-
-```sql
-CREATE TABLE IF NOT EXISTS notifications_queue (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  kind VARCHAR(32) NOT NULL,
-  when_label VARCHAR(32) NOT NULL,
-  subject VARCHAR(255) NOT NULL,
-  title TEXT,
-  body TEXT,
-  user_id BIGINT NULL,
-  channel VARCHAR(32) NULL, -- 'email' / 'webpush' など
-  status VARCHAR(32) NULL,  -- 'sent' / 'error' / 'skipped' など
-  error_message TEXT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  processed_at DATETIME NULL,
-  INDEX idx_processed_at (processed_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
 
 ## 既知の制限・今後の拡張
 

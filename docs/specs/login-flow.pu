@@ -1,4 +1,4 @@
-' ログイン機能の画面群
+' ログイン機能の画面群、認証フローについて
 
 @startuml
 hide empty description

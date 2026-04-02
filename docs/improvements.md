@@ -176,14 +176,6 @@
 ## インフラ（infra/docker-compose, Traefik, Postfix, Airflow）
 
 クリティカル
-
-- Postfix 設定（開発 vs 本番）
-
-  - 問題: `infra/docker/postfix/main.cf`は TLS 無効＆全ネットワーク許可。
-  - 対応:
-    - 本番用 Postfix を別途用意するか、完全に廃止。管理型メールプロバイダー推奨。
-    - 独自 MTA 利用時は`mynetworks`制限、TLS 有効化、認証強制、SPF/DKIM/DMARC 有効化。
-
 - ネットワーク公開範囲
 
   - 問題: Compose は MySQL、Redis、API、SMTP を開発用にホスト公開。

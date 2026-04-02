@@ -319,6 +319,17 @@ def notify_day_shift(**context):
         cid_str = read_config(conn, "day_shift_current_cycle").strip()
         cur_cid = int(cid_str) if cid_str.isdigit() else 0
 
+        # Validate configured cycle is active for today; if not, ignore it.
+        if cur_cid != 0:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM day_shift_cycles WHERE id=%s AND begin_date <= %s AND finish_date >= %s LIMIT 1",
+                    (cur_cid, today.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")),
+                )
+                row = cur.fetchone()
+                if not row:
+                    cur_cid = 0
+
         # If cycle not configured, detect by date (latest finish_date)
         if cur_cid == 0:
             with conn.cursor() as cur:

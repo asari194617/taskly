@@ -309,6 +309,16 @@ def write_current_cycle_config(cid: int) -> None:
     finally:
         conn.close()
 
+
+def clear_current_cycle_config() -> None:
+    conn = pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASSWORD, database=DB_NAME, charset="utf8mb4")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE configs SET value='' WHERE `key`='day_shift_current_cycle'")
+        conn.commit()
+    finally:
+        conn.close()
+
 JST = timezone(timedelta(hours=9))
 
 
@@ -371,6 +381,23 @@ def increment_if_needed(**context):
     # Reset index if cycle changed
     db_cid = get_current_cycle_id_for_date(now)
     cfg_cid = read_current_cycle_config()
+    if db_cid == 0:
+        # No active cycle; clear stale config and skip increment.
+        if cfg_cid != 0:
+            clear_current_cycle_config()
+        set_skip_notifications_flag()
+        discord_embed(
+            title="Day Shift Index Skipped",
+            description="有効な日直サイクルが存在しないため、インクリメントを行いませんでした。",
+            fields=[
+                {"name": "Date", "value": today_str, "inline": True},
+                {"name": "Before", "value": str(before), "inline": True},
+                {"name": "After", "value": str(before), "inline": True},
+                {"name": "Reason", "value": "No active cycle", "inline": False},
+            ],
+            color=0xE67E22,
+        )
+        return
     if db_cid != 0 and db_cid != cfg_cid:
         write_current_cycle_config(db_cid)
         write_index(0)
