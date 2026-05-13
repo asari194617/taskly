@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import os
 import smtplib
 from email.header import Header
@@ -276,7 +276,7 @@ def send_day_shift_emails(users, subject: str, text_body: str, html_body: str) -
 def notify_day_shift(**context):
     conn = mysql_connect()
     try:
-        today = date.today()
+        today = datetime.now(timezone(timedelta(hours=9))).date()
         # Always notify regardless of day-of-week
 
         # Global skip flag via configs.skip_day_shift_notifications
