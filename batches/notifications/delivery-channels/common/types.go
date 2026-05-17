@@ -1,6 +1,21 @@
 package common
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
+
+// QueueItem represents a digest entry for a recipient.
+type QueueItem struct {
+	ID        int64
+	WhenLabel string
+	Subject   string
+	Title     string
+	Body      string
+	Meta      sql.NullString
+	Badges    sql.NullString // JSON
+	UserID    sql.NullInt64
+}
 
 type Task struct {
 	ID                  uint

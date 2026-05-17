@@ -83,7 +83,7 @@ func main() {
 	}
 }
 
-func fetchPendingWebPushQueue(db *sql.DB) ([]QueueItem, error) {
+func fetchPendingWebPushQueue(db *sql.DB) ([]dcCommon.QueueItem, error) {
 	// notifications_queue.user_id を起点に、以下の条件でフィルタ:
 	// - blocks によるブロック中ユーザーを除外
 	// - notification_type_prefs で該当 type が is_enabled=0 のユーザーを除外
@@ -123,9 +123,9 @@ func fetchPendingWebPushQueue(db *sql.DB) ([]QueueItem, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []QueueItem
+	var out []dcCommon.QueueItem
 	for rows.Next() {
-		var it QueueItem
+		var it dcCommon.QueueItem
 		if err := rows.Scan(&it.ID, &it.WhenLabel, &it.Subject, &it.Title, &it.Body, &it.UserID); err != nil {
 			continue
 		}

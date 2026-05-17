@@ -8,7 +8,7 @@ import (
 	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 )
 
-func deliverGroupEmail(db *sql.DB, mailer Mailer, uid int64, group []QueueItem, opts DeliverOptions) error {
+func deliverGroupEmail(db *sql.DB, mailer Mailer, uid int64, group []dcCommon.QueueItem, opts DeliverOptions) error {
 	to, err := resolveRecipientEmail(db, sql.NullInt64{Valid: true, Int64: uid})
 	if err != nil || strings.TrimSpace(to) == "" {
 		return fmt.Errorf("no recipient for uid=%d: %w", uid, err)

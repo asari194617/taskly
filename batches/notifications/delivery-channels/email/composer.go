@@ -17,7 +17,7 @@ import (
 	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 )
 
-func buildComposePayload(locale, appName string, items []QueueItem) composePayload {
+func buildComposePayload(locale, appName string, items []dcCommon.QueueItem) composePayload {
 	out := composePayload{Locale: locale, AppName: appName}
 	for _, it := range items {
 		m := map[string]any{
@@ -41,7 +41,7 @@ func buildComposePayload(locale, appName string, items []QueueItem) composePaylo
 }
 
 // composeTaskDigestGRPC calls email-compose gRPC (descriptor-based) to render digest
-func composeTaskDigestGRPC(locale, appName string, items []QueueItem) (html string, text string, err error) {
+func composeTaskDigestGRPC(locale, appName string, items []dcCommon.QueueItem) (html string, text string, err error) {
 	addr := strings.TrimSpace(os.Getenv("EMAIL_COMPOSE_GRPC_ADDR"))
 	if addr == "" {
 		addr = "email-compose:50051"

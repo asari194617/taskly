@@ -37,7 +37,7 @@ func run() error {
 		now = now.In(loc)
 	}
 
-	tasks, err := fetchDueTasks(db, now)
+	tasks, err := dcCommon.FetchDueTasks(db, now)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func run() error {
 		return nil
 	}
 
-	uIds, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
+	uIds, devicePrefs, typePrefs := dcCommon.LoadEligibleUsersAndPrefs(db, dcCommon.UserDevicePrefs{Email: true, WebPush: false}, map[string]bool{"TASK": true, "DAYSHIFT": true})
 
 	items := make([]map[string]any, 0, len(tasks))
 	for _, tsk := range tasks {
