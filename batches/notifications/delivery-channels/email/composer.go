@@ -13,6 +13,8 @@ import (
 	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 )
 
 func buildComposePayload(locale, appName string, items []QueueItem) composePayload {
@@ -49,7 +51,7 @@ func composeTaskDigestGRPC(locale, appName string, items []QueueItem) (html stri
 		return "", "", err
 	}
 	defer cc.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(parseInt(valueOr(os.Getenv("SMTP_TIMEOUT"), "60")))*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(parseInt(dcCommon.ValueOr(os.Getenv("SMTP_TIMEOUT"), "60")))*time.Second)
 	defer cancel()
 
 	protoDir := "/workspace/apps/email-compose/src/proto"

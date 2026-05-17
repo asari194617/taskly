@@ -9,26 +9,18 @@ import (
 	"strings"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
+	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 	_ "github.com/go-sql-driver/mysql"
 )
 
-type QueueItem struct {
-	ID        int64
-	WhenLabel string
-	Subject   string
-	Title     string
-	Body      string
-	UserID    sql.NullInt64
-}
-
-type WebPushSubscription struct {
-	Endpoint string
-	P256dh   string
-	Auth     string
-}
-
 func main() {
-	dsn := os.Getenv("MYSQL_USER") + ":" + os.Getenv("MYSQL_PASSWORD") + "@tcp(" + hostPort(os.Getenv("DB_HOST"), os.Getenv("DB_PORT")) + ")/" + os.Getenv("MYSQL_DATABASE") + "?parseTime=true&charset=utf8mb4&loc=Local"
+	dsn := dcCommon.BuildDSN(dcCommon.MySQLConfig{
+		User:     os.Getenv("MYSQL_USER"),
+		Password: os.Getenv("MYSQL_PASSWORD"),
+		Host:     os.Getenv("DB_HOST"),
+		Port:     os.Getenv("DB_PORT"),
+		Database: os.Getenv("MYSQL_DATABASE"),
+	})
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)
@@ -70,7 +62,7 @@ func main() {
 			"title": fmt.Sprintf("[%s] %s", it.WhenLabel, it.Subject),
 			"body":  it.Title + "\n" + it.Body,
 			"tag":   "taskly",
-			"url":   valueOr(os.Getenv("WEB_URL"), "https://app.taskly.local"),
+			"url":   dcCommon.ValueOr(os.Getenv("WEB_URL"), "https://app.taskly.local"),
 		})
 
 		for _, s := range subs {
@@ -92,7 +84,7 @@ func main() {
 }
 
 func fetchPendingWebPushQueue(db *sql.DB) ([]QueueItem, error) {
-	// notifications_queue.user_id を起点に、以下の条件でフィルタします:
+	// notifications_queue.user_id を起点に、以下の条件でフィルタ:
 	// - blocks によるブロック中ユーザーを除外
 	// - notification_type_prefs で該当 type が is_enabled=0 のユーザーを除外
 	//   (レコードがない場合は配信OK)
@@ -169,12 +161,12 @@ func loadVAPIDFromDB(db *sql.DB) (pub, priv, subj string) {
 	if err := row.Scan(&p, &s); err == nil && strings.TrimSpace(p) != "" && strings.TrimSpace(s) != "" {
 		pub = p
 		priv = s
-		subj = valueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
+		subj = dcCommon.ValueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
 		return
 	}
 	priv = os.Getenv("VAPID_PRIVATE_KEY")
 	pub = os.Getenv("VAPID_PUBLIC_KEY")
-	subj = valueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
+	subj = dcCommon.ValueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
 	return
 }
 
@@ -198,18 +190,4 @@ func markQueueSkipped(db *sql.DB, id int64, reason string) error {
 	}
 	_, err := db.Exec(`UPDATE notifications_queue SET processed_at = NOW(), status='skipped', error_message=? WHERE id = ?`, reason, id)
 	return err
-}
-
-func hostPort(h, p string) string {
-	if strings.TrimSpace(p) == "" {
-		p = "3306"
-	}
-	return fmt.Sprintf("%s:%s", valueOr(h, "localhost"), p)
-}
-
-func valueOr(v, def string) string {
-	if strings.TrimSpace(v) == "" {
-		return def
-	}
-	return v
 }

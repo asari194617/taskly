@@ -5,6 +5,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 )
 
 // computeLiveDigestGroups collects due tasks and expands them to per-user email digests
@@ -23,7 +25,7 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 	ids, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
 	groups := make(map[int64][]QueueItem, len(ids))
 	for _, uid := range ids {
-		if isUserBlocked(db, uid) {
+		if dcCommon.IsUserBlocked(db, uid) {
 			continue
 		}
 		dp := devicePrefs[uid]
@@ -42,11 +44,11 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 		for _, t := range tasks {
 			items = append(items, QueueItem{
 				ID:        int64(t.ID),
-				WhenLabel: deadlineLabel(t, t.Deadline),
-				Subject:   valueOr(t.SubjectName, ""),
+				WhenLabel: dcCommon.DeadlineLabel(t.DeadlineSince, t.DeadlineUntil, t.Deadline),
+				Subject:   dcCommon.ValueOr(t.SubjectName, ""),
 				Title:     t.Title,
 				Body:      buildBodyFromTask(t),
-				Meta:      sql.NullString{Valid: t.Description != nil && strings.TrimSpace(*t.Description) != "", String: valueOr(ptrStr(t.Description), "")},
+				Meta:      sql.NullString{Valid: t.Description != nil && strings.TrimSpace(*t.Description) != "", String: dcCommon.ValueOr(ptrStr(t.Description), "")},
 				Badges:    sql.NullString{Valid: true, String: buildBadgesJSON(t)},
 				UserID:    sql.NullInt64{Valid: true, Int64: int64(uid)},
 			})
@@ -59,7 +61,7 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 }
 
 // fetchDueTasks returns tasks whose effective deadline is within [now, end of the day after tomorrow]
-func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
+func fetchDueTasks(db *sql.DB, now time.Time) ([]dcCommon.Task, error) {
 	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	endDate := time.Date(now.Year(), now.Month(), now.Day()+2, 0, 0, 0, 0, now.Location())
 	rows, err := db.Query(
@@ -71,9 +73,9 @@ func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]Task, 0, 256)
+	out := make([]dcCommon.Task, 0, 256)
 	for rows.Next() {
-		var t Task
+		var t dcCommon.Task
 		var desc sql.NullString
 		if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.IsSelfCheckRequired); err != nil {
 			continue
@@ -87,9 +89,9 @@ func fetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
 }
 
 // loadEligibleUsersAndPrefs returns non-deleted/non-blocked users and their notification prefs. Defaults applied.
-func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, map[uint]map[string]bool) {
+func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]dcCommon.UserDevicePrefs, map[uint]map[string]bool) {
 	ids := make([]uint, 0, 1024)
-	device := make(map[uint]userDevicePrefs, 1024)
+	device := make(map[uint]dcCommon.UserDevicePrefs, 1024)
 	typePrefs := make(map[uint]map[string]bool, 1024)
 	rows, err := db.Query(`SELECT id, is_deleted FROM users`)
 	if err != nil {
@@ -106,8 +108,11 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		if del {
 			continue
 		}
+		if dcCommon.IsUserBlocked(db, id) {
+			continue
+		}
 		ids = append(ids, id)
-		device[id] = userDevicePrefs{Email: true, WebPush: true}
+		device[id] = dcCommon.UserDevicePrefs{Email: true, WebPush: true}
 		typePrefs[id] = make(map[string]bool)
 	}
 	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
@@ -146,16 +151,6 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		}
 	}
 	return ids, device, typePrefs
-}
-
-// isUserBlocked checks active blocks for the user
-func isUserBlocked(db *sql.DB, uid uint) bool {
-	row := db.QueryRow(`SELECT COUNT(1) FROM blocks WHERE user_id = ? AND (expires_at IS NULL OR expires_at > NOW())`, uid)
-	var cnt int
-	if err := row.Scan(&cnt); err != nil {
-		return false
-	}
-	return cnt > 0
 }
 
 func resolveRecipientEmail(db *sql.DB, userID sql.NullInt64) (string, error) {

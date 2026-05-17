@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 
+	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
-	db, err := sql.Open("mysql", buildDSN(MySQLConfig{
+	db, err := sql.Open("mysql", dcCommon.BuildDSN(dcCommon.MySQLConfig{
 		User:     os.Getenv("MYSQL_USER"),
 		Password: os.Getenv("MYSQL_PASSWORD"),
 		Host:     os.Getenv("DB_HOST"),
@@ -23,17 +24,17 @@ func main() {
 	}
 	defer db.Close()
 
-	timeoutSec := parseInt(valueOr(os.Getenv("SMTP_TIMEOUT"), "60"))
+	timeoutSec := parseInt(dcCommon.ValueOr(os.Getenv("SMTP_TIMEOUT"), "60"))
 	from := os.Getenv("SMTP_FROM")
 
 	mailCfg := &EmailConfig{
 		Host:     os.Getenv("SMTP_HOST"),
 		Port:     os.Getenv("SMTP_PORT"),
 		From:     from,
-		User:     valueOr(os.Getenv("SMTP_USER"), from),
+		User:     dcCommon.ValueOr(os.Getenv("SMTP_USER"), from),
 		Password: os.Getenv("SMTP_PASSWORD"),
 		Timeout:  time.Duration(timeoutSec) * time.Second,
-		UseTLS:   strings.EqualFold(valueOr(os.Getenv("SMTP_TLS"), "none"), "starttls"),
+		UseTLS:   strings.EqualFold(dcCommon.ValueOr(os.Getenv("SMTP_TLS"), "none"), "starttls"),
 	}
 
 	mailer := NewSMTPMailer(mailCfg)

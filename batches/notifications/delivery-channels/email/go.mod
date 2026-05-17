@@ -3,6 +3,7 @@ module github.com/asari194617/taskly/batches/notifications/delivery-channels/ema
 go 1.25.4
 
 require (
+	github.com/asari194617/taskly/batches/notifications/delivery-channels/common v0.0.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jhump/protoreflect v1.18.0
 	google.golang.org/grpc v1.81.1
@@ -20,3 +21,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace github.com/asari194617/taskly/batches/notifications/delivery-channels/common => ../common
