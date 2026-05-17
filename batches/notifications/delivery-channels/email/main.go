@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,9 +53,41 @@ type Task struct {
 	IsSelfCheckRequired bool
 }
 
+type composePayload struct {
+	Locale  string           `json:"locale"`
+	AppName string           `json:"app_name"`
+	Items   []map[string]any `json:"items"`
+}
+
+// MySQLConfig holds parameters for building a MySQL DSN
+type MySQLConfig struct {
+	User     string
+	Password string
+	Host     string
+	Port     string
+	Database string
+	Params   string // optional extra params (if empty, sensible defaults are used)
+}
+
+// EmailMessage represents the parts needed to build a multipart MIME message
+type EmailMessage struct {
+	From     string
+	To       string
+	Subject  string
+	Text     string
+	HTML     string
+	Boundary string // optional
+}
+
 func main() {
-	dsn := os.Getenv("MYSQL_USER") + ":" + os.Getenv("MYSQL_PASSWORD") + "@tcp(" + hostPort(os.Getenv("DB_HOST"), os.Getenv("DB_PORT")) + ")/" + os.Getenv("MYSQL_DATABASE") + "?parseTime=true&charset=utf8mb4&loc=Local"
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", buildDSN(MySQLConfig{
+		User:     os.Getenv("MYSQL_USER"),
+		Password: os.Getenv("MYSQL_PASSWORD"),
+		Host:     os.Getenv("DB_HOST"),
+		Port:     os.Getenv("DB_PORT"),
+		Database: os.Getenv("MYSQL_DATABASE"),
+	}))
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -240,36 +273,6 @@ func isUserBlocked(db *sql.DB, uid uint) bool {
 	return cnt > 0
 }
 
-func dateOnly(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-}
-
-func isNextMonth(a, b time.Time) bool {
-	return a.Month() != b.Month() && a.Year() == b.Year()
-}
-func isNextYear(a, b time.Time) bool { return a.Year() != b.Year() }
-
-func whenLabel(base, target time.Time) string {
-	b := dateOnly(base)
-	t := dateOnly(target)
-	if t.Equal(b) {
-		return "今日"
-	}
-	if t.Equal(b.Add(24 * time.Hour)) {
-		return "あす"
-	}
-	if t.Equal(b.Add(48 * time.Hour)) {
-		return "あさって"
-	}
-	if isNextYear(b, t) {
-		return t.Format("2006年01月02日")
-	}
-	if isNextMonth(b, t) {
-		return t.Format("01月02日")
-	}
-	return t.Format("02日")
-}
-
 func deadlineLabel(t Task, d time.Time) string {
 	date := d.Format("1/2")
 	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
@@ -306,30 +309,14 @@ func deriveDeadlineLabelEnum(since, until string) string {
 }
 
 func periodIndex(s string) int {
-	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case "P1":
-		return 1
-	case "P2":
-		return 2
-	case "P3":
-		return 3
-	case "P4":
-		return 4
-	case "P5":
-		return 5
-	case "P6":
-		return 6
-	case "P7":
-		return 7
-	case "P8":
-		return 8
-	case "P9":
-		return 9
-	case "P10":
-		return 10
-	default:
-		return 0
+	s = strings.ToUpper(strings.TrimSpace(s))
+	// 時限を表す`P{n}`の`n`を返す (ex. `P3`なら`3`(3限))
+	if strings.HasPrefix(s, "P") {
+		if num, err := strconv.Atoi(s[1:]); err == nil && num >= 1 {
+			return num
+		}
 	}
+	return 0
 }
 
 // buildBadgesJSON builds badges JSON based on task attributes
@@ -375,7 +362,8 @@ func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 	if err != nil || strings.TrimSpace(to) == "" {
 		return fmt.Errorf("no recipient for uid=%d", uid)
 	}
-	// Build subject/body via email-compose HTTP
+
+	// 現状日本語でしか配信してない
 	locale := valueOr(os.Getenv("LOCALE"), "ja")
 	appName := valueOr(os.Getenv("APP_NAME"), "Taskly")
 	html, text, err := composeTaskDigestGRPC(locale, appName, group)
@@ -385,9 +373,9 @@ func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 	subj := "[Taskly]期限が近い課題"
 
 	// Send via SMTP (supports STARTTLS)
-	smtpHost := valueOr(os.Getenv("SMTP_HOST"), "localhost")
-	smtpPort := valueOr(os.Getenv("SMTP_PORT"), "25")
-	from := valueOr(os.Getenv("SMTP_FROM"), "noreply@taskly.local")
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	from := os.Getenv("SMTP_FROM")
 	user := valueOr(os.Getenv("SMTP_USER"), from)
 	pass := os.Getenv("SMTP_PASSWORD")
 	useTLS := strings.EqualFold(valueOr(os.Getenv("SMTP_TLS"), "none"), "starttls")
@@ -428,37 +416,23 @@ func deliverGroupEmail(db *sql.DB, uid int64, group []QueueItem) error {
 	if err != nil {
 		return err
 	}
+
 	// MIME (multipart/alternative: text + html)
-	boundary := "taskly-boundary-42"
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "From: %s\r\n", from)
-	fmt.Fprintf(&buf, "To: %s\r\n", to)
-	fmt.Fprintf(&buf, "Subject: %s\r\n", subj)
-	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
-	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", boundary)
-	// text part
-	fmt.Fprintf(&buf, "--%s\r\n", boundary)
-	fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n\r\n")
-	fmt.Fprintf(&buf, "%s\r\n", text)
-	// html part
-	fmt.Fprintf(&buf, "--%s\r\n", boundary)
-	fmt.Fprintf(&buf, "Content-Type: text/html; charset=utf-8\r\n\r\n")
-	fmt.Fprintf(&buf, "%s\r\n", html)
-	// end
-	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
-	if _, err = w.Write(buf.Bytes()); err != nil {
+	data := buildMessageData(EmailMessage{
+		From:    from,
+		To:      to,
+		Subject: subj,
+		Text:    text,
+		HTML:    html,
+	})
+
+	if _, err = w.Write(data); err != nil {
 		return err
 	}
 	if err = w.Close(); err != nil {
 		return err
 	}
 	return c.Quit()
-}
-
-type composePayload struct {
-	Locale  string           `json:"locale"`
-	AppName string           `json:"app_name"`
-	Items   []map[string]any `json:"items"`
 }
 
 func buildComposePayload(locale, appName string, items []QueueItem) composePayload {
@@ -507,9 +481,9 @@ func composeTaskDigestGRPC(locale, appName string, items []QueueItem) (html stri
 		protoDir = "../../../apps/email-compose/src/proto"
 	}
 	parser := protoparse.Parser{ImportPaths: []string{protoDir}}
-	fds, perr := parser.ParseFiles("email.proto")
-	if perr != nil || len(fds) == 0 {
-		return "", "", fmt.Errorf("proto parse error: %v", perr)
+	fds, pErr := parser.ParseFiles("email.proto")
+	if pErr != nil || len(fds) == 0 {
+		return "", "", fmt.Errorf("proto parse error: %v", pErr)
 	}
 	fd := fds[0]
 	svc := fd.FindService("emailcompose.EmailComposer")
@@ -567,8 +541,6 @@ func composeTaskDigestGRPC(locale, appName string, items []QueueItem) (html stri
 	return "", "", fmt.Errorf("unexpected response type")
 }
 
-// (HTTP composer removed. Using gRPC instead.)
-
 func resolveRecipientEmail(db *sql.DB, userID sql.NullInt64) (string, error) {
 	// If userID is null or 0, skip (no direct recipient). In future: expand to assignment owners.
 	if !userID.Valid || userID.Int64 == 0 {
@@ -613,6 +585,41 @@ func valueOr(v, def string) string {
 	return v
 }
 
+// buildDSN builds a MySQL DSN from MySQLConfig
+func buildDSN(cfg MySQLConfig) string {
+	params := cfg.Params
+	if strings.TrimSpace(params) == "" {
+		params = "parseTime=true&charset=utf8mb4&loc=Local"
+	}
+	return fmt.Sprintf("%s:%s@tcp(%s)/%s?%s",
+		valueOr(cfg.User, ""), valueOr(cfg.Password, ""), hostPort(cfg.Host, cfg.Port), valueOr(cfg.Database, ""), params)
+}
+
+// buildMessageData builds the raw MIME bytes for an EmailMessage
+func buildMessageData(m EmailMessage) []byte {
+	boundary := m.Boundary
+	if strings.TrimSpace(boundary) == "" {
+		boundary = "taskly-boundary-42"
+	}
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "From: %s\r\n", m.From)
+	fmt.Fprintf(&buf, "To: %s\r\n", m.To)
+	fmt.Fprintf(&buf, "Subject: %s\r\n", m.Subject)
+	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", boundary)
+	// text part
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n\r\n")
+	fmt.Fprintf(&buf, "%s\r\n", m.Text)
+	// html part
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	fmt.Fprintf(&buf, "Content-Type: text/html; charset=utf-8\r\n\r\n")
+	fmt.Fprintf(&buf, "%s\r\n", m.HTML)
+	// end
+	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
+	return buf.Bytes()
+}
+
 // helpers
 func parseInt(s string) int {
 	i := 0
@@ -622,12 +629,14 @@ func parseInt(s string) int {
 	}
 	return i
 }
+
 func ptrStr(p *string) string {
 	if p == nil {
 		return ""
 	}
 	return *p
 }
+
 func buildBodyFromTask(t Task) string {
 	// 件名と締切だけ
 	d := deadlineLabel(t, t.Deadline)

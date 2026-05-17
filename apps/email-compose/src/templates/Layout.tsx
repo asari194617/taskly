@@ -25,22 +25,24 @@ export function Layout({
   footerNote?: string;
 }) {
   const datetime = new Date();
-  // デフォルトのままだとmm/dd/yyyy形式になるので、yyyy/mm/dd形式で構成
-  // jaで取得すると"2024年/6月/1日"のようになるため、en-JPロケールを使用
-  const date = datetime.toLocaleString("en-JP", {
+  // YYYY/mm/dd HH:MM形式で構成
+  const date = datetime.toLocaleString("ja-JP", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
-  }).concat("/").concat(
-    datetime.toLocaleString("en-JP", {
-      timeZone: "Asia/Tokyo",
-      month: "2-digit"
-    })
-  ).concat("/").concat(
-    datetime.toLocaleString("en-JP", {
-      timeZone: "Asia/Tokyo",
-      day: "2-digit"
-    })
-  );
+    month: "2-digit",
+    day: "2-digit",
+    hour12: false,
+  });
+
+  const time = datetime.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 
   const resolvedFooter = footerNote?.replace("{{date}}", date) || "";
   return (
@@ -97,9 +99,12 @@ export function Layout({
             {/* フッター */}
             <Section className="pt-6">
               <p className="text-xs text-center text-gray-300 m-0">
-                {resolvedFooter}<br />
-                このメールは自動送信されています。このメールアドレスに返信いただいても、メールを確認できません。<br />
-                {date}時点での情報です。追加、更新、または削除される場合があります。
+                {resolvedFooter}
+                <br />
+                このメールは自動送信されています。このメールアドレスに返信いただいても、メールを確認できません。
+                <br />
+                {time}
+                時点での情報です。追加、更新、または削除される場合があります。
               </p>
             </Section>
           </Section>
