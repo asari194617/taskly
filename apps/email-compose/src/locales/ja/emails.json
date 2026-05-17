@@ -13,14 +13,5 @@
     "highlights": "例（最大5件）:",
     "review_button": "管理画面で確認",
     "footer_note": "しきい値が厳しすぎる/緩すぎる場合は、管理画面のモデレーション設定で調整してください。"
-  },
-  "tasks_digest": {
-    "single": {
-      "title": "【{{when}}まで】{{subject}}: {{task}}"
-    },
-    "multi": {
-      "title": "期限が近い課題が{{count}}件あります"
-    },
-    "footer_note": "このメールは自動送信されています。設定はアプリ内の通知から変更できます。"
   }
 }

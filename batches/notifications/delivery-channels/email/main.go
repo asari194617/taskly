@@ -117,7 +117,7 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]QueueItem, error) {
 		for _, t := range tasks {
 			items = append(items, QueueItem{
 				ID:        int64(t.ID),
-				WhenLabel: whenLabel(now, t.Deadline),
+				WhenLabel: deadlineLabel(t, t.Deadline),
 				Subject:   valueOr(t.SubjectName, ""),
 				Title:     t.Title,
 				Body:      buildBodyFromTask(t),
@@ -629,7 +629,7 @@ func ptrStr(p *string) string {
 	return *p
 }
 func buildBodyFromTask(t Task) string {
-	// 簡易本文: 件名と締切だけ
+	// 件名と締切だけ
 	d := deadlineLabel(t, t.Deadline)
 	return fmt.Sprintf("締切: %s\n", d)
 }
