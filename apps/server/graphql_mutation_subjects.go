@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -24,12 +25,12 @@ func mutationFieldsSubjects(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
+				u := c.Locals("user").(*utils.User)
+				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
 					return nil, fmt.Errorf("forbidden")
 				}
@@ -55,7 +56,7 @@ func mutationFieldsSubjects(t *gqlTypes) graphql.Fields {
 						}
 					}
 				}
-				rec := Subject{NameJa: nameJa, NameEn: nameEnPtr, ExpiresAt: expPtr}
+				rec := utils.Subject{NameJa: nameJa, NameEn: nameEnPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -84,17 +85,17 @@ func mutationFieldsSubjects(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
+				u := c.Locals("user").(*utils.User)
+				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
 					return nil, fmt.Errorf("forbidden")
 				}
 				id := p.Args["id"].(int)
-				var rec Subject
+				var rec utils.Subject
 				if err := DB.First(&rec, id).Error; err != nil {
 					return nil, fmt.Errorf("not found")
 				}
@@ -151,26 +152,26 @@ func mutationFieldsSubjects(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
+				u := c.Locals("user").(*utils.User)
+				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
 					return false, fmt.Errorf("forbidden")
 				}
 				id := p.Args["id"].(int)
 				hard, _ := p.Args["hard"].(bool)
 				if hard {
-					if err := DB.Delete(&Subject{}, id).Error; err != nil {
+					if err := DB.Delete(&utils.Subject{}, id).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 					return true, nil
 				}
 				// Soft delete by setting expires_at to now
 				now := time.Now()
-				if err := DB.Model(&Subject{}).Where("id = ?", id).Update("expires_at", now).Error; err != nil {
+				if err := DB.Model(&utils.Subject{}).Where("id = ?", id).Update("expires_at", now).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				return true, nil

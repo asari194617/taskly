@@ -4,12 +4,13 @@ import (
 	"strconv"
 	"strings"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 // authRequired ensures the request is authenticated via session or API key
 func authRequired(c *fiber.Ctx) error {
-	if userFromSession(c) || userFromAPIKey(c) {
+	if utils.UserFromSession(c, DB, RDB) || utils.UserFromAPIKey(c, DB) {
 		return c.Next()
 	}
 	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
@@ -20,26 +21,26 @@ func audit(c *fiber.Ctx) error {
 	err := c.Next()
 	// Per policy: record ONLY REST requests authenticated with API Key
 	if apiKey, ok := c.Locals("apiKey").(string); ok && apiKey != "" {
-		hashed := sha256Hex([]byte(apiKey))
+		hashed := utils.Sha256Hex([]byte(apiKey))
 		var uid *uint
-		if u, ok := c.Locals("user").(*User); ok {
+		if u, ok := c.Locals("user").(*utils.User); ok {
 			uid = &u.ID
 		}
-		_ = DB.Create(&ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
+		_ = DB.Create(&utils.ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
 	}
-	if err != nil && env("SENTRY_DSN", "") != "" {
+	if err != nil && utils.Env("SENTRY_DSN", "") != "" {
 		// best-effort capture
 		// Note: importing sentry here would create circular imports; call via global function
-		captureError(err)
+		utils.CaptureError(err)
 	}
 	return err
 }
 
 // adminOnly allows only admin or manager roles
 func adminOnly(c *fiber.Ctx) error {
-	u := c.Locals("user").(*User)
-	isAdmin, err1 := userHasRole(u.ID, "admin")
-	isManager, err2 := userHasRole(u.ID, "manager")
+	u := c.Locals("user").(*utils.User)
+	isAdmin, err1 := utils.UserHasRole(u.ID, "admin", DB)
+	isManager, err2 := utils.UserHasRole(u.ID, "manager", DB)
 	if err1 != nil || err2 != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "perm"})
 	}

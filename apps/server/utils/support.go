@@ -1,0 +1,2006 @@
+package utils
+
+import (
+	"bytes"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/base32"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/mail"
+	"net/smtp"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/getsentry/sentry-go"
+	"github.com/gofiber/fiber/v2"
+	"github.com/pquerna/otp/totp"
+	"github.com/redis/go-redis/v9"
+	"google.golang.org/genai"
+	"gorm.io/gorm"
+)
+
+func Env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// --- Config helpers (configs table) ---
+func GetConfigString(key string, DB *gorm.DB) (string, error) {
+	var row struct{ V string }
+	if err := DB.Raw("SELECT value AS v FROM configs WHERE `key`=? LIMIT 1", key).Scan(&row).Error; err != nil {
+		return "", err
+	}
+	return row.V, nil
+}
+
+func SetConfigString(key, val string, DB *gorm.DB) error {
+	res := DB.Exec("UPDATE configs SET value=? WHERE `key`=?", val, key)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return DB.Exec("INSERT INTO configs(`key`,`value`) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)", key, val).Error
+	}
+	return nil
+}
+
+func GetConfigInt(key string, DB *gorm.DB) (int, error) {
+	s, err := GetConfigString(key, DB)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(s) == "" {
+		return 0, nil
+	}
+	var n int
+	fmt.Sscanf(s, "%d", &n)
+	return n, nil
+}
+
+// getConfigBool returns a boolean-like flag from configs table.
+// "", "0", "false", "no" (case-insensitive) are treated as false;
+// any other non-empty value is true.
+func getConfigBool(key string, DB *gorm.DB) (bool, error) {
+	s, err := GetConfigString(key, DB)
+	if err != nil {
+		return false, err
+	}
+	v := strings.TrimSpace(strings.ToLower(s))
+	if v == "" || v == "0" || v == "false" || v == "no" {
+		return false, nil
+	}
+	return true, nil
+}
+
+// --- JSON parsing & validation helpers ---
+func ParseJSONStrict(c *fiber.Ctx, dst any) error {
+	dec := json.NewDecoder(bytes.NewReader(c.Body()))
+	dec.DisallowUnknownFields()
+	return dec.Decode(dst)
+}
+
+func ValidationError(c *fiber.Ctx, fields map[string]string) error {
+	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "validation", "fields": fields})
+}
+
+func IsEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > 255 || !strings.Contains(s, "@") {
+		return false
+	}
+	// accept simple address forms; mail.ParseAddress is lenient but works for basic format
+	if _, err := mail.ParseAddress(s); err != nil {
+		return false
+	}
+	return true
+}
+
+func MaxLen(s string, n int) bool { return len(s) <= n }
+
+func isEnum(v string, allowed ...string) bool {
+	for _, a := range allowed {
+		if strings.EqualFold(v, a) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchPattern(s string, allowed func(r rune) bool) bool {
+	for _, r := range s {
+		if !allowed(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// --- Scrubbing helpers ---
+// Sanitize URL path by masking token-like segments such as /ical/{token}.ics or Bearer tokens in query
+func SanitizeURLPath(u string) string {
+	// We avoid importing net/url here to keep behavior simple as input may already be sanitized by framework
+	s := u
+	// mask /ical/<token>.ics
+	if strings.Contains(s, "/ical/") && strings.HasSuffix(s, ".ics") {
+		// replace the last path segment before .ics
+		idx := strings.Index(s, "/ical/")
+		tail := s[idx+len("/ical/"):]
+		if p := strings.Index(tail, "/"); p >= 0 {
+			// extra segments; mask first segment only
+			first := tail[:p]
+			s = strings.Replace(s, first, "[REDACTED]", 1)
+		} else {
+			// single segment like token.ics
+			if q := strings.Index(tail, ".ics"); q > 0 {
+				token := tail[:q]
+				s = strings.Replace(s, token, "[REDACTED]", 1)
+			}
+		}
+	}
+	return s
+}
+
+func sanitizeURLPath(u string) string { return SanitizeURLPath(u) }
+
+// Sanitize query string by masking sensitive parameters
+func SanitizeQueryString(q string) string {
+	if strings.TrimSpace(q) == "" {
+		return q
+	}
+	// try to parse lightly as k=v&k2=v2 (without url decoding)
+	parts := strings.Split(q, "&")
+	for i, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) == 2 {
+			k := strings.ToLower(kv[0])
+			if IsSensitiveKey(k) || IsSensitiveValue(kv[1]) {
+				parts[i] = kv[0] + "=[REDACTED]"
+			}
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
+func sanitizeQueryString(q string) string { return SanitizeQueryString(q) }
+
+// Scrub values in a map[string]any recursively when keys or values look sensitive
+func ScrubPIIMap(m map[string]any) {
+	for k, v := range m {
+		lk := strings.ToLower(k)
+		if IsSensitiveKey(lk) {
+			m[k] = "[REDACTED]"
+			continue
+		}
+		switch t := v.(type) {
+		case string:
+			if IsSensitiveValue(t) {
+				m[k] = "[REDACTED]"
+			}
+		case map[string]any:
+			ScrubPIIMap(t)
+		case map[string]string:
+			for kk, vv := range t {
+				if IsSensitiveKey(kk) || IsSensitiveValue(vv) {
+					t[kk] = "[REDACTED]"
+				}
+			}
+		}
+	}
+}
+
+func scrubPIIMap(m map[string]any) { ScrubPIIMap(m) }
+
+func IsSensitiveKey(k string) bool {
+	k = strings.ToLower(strings.TrimSpace(k))
+	switch k {
+	case "authorization", "x-api-key", "api_key", "apikey", "password", "passwd", "secret", "token", "session", "cookie", "set-cookie", "refresh_token", "access_token":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSensitiveKey(k string) bool { return IsSensitiveKey(k) }
+
+func IsSensitiveValue(v string) bool {
+	s := strings.ToLower(strings.TrimSpace(v))
+	if s == "" {
+		return false
+	}
+	// common bearer/api key prefixes
+	if strings.HasPrefix(s, "bearer ") || strings.HasPrefix(s, "tsk_") || strings.HasPrefix(s, "sess_") || strings.HasPrefix(s, "ict_") {
+		return true
+	}
+	// looks like a JWT (three base64url parts)
+	if strings.Count(v, ".") == 2 && len(v) > 30 {
+		return true
+	}
+	// long hex-ish strings
+	hexish := 0
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
+			hexish++
+		}
+	}
+	if len(v) >= 24 && hexish > len(v)/2 {
+		return true
+	}
+	return false
+}
+
+// ensureDeadlineDateColumn alters tasks.deadline to DATE (from DATETIME) if necessary.
+// This keeps the legacy field date-only, matching current requirements.
+// Deprecated: migrations are handled exclusively via SQL files in apps/server/migrations
+// Remove in-process schema alteration.
+func ensureDeadlineDateColumn(DB *gorm.DB) {
+	// Best effort: MySQL syntax (GORM uses MySQL driver in this project).
+	// If tasks table/column doesn't exist yet (fresh DB), SELECT returns 0 rows and we skip.
+	var dt string
+	type res struct{ Cnt int }
+	var r res
+	_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'deadline'").Scan(&r).Error
+	if r.Cnt == 0 {
+		return
+	}
+	if err := DB.Raw("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'deadline'").Scan(&dt).Error; err == nil {
+		if strings.ToLower(strings.TrimSpace(dt)) == "date" {
+			return
+		}
+	}
+	// No in-process ALTER; handled by migrations.
+}
+
+// ensureTasksSchema verifies the tasks table has expected column data types for the new model.
+// If the table has no rows and types mismatch, it will drop and recreate the table.
+// Deprecated: schema verification is handled by migrations; do not modify at runtime.
+func ensureTasksSchema(DB *gorm.DB) {
+	// Check table exists
+	type res struct{ Cnt int }
+	var r res
+	_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks'").Scan(&r).Error
+	if r.Cnt == 0 {
+		return
+	}
+	// Check row count
+	var rowCnt int64
+	_ = DB.Table("tasks").Count(&rowCnt).Error
+	// Read column data types
+	type col struct {
+		ColumnName string
+		DataType   string
+	}
+	var cols []col
+	_ = DB.Raw("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME IN ('deadline','deadline_since','deadline_until')").Scan(&cols).Error
+	exp := map[string]string{"deadline": "date", "deadline_since": "enum", "deadline_until": "enum"}
+	mismatch := false
+	for _, c := range cols {
+		if exp[strings.ToLower(c.ColumnName)] != strings.ToLower(strings.TrimSpace(c.DataType)) {
+			mismatch = true
+		}
+	}
+	_ = mismatch
+	// No destructive changes; rely on migrations.
+}
+
+// resolveDayShiftTodayAndNextMembers returns the users for today and the
+// "next" day based on the provided base index and current cycle. baseIndex is
+// interpreted the same way as in the Airflow DAGs: it is 0-based and used with
+// modulo over the ordered groups.
+func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm.DB) (todayMembers []*User, nextMembers []*User, err error) {
+	// Detect current cycle by date (same as DAG behavior)
+	todayDate := today.Format("2006-01-02")
+	var cidRow struct{ ID uint }
+	if err = DB.Raw("SELECT id AS id FROM day_shift_cycles WHERE begin_date <= ? AND finish_date >= ? ORDER BY finish_date DESC, id DESC LIMIT 1", todayDate, todayDate).Scan(&cidRow).Error; err != nil {
+		return nil, nil, err
+	}
+	if cidRow.ID == 0 {
+		return []*User{}, []*User{}, nil
+	}
+	cycleID := cidRow.ID
+
+	// Load ordered groups for the cycle
+	var groups []struct {
+		ID       uint
+		Position int
+	}
+	if err = DB.Raw("SELECT id AS id, position AS position FROM day_shift_cycle_groups WHERE cycle_id=? ORDER BY position ASC, id ASC", cycleID).Scan(&groups).Error; err != nil {
+		return nil, nil, err
+	}
+	if len(groups) == 0 {
+		return []*User{}, []*User{}, nil
+	}
+
+	// configs.day_shift_current_index は 0 始まりのインデックスですが、
+	// 実運用上「現在の担当」を 1 始まりのカウンタとして扱っているため、
+	// ここでは 1 を引いた値を基準として today/next を解決する。
+	// これにより、Airflow 側のインクリメントロジックと突き合わせたときに
+	// 「今日」と「次のメンバー」が 1 つ後ろにずれる問題を防ぐ。
+	idx := baseIndex - 1
+	if idx < 0 {
+		idx = 0
+	}
+	giToday := idx % len(groups)
+	giNext := (idx + 1) % len(groups)
+	gidToday := groups[giToday].ID
+	gidNext := groups[giNext].ID
+
+	// helper to load members for a group
+	loadMembers := func(gid uint) ([]*User, error) {
+		var memberRows []struct {
+			UserID uint
+		}
+		if err := DB.Raw("SELECT user_id AS user_id FROM day_shift_cycle_group_members WHERE group_id=? ORDER BY position ASC, id ASC", gid).Scan(&memberRows).Error; err != nil {
+			return nil, err
+		}
+		if len(memberRows) == 0 {
+			return []*User{}, nil
+		}
+		ids := make([]uint, 0, len(memberRows))
+		for _, mr := range memberRows {
+			ids = append(ids, mr.UserID)
+		}
+		var users []*User
+		if err := DB.Where("id IN ? AND is_deleted = 0", ids).Find(&users).Error; err != nil {
+			return nil, err
+		}
+		return users, nil
+	}
+
+	if todayMembers, err = loadMembers(gidToday); err != nil {
+		return nil, nil, err
+	}
+	if nextMembers, err = loadMembers(gidNext); err != nil {
+		return nil, nil, err
+	}
+	return todayMembers, nextMembers, nil
+}
+
+// Joins display names (falling back to email) for logs/Discord/email.
+func JoinUserNames(users []*User) string {
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		name := strings.TrimSpace(u.DisplayName)
+		if name == "" {
+			name = u.Email
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// SendDayShiftSkipEmail is currently a lightweight stub. The actual email
+// rendering is handled by the email-compose service; here we simply log the
+// intended recipients and dates for observability. Wiring a full mail send
+// pipeline can be done later by following the composeLoginCodeGRPC pattern.
+func SendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMembers, nextMembers []*User) error {
+	subject := fmt.Sprintf("[Taskly] 日直スキップ: %s", today.Format("2006-01-02"))
+	sentry.AddBreadcrumb(&sentry.Breadcrumb{
+		Category: "dayshift_skip_email",
+		Message:  subject,
+		Data: map[string]any{
+			"today":        today.Format("2006-01-02"),
+			"next":         next.Format("2006-01-02"),
+			"todayMembers": JoinUserNames(todayMembers),
+			"nextMembers":  JoinUserNames(nextMembers),
+		},
+		Level: sentry.LevelInfo,
+	})
+	return nil
+}
+
+func RunMigrations(DB *gorm.DB) {
+	// Manual SQL migrations runner (no AutoMigrate). Applies .sql files once.
+	// 1) Locate migrations directory
+	dir := strings.TrimSpace(Env("MIGRATIONS_DIR", ""))
+	if dir == "" {
+		// Try common locations for local/dev and container runtimes
+		candidates := []string{
+			"./migrations",
+			"/app/migrations",
+			"../apps/server/migrations",
+		}
+		for _, c := range candidates {
+			if st, err := os.Stat(c); err == nil && st.IsDir() {
+				dir = c
+				break
+			}
+		}
+	}
+	if dir == "" {
+		log.Printf("migrations: directory not found; skipping")
+		return
+	}
+
+	// 2) Ensure migrations table exists
+	if err := DB.Exec(`CREATE TABLE IF NOT EXISTS migrations (
+		id BIGINT PRIMARY KEY AUTO_INCREMENT,
+		name VARCHAR(255) NOT NULL UNIQUE,
+		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error; err != nil {
+		log.Printf("migrations: ensure table failed: %v", err)
+		return
+	}
+
+	// 3) Load applied migration names
+	type row struct{ Name string }
+	var applied []row
+	_ = DB.Raw("SELECT name FROM migrations").Scan(&applied).Error
+	appliedSet := map[string]struct{}{}
+	for _, r := range applied {
+		appliedSet[r.Name] = struct{}{}
+	}
+
+	// 4) Read .sql files sorted
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		log.Printf("migrations: readdir %s: %v", dir, err)
+		return
+	}
+	// Simple lexicographic order is fine (0001_.., 0002_..)
+	// filepath is needed for absolute join
+	var files []string
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		lower := strings.ToLower(name)
+		if strings.HasSuffix(lower, ".sql") {
+			files = append(files, filepath.Join(dir, name))
+		}
+	}
+	if len(files) == 0 {
+		return
+	}
+	// Sort for deterministic order
+	// (os.ReadDir returns sorted by filename in Go 1.20+, but be explicit)
+	for i := 0; i < len(files)-1; i++ {
+		for j := i + 1; j < len(files); j++ {
+			if files[j] < files[i] {
+				files[i], files[j] = files[j], files[i]
+			}
+		}
+	}
+
+	// 5) Apply pending files
+	for _, fp := range files {
+		name := filepath.Base(fp)
+		if _, ok := appliedSet[name]; ok {
+			continue
+		}
+		// Pre-flight: ensure base tables exist before applying first migration to avoid FK create order issues
+		if name == "0001_init.sql" {
+			// Create users and subjects upfront if missing
+			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS users (
+			  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+			  email VARCHAR(255) NOT NULL UNIQUE,
+			  display_name VARCHAR(255),
+			  hashed_password VARCHAR(255) NULL,
+			  is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
+			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS subjects (
+			  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+			  title VARCHAR(255) NOT NULL,
+			  expires_at DATETIME,
+			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
+		}
+		b, err := os.ReadFile(fp)
+		if err != nil {
+			log.Printf("migrations: read %s: %v", name, err)
+			return
+		}
+		if err := execSQLBatch(string(b), DB); err != nil {
+			log.Printf("migrations: apply %s failed: %v", name, err)
+			return
+		}
+		if err := DB.Exec("INSERT INTO migrations(name) VALUES(?)", name).Error; err != nil {
+			log.Printf("migrations: record %s failed: %v", name, err)
+			return
+		}
+		log.Printf("migrations: applied %s", name)
+	}
+}
+
+func isSensitiveValue(v string) bool { return IsSensitiveValue(v) }
+
+// execSQLBatch splits a SQL file by ';' and executes statements sequentially.
+// This is a minimal splitter suited for our simple DDL/DML migrations without procedures.
+func execSQLBatch(sqlText string, DB *gorm.DB) error {
+	// Normalize newlines and remove BOM if present
+	s := strings.TrimSpace(sqlText)
+	if strings.HasPrefix(s, "\uFEFF") {
+		s = strings.TrimPrefix(s, "\uFEFF")
+	}
+	// Remove single-line comments starting with --
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, "--") {
+			lines[i] = ""
+		}
+	}
+	s = strings.Join(lines, "\n")
+	// Remove simple block comments /* ... */ (non-nested)
+	for {
+		start := strings.Index(s, "/*")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(s[start+2:], "*/")
+		if end < 0 {
+			break
+		}
+		s = s[:start] + s[start+2+end+2:]
+	}
+	parts := strings.Split(s, ";")
+	// Disable FK checks during batch to allow creating tables out of order
+	if err := DB.Exec("SET FOREIGN_KEY_CHECKS=0").Error; err != nil {
+		return err
+	}
+	for _, p := range parts {
+		stmt := strings.TrimSpace(p)
+		if stmt == "" {
+			continue
+		}
+		if err := DB.Exec(stmt).Error; err != nil {
+			msg := strings.ToLower(err.Error())
+			// Ignore idempotent errors for already-existing or already-removed schema elements
+			// - duplicate column (1060)
+			// - duplicate key/index (1061)
+			// - drop unknown column/key (1091)
+			// - fulltext index exists (treated as duplicate key)
+			// - unknown table when dropping or altering (1051)
+			if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "errno: 1060") || strings.Contains(msg, "duplicate key") || strings.Contains(msg, "errno: 1061") || strings.Contains(msg, "unknown column") || strings.Contains(msg, "errno: 1091") || strings.Contains(msg, "can't drop") || strings.Contains(msg, "unknown table") || strings.Contains(msg, "errno: 1051") {
+				continue
+			}
+			// Re-enable before returning
+			_ = DB.Exec("SET FOREIGN_KEY_CHECKS=1").Error
+			return err
+		}
+	}
+	if err := DB.Exec("SET FOREIGN_KEY_CHECKS=1").Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func PtrTime(t time.Time) *time.Time { return &t }
+
+// ensureDayShiftGroupSchemaAndBackfill guarantees the new generalized day shift
+// group tables exist and migrates legacy pairs into groups once.
+// Deprecated: handled externally.
+func ensureDayShiftGroupSchemaAndBackfill(DB *gorm.DB) {
+	// Create/alter tables idempotently
+	// No AutoMigrate here.
+
+	// One-time data migration: convert existing pairs to groups if not yet marked as applied
+	var existing Migration
+	if err := DB.Where("name = ?", "0009_dayshift_groups").First(&existing).Error; err == nil {
+		// Already migrated
+		return
+	}
+
+	// Only backfill when groups table is empty to avoid duplications
+	var groupsCnt int64
+	_ = DB.Model(&DayShiftCycleGroup{}).Count(&groupsCnt).Error
+	if groupsCnt > 0 {
+		// Still mark as applied to avoid checking on every boot
+		_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
+		return
+	}
+}
+
+// helpers moved from main.go (auth, crypto, email, ical, dayshift)
+func Sha256Hex(b []byte) string {
+	h := sha256.Sum256(b)
+	return fmt.Sprintf("%x", h[:])
+}
+
+func GenerateAPIKey() (plain string, hashed string, err error) {
+	buf := make([]byte, 32)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	plain = fmt.Sprintf("tsk_%x", buf)
+	hashed = Sha256Hex([]byte(plain))
+	return
+}
+
+func GenerateIcalToken() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("ict_%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("ict_%x", buf)
+}
+
+func ParseAuthToken(authHeader string) string {
+	s := strings.TrimSpace(authHeader)
+	if s == "" {
+		return ""
+	}
+	parts := strings.SplitN(s, " ", 2)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		return strings.TrimSpace(parts[1])
+	}
+	return s
+}
+
+func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
+	// Optional debug logging for auth flow (no secrets). Enable by setting DEBUG_AUTH=true
+	debugAuth := strings.ToLower(strings.TrimSpace(Env("DEBUG_AUTH", ""))) == "true"
+	raw := c.Get("Authorization")
+	token := ParseAuthToken(raw)
+	if token == "" {
+		if debugAuth {
+			log.Printf("[auth] %s %s missing Authorization", c.Method(), sanitizeURLPath(c.Path()))
+		}
+		return false
+	}
+	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
+	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
+	if err != nil || strings.TrimSpace(uidStr) == "" {
+		var sess Session
+		if dberr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&sess).Error; dberr != nil {
+			if debugAuth {
+				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
+			}
+			return false
+		}
+		if headerPlat != "" && sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
+			if debugAuth {
+				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, sess.ClientPlatform)
+			}
+			return false
+		}
+		ttl := 30 * 24 * time.Hour
+		if sess.ExpiresAt != nil {
+			rem := time.Until(*sess.ExpiresAt)
+			if rem > 0 && rem < ttl {
+				ttl = rem
+			}
+		}
+		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", sess.UserID), ttl).Err()
+		uidStr = fmt.Sprintf("%d", sess.UserID)
+		if debugAuth {
+			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, sess.ClientPlatform)
+		}
+	} else {
+		if headerPlat != "" {
+			var sess Session
+			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&sess).Error; err == nil {
+				if sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
+					if debugAuth {
+						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, sess.ClientPlatform)
+					}
+					return false
+				}
+			}
+		}
+		if debugAuth {
+			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
+		}
+	}
+	var u User
+	if err := DB.First(&u, uidStr).Error; err != nil {
+		if debugAuth {
+			log.Printf("[auth] %s %s user not found id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
+		}
+		return false
+	}
+	var cnt int64
+	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+		if debugAuth {
+			log.Printf("[auth] %s %s user blocked id=%d", c.Method(), sanitizeURLPath(c.Path()), u.ID)
+		}
+		return false
+	}
+	c.Locals("user", &u)
+	c.Locals("token", token)
+	if debugAuth {
+		log.Printf("[auth] %s %s OK user=%d plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), u.ID, headerPlat)
+	}
+	return true
+}
+
+func IsAllowedPlatform(p string) bool {
+	switch strings.ToLower(p) {
+	case "web", "ios", "android", "mac", "windows":
+		return true
+	default:
+		return false
+	}
+}
+
+func GenerateSessionToken(uid uint, platform string) string {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("sess_%d_%s_%d", uid, platform, time.Now().UnixNano())
+	}
+	enc := base64.RawURLEncoding.EncodeToString(b)
+	return fmt.Sprintf("sess_%d_%s_%s", uid, platform, enc)
+}
+
+func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) {
+	key := fmt.Sprintf("user_sessions:%d", userID)
+	toks, _ := RDB.SMembers(c.Context(), key).Result()
+	for _, t := range toks {
+		if t == currentToken || strings.TrimSpace(t) == "" {
+			continue
+		}
+		_ = RDB.Del(c.Context(), "session:"+t).Err()
+		_ = RDB.SRem(c.Context(), key, t).Err()
+	}
+	curHash := Sha256Hex([]byte(currentToken))
+	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&Session{}).Error
+}
+
+func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
+	apiKey := c.Get("X-API-Key")
+	if apiKey == "" {
+		return false
+	}
+	hashed := Sha256Hex([]byte(apiKey))
+	var key APIKey
+	if err := DB.Where("hashed_token = ? AND is_valid = 1 AND (expires_at IS NULL OR expires_at > ?)", hashed, time.Now()).First(&key).Error; err != nil {
+		return false
+	}
+	var u User
+	if err := DB.First(&u, key.UserID).Error; err != nil {
+		return false
+	}
+	var cnt int64
+	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+		return false
+	}
+	c.Locals("user", &u)
+	c.Locals("apiKey", apiKey)
+	return true
+}
+
+// 2FA helpers
+func UrlEncode(s string) string { return url.QueryEscape(s) }
+
+func GenerateBase32Secret() string {
+	b := make([]byte, 20)
+	if _, err := rand.Read(b); err != nil {
+		return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+	}
+	return strings.TrimRight(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), "=")
+}
+
+func ValidateTOTP(secret, code string) bool {
+	return totp.Validate(code, secret)
+}
+
+func GenerateRecoveryCode() string {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	const groups = 4
+	const perGroup = 4
+	out := make([]byte, 0, groups*perGroup+(groups-1))
+	buf := make([]byte, groups*perGroup)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%08x", time.Now().UnixNano())
+	}
+	for i := 0; i < groups*perGroup; i++ {
+		out = append(out, alphabet[int(buf[i])%len(alphabet)])
+		if (i+1)%perGroup == 0 && i+1 < groups*perGroup {
+			out = append(out, '-')
+		}
+	}
+	return string(out)
+}
+
+func ConsumeRecoveryCode(userID uint, code string, DB *gorm.DB) bool {
+	hashed := Sha256Hex([]byte(code))
+	ok := false
+	_ = DB.Transaction(func(tx *gorm.DB) error {
+		var rc RecoveryCode
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND hashed_code = ? AND is_used = 0", userID, hashed).First(&rc).Error; err != nil {
+			return nil
+		}
+		rc.IsUsed = true
+		if err := tx.Save(&rc).Error; err != nil {
+			return err
+		}
+		ok = true
+		return nil
+	})
+	return ok
+}
+
+func GetActiveTOTP(userID uint, DB *gorm.DB) (bool, string, error) {
+	var ts TOTPSecret
+	if err := DB.Where("user_id = ? AND is_active = 1", userID).First(&ts).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+	secret, err := decryptString(ts.Secret)
+	if err != nil {
+		return false, "", err
+	}
+	return true, secret, nil
+}
+
+func getEncKey() []byte {
+	keyStr := Env("TOTP_ENC_KEY", "dev_totp_key")
+	sum := sha256.Sum256([]byte(keyStr))
+	return sum[:]
+}
+
+func EncryptString(plain string) (string, error) {
+	key := getEncKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ct := gcm.Seal(nil, nonce, []byte(plain), nil)
+	out := append(nonce, ct...)
+	return base64.RawStdEncoding.EncodeToString(out), nil
+}
+
+func decryptString(enc string) (string, error) {
+	key := getEncKey()
+	raw, err := base64.RawStdEncoding.DecodeString(enc)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	ns := gcm.NonceSize()
+	if len(raw) < ns {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	nonce, ct := raw[:ns], raw[ns:]
+	pt, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
+}
+
+// iCal builder and helpers
+func BuildICSForUser(userID uint, DB *gorm.DB) string {
+	b := &strings.Builder{}
+	crlf := "\r\n"
+	now := time.Now().UTC().Format("20060102T150405Z")
+	b.WriteString("BEGIN:VCALENDAR" + crlf)
+	b.WriteString("VERSION:2.0" + crlf)
+	b.WriteString("PRODID:-//Taskly//EN" + crlf)
+	b.WriteString("CALSCALE:GREGORIAN" + crlf)
+	b.WriteString("METHOD:PUBLISH" + crlf)
+	var tasks []Task
+	// Order by effective deadline timestamp derived from date + enum
+	eff := EffectiveDeadlineExpr("")
+	_ = DB.Where("added_user_id = ?", userID).Order(eff + " ASC").Limit(500).Find(&tasks).Error
+	for _, t := range tasks {
+		// Treat tasks as all-day events in the calendar (use date-only DTSTART/DTEND)
+		// Use the task.Deadline (date only) as the day; DTEND is exclusive and set to next day
+		if t.Deadline.IsZero() {
+			continue
+		}
+		// ed := EffectiveDeadlineTime(t)
+		var subj Subject
+		_ = DB.First(&subj, t.SubjectID).Error
+		var u User
+		_ = DB.First(&u, t.AddedUserID).Error
+		lang := strings.ToLower(strings.TrimSpace(u.NotificationLang))
+		if lang == "" {
+			lang = "ja"
+		}
+		sName := subj.NameJa
+		if lang == "en" && subj.NameEn != nil && *subj.NameEn != "" {
+			sName = *subj.NameEn
+		}
+		b.WriteString("BEGIN:VEVENT" + crlf)
+		b.WriteString(fmt.Sprintf("UID:tsk-%d@taskly\r\n", t.ID))
+		b.WriteString(fmt.Sprintf("DTSTAMP:%s\r\n", now))
+		b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", ICalEscape("[課題] "+sName+": "+t.Title)))
+		// Build description: include existing description and human-readable period label
+		desc := ""
+		if t.Description != nil && strings.TrimSpace(*t.Description) != "" {
+			// Replace newlines with spaces per UX requirement
+			desc = strings.TrimSpace(strings.ReplaceAll(*t.Description, "\n", " "))
+		}
+		// Build compact period label
+		label := ""
+		sIdx := periodIndex(t.DeadlineSince)
+		uIdx := periodIndex(t.DeadlineUntil)
+		if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "MORNING") {
+			label = "朝まで"
+		} else if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "LUNCH") {
+			label = "昼休みまで"
+		} else if strings.EqualFold(strings.TrimSpace(t.DeadlineUntil), "AFTER_SCHOOL") {
+			label = "放課後まで"
+		} else if sIdx > 0 && uIdx > 0 {
+			if sIdx == uIdx {
+				label = fmt.Sprintf("%d限まで", sIdx)
+			} else if sIdx < uIdx {
+				label = fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
+			}
+		} else if uIdx > 0 {
+			label = fmt.Sprintf("%d限まで", uIdx)
+		} else if sIdx > 0 {
+			label = fmt.Sprintf("%d限以降", sIdx)
+		}
+		if strings.TrimSpace(label) != "" {
+			if desc != "" {
+				desc = desc + " " + label
+			} else {
+				desc = label
+			}
+		}
+		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", ICalEscape(desc)))
+		// All-day DTSTART/DTEND (DTEND is exclusive — next day)
+		dtStart := t.Deadline.Format("20060102")
+		dtEnd := t.Deadline.AddDate(0, 0, 1).Format("20060102")
+		b.WriteString(fmt.Sprintf("DTSTART;VALUE=DATE:%s\r\n", dtStart))
+		b.WriteString(fmt.Sprintf("DTEND;VALUE=DATE:%s\r\n", dtEnd))
+		b.WriteString("END:VEVENT" + crlf)
+	}
+	b.WriteString("END:VCALENDAR" + crlf)
+	return b.String()
+}
+
+func ICalEscape(s string) string {
+	r := strings.ReplaceAll(s, "\\", "\\\\")
+	r = strings.ReplaceAll(r, ",", "\\,")
+	r = strings.ReplaceAll(r, ";", "\\;")
+	r = strings.ReplaceAll(r, "\n", "\\n")
+	r = strings.ReplaceAll(r, "\r", "")
+	return r
+}
+
+// SMTP helper to send multipart email
+func smtpSend(to, subject, text, html string) error {
+	smtpHost := Env("SMTP_HOST", "localhost")
+	smtpPort := Env("SMTP_PORT", "25")
+	from := Env("SMTP_FROM", "noreply@taskly.local")
+	smtpUser := Env("SMTP_USER", from)
+	smtpPass := Env("SMTP_PASSWORD", "")
+	nowRFC := time.Now().Format(time.RFC1123Z)
+	boundary := fmt.Sprintf("taskly-%d", time.Now().UnixNano())
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + to + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"Date: " + nowRFC + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
+			"--" + boundary + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n" +
+			"--" + boundary + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + html + "\r\n" +
+			"--" + boundary + "--\r\n",
+	)
+	var auth smtp.Auth
+	if smtpPass != "" {
+		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	}
+	toSec, _ := strconv.Atoi(Env("SMTP_TIMEOUT", "60"))
+	if toSec <= 0 {
+		toSec = 60
+	}
+	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
+	mode := strings.ToLower(strings.TrimSpace(Env("SMTP_TLS", "")))
+	var conn net.Conn
+	var err error
+	if mode == "smtps" || smtpPort == "465" {
+		// SMTPS (implicit TLS) - enforce certificate verification
+		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost, InsecureSkipVerify: false})
+	} else {
+		// Plain TCP first; may upgrade via STARTTLS
+		conn, err = dialer.Dial("tcp", smtpHost+":"+smtpPort)
+	}
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+	cl, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cl.Quit() }()
+	if mode == "starttls" {
+		if ok, _ := cl.Extension("STARTTLS"); ok {
+			// Enforce certificate verification
+			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost, InsecureSkipVerify: false}); err != nil {
+				return err
+			}
+		}
+	}
+	if auth != nil {
+		if ok, _ := cl.Extension("AUTH"); ok {
+			if err := cl.Auth(auth); err != nil {
+				return err
+			}
+		}
+	}
+	if err := cl.Mail(from); err != nil {
+		return err
+	}
+	if err := cl.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := cl.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		_ = w.Close()
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SMTP helper to send plain text email (no HTML/multipart)
+func smtpSendPlain(to, subject, text string) error {
+	smtpHost := Env("SMTP_HOST", "localhost")
+	smtpPort := Env("SMTP_PORT", "25")
+	from := Env("SMTP_FROM", "noreply@taskly.local")
+	smtpUser := Env("SMTP_USER", from)
+	smtpPass := Env("SMTP_PASSWORD", "")
+	nowRFC := time.Now().Format(time.RFC1123Z)
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + to + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"Date: " + nowRFC + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n",
+	)
+	var auth smtp.Auth
+	if smtpPass != "" {
+		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	}
+	toSec, _ := strconv.Atoi(Env("SMTP_TIMEOUT", "60"))
+	if toSec <= 0 {
+		toSec = 60
+	}
+	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
+	mode := strings.ToLower(strings.TrimSpace(Env("SMTP_TLS", "")))
+	var conn net.Conn
+	var err error
+	if mode == "smtps" || smtpPort == "465" {
+		// SMTPS (implicit TLS) - enforce certificate verification
+		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost, InsecureSkipVerify: false})
+	} else {
+		conn, err = dialer.Dial("tcp", smtpHost+":"+smtpPort)
+	}
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+	cl, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cl.Quit() }()
+	if mode == "starttls" {
+		if ok, _ := cl.Extension("STARTTLS"); ok {
+			// Enforce certificate verification
+			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost, InsecureSkipVerify: false}); err != nil {
+				return err
+			}
+		}
+	}
+	if auth != nil {
+		if ok, _ := cl.Extension("AUTH"); ok {
+			if err := cl.Auth(auth); err != nil {
+				return err
+			}
+		}
+	}
+	if err := cl.Mail(from); err != nil {
+		return err
+	}
+	if err := cl.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := cl.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		_ = w.Close()
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Build formatted title for Teams email like: "教科名: タイトル(朝まで|X限まで|X〜Y限まで|M/D HH:mmまで)"
+func buildTeamsTitleForTask(t Task, DB *gorm.DB) string {
+	var subj Subject
+	_ = DB.First(&subj, t.SubjectID).Error
+	// Determine preferred language from adding user if available
+	var user User
+	_ = DB.First(&user, t.AddedUserID).Error
+	lang := strings.ToLower(strings.TrimSpace(user.NotificationLang))
+	if lang == "" {
+		lang = "ja"
+	}
+	subjName := ""
+	if lang == "en" {
+		if subj.NameEn != nil && *subj.NameEn != "" {
+			subjName = *subj.NameEn
+		}
+	}
+	if subjName == "" {
+		if strings.TrimSpace(subj.NameJa) != "" {
+			subjName = subj.NameJa
+		}
+	}
+	dateLabel := t.Deadline.Format("1/2")
+	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
+	if label == "" {
+		label = dateLabel + "まで"
+	} else {
+		label = dateLabel + " " + label
+	}
+	return fmt.Sprintf("%s: %s(%s)", subjName, t.Title, label)
+}
+
+// (removed obsolete meta parsing helpers)
+
+// deriveDeadlineLabelEnum maps enums into symbolic labels like 朝まで or N限/N〜M限まで
+func deriveDeadlineLabelEnum(since, until string) string {
+	sIdx := periodIndex(since)
+	uIdx := periodIndex(until)
+	if strings.EqualFold(until, "MORNING") {
+		return "朝まで"
+	}
+	if strings.EqualFold(until, "LUNCH") {
+		return "昼休みまで"
+	}
+	if strings.EqualFold(until, "AFTER_SCHOOL") {
+		return "放課後まで"
+	}
+	if sIdx > 0 && uIdx > 0 {
+		if sIdx == uIdx {
+			// Single-period window: show like "n限" (not "n限まで")
+			return fmt.Sprintf("%d限", uIdx)
+		}
+		if sIdx < uIdx {
+			return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
+		}
+	}
+	if uIdx > 0 {
+		return fmt.Sprintf("%d限まで", uIdx)
+	}
+	if sIdx > 0 {
+		return fmt.Sprintf("%d限以降", sIdx)
+	}
+	return ""
+}
+
+func periodIndex(s string) int {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "P1":
+		return 1
+	case "P2":
+		return 2
+	case "P3":
+		return 3
+	case "P4":
+		return 4
+	case "P5":
+		return 5
+	case "P6":
+		return 6
+	case "P7":
+		return 7
+	case "P8":
+		return 8
+	case "P9":
+		return 9
+	case "P10":
+		return 10
+	default:
+		return 0
+	}
+}
+
+// end time of deadline based on enum until
+func endTimeForUntil(until string) (hour, min int) {
+	switch strings.ToUpper(strings.TrimSpace(until)) {
+	case "MORNING":
+		return 7, 59
+	case "LUNCH":
+		return 13, 00
+	case "AFTER_SCHOOL":
+		return 18, 00
+	case "P1":
+		return 10, 30
+	case "P2":
+		return 12, 10
+	case "P3":
+		return 14, 30
+	case "P4":
+		return 16, 10
+	case "P5":
+		return 17, 50
+	case "P6":
+		return 19, 30
+	case "P7":
+		return 21, 10
+	case "P8":
+		return 22, 50
+	case "P9":
+		return 23, 59
+	case "P10":
+		return 23, 59
+	default:
+		return 23, 59
+	}
+}
+
+// NormalizeTaskType converts user-provided or localized labels into canonical enum values.
+// Allowed enums: ONLINE, FACE_TO_FACE, QUIZ, PRESENTATION, SELF_STUDY, OTHER
+func NormalizeTaskType(s string) string {
+	v := strings.TrimSpace(strings.ToUpper(s))
+	switch v {
+	case "ONLINE", "ONL", "WEB", "REMOTE", "リモート", "ｵﾝﾗｲﾝ", "オンライン":
+		return "ONLINE"
+	case "FACE_TO_FACE", "F2F", "INPERSON", "IN_PERSON", "対面", "対面授業", "授業":
+		return "FACE_TO_FACE"
+	case "QUIZ", "TEST", "EXAM", "小テスト", "小ﾃｽﾄ", "テスト", "ﾃｽﾄ":
+		return "QUIZ"
+	case "PRESENTATION", "PRESEN", "LT", "発表", "ﾌﾟﾚｾﾞﾝ", "ﾌﾟﾚｾﾞﾝﾃｰｼｮﾝ", "プレゼン", "プレゼンテーション":
+		return "PRESENTATION"
+	case "SELF_STUDY", "SELFSTUDY", "STUDY", "PREVIEW", "予習", "復習", "自習", "自主学習", "予習・復習":
+		return "SELF_STUDY"
+	case "OTHER", "MISC", "その他", "ｿﾉ他":
+		return "OTHER"
+	default:
+		return "OTHER"
+	}
+}
+
+// ---- Japanese display helpers for change notifications ----
+func displayTaskTypeJa(e string) string {
+	switch strings.ToUpper(strings.TrimSpace(e)) {
+	case "ONLINE":
+		return "オンライン"
+	case "FACE_TO_FACE":
+		return "対面"
+	case "QUIZ":
+		return "小テスト"
+	case "PRESENTATION":
+		return "発表"
+	case "SELF_STUDY":
+		return "自主学習"
+	default:
+		return "その他"
+	}
+}
+
+func displayBoolJa(b bool) string {
+	if b {
+		return "はい"
+	}
+	return "いいえ"
+}
+
+func displaySinceJa(since string) string {
+	v := strings.ToUpper(strings.TrimSpace(since))
+	switch v {
+	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10":
+		return strings.TrimPrefix(v, "P") + "限"
+	case "NONE", "":
+		return "指定なし"
+	default:
+		return v
+	}
+}
+
+func displayUntilJa(until string) string {
+	v := strings.ToUpper(strings.TrimSpace(until))
+	switch v {
+	case "MORNING":
+		return "朝まで"
+	case "LUNCH":
+		return "昼休みまで"
+	case "AFTER_SCHOOL":
+		return "放課後まで"
+	case "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10":
+		return strings.TrimPrefix(v, "P") + "限まで"
+	case "NONE", "":
+		return "指定なし"
+	default:
+		return v
+	}
+}
+
+func subjectNameJa(id uint, DB *gorm.DB) string {
+	var s Subject
+	if err := DB.First(&s, id).Error; err == nil {
+		if strings.TrimSpace(s.NameJa) != "" {
+			return s.NameJa
+		}
+		if s.NameEn != nil && *s.NameEn != "" {
+			return *s.NameEn
+		}
+	}
+	return fmt.Sprintf("科目ID:%d", id)
+}
+
+func strOrUnsetJa(p *string) string {
+	if p == nil || strings.TrimSpace(*p) == "" {
+		return "（未設定）"
+	}
+	return *p
+}
+
+// Build a Japanese message describing changes between two Task states
+func BuildTaskUpdateMessageJa(before Task, after Task, DB *gorm.DB) string {
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "課題が更新されました (ID:%d)\n", after.ID)
+	// Title
+	if before.Title != after.Title {
+		fmt.Fprintf(b, "・タイトル: '%s' → '%s'\n", before.Title, after.Title)
+	}
+	// Subject
+	if before.SubjectID != after.SubjectID {
+		fmt.Fprintf(b, "・教科: '%s' → '%s'\n", subjectNameJa(before.SubjectID, DB), subjectNameJa(after.SubjectID, DB))
+	}
+	// Description
+	if (before.Description == nil) != (after.Description == nil) || (before.Description != nil && after.Description != nil && *before.Description != *after.Description) {
+		fmt.Fprintf(b, "・説明: '%s' → '%s'\n", strOrUnsetJa(before.Description), strOrUnsetJa(after.Description))
+	}
+	// Type
+	if !strings.EqualFold(before.Type, after.Type) {
+		fmt.Fprintf(b, "・種別: '%s' → '%s'\n", displayTaskTypeJa(before.Type), displayTaskTypeJa(after.Type))
+	}
+	// Hand-in
+	if before.IsRequireHandIn != after.IsRequireHandIn {
+		fmt.Fprintf(b, "・要提出: %s → %s\n", displayBoolJa(before.IsRequireHandIn), displayBoolJa(after.IsRequireHandIn))
+	}
+	// Self check
+	if before.IsSelfCheckRequired != after.IsSelfCheckRequired {
+		fmt.Fprintf(b, "・自己チェック: %s → %s\n", displayBoolJa(before.IsSelfCheckRequired), displayBoolJa(after.IsSelfCheckRequired))
+	}
+	// Deadline date
+	if !before.Deadline.Equal(after.Deadline) {
+		fmt.Fprintf(b, "・期限日: %s → %s\n", before.Deadline.Format("2006-01-02"), after.Deadline.Format("2006-01-02"))
+	}
+	// Since / Until
+	if !strings.EqualFold(before.DeadlineSince, after.DeadlineSince) {
+		fmt.Fprintf(b, "・開始限: %s → %s\n", displaySinceJa(before.DeadlineSince), displaySinceJa(after.DeadlineSince))
+	}
+	if !strings.EqualFold(before.DeadlineUntil, after.DeadlineUntil) {
+		fmt.Fprintf(b, "・終了限: %s → %s\n", displayUntilJa(before.DeadlineUntil), displayUntilJa(after.DeadlineUntil))
+	}
+	return b.String()
+}
+
+func BuildTaskDeleteMessageJa(t Task) string {
+	// Teams 返信用のメッセージはシンプルに固定文言で通知
+	// もし詳細が必要になった場合は、タイトル等を後段に追記する運用に変更可能
+	return "この課題は削除されました。"
+}
+
+// Build SQL expression string for effective deadline timestamp
+func EffectiveDeadlineExpr(alias string) string {
+	// Date-only ordering: use the DATE column directly
+	if alias != "" {
+		return alias + ".deadline"
+	}
+	return "deadline"
+}
+
+// Compute effective deadline timestamp in Go for the given task
+func EffectiveDeadlineTime(t Task) time.Time {
+	h, m := endTimeForUntil(t.DeadlineUntil)
+	return time.Date(t.Deadline.Year(), t.Deadline.Month(), t.Deadline.Day(), h, m, 0, 0, t.Deadline.Location())
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// Send Teams notification email for a newly created task
+func SendTeamsNotifyEmailForTask(t Task, DB *gorm.DB) {
+	to := Env("TEAMS_NOTIFY_EMAIL", "")
+	if strings.TrimSpace(to) == "" {
+		return
+	}
+	subject := "[Taskly]tasks:add"
+	formatted := buildTeamsTitleForTask(t, DB)
+	desc := ""
+	if t.Description != nil {
+		desc = *t.Description
+	}
+	// JSON body consumed by Power Automate
+	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), formatted, desc, time.Now().Format(time.RFC3339))
+	// Fire and forget
+	go func() {
+		_ = smtpSendPlain(to, subject, body)
+	}()
+}
+
+// Look up the latest Teams message id for a task from tasks_teams_logs
+func LatestTeamsMessageIDForTask(taskID uint, DB *gorm.DB) (string, bool) {
+	var row struct {
+		TeamsMessageID *string
+	}
+	err := DB.Table("tasks_teams_logs").
+		Select("teams_message_id").
+		Where("task_id = ? AND teams_message_id IS NOT NULL AND teams_message_id <> ''", taskID).
+		Order("id DESC").
+		Limit(1).
+		Scan(&row).Error
+	if err == nil && row.TeamsMessageID != nil && *row.TeamsMessageID != "" {
+		return *row.TeamsMessageID, true
+	}
+	return "", false
+}
+
+// Send Teams reply email for an existing message (update/delete events)
+func SendTeamsReplyEmail(taskID uint, messageID string, message string) {
+	to := Env("TEAMS_NOTIFY_EMAIL", "")
+	if strings.TrimSpace(to) == "" {
+		return
+	}
+	subject := "[Taskly]tasks:reply"
+	body := fmt.Sprintf(`{"message_id":%q,"task_id":%q,"message":%q}`, messageID, fmt.Sprintf("%d", taskID), message)
+	go func() { _ = smtpSendPlain(to, subject, body) }()
+}
+
+// small helpers
+func ToUint(s string) uint {
+	v, _ := strconv.ParseUint(s, 10, 64)
+	return uint(v)
+}
+
+// (removed obsolete TLS wrappers; smtpSend uses crypto/tls directly)
+
+// Authorization and permission helpers
+func UserHasRole(userID uint, role string, DB *gorm.DB) (bool, error) {
+	var cnt int64
+	if err := DB.Model(&RoleUser{}).Where("user_id = ? AND role = ?", userID, role).Count(&cnt).Error; err != nil {
+		return false, err
+	}
+	return cnt > 0, nil
+}
+
+func ApiKeyLimitForUser(userID uint, DB *gorm.DB) (int, error) {
+	if ok, err := UserHasRole(userID, "admin", DB); err != nil {
+		return 0, err
+	} else if ok {
+		return -1, nil
+	}
+	if ok, err := UserHasRole(userID, "manager", DB); err != nil {
+		return 0, err
+	} else if ok {
+		return 100, nil
+	}
+	var p Permission
+	if err := DB.Where("user_id = ? AND target = ?", userID, "api_key_limit").Order("id DESC").First(&p).Error; err == nil && p.Value != nil {
+		var v int
+		fmt.Sscanf(*p.Value, "%d", &v)
+		if v >= 0 {
+			return v, nil
+		}
+	}
+	return 10, nil
+}
+
+func CheckPermission(userID uint, target, action string, ownerID *uint, DB *gorm.DB) (bool, error) {
+	if ok, err := UserHasRole(userID, "admin", DB); err != nil {
+		return false, err
+	} else if ok {
+		return true, nil
+	}
+	if ok, err := UserHasRole(userID, "manager", DB); err != nil {
+		return false, err
+	} else if ok {
+		return true, nil
+	}
+	var p Permission
+	if err := DB.Where("user_id = ? AND target = ? AND method = ?", userID, target, action).Order("id DESC").First(&p).Error; err == nil {
+		if p.Value == nil || *p.Value == "" || strings.EqualFold(*p.Value, "all") {
+			return true, nil
+		}
+		if strings.EqualFold(*p.Value, "own") {
+			if ownerID != nil && *ownerID == userID {
+				return true, nil
+			}
+			return false, nil
+		}
+		return false, nil
+	}
+	switch strings.ToLower(action) {
+	case "read":
+		return true, nil
+	case "create":
+		return true, nil
+	case "update":
+		if ownerID != nil && *ownerID == userID {
+			return true, nil
+		}
+		return false, nil
+	case "delete":
+		return false, nil
+	default:
+		return false, nil
+	}
+}
+
+// Day shift helpers and schedulers
+// (server no longer runs in-process schedulers; handled by Airflow)
+
+func isBusinessDay(d time.Time) bool {
+	// Business calendar feature removed; consider Mon-Fri as business days.
+	wd := d.Weekday()
+	return wd != time.Saturday && wd != time.Sunday
+}
+
+// (batch day shift notification moved to Airflow)
+
+// (daily tasks digest moved to Airflow notifications DAG)
+
+func buildEmailHTML(title, contentHTML string) string {
+	return fmt.Sprintf(`<!doctype html><html><head><meta charset="utf-8"/></head>
+  <body style="background-color:#0b0f19; padding:24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;">
+    <div style="max-width:560px; margin:0 auto; background-color:#0b0f19;">
+      <div style="background:#0f172a; color:#e2e8f0; border:1px solid #1f2937; border-radius:12px; padding:20px;">
+        <h1 style="font-size:18px; margin:0 0 12px 0;">%s</h1>
+        <div style="font-size:14px; line-height:1.7; color:#cbd5e1;">%s</div>
+      </div>
+      <div style="text-align:center; color:#64748b; font-size:12px; margin-top:16px;">Taskly</div>
+    </div>
+  </body></html>`, ICalEscape(title), contentHTML)
+}
+
+// sendDiscordContent posts a simple content message to Discord webhook if configured. Fire-and-forget friendly.
+func sendDiscordContent(content string) {
+	hook := Env("DISCORD_WEBHOOK_URL", "")
+	if strings.TrimSpace(hook) == "" {
+		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
+		return
+	}
+	if strings.TrimSpace(content) == "" {
+		log.Printf("discord: skipped (empty content)")
+		return
+	}
+	payload := fmt.Sprintf(`{"content": %q}`, content)
+	req, err := http.NewRequest("POST", hook, strings.NewReader(payload))
+	if err != nil {
+		log.Printf("discord: build request error: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "taskly-server/1.0")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("discord: post error: %v", err)
+		return
+	}
+	// Drain and close body
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("discord: non-2xx status: %d", resp.StatusCode)
+		return
+	}
+	log.Printf("discord: sent ok")
+}
+
+// Posts one or more embeds to the Discord webhook. Logs basic diagnostics.
+func SendDiscordEmbeds(embeds []map[string]any) {
+	hook := Env("DISCORD_WEBHOOK_URL", "")
+	if strings.TrimSpace(hook) == "" {
+		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
+		return
+	}
+	if len(embeds) == 0 {
+		log.Printf("discord: skipped (no embeds)")
+		return
+	}
+	payloadObj := map[string]any{"embeds": embeds}
+	b, err := json.Marshal(payloadObj)
+	if err != nil {
+		log.Printf("discord: marshal error: %v", err)
+		return
+	}
+	req, err := http.NewRequest("POST", hook, bytes.NewReader(b))
+	if err != nil {
+		log.Printf("discord: build request error: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "taskly-server/1.0")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("discord: post error: %v", err)
+		return
+	}
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("discord: non-2xx status: %d", resp.StatusCode)
+		return
+	}
+	log.Printf("discord: embeds sent ok")
+}
+
+// SendDiscordTaskEmbed builds and sends an embed for task events (created/updated/deleted)
+func SendDiscordTaskEmbed(action string, t Task, actor string) {
+	// Prepare fields
+	webURL := strings.TrimSpace(Env("WEB_URL", ""))
+	title := "Task"
+	color := 5814783 // default bluish
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "created", "create":
+		title = "Task Created"
+		color = 0x2ecc71 // green
+	case "updated", "update":
+		title = "Task Updated"
+		color = 0xf1c40f // yellow
+	case "deleted", "delete":
+		title = "Task Deleted"
+		color = 0xe74c3c // red
+	}
+	// Human-readable label for since/until to avoid NONE/NONE display
+	suLabel := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
+	if strings.TrimSpace(suLabel) == "" {
+		suLabel = "指定なし"
+	}
+	fields := []map[string]any{
+		{"name": "ID", "value": fmt.Sprintf("%d", t.ID), "inline": true},
+		{"name": "Deadline", "value": t.Deadline.Format("2006-01-02"), "inline": true},
+		{"name": "Window", "value": suLabel, "inline": true},
+		{"name": "By", "value": actor, "inline": true},
+	}
+	// Optional link to web app (no specific task page, so link to home if provided)
+	embed := map[string]any{
+		"title":       title,
+		"description": t.Title,
+		"color":       color,
+		"fields":      fields,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	if webURL != "" {
+		embed["url"] = strings.TrimRight(webURL, "/") + "/home"
+	}
+	SendDiscordEmbeds([]map[string]any{embed})
+}
+
+// sendDiscordDayShiftNotifyEmbed sends an embed about day shift notification sending
+func sendDiscordDayShiftNotifyEmbed(date time.Time, userNames []string, actor string) {
+	title := "Day Shift Notified"
+	color := 0x3498db // blue
+	users := ""
+	if len(userNames) > 0 {
+		users = strings.Join(userNames, ", ")
+	} else {
+		users = "(none)"
+	}
+	fields := []map[string]any{
+		{"name": "Date", "value": date.Format("2006-01-02"), "inline": true},
+		{"name": "Users", "value": users, "inline": false},
+		{"name": "By", "value": actor, "inline": true},
+	}
+	embed := map[string]any{
+		"title":     title,
+		"color":     color,
+		"fields":    fields,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	SendDiscordEmbeds([]map[string]any{embed})
+}
+
+func performDayShiftRotation(now time.Time, DB *gorm.DB) error {
+	d := now
+	for !isBusinessDay(d) {
+		d = d.Add(24 * time.Hour)
+	}
+	cyc, err := getCurrentCycle(d, DB)
+	if err != nil {
+		return err
+	}
+	if cyc == nil {
+		return nil
+	}
+	// Respect current cycle from configs if set; server does not rotate or increment
+	storedCIDStr, _ := GetConfigString("day_shift_current_cycle", DB)
+	storedCID := uint(0)
+	if strings.TrimSpace(storedCIDStr) != "" {
+		var x uint64
+		fmt.Sscanf(storedCIDStr, "%d", &x)
+		storedCID = uint(x)
+	}
+	if storedCID != 0 && storedCID != cyc.ID {
+		// Override with configured cycle
+		var confCyc DayShiftCycle
+		if err := DB.First(&confCyc, storedCID).Error; err == nil {
+			cyc = &confCyc
+		}
+	}
+	// Legacy assignment-table-based carry-over from previous business day removed.
+	// Prefer new group configuration if present
+	var cfgGroups []DayShiftCycleGroup
+	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups).Error
+	groups := make([][]uint, 0)
+	if len(cfgGroups) > 0 {
+		for _, g := range cfgGroups {
+			var members []DayShiftCycleGroupMember
+			_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&members).Error
+			if len(members) == 0 {
+				continue
+			}
+			arr := make([]uint, 0, len(members))
+			for _, m := range members {
+				arr = append(arr, m.UserID)
+			}
+			groups = append(groups, arr)
+		}
+	}
+	if len(groups) == 0 {
+		// Auto compute groups from active users using env group size (default 2)
+		actUsers, err := listActiveUsers(DB)
+		if err != nil || len(actUsers) < 1 {
+			return err
+		}
+		gs := 2
+		if v := strings.TrimSpace(Env("DAYSHIFT_GROUP_SIZE", "")); v != "" {
+			if n, e := strconv.Atoi(v); e == nil && n >= 1 {
+				gs = n
+			}
+		}
+		groups = computeGroups(actUsers, gs)
+		if len(groups) == 0 {
+			return nil
+		}
+	}
+	// Determine today's index via configs; actual assignment expansion is handled
+	// by downstream index-based batches, so server no longer persists per-day
+	// day_shift_assignments rows here.
+	return nil
+}
+
+func getCurrentCycle(d time.Time, DB *gorm.DB) (*DayShiftCycle, error) {
+	var cyc DayShiftCycle
+	// If multiple cycles cover the date, prefer the one with the latest finish_date
+	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).Order("finish_date DESC, id DESC").First(&cyc).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &cyc, nil
+}
+
+func DateOnly(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+func prevBusinessDay(d time.Time) time.Time {
+	x := d.Add(-24 * time.Hour)
+	for i := 0; i < 10; i++ {
+		if isBusinessDay(x) {
+			return DateOnly(x)
+		}
+		x = x.Add(-24 * time.Hour)
+	}
+	return time.Time{}
+}
+
+func nextBusinessDay(d time.Time) time.Time {
+	x := d.Add(24 * time.Hour)
+	for i := 0; i < 30; i++ {
+		if isBusinessDay(x) {
+			return DateOnly(x)
+		}
+		x = x.Add(24 * time.Hour)
+	}
+	return time.Time{}
+}
+
+func listActiveUsers(DB *gorm.DB) ([]User, error) {
+	var users []User
+	if err := DB.Where("is_deleted = 0").Order("id ASC").Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func ComputePairs(users []User) [][]uint {
+	out := [][]uint{}
+	n := len(users)
+	if n < 2 {
+		return out
+	}
+	if n%2 == 1 {
+		log.Printf("[DayShift] odd number of active users (%d), dropping last (id=%d)", n, users[n-1].ID)
+		n = n - 1
+	}
+	for i := 0; i < n; i += 2 {
+		out = append(out, []uint{users[i].ID, users[i+1].ID})
+	}
+	return out
+}
+
+// computeGroups splits users into groups of given size in order.
+// If remainder is non-zero, drop the trailing users (and log) to keep group sizes uniform.
+func computeGroups(users []User, size int) [][]uint {
+	out := [][]uint{}
+	n := len(users)
+	if size <= 0 {
+		size = 2
+	}
+	if n < size {
+		return out
+	}
+	rem := n % size
+	if rem != 0 {
+		log.Printf("[DayShift] users not divisible by group size (n=%d, size=%d), dropping last %d user(s)", n, size, rem)
+		n = n - rem
+	}
+	for i := 0; i < n; i += size {
+		grp := make([]uint, 0, size)
+		for j := 0; j < size; j++ {
+			grp = append(grp, users[i+j].ID)
+		}
+		out = append(out, grp)
+	}
+	return out
+}
+
+// Mark optional helpers as used to satisfy static analysis when rotation is disabled in some builds
+var (
+	_ = prevBusinessDay
+	_ = nextBusinessDay
+	_ = listActiveUsers
+	_ = businessDaysBetween
+)
+
+func businessDaysBetween(start time.Time, end time.Time) int {
+	s := DateOnly(start)
+	e := DateOnly(end)
+	cnt := 0
+	for d := s; !d.After(e); d = d.Add(24 * time.Hour) {
+		if isBusinessDay(d) {
+			cnt++
+		}
+	}
+	if cnt > 0 {
+		return cnt - 1
+	}
+	return 0
+}
+
+// Decide whether to rotate day shift based on Gemini API analysis of subject/body.
+// Returns true when rotation/skip should occur. This version preserves the
+// legacy signature and logic; higher-level code is responsible for deciding
+// whether the rotation is "today" or "tomorrow" based on additional cues.
+func ShouldRotateByGemini(subject, body string) bool {
+	// 1) Strong heuristic first (Japanese keywords)
+	s := strings.ToLower(subject + "\n" + body)
+	if shouldRotateHeuristic(s) {
+		return true
+	}
+	// 2) If Gemini API key is configured, ask the model; parse JSON result safely
+	if Env("GEMINI_API_KEY", "") == "" {
+		// No API key and heuristic didn't match → do not rotate
+		return false
+	}
+	// Allow overriding model via env; default to gemini-2.5-flash to match current API examples
+	modelName := strings.TrimSpace(Env("GEMINI_MODEL", "gemini-2.5-flash"))
+	ctx := context.Background()
+	cli, err := genai.NewClient(ctx, nil)
+	if err == nil {
+		prompt := "以下のメール内容が『当日日直の延期・振替・順延・スライド（＝日直をずらす）』を求めているか判定してください。回答は YES または NO のみ。\nSubject: " + subject + "\nBody: " + body
+		content := genai.NewContentFromText(prompt, "")
+		resp, err := cli.Models.GenerateContent(ctx, modelName, []*genai.Content{content}, nil)
+		if err == nil && resp != nil {
+			ans := strings.ToUpper(resp.Text())
+			if strings.Contains(ans, "YES") || strings.Contains(ans, "ＹＥＳ") || strings.Contains(ans, "はい") {
+				return true
+			}
+			if strings.Contains(ans, "NO") || strings.Contains(ans, "ＮＯ") || strings.Contains(ans, "いいえ") {
+				return false
+			}
+		}
+	}
+	// 3) Fallback: if model response ambiguous, rely on heuristic again
+	return shouldRotateHeuristic(s)
+}
+
+// shouldRotateHeuristic detects Japanese phrases that imply postponing/rescheduling day shift
+func shouldRotateHeuristic(s string) bool {
+	// Normalize (remove spaces)
+	s = strings.ReplaceAll(s, " ", "")
+	// Positive signals
+	positives := []string{
+		"延期", "順延", "日程変更", "変更します", "変更したい", "変更を希望", "スライド", "ずらし", "ずらせ", "ずらしたい",
+		"振替", "振り替え", "別日に", "後ろ倒し", "先送り", "移動したい", "日直を変", "交代をお願い", "交代したい",
+		"日直変更", "日直ずらし", "日直延期", "都合が悪いので", "本日の日直を延期", "今日の", "日直を延期",
+	}
+	for _, kw := range positives {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// Notify Discord with a simple embed indicating day shift rotation occurred
+func notifyDayShiftRotationDiscord(target time.Time) {
+	hook := Env("DISCORD_WEBHOOK_URL", "")
+	if hook == "" {
+		return
+	}
+	embed := fmt.Sprintf(`{"embeds":[{"title":"Day Shift Rotation Executed","description":"Rotation processed for %s","color":5814783}]}`, target.Format("2006-01-02"))
+	req, _ := http.NewRequest("POST", hook, strings.NewReader(embed))
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil && resp != nil {
+		_ = resp.Body.Close()
+	}
+}
+
+// Shift all assignments from the next business day after 'start' one business day forward,
+// and ensure today's users are also assigned to that next business day.
+
+// Legacy backward-shift helper also depended on day_shift_assignments; keep signature but no-op.
+
+// Reports error to Sentry if DSN is configured
+func CaptureError(err error) {
+	if err == nil {
+		return
+	}
+	if Env("SENTRY_DSN", "") == "" {
+		return
+	}
+	sentry.CaptureException(err)
+}

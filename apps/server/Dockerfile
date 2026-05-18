@@ -9,12 +9,13 @@ ARG TARGETARCH=amd64
 FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
+# Copy utils module and server code early
+COPY utils utils
+COPY . .
 # Cache go modules
-COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
 	GOPROXY=https://proxy.golang.org,direct go mod download
-# Copy source and build with cache mounts
-COPY . .
+# Build with cache mounts
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \

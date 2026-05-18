@@ -15,18 +15,19 @@ import (
 	gormtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorm.io/gorm.v1"
 	gorm_mysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 // mustInitDB opens a MySQL connection using env() variables and migrates the base model.
 func mustInitDB() *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4,utf8&loc=Asia%%2FTokyo",
-		env("MYSQL_USER", "taskly"),
-		env("MYSQL_PASSWORD", "taskly_password"),
-		env("DB_HOST", "127.0.0.1"),
-		env("DB_PORT", "3306"),
-		env("MYSQL_DATABASE", "taskly"))
+		utils.Env("MYSQL_USER", "taskly"),
+		utils.Env("MYSQL_PASSWORD", "taskly_password"),
+		utils.Env("DB_HOST", "127.0.0.1"),
+		utils.Env("DB_PORT", "3306"),
+		utils.Env("MYSQL_DATABASE", "taskly"))
 	// Register MySQL driver for Datadog tracing
-	dbService := env("DD_DB_SERVICE", env("DD_SERVICE", "taskly-server")+"-db")
+	dbService := utils.Env("DD_DB_SERVICE", utils.Env("DD_SERVICE", "taskly-server")+"-db")
 	sqltrace.Register("mysql", &mysql_driver.MySQLDriver{}, sqltrace.WithServiceName(dbService))
 	// Open traced GORM DB
 	db, err := gormtrace.Open(gorm_mysql.Open(dsn), &gorm.Config{}, gormtrace.WithServiceName(dbService))
@@ -39,8 +40,8 @@ func mustInitDB() *gorm.DB {
 // mustInitRedis connects to Redis and verifies availability.
 func mustInitRedis() *redis.Client {
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     env("REDIS_ADDR", "127.0.0.1:6379"),
-		Password: env("REDIS_PASSWORD", ""),
+		Addr:     utils.Env("REDIS_ADDR", "127.0.0.1:6379"),
+		Password: utils.Env("REDIS_PASSWORD", ""),
 		DB:       0,
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
@@ -64,9 +65,9 @@ func metricsServer(bind string) {
 // initWebAuthn configures the global WebAuthn relying party if possible.
 func initWebAuthn() {
 	if wa, err := webauthn.New(&webauthn.Config{
-		RPDisplayName: env("WEBAUTHN_RP_NAME", "Taskly"),
-		RPID:          env("WEBAUTHN_RP_ID", "localhost"),
-		RPOrigin:      env("WEBAUTHN_ORIGIN", "http://localhost:4321"),
+		RPDisplayName: utils.Env("WEBAUTHN_RP_NAME", "Taskly"),
+		RPID:          utils.Env("WEBAUTHN_RP_ID", "localhost"),
+		RPOrigins:     []string{utils.Env("WEBAUTHN_ORIGIN", "http://localhost:4321")},
 	}); err != nil {
 		log.Printf("webauthn init error: %v", err)
 	} else {

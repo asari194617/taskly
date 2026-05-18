@@ -3,14 +3,15 @@ package main
 import (
 	"strconv"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 func registerAPIKeyRoutes(app *fiber.App) {
 	// List API keys for current user
 	app.Get("/apikeys", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		var items []APIKey
+		u := c.Locals("user").(*utils.User)
+		var items []utils.APIKey
 		if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -28,17 +29,17 @@ func registerAPIKeyRoutes(app *fiber.App) {
 
 	// Create new API key and return the plaintext token once
 	app.Post("/apikeys", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		// limit from env, -1 for unlimited
 		limit := -1
-		if s := env("API_KEYS_LIMIT", "-1"); s != "" {
+		if s := utils.Env("API_KEYS_LIMIT", "-1"); s != "" {
 			if v, err := strconv.Atoi(s); err == nil {
 				limit = v
 			}
 		}
 		if limit >= 0 { // -1 means unlimited
 			var cur int64
-			if err := DB.Model(&APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
+			if err := DB.Model(&utils.APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
 				return c.Status(500).JSON(fiber.Map{"error": "db"})
 			}
 			if int(cur) >= limit {
@@ -49,11 +50,11 @@ func registerAPIKeyRoutes(app *fiber.App) {
 			Description *string `json:"description"`
 		}
 		_ = c.BodyParser(&body)
-		plain, hashed, genErr := generateAPIKey()
+		plain, hashed, genErr := utils.GenerateAPIKey()
 		if genErr != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "gen"})
 		}
-		rec := APIKey{UserID: u.ID, HashedToken: hashed, Description: body.Description}
+		rec := utils.APIKey{UserID: u.ID, HashedToken: hashed, Description: body.Description}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -62,8 +63,8 @@ func registerAPIKeyRoutes(app *fiber.App) {
 
 	// Patch API key
 	app.Patch("/apikeys/:id", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		var rec APIKey
+		u := c.Locals("user").(*utils.User)
+		var rec utils.APIKey
 		if err := DB.Where("id = ? AND user_id = ?", c.Params("id"), u.ID).First(&rec).Error; err != nil {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "not found"})
 		}

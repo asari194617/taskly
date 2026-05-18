@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"encoding/base64"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
+	"gorm.io/gorm"
 )
 
 type User struct {
@@ -41,7 +42,7 @@ func (u *User) WebAuthnDisplayName() string {
 	return fmt.Sprintf("user-%d", u.ID)
 }
 func (u *User) WebAuthnIcon() string { return "" }
-func (u *User) WebAuthnCredentials() []webauthn.Credential {
+func (u *User) WebAuthnCredentials(DB *gorm.DB) []webauthn.Credential {
 	var pks []Passkey
 	_ = DB.Where("user_id = ?", u.ID).Find(&pks).Error
 	res := make([]webauthn.Credential, 0, len(pks))

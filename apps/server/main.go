@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/getsentry/sentry-go"
 	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
@@ -20,19 +21,13 @@ import (
 	ddprofiler "gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
-// Globals moved to globals.go
-
-// env moved to support.go
-
-// ptrTime moved to support.go
-
 func main() {
 	// Start Datadog tracer (reads most settings from env; override agent addr explicitly if provided)
-	serviceName := env("DD_SERVICE", "taskly-server")
-	envName := env("DD_ENV", env("SENTRY_ENVIRONMENT", env("NODE_ENV", "development")))
-	version := env("DD_VERSION", env("SENTRY_RELEASE", ""))
-	agentHost := env("DD_AGENT_HOST", "127.0.0.1")
-	agentPort := env("DD_TRACE_AGENT_PORT", "8126")
+	serviceName := utils.Env("DD_SERVICE", "taskly-server")
+	envName := utils.Env("DD_ENV", utils.Env("SENTRY_ENVIRONMENT", utils.Env("NODE_ENV", "development")))
+	version := utils.Env("DD_VERSION", utils.Env("SENTRY_RELEASE", ""))
+	agentHost := utils.Env("DD_AGENT_HOST", "127.0.0.1")
+	agentPort := utils.Env("DD_TRACE_AGENT_PORT", "8126")
 	// Configure Datadog tracer options (including optional sampling rate)
 	tOpts := []tracer.StartOption{
 		tracer.WithService(serviceName),
@@ -41,7 +36,7 @@ func main() {
 		tracer.WithAgentAddr(agentHost + ":" + agentPort),
 		tracer.WithRuntimeMetrics(),
 	}
-	if sr := strings.TrimSpace(env("DD_TRACE_SAMPLE_RATE", "")); sr != "" {
+	if sr := strings.TrimSpace(utils.Env("DD_TRACE_SAMPLE_RATE", "")); sr != "" {
 		if v, err := strconv.ParseFloat(sr, 64); err == nil && v >= 0 && v <= 1 {
 			tOpts = append(tOpts, tracer.WithSampler(tracer.NewRateSampler(v)))
 		}
@@ -50,14 +45,14 @@ func main() {
 	defer tracer.Stop()
 
 	// Enforce JWT_SECRET in non-development environments
-	nodeEnv := strings.ToLower(env("NODE_ENV", "development"))
+	nodeEnv := strings.ToLower(utils.Env("NODE_ENV", "development"))
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if nodeEnv != "development" && jwtSecret == "" {
 		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
 	}
 
 	// Optional: Start Datadog profiler when enabled
-	if strings.ToLower(env("DD_PROFILING_ENABLED", "false")) == "true" {
+	if strings.ToLower(utils.Env("DD_PROFILING_ENABLED", "false")) == "true" {
 		_ = ddprofiler.Start(
 			ddprofiler.WithService(serviceName),
 			ddprofiler.WithEnv(envName),
@@ -68,24 +63,24 @@ func main() {
 
 	DB = mustInitDB()
 	RDB = mustInitRedis()
-	metricsServer(env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
+	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
 
 	// Init WebAuthn (Passkey)
 	initWebAuthn()
 
 	// Run pending migrations first (includes timestamp sanitize/defaults)
-	runMigrations()
+	utils.RunMigrations(DB)
 
 	// AutoMigrate is disabled per policy; rely on SQL migrations only.
 	// Ensure only read-only helpers after runMigrations.
 
 	// Sentry initialization (optional)
-	if dsn := env("SENTRY_DSN", ""); dsn != "" {
+	if dsn := utils.Env("SENTRY_DSN", ""); dsn != "" {
 		_ = sentry.Init(sentry.ClientOptions{
 			Dsn:              dsn,
 			TracesSampleRate: 0.1,
-			Environment:      env("SENTRY_ENVIRONMENT", env("NODE_ENV", "development")),
-			Release:          env("SENTRY_RELEASE", ""),
+			Environment:      utils.Env("SENTRY_ENVIRONMENT", utils.Env("NODE_ENV", "development")),
+			Release:          utils.Env("SENTRY_RELEASE", ""),
 			BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
 				if event == nil {
 					return event
@@ -111,20 +106,23 @@ func main() {
 					}
 					// Sanitize URL path (mask tokens like /ical/{token}.ics)
 					if event.Request.URL != "" {
-						event.Request.URL = sanitizeURLPath(event.Request.URL)
+						event.Request.URL = utils.SanitizeURLPath(event.Request.URL)
 					}
 					// Scrub token-like query params
 					if event.Request.QueryString != "" {
-						event.Request.QueryString = sanitizeQueryString(event.Request.QueryString)
+						event.Request.QueryString = utils.SanitizeQueryString(event.Request.QueryString)
 					}
 				}
 				// Scrub extra and tags
-				if event.Extra != nil {
-					scrubPIIMap(event.Extra)
+				if event.Contexts != nil {
+					for k, ctx := range event.Contexts {
+						utils.ScrubPIIMap(ctx)
+						event.Contexts[k] = ctx
+					}
 				}
 				if event.Tags != nil {
 					for k, v := range event.Tags {
-						if isSensitiveKey(k) || isSensitiveValue(v) {
+						if utils.IsSensitiveKey(k) || utils.IsSensitiveValue(v) {
 							event.Tags[k] = "[REDACTED]"
 						}
 					}
@@ -138,13 +136,13 @@ func main() {
 				// For HTTP breadcrumbs, scrub URL and headers in data
 				if strings.EqualFold(crumb.Category, "http") && crumb.Data != nil {
 					if urlv, ok := crumb.Data["url"].(string); ok && urlv != "" {
-						crumb.Data["url"] = sanitizeURLPath(urlv)
+						crumb.Data["url"] = utils.SanitizeURLPath(urlv)
 					}
 				}
 				if crumb.Data != nil {
 					// Remove or mask sensitive fields
 					for k := range crumb.Data {
-						if isSensitiveKey(fmt.Sprintf("%v", k)) {
+						if utils.IsSensitiveKey(fmt.Sprintf("%v", k)) {
 							crumb.Data[k] = "[REDACTED]"
 						}
 					}
@@ -155,7 +153,7 @@ func main() {
 		// Add helpful tags and emit a startup log
 		sentry.ConfigureScope(func(scope *sentry.Scope) {
 			scope.SetTag("service", "taskly-server")
-			scope.SetTag("port", env("API_PORT", "8080"))
+			scope.SetTag("port", utils.Env("API_PORT", "8080"))
 		})
 		sentry.CaptureMessage("Taskly server starting")
 		defer sentry.Flush(2 * time.Second)
@@ -183,13 +181,13 @@ func main() {
 						scope.SetTag("route", r.Path)
 					}
 					scope.SetTag("method", c.Method())
-					scope.SetTag("url", sanitizeURLPath(string(c.OriginalURL())))
+					scope.SetTag("url", utils.SanitizeURLPath(string(c.OriginalURL())))
 					scope.SetContext("request", map[string]any{
 						"query": c.Queries(),
 						"ip":    c.IP(),
 					})
 					// Attach user when available
-					if u, ok := c.Locals("user").(*User); ok && u != nil {
+					if u, ok := c.Locals("user").(*utils.User); ok && u != nil {
 						scope.SetUser(sentry.User{
 							ID:       fmt.Sprintf("%v", u.ID),
 							Email:    u.Email,
@@ -219,7 +217,7 @@ func main() {
 				return r.Method + " " + r.Path
 			}
 			// Fallback to method + sanitized URL
-			return c.Method() + " " + sanitizeURLPath(string(c.OriginalURL()))
+			return c.Method() + " " + utils.SanitizeURLPath(string(c.OriginalURL()))
 		}),
 	))
 
@@ -237,8 +235,8 @@ func main() {
 		Format: "[${time}] ${ip} ${status} ${latency} ${method} ${route}\n",
 	}))
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"),
-		AllowCredentials: strings.ToLower(env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
+		AllowOrigins:     utils.Env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"),
+		AllowCredentials: strings.ToLower(utils.Env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
 		AllowHeaders:     "Authorization,authorization, Content-Type,content-type, X-Client-Platform,x-client-platform, X-API-Key,x-api-key",
 		// Be explicit about methods to satisfy strict proxies and preflight checks
 		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -275,7 +273,7 @@ func main() {
 
 	// User profile: update display name
 	app.Patch("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			DisplayName *string `json:"display_name"`
 		}
@@ -293,7 +291,7 @@ func main() {
 		if len(updates) == 0 {
 			return c.Status(400).JSON(fiber.Map{"error": "no changes"})
 		}
-		if err := DB.Model(&User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
+		if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -301,8 +299,8 @@ func main() {
 
 	// User account delete (soft delete)
 	app.Delete("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+		u := c.Locals("user").(*utils.User)
+		if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -310,9 +308,9 @@ func main() {
 
 	// Users/me (auth required)
 	app.Get("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		// roles
-		var rls []RoleUser
+		var rls []utils.RoleUser
 		_ = DB.Where("user_id = ?", u.ID).Find(&rls).Error
 		roles := make([]string, 0, len(rls))
 		isAdmin := false
@@ -332,7 +330,7 @@ func main() {
 	// Public ICS feed
 	app.Get("/ical/:token.ics", func(c *fiber.Ctx) error {
 		token := c.Params("token")
-		var key IcalKey
+		var key utils.IcalKey
 		if err := DB.Where("token = ?", token).First(&key).Error; err != nil {
 			return c.Status(404).SendString("not found")
 		}
@@ -340,12 +338,12 @@ func main() {
 		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
 			return c.Status(404).SendString("not found")
 		}
-		ics := buildICSForUser(key.UserID)
+		ics := utils.BuildICSForUser(key.UserID, DB)
 		c.Set("Content-Type", "text/calendar; charset=utf-8")
 		return c.SendString(ics)
 	})
 
-	port := env("API_PORT", "8080")
+	port := utils.Env("API_PORT", "8080")
 	log.Printf("Application Server listening on :%s", port)
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatal(err)

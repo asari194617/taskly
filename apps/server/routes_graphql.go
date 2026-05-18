@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 // registerGraphQL builds the schema via modular builders and mounts the /graphql endpoint.
@@ -41,7 +42,7 @@ func registerGraphQL(app *fiber.App) {
 			Query     string         `json:"query"`
 			Variables map[string]any `json:"variables"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if strings.TrimSpace(body.Query) == "" {
@@ -63,7 +64,7 @@ func registerGraphQL(app *fiber.App) {
 		defer cancel()
 
 		// Disable introspection in production
-		nodeEnv := strings.ToLower(env("NODE_ENV", "development"))
+		nodeEnv := strings.ToLower(utils.Env("NODE_ENV", "development"))
 		if nodeEnv != "development" && isIntrospectionQuery(body.Query) {
 			return c.Status(403).JSON(fiber.Map{"error": "introspection disabled"})
 		}

@@ -16,7 +16,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/mail"
 	"net/smtp"
 	"net/url"
 	"os"
@@ -30,85 +29,8 @@ import (
 	"github.com/pquerna/otp/totp"
 	"google.golang.org/genai"
 	"gorm.io/gorm"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
-
-func env(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-// --- Config helpers (configs table) ---
-func getConfigString(key string) (string, error) {
-	var row struct{ V string }
-	if err := DB.Raw("SELECT value AS v FROM configs WHERE `key`=? LIMIT 1", key).Scan(&row).Error; err != nil {
-		return "", err
-	}
-	return row.V, nil
-}
-
-func setConfigString(key, val string) error {
-	res := DB.Exec("UPDATE configs SET value=? WHERE `key`=?", val, key)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return DB.Exec("INSERT INTO configs(`key`,`value`) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)", key, val).Error
-	}
-	return nil
-}
-
-func getConfigInt(key string) (int, error) {
-	s, err := getConfigString(key)
-	if err != nil {
-		return 0, err
-	}
-	if strings.TrimSpace(s) == "" {
-		return 0, nil
-	}
-	var n int
-	fmt.Sscanf(s, "%d", &n)
-	return n, nil
-}
-
-// getConfigBool returns a boolean-like flag from configs table.
-// "", "0", "false", "no" (case-insensitive) are treated as false;
-// any other non-empty value is true.
-func getConfigBool(key string) (bool, error) {
-	s, err := getConfigString(key)
-	if err != nil {
-		return false, err
-	}
-	v := strings.TrimSpace(strings.ToLower(s))
-	if v == "" || v == "0" || v == "false" || v == "no" {
-		return false, nil
-	}
-	return true, nil
-}
-
-// --- JSON parsing & validation helpers ---
-func parseJSONStrict(c *fiber.Ctx, dst any) error {
-	dec := json.NewDecoder(bytes.NewReader(c.Body()))
-	dec.DisallowUnknownFields()
-	return dec.Decode(dst)
-}
-
-func validationError(c *fiber.Ctx, fields map[string]string) error {
-	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "validation", "fields": fields})
-}
-
-func isEmail(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" || len(s) > 255 || !strings.Contains(s, "@") {
-		return false
-	}
-	// accept simple address forms; mail.ParseAddress is lenient but works for basic format
-	if _, err := mail.ParseAddress(s); err != nil {
-		return false
-	}
-	return true
-}
 
 func maxLen(s string, n int) bool { return len(s) <= n }
 
@@ -294,7 +216,7 @@ func ensureTasksSchema() {
 // "next" day based on the provided base index and current cycle. baseIndex is
 // interpreted the same way as in the Airflow DAGs: it is 0-based and used with
 // modulo over the ordered groups.
-func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMembers []*User, nextMembers []*User, err error) {
+func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMembers []*utils.User, nextMembers []*utils.User, err error) {
 	// Detect current cycle by date (same as DAG behavior)
 	todayDate := today.Format("2006-01-02")
 	var cidRow struct{ ID uint }
@@ -302,7 +224,7 @@ func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMe
 		return nil, nil, err
 	}
 	if cidRow.ID == 0 {
-		return []*User{}, []*User{}, nil
+		return []*utils.User{}, []*utils.User{}, nil
 	}
 	cycleID := cidRow.ID
 
@@ -315,7 +237,7 @@ func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMe
 		return nil, nil, err
 	}
 	if len(groups) == 0 {
-		return []*User{}, []*User{}, nil
+		return []*utils.User{}, []*utils.User{}, nil
 	}
 
 	// configs.day_shift_current_index は 0 始まりのインデックスですが、
@@ -333,7 +255,7 @@ func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMe
 	gidNext := groups[giNext].ID
 
 	// helper to load members for a group
-	loadMembers := func(gid uint) ([]*User, error) {
+	loadMembers := func(gid uint) ([]*utils.User, error) {
 		var memberRows []struct {
 			UserID uint
 		}
@@ -341,13 +263,13 @@ func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMe
 			return nil, err
 		}
 		if len(memberRows) == 0 {
-			return []*User{}, nil
+			return []*utils.User{}, nil
 		}
 		ids := make([]uint, 0, len(memberRows))
 		for _, mr := range memberRows {
 			ids = append(ids, mr.UserID)
 		}
-		var users []*User
+		var users []*utils.User
 		if err := DB.Where("id IN ? AND is_deleted = 0", ids).Find(&users).Error; err != nil {
 			return nil, err
 		}
@@ -364,7 +286,7 @@ func resolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int) (todayMe
 }
 
 // joinUserNames joins display names (falling back to email) for logs/Discord/email.
-func joinUserNames(users []*User) string {
+func joinUserNames(users []*utils.User) string {
 	names := make([]string, 0, len(users))
 	for _, u := range users {
 		name := strings.TrimSpace(u.DisplayName)
@@ -382,7 +304,7 @@ func joinUserNames(users []*User) string {
 // rendering is handled by the email-compose service; here we simply log the
 // intended recipients and dates for observability. Wiring a full mail send
 // pipeline can be done later by following the composeLoginCodeGRPC pattern.
-func sendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMembers, nextMembers []*User) error {
+func sendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMembers, nextMembers []*utils.User) error {
 	subject := fmt.Sprintf("[Taskly] 日直スキップ: %s", today.Format("2006-01-02"))
 	sentry.AddBreadcrumb(&sentry.Breadcrumb{
 		Category: "dayshift_skip_email",
@@ -401,7 +323,7 @@ func sendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMemb
 func runMigrations() {
 	// Manual SQL migrations runner (no AutoMigrate). Applies .sql files once.
 	// 1) Locate migrations directory
-	dir := strings.TrimSpace(env("MIGRATIONS_DIR", ""))
+	dir := strings.TrimSpace(utils.Env("MIGRATIONS_DIR", ""))
 	if dir == "" {
 		// Try common locations for local/dev and container runtimes
 		candidates := []string{
@@ -584,7 +506,7 @@ func ensureDayShiftGroupSchemaAndBackfill() {
 	// No AutoMigrate here.
 
 	// One-time data migration: convert existing pairs to groups if not yet marked as applied
-	var existing Migration
+	var existing *utils.Migration
 	if err := DB.Where("name = ?", "0009_dayshift_groups").First(&existing).Error; err == nil {
 		// Already migrated
 		return
@@ -592,10 +514,10 @@ func ensureDayShiftGroupSchemaAndBackfill() {
 
 	// Only backfill when groups table is empty to avoid duplications
 	var groupsCnt int64
-	_ = DB.Model(&DayShiftCycleGroup{}).Count(&groupsCnt).Error
+	_ = DB.Model(&utils.DayShiftCycleGroup{}).Count(&groupsCnt).Error
 	if groupsCnt > 0 {
 		// Still mark as applied to avoid checking on every boot
-		_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
+		_ = DB.Create(&utils.Migration{Name: "0009_dayshift_groups"}).Error
 		return
 	}
 }
@@ -638,7 +560,7 @@ func parseAuthToken(authHeader string) string {
 
 func userFromSession(c *fiber.Ctx) bool {
 	// Optional debug logging for auth flow (no secrets). Enable by setting DEBUG_AUTH=true
-	debugAuth := strings.ToLower(strings.TrimSpace(env("DEBUG_AUTH", ""))) == "true"
+	debugAuth := strings.ToLower(strings.TrimSpace(utils.Env("DEBUG_AUTH", ""))) == "true"
 	raw := c.Get("Authorization")
 	token := parseAuthToken(raw)
 	if token == "" {
@@ -650,7 +572,7 @@ func userFromSession(c *fiber.Ctx) bool {
 	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
 	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
 	if err != nil || strings.TrimSpace(uidStr) == "" {
-		var sess Session
+		var sess utils.Session
 		if dberr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&sess).Error; dberr != nil {
 			if debugAuth {
 				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
@@ -677,7 +599,7 @@ func userFromSession(c *fiber.Ctx) bool {
 		}
 	} else {
 		if headerPlat != "" {
-			var sess Session
+			var sess utils.Session
 			if err := DB.Where("hashed_token = ?", sha256Hex([]byte(token))).Order("id DESC").First(&sess).Error; err == nil {
 				if sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
 					if debugAuth {
@@ -691,7 +613,7 @@ func userFromSession(c *fiber.Ctx) bool {
 			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
 		}
 	}
-	var u User
+	var u utils.User
 	if err := DB.First(&u, uidStr).Error; err != nil {
 		if debugAuth {
 			log.Printf("[auth] %s %s user not found id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
@@ -699,7 +621,7 @@ func userFromSession(c *fiber.Ctx) bool {
 		return false
 	}
 	var cnt int64
-	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+	if err := DB.Model(&utils.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
 		if debugAuth {
 			log.Printf("[auth] %s %s user blocked id=%d", c.Method(), sanitizeURLPath(c.Path()), u.ID)
 		}
@@ -742,7 +664,7 @@ func revokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string) {
 		_ = RDB.SRem(c.Context(), key, t).Err()
 	}
 	curHash := sha256Hex([]byte(currentToken))
-	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&Session{}).Error
+	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&utils.Session{}).Error
 }
 
 func userFromAPIKey(c *fiber.Ctx) bool {
@@ -751,16 +673,16 @@ func userFromAPIKey(c *fiber.Ctx) bool {
 		return false
 	}
 	hashed := sha256Hex([]byte(apiKey))
-	var key APIKey
+	var key utils.APIKey
 	if err := DB.Where("hashed_token = ? AND is_valid = 1 AND (expires_at IS NULL OR expires_at > ?)", hashed, time.Now()).First(&key).Error; err != nil {
 		return false
 	}
-	var u User
+	var u utils.User
 	if err := DB.First(&u, key.UserID).Error; err != nil {
 		return false
 	}
 	var cnt int64
-	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+	if err := DB.Model(&utils.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
 		return false
 	}
 	c.Locals("user", &u)
@@ -805,7 +727,7 @@ func consumeRecoveryCode(userID uint, code string) bool {
 	hashed := sha256Hex([]byte(code))
 	ok := false
 	_ = DB.Transaction(func(tx *gorm.DB) error {
-		var rc RecoveryCode
+		var rc utils.RecoveryCode
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND hashed_code = ? AND is_used = 0", userID, hashed).First(&rc).Error; err != nil {
 			return nil
 		}
@@ -820,7 +742,7 @@ func consumeRecoveryCode(userID uint, code string) bool {
 }
 
 func getActiveTOTP(userID uint) (bool, string, error) {
-	var ts TOTPSecret
+	var ts utils.TOTPSecret
 	if err := DB.Where("user_id = ? AND is_active = 1", userID).First(&ts).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return false, "", nil
@@ -835,7 +757,7 @@ func getActiveTOTP(userID uint) (bool, string, error) {
 }
 
 func getEncKey() []byte {
-	keyStr := env("TOTP_ENC_KEY", "dev_totp_key")
+	keyStr := utils.Env("TOTP_ENC_KEY", "dev_totp_key")
 	sum := sha256.Sum256([]byte(keyStr))
 	return sum[:]
 }
@@ -895,7 +817,7 @@ func buildICSForUser(userID uint) string {
 	b.WriteString("PRODID:-//Taskly//EN" + crlf)
 	b.WriteString("CALSCALE:GREGORIAN" + crlf)
 	b.WriteString("METHOD:PUBLISH" + crlf)
-	var tasks []Task
+	var tasks []utils.Task
 	// Order by effective deadline timestamp derived from date + enum
 	eff := effectiveDeadlineExpr("")
 	_ = DB.Where("added_user_id = ?", userID).Order(eff + " ASC").Limit(500).Find(&tasks).Error
@@ -906,9 +828,9 @@ func buildICSForUser(userID uint) string {
 			continue
 		}
 		// ed := effectiveDeadlineTime(t)
-		var subj Subject
+		var subj utils.Subject
 		_ = DB.First(&subj, t.SubjectID).Error
-		var u User
+		var u utils.User
 		_ = DB.First(&u, t.AddedUserID).Error
 		lang := strings.ToLower(strings.TrimSpace(u.NotificationLang))
 		if lang == "" {
@@ -979,11 +901,11 @@ func icalEscape(s string) string {
 
 // SMTP helper to send multipart email
 func smtpSend(to, subject, text, html string) error {
-	smtpHost := env("SMTP_HOST", "localhost")
-	smtpPort := env("SMTP_PORT", "25")
-	from := env("SMTP_FROM", "noreply@taskly.local")
-	smtpUser := env("SMTP_USER", from)
-	smtpPass := env("SMTP_PASSWORD", "")
+	smtpHost := utils.Env("SMTP_HOST", "localhost")
+	smtpPort := utils.Env("SMTP_PORT", "25")
+	from := utils.Env("SMTP_FROM", "noreply@taskly.local")
+	smtpUser := utils.Env("SMTP_USER", from)
+	smtpPass := utils.Env("SMTP_PASSWORD", "")
 	nowRFC := time.Now().Format(time.RFC1123Z)
 	boundary := fmt.Sprintf("taskly-%d", time.Now().UnixNano())
 	msg := []byte(
@@ -1001,12 +923,12 @@ func smtpSend(to, subject, text, html string) error {
 	if smtpPass != "" {
 		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 	}
-	toSec, _ := strconv.Atoi(env("SMTP_TIMEOUT", "60"))
+	toSec, _ := strconv.Atoi(utils.Env("SMTP_TIMEOUT", "60"))
 	if toSec <= 0 {
 		toSec = 60
 	}
 	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
-	mode := strings.ToLower(strings.TrimSpace(env("SMTP_TLS", "")))
+	mode := strings.ToLower(strings.TrimSpace(utils.Env("SMTP_TLS", "")))
 	var conn net.Conn
 	var err error
 	if mode == "smtps" || smtpPort == "465" {
@@ -1063,11 +985,11 @@ func smtpSend(to, subject, text, html string) error {
 
 // SMTP helper to send plain text email (no HTML/multipart)
 func smtpSendPlain(to, subject, text string) error {
-	smtpHost := env("SMTP_HOST", "localhost")
-	smtpPort := env("SMTP_PORT", "25")
-	from := env("SMTP_FROM", "noreply@taskly.local")
-	smtpUser := env("SMTP_USER", from)
-	smtpPass := env("SMTP_PASSWORD", "")
+	smtpHost := utils.Env("SMTP_HOST", "localhost")
+	smtpPort := utils.Env("SMTP_PORT", "25")
+	from := utils.Env("SMTP_FROM", "noreply@taskly.local")
+	smtpUser := utils.Env("SMTP_USER", from)
+	smtpPass := utils.Env("SMTP_PASSWORD", "")
 	nowRFC := time.Now().Format(time.RFC1123Z)
 	msg := []byte(
 		"From: " + from + "\r\n" +
@@ -1081,12 +1003,12 @@ func smtpSendPlain(to, subject, text string) error {
 	if smtpPass != "" {
 		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 	}
-	toSec, _ := strconv.Atoi(env("SMTP_TIMEOUT", "60"))
+	toSec, _ := strconv.Atoi(utils.Env("SMTP_TIMEOUT", "60"))
 	if toSec <= 0 {
 		toSec = 60
 	}
 	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
-	mode := strings.ToLower(strings.TrimSpace(env("SMTP_TLS", "")))
+	mode := strings.ToLower(strings.TrimSpace(utils.Env("SMTP_TLS", "")))
 	var conn net.Conn
 	var err error
 	if mode == "smtps" || smtpPort == "465" {
@@ -1141,11 +1063,11 @@ func smtpSendPlain(to, subject, text string) error {
 }
 
 // Build formatted title for Teams email like: "教科名: タイトル(朝まで|X限まで|X〜Y限まで|M/D HH:mmまで)"
-func buildTeamsTitleForTask(t Task) string {
-	var subj Subject
+func buildTeamsTitleForTask(t utils.Task) string {
+	var subj utils.Subject
 	_ = DB.First(&subj, t.SubjectID).Error
 	// Determine preferred language from adding user if available
-	var user User
+	var user utils.User
 	_ = DB.First(&user, t.AddedUserID).Error
 	lang := strings.ToLower(strings.TrimSpace(user.NotificationLang))
 	if lang == "" {
@@ -1344,7 +1266,7 @@ func displayUntilJa(until string) string {
 }
 
 func subjectNameJa(id uint) string {
-	var s Subject
+	var s utils.Subject
 	if err := DB.First(&s, id).Error; err == nil {
 		if strings.TrimSpace(s.NameJa) != "" {
 			return s.NameJa
@@ -1364,7 +1286,7 @@ func strOrUnsetJa(p *string) string {
 }
 
 // Build a Japanese message describing changes between two Task states
-func buildTaskUpdateMessageJa(before Task, after Task) string {
+func buildTaskUpdateMessageJa(before utils.Task, after utils.Task) string {
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "課題が更新されました (ID:%d)\n", after.ID)
 	// Title
@@ -1405,7 +1327,7 @@ func buildTaskUpdateMessageJa(before Task, after Task) string {
 	return b.String()
 }
 
-func buildTaskDeleteMessageJa(t Task) string {
+func buildTaskDeleteMessageJa(t utils.Task) string {
 	// Teams 返信用のメッセージはシンプルに固定文言で通知
 	// もし詳細が必要になった場合は、タイトル等を後段に追記する運用に変更可能
 	return "この課題は削除されました。"
@@ -1421,7 +1343,7 @@ func effectiveDeadlineExpr(alias string) string {
 }
 
 // Compute effective deadline timestamp in Go for the given task
-func effectiveDeadlineTime(t Task) time.Time {
+func effectiveDeadlineTime(t utils.Task) time.Time {
 	h, m := endTimeForUntil(t.DeadlineUntil)
 	return time.Date(t.Deadline.Year(), t.Deadline.Month(), t.Deadline.Day(), h, m, 0, 0, t.Deadline.Location())
 }
@@ -1434,8 +1356,8 @@ func abs(x int) int {
 }
 
 // Send Teams notification email for a newly created task
-func sendTeamsNotifyEmailForTask(t Task) {
-	to := env("TEAMS_NOTIFY_EMAIL", "")
+func sendTeamsNotifyEmailForTask(t utils.Task) {
+	to := utils.Env("TEAMS_NOTIFY_EMAIL", "")
 	if strings.TrimSpace(to) == "" {
 		return
 	}
@@ -1472,7 +1394,7 @@ func latestTeamsMessageIDForTask(taskID uint) (string, bool) {
 
 // Send Teams reply email for an existing message (update/delete events)
 func sendTeamsReplyEmail(taskID uint, messageID string, message string) {
-	to := env("TEAMS_NOTIFY_EMAIL", "")
+	to := utils.Env("TEAMS_NOTIFY_EMAIL", "")
 	if strings.TrimSpace(to) == "" {
 		return
 	}
@@ -1492,7 +1414,7 @@ func toUint(s string) uint {
 // Authorization and permission helpers
 func userHasRole(userID uint, role string) (bool, error) {
 	var cnt int64
-	if err := DB.Model(&RoleUser{}).Where("user_id = ? AND role = ?", userID, role).Count(&cnt).Error; err != nil {
+	if err := DB.Model(&utils.RoleUser{}).Where("user_id = ? AND role = ?", userID, role).Count(&cnt).Error; err != nil {
 		return false, err
 	}
 	return cnt > 0, nil
@@ -1509,7 +1431,7 @@ func apiKeyLimitForUser(userID uint) (int, error) {
 	} else if ok {
 		return 100, nil
 	}
-	var p Permission
+	var p utils.Permission
 	if err := DB.Where("user_id = ? AND target = ?", userID, "api_key_limit").Order("id DESC").First(&p).Error; err == nil && p.Value != nil {
 		var v int
 		fmt.Sscanf(*p.Value, "%d", &v)
@@ -1531,7 +1453,7 @@ func checkPermission(userID uint, target, action string, ownerID *uint) (bool, e
 	} else if ok {
 		return true, nil
 	}
-	var p Permission
+	var p utils.Permission
 	if err := DB.Where("user_id = ? AND target = ? AND method = ?", userID, target, action).Order("id DESC").First(&p).Error; err == nil {
 		if p.Value == nil || *p.Value == "" || strings.EqualFold(*p.Value, "all") {
 			return true, nil
@@ -1589,7 +1511,7 @@ func buildEmailHTML(title, contentHTML string) string {
 
 // sendDiscordContent posts a simple content message to Discord webhook if configured. Fire-and-forget friendly.
 func sendDiscordContent(content string) {
-	hook := env("DISCORD_WEBHOOK_URL", "")
+	hook := utils.Env("DISCORD_WEBHOOK_URL", "")
 	if strings.TrimSpace(hook) == "" {
 		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
 		return
@@ -1605,7 +1527,7 @@ func sendDiscordContent(content string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "taskly-server/1.0")
+	req.Header.Set("utils.User-Agent", "taskly-server/1.0")
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1624,7 +1546,7 @@ func sendDiscordContent(content string) {
 
 // sendDiscordEmbeds posts one or more embeds to the Discord webhook. Logs basic diagnostics.
 func sendDiscordEmbeds(embeds []map[string]any) {
-	hook := env("DISCORD_WEBHOOK_URL", "")
+	hook := utils.Env("DISCORD_WEBHOOK_URL", "")
 	if strings.TrimSpace(hook) == "" {
 		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
 		return
@@ -1645,7 +1567,7 @@ func sendDiscordEmbeds(embeds []map[string]any) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "taskly-server/1.0")
+	req.Header.Set("utils.User-Agent", "taskly-server/1.0")
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1662,9 +1584,9 @@ func sendDiscordEmbeds(embeds []map[string]any) {
 }
 
 // sendDiscordTaskEmbed builds and sends an embed for task events (created/updated/deleted)
-func sendDiscordTaskEmbed(action string, t Task, actor string) {
+func sendDiscordTaskEmbed(action string, t utils.Task, actor string) {
 	// Prepare fields
-	webURL := strings.TrimSpace(env("WEB_URL", ""))
+	webURL := strings.TrimSpace(utils.Env("WEB_URL", ""))
 	title := "Task"
 	color := 5814783 // default bluish
 	switch strings.ToLower(strings.TrimSpace(action)) {
@@ -1727,77 +1649,8 @@ func sendDiscordDayShiftNotifyEmbed(date time.Time, userNames []string, actor st
 	sendDiscordEmbeds([]map[string]any{embed})
 }
 
-func performDayShiftRotation(now time.Time) error {
-	d := now
-	for !isBusinessDay(d) {
-		d = d.Add(24 * time.Hour)
-	}
-	cyc, err := getCurrentCycle(d)
-	if err != nil {
-		return err
-	}
-	if cyc == nil {
-		return nil
-	}
-	// Respect current cycle from configs if set; server does not rotate or increment
-	storedCIDStr, _ := getConfigString("day_shift_current_cycle")
-	storedCID := uint(0)
-	if strings.TrimSpace(storedCIDStr) != "" {
-		var x uint64
-		fmt.Sscanf(storedCIDStr, "%d", &x)
-		storedCID = uint(x)
-	}
-	if storedCID != 0 && storedCID != cyc.ID {
-		// Override with configured cycle
-		var confCyc DayShiftCycle
-		if err := DB.First(&confCyc, storedCID).Error; err == nil {
-			cyc = &confCyc
-		}
-	}
-	// Legacy assignment-table-based carry-over from previous business day removed.
-	// Prefer new group configuration if present
-	var cfgGroups []DayShiftCycleGroup
-	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups).Error
-	groups := make([][]uint, 0)
-	if len(cfgGroups) > 0 {
-		for _, g := range cfgGroups {
-			var members []DayShiftCycleGroupMember
-			_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&members).Error
-			if len(members) == 0 {
-				continue
-			}
-			arr := make([]uint, 0, len(members))
-			for _, m := range members {
-				arr = append(arr, m.UserID)
-			}
-			groups = append(groups, arr)
-		}
-	}
-	if len(groups) == 0 {
-		// Auto compute groups from active users using env group size (default 2)
-		actUsers, err := listActiveUsers()
-		if err != nil || len(actUsers) < 1 {
-			return err
-		}
-		gs := 2
-		if v := strings.TrimSpace(env("DAYSHIFT_GROUP_SIZE", "")); v != "" {
-			if n, e := strconv.Atoi(v); e == nil && n >= 1 {
-				gs = n
-			}
-		}
-		groups = computeGroups(actUsers, gs)
-		if len(groups) == 0 {
-			return nil
-		}
-	}
-	// Determine today's index via configs; actual assignment expansion is handled
-	// by downstream index-based batches, so server no longer persists per-day
-	// day_shift_assignments rows here.
-	return nil
-}
-
-func getCurrentCycle(d time.Time) (*DayShiftCycle, error) {
-	var cyc DayShiftCycle
+func getCurrentCycle(d time.Time) (*utils.DayShiftCycle, error) {
+	var cyc utils.DayShiftCycle
 	// If multiple cycles cover the date, prefer the one with the latest finish_date
 	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).Order("finish_date DESC, id DESC").First(&cyc).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -1834,15 +1687,15 @@ func nextBusinessDay(d time.Time) time.Time {
 	return time.Time{}
 }
 
-func listActiveUsers() ([]User, error) {
-	var users []User
+func listActiveUsers() ([]utils.User, error) {
+	var users []utils.User
 	if err := DB.Where("is_deleted = 0").Order("id ASC").Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil
 }
 
-func computePairs(users []User) [][]uint {
+func computePairs(users []utils.User) [][]uint {
 	out := [][]uint{}
 	n := len(users)
 	if n < 2 {
@@ -1860,7 +1713,7 @@ func computePairs(users []User) [][]uint {
 
 // computeGroups splits users into groups of given size in order.
 // If remainder is non-zero, drop the trailing users (and log) to keep group sizes uniform.
-func computeGroups(users []User, size int) [][]uint {
+func computeGroups(users []utils.User, size int) [][]uint {
 	out := [][]uint{}
 	n := len(users)
 	if size <= 0 {
@@ -1918,12 +1771,12 @@ func shouldRotateByGemini(subject, body string) bool {
 		return true
 	}
 	// 2) If Gemini API key is configured, ask the model; parse JSON result safely
-	if env("GEMINI_API_KEY", "") == "" {
+	if utils.Env("GEMINI_API_KEY", "") == "" {
 		// No API key and heuristic didn't match → do not rotate
 		return false
 	}
 	// Allow overriding model via env; default to gemini-2.5-flash to match current API examples
-	modelName := strings.TrimSpace(env("GEMINI_MODEL", "gemini-2.5-flash"))
+	modelName := strings.TrimSpace(utils.Env("GEMINI_MODEL", "gemini-2.5-flash"))
 	ctx := context.Background()
 	cli, err := genai.NewClient(ctx, nil)
 	if err == nil {
@@ -1964,7 +1817,7 @@ func shouldRotateHeuristic(s string) bool {
 
 // Notify Discord with a simple embed indicating day shift rotation occurred
 func notifyDayShiftRotationDiscord(target time.Time) {
-	hook := env("DISCORD_WEBHOOK_URL", "")
+	hook := utils.Env("DISCORD_WEBHOOK_URL", "")
 	if hook == "" {
 		return
 	}
@@ -1988,7 +1841,7 @@ func captureError(err error) {
 	if err == nil {
 		return
 	}
-	if env("SENTRY_DSN", "") == "" {
+	if utils.Env("SENTRY_DSN", "") == "" {
 		return
 	}
 	sentry.CaptureException(err)

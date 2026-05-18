@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -34,10 +35,10 @@ func mutationFieldsReports(t *gqlTypes) graphql.Fields {
 			if !ok {
 				return nil, fmt.Errorf("context missing")
 			}
-			if !userFromSession(c) {
+			if !utils.UserFromSession(c, DB, RDB) {
 				return nil, fmt.Errorf("unauthorized")
 			}
-			u := c.Locals("user").(*User)
+			u := c.Locals("user").(*utils.User)
 			taskID := uint(p.Args["task_id"].(int))
 			reason := strings.TrimSpace(p.Args["reason"].(string))
 			var comment *string = nil
@@ -50,21 +51,21 @@ func mutationFieldsReports(t *gqlTypes) graphql.Fields {
 			if taskID == 0 || reason == "" || len(reason) > 255 {
 				return nil, fmt.Errorf("validation")
 			}
-			rec := UserReport{ReporterUserID: &u.ID, TaskID: taskID, Reason: reason, Comment: comment, CreatedAt: time.Now()}
+			rec := utils.UserReport{ReporterUserID: &u.ID, TaskID: taskID, Reason: reason, Comment: comment, CreatedAt: time.Now()}
 			if err := DB.Create(&rec).Error; err != nil {
 				return nil, err
 			}
 			// Fire-and-forget Discord embeds with admin link
 			go func(id uint, tID uint, rsn string) {
-				hook := env("DISCORD_WEBHOOK_URL", "")
+				hook := utils.Env("DISCORD_WEBHOOK_URL", "")
 				if strings.TrimSpace(hook) == "" {
 					return
 				}
 				// Admin reports URL base
 				// Prefer WEB_PUBLIC_URL for web origin; fallback to API_PUBLIC_URL
-				web := env("WEB_PUBLIC_URL", "")
+				web := utils.Env("WEB_PUBLIC_URL", "")
 				if strings.TrimSpace(web) == "" {
-					web = env("API_PUBLIC_URL", "http://localhost:4321")
+					web = utils.Env("API_PUBLIC_URL", "http://localhost:4321")
 				}
 				adminBase := strings.TrimRight(web+"/admin", "/")
 				adminURL := fmt.Sprintf("%s/reports?id=%d", adminBase, id)
@@ -91,7 +92,7 @@ func mutationFieldsReports(t *gqlTypes) graphql.Fields {
 				}
 			}(rec.ID, taskID, reason)
 
-			_ = DB.Create(&Log{UserID: &u.ID, Action: "reports.create"}).Error
+			_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "reports.create"}).Error
 			return map[string]any{"id": int(rec.ID)}, nil
 		},
 	}

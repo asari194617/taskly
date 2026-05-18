@@ -3,46 +3,47 @@ package main
 import (
 	"strings"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 func registerPushRoutes(app *fiber.App) {
 	// Web Push subscription endpoints (no push send yet)
 	app.Post("/push/subscribe", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct{ Endpoint, P256dh, Auth string }
-		if err := parseJSONStrict(c, &body); err != nil || strings.TrimSpace(body.Endpoint) == "" || strings.TrimSpace(body.P256dh) == "" || strings.TrimSpace(body.Auth) == "" {
+		if err := utils.ParseJSONStrict(c, &body); err != nil || strings.TrimSpace(body.Endpoint) == "" || strings.TrimSpace(body.P256dh) == "" || strings.TrimSpace(body.Auth) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		var rec WebPushSubscription
+		var rec utils.WebPushSubscription
 		if err := DB.Where("user_id = ? AND endpoint = ?", u.ID, body.Endpoint).First(&rec).Error; err == nil {
 			rec.P256dh, rec.Auth = body.P256dh, body.Auth
 			_ = DB.Save(&rec).Error
 		} else {
-			_ = DB.Create(&WebPushSubscription{UserID: u.ID, Endpoint: body.Endpoint, P256dh: body.P256dh, Auth: body.Auth}).Error
+			_ = DB.Create(&utils.WebPushSubscription{UserID: u.ID, Endpoint: body.Endpoint, P256dh: body.P256dh, Auth: body.Auth}).Error
 		}
 		// Ensure a NotificationDevice row per subscription (Platform=WEBPUSH)
 		ua := strings.ToLower(strings.TrimSpace(c.Get("User-Agent")))
 		name := detectDeviceNameFromUA(ua)
 		payload := body.Endpoint
-		var dev NotificationDevice
+		var dev utils.NotificationDevice
 		if err := DB.Where("user_id = ? AND platform = 'WEBPUSH' AND payload = ?", u.ID, payload).First(&dev).Error; err == nil {
-			_ = DB.Model(&NotificationDevice{}).Where("id = ?", dev.ID).Updates(map[string]any{"is_enabled": true, "name": &name}).Error
+			_ = DB.Model(&utils.NotificationDevice{}).Where("id = ?", dev.ID).Updates(map[string]any{"is_enabled": true, "name": &name}).Error
 		} else {
 			nm := name
 			pl := payload
-			_ = DB.Create(&NotificationDevice{UserID: u.ID, Name: &nm, Platform: "WEBPUSH", Payload: &pl, IsEnabled: true}).Error
+			_ = DB.Create(&utils.NotificationDevice{UserID: u.ID, Name: &nm, Platform: "WEBPUSH", Payload: &pl, IsEnabled: true}).Error
 		}
 		return c.SendStatus(204)
 	})
 	app.Post("/push/unsubscribe", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct{ Endpoint string }
-		_ = parseJSONStrict(c, &body)
+		_ = utils.ParseJSONStrict(c, &body)
 		if strings.TrimSpace(body.Endpoint) != "" {
-			_ = DB.Where("user_id = ? AND endpoint = ?", u.ID, body.Endpoint).Delete(&WebPushSubscription{}).Error
+			_ = DB.Where("user_id = ? AND endpoint = ?", u.ID, body.Endpoint).Delete(&utils.WebPushSubscription{}).Error
 			// Soft-disable corresponding device if exists
-			_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH' AND payload = ?", u.ID, body.Endpoint).Update("is_enabled", false).Error
+			_ = DB.Model(&utils.NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH' AND payload = ?", u.ID, body.Endpoint).Update("is_enabled", false).Error
 		}
 		return c.SendStatus(204)
 	})

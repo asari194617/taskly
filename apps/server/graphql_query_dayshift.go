@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -24,17 +25,17 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					cid := p.Args["cycle_id"].(int)
-					var groups []DayShiftCycleGroup
+					var groups []utils.DayShiftCycleGroup
 					if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&groups).Error; err != nil {
 						return nil, fmt.Errorf("db")
 					}
@@ -52,16 +53,16 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 			Type: graphql.NewList(dayShiftCycleType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
-					var items []DayShiftCycle
+					var items []utils.DayShiftCycle
 					if err := DB.Order("begin_date DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -84,12 +85,12 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
@@ -103,7 +104,7 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					}
 					qstr, _ := p.Args["q"].(string)
 					qstr = strings.TrimSpace(qstr)
-					dbq := DB.Model(&DayShiftCycle{})
+					dbq := DB.Model(&utils.DayShiftCycle{})
 					if qstr != "" {
 						dbq = dbq.Where("description LIKE ?", "%"+qstr+"%")
 					}
@@ -111,7 +112,7 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if err := dbq.Count(&total).Error; err != nil {
 						return nil, err
 					}
-					var items []DayShiftCycle
+					var items []utils.DayShiftCycle
 					if err := dbq.Order("begin_date DESC").Offset((page - 1) * size).Limit(size).Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -139,23 +140,23 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					cid := p.Args["cycle_id"].(int)
-					var groups []DayShiftCycleGroup
+					var groups []utils.DayShiftCycleGroup
 					if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&groups).Error; err != nil {
 						return nil, fmt.Errorf("db")
 					}
 					out := make([]map[string]any, 0, len(groups))
 					for _, g := range groups {
-						var mems []DayShiftCycleGroupMember
+						var mems []utils.DayShiftCycleGroupMember
 						_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&mems).Error
 						ids := make([]int, 0, len(mems))
 						for _, m := range mems {
@@ -178,12 +179,12 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
@@ -196,18 +197,18 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if v, ok := p.Args["page_size"].(int); ok && v > 0 && v <= 200 {
 						size = v
 					}
-					dbq := DB.Model(&DayShiftCycleGroup{}).Where("cycle_id = ?", cid)
+					dbq := DB.Model(&utils.DayShiftCycleGroup{}).Where("cycle_id = ?", cid)
 					var total int64
 					if err := dbq.Count(&total).Error; err != nil {
 						return nil, err
 					}
-					var groups []DayShiftCycleGroup
+					var groups []utils.DayShiftCycleGroup
 					if err := dbq.Order("position ASC, id ASC").Offset((page - 1) * size).Limit(size).Find(&groups).Error; err != nil {
 						return nil, fmt.Errorf("db")
 					}
 					out := make([]map[string]any, 0, len(groups))
 					for _, g := range groups {
-						var mems []DayShiftCycleGroupMember
+						var mems []utils.DayShiftCycleGroupMember
 						_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&mems).Error
 						ids := make([]int, 0, len(mems))
 						for _, m := range mems {

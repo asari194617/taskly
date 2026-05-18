@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -37,11 +38,11 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					if okp, err := checkPermission(u.ID, "tasks", "read", nil); err != nil {
+					u := c.Locals("user").(*utils.User)
+					if okp, err := utils.CheckPermission(u.ID, "tasks", "read", nil, DB); err != nil {
 						return nil, err
 					} else if !okp {
 						return nil, fmt.Errorf("forbidden")
@@ -66,11 +67,11 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 							cursorID = uint(v)
 						}
 					}
-					dbq := DB.Model(&Task{})
+					dbq := DB.Model(&utils.Task{})
 					// Use date-only for comparison because deadline is DATE type
 					today := time.Now()
 					today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
-					eff := effectiveDeadlineExpr("")
+					eff := utils.EffectiveDeadlineExpr("")
 					if overdue {
 						dbq = dbq.Where(eff+" < ?", today)
 					} else {
@@ -98,7 +99,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					} else {
 						dbq = dbq.Order(eff + " ASC").Order("id ASC")
 					}
-					var items []Task
+					var items []utils.Task
 					if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -114,7 +115,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					// Preload user's completion map for fetched items
 					completed := map[uint]bool{}
 					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-						u := c.Locals("user").(*User)
+						u := c.Locals("user").(*utils.User)
 						ids := make([]uint, 0, len(items))
 						for _, it := range items {
 							ids = append(ids, it.ID)
@@ -170,10 +171,10 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 			Type: graphql.NewList(subjectType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) { // session only
+					if !utils.UserFromSession(c, DB, RDB) { // session only
 						return nil, fmt.Errorf("unauthorized")
 					}
-					var subs []Subject
+					var subs []utils.Subject
 					now := time.Now()
 					if err := DB.Where("expires_at IS NULL OR expires_at > ?", now).Order("id ASC").Find(&subs).Error; err != nil {
 						return nil, err
@@ -196,11 +197,11 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 			Type: meType,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					var roles []RoleUser
+					u := c.Locals("user").(*utils.User)
+					var roles []utils.RoleUser
 					_ = DB.Where("user_id = ?", u.ID).Find(&roles).Error
 					isAdmin := false
 					isManager := false
@@ -229,21 +230,21 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 			Type: authSettingsType,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					var fresh User
+					u := c.Locals("user").(*utils.User)
+					var fresh utils.User
 					if err := DB.First(&fresh, u.ID).Error; err != nil {
 						return nil, err
 					}
 					hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
-					totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+					totpEnabled, _, _ := utils.GetActiveTOTP(fresh.ID, DB)
 					// counts for UI logic
 					var pkCount int64
-					_ = DB.Model(&Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+					_ = DB.Model(&utils.Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
 					var rcCount int64
-					_ = DB.Model(&RecoveryCode{}).Where("user_id = ? AND is_used = 0", fresh.ID).Count(&rcCount).Error
+					_ = DB.Model(&utils.RecoveryCode{}).Where("user_id = ? AND is_used = 0", fresh.ID).Count(&rcCount).Error
 					return map[string]any{
 						"email_login_enabled":  fresh.EmailCodeAllowed,
 						"has_password":         hasPassword,
@@ -260,11 +261,11 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 			Type: graphql.NewList(passkeyType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					var items []Passkey
+					u := c.Locals("user").(*utils.User)
+					var items []utils.Passkey
 					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}

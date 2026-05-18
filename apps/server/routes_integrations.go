@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
 )
@@ -23,7 +24,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 	// Unified Teams integration secret header verification helper
 	requireTeamsSecret := func(c *fiber.Ctx) bool {
 		sec := c.Get("x-teams-integration-secret")
-		return sec != "" && sec == env("TEAMS_INTEGRATION_SECRET", "change_me")
+		return sec != "" && sec == utils.Env("TEAMS_INTEGRATION_SECRET", "change_me")
 	}
 
 	// Callback endpoint for Power Automate to report posting result
@@ -159,7 +160,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			subjectID, _ := job["subject_id"].(uint)
 			callback, _ := job["status_callback"].(*string)
 			// Create task
-			rec := Task{AddedUserID: addedUserID, Title: title, SubjectID: subjectID, Description: desc}
+			rec := utils.Task{AddedUserID: addedUserID, Title: title, SubjectID: subjectID, Description: desc}
 			var isSuccess bool
 			if err := DB.Create(&rec).Error; err != nil {
 				isSuccess = false
@@ -189,7 +190,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			if callback != nil && *callback != "" {
 				cbURL := *callback
 				payload := fmt.Sprintf(`{"is_success":%t,"task_id":%d}`, isSuccess, rec.ID)
-				secret := env("TEAMS_INTEGRATION_SECRET", "")
+				secret := utils.Env("TEAMS_INTEGRATION_SECRET", "")
 				// HMAC signature
 				var sig string
 				if secret != "" {
@@ -251,7 +252,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		// Resolve user by email
-		var u User
+		var u utils.User
 		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "user not found"})
 		}
@@ -285,7 +286,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			Subject string `json:"subject"`
 			Body    string `json:"body"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		joined := strings.ToLower(body.Subject + "\n" + body.Body)
@@ -294,7 +295,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 		}
 
 		// Decide whether "skip/rotation" is requested using Gemini+heuristic.
-		if !shouldRotateByGemini(body.Subject, body.Body) {
+		if !utils.ShouldRotateByGemini(body.Subject, body.Body) {
 			return c.Status(202).JSON(fiber.Map{"ok": true, "rotated": false})
 		}
 
@@ -305,7 +306,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 				{"name": "ReceivedAt", "value": time.Now().UTC().Format(time.RFC3339), "inline": true},
 				{"name": "Subject", "value": body.Subject, "inline": false},
 			}
-			sendDiscordEmbeds([]map[string]any{{
+			utils.SendDiscordEmbeds([]map[string]any{{
 				"title":       "Day Shift Continue Request Accepted",
 				"description": "日直継続リクエストを受理しました。",
 				"color":       0x1ABC9C,
@@ -315,7 +316,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 		}()
 
 		// Simple heuristic to distinguish "today" vs "tomorrow". This keeps
-		// shouldRotateByGemini focused on yes/no while we infer timing here.
+		// ShouldRotateByGemini focused on yes/no while we infer timing here.
 		mode := "today"
 		if strings.Contains(joined, "明日") || strings.Contains(joined, "あした") || strings.Contains(joined, "翌日") {
 			mode = "tomorrow"
@@ -327,7 +328,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 		if mode == "tomorrow" {
 			// Tomorrow-only skip: set flag so that the next business day's index
 			// increment is skipped by the Airflow DAG.
-			if err := setConfigString("day_shift_index_increment_skip", "1"); err != nil {
+			if err := utils.SetConfigString("day_shift_index_increment_skip", "1", DB); err != nil {
 				return c.Status(500).JSON(fiber.Map{"error": "failed to set skip flag"})
 			}
 			return c.Status(202).JSON(fiber.Map{"ok": true, "rotated": true, "mode": "tomorrow"})
@@ -335,7 +336,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 
 		// Today+tomorrow continuous duty:
 		// 1) Decrement index by 1.
-		idx, err := getConfigInt("day_shift_current_index")
+		idx, err := utils.GetConfigInt("day_shift_current_index", DB)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "failed to read index"})
 		}
@@ -344,18 +345,18 @@ func registerIntegrationRoutes(app *fiber.App) {
 		if newIdx < 0 {
 			newIdx = 0
 		}
-		if err := setConfigString("day_shift_current_index", fmt.Sprintf("%d", newIdx)); err != nil {
+		if err := utils.SetConfigString("day_shift_current_index", fmt.Sprintf("%d", newIdx), DB); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "failed to update index"})
 		}
 
 		// 2) Resolve today and next-day members based on index and cycle.
-		todayMembers, nextMembers, err := resolveDayShiftTodayAndNextMembers(today, before)
+		todayMembers, nextMembers, err := utils.ResolveDayShiftTodayAndNextMembers(today, before, DB)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "failed to resolve members"})
 		}
 
 		// 3) Compose and send email via email-compose gRPC.
-		if err := sendDayShiftSkipEmail(c.Context(), today, tomorrow, todayMembers, nextMembers); err != nil {
+		if err := utils.SendDayShiftSkipEmail(c.Context(), today, tomorrow, todayMembers, nextMembers); err != nil {
 			// Non-fatal: log to Sentry and still return 202 to avoid retries storm
 			sentry.CaptureException(err)
 		}
@@ -368,12 +369,12 @@ func registerIntegrationRoutes(app *fiber.App) {
 				{"name": "Index(after)", "value": fmt.Sprintf("%d", newIdx), "inline": true},
 			}
 			if len(todayMembers) > 0 {
-				fields = append(fields, map[string]any{"name": "Today Members", "value": joinUserNames(todayMembers), "inline": false})
+				fields = append(fields, map[string]any{"name": "Today Members", "value": utils.JoinUserNames(todayMembers), "inline": false})
 			}
 			if len(nextMembers) > 0 {
-				fields = append(fields, map[string]any{"name": "Next Members", "value": joinUserNames(nextMembers), "inline": false})
+				fields = append(fields, map[string]any{"name": "Next Members", "value": utils.JoinUserNames(nextMembers), "inline": false})
 			}
-			sendDiscordEmbeds([]map[string]any{{
+			utils.SendDiscordEmbeds([]map[string]any{{
 				"title":       "Day Shift Continuous Duty (Today+Next)",
 				"description": body.Subject,
 				"color":       0x3498DB,
@@ -389,7 +390,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 	app.Post("/integrations/email/inbound", func(c *fiber.Ctx) error {
 		// Auth via header
 		sec := c.Get("X-Email-Integration-Secret")
-		if strings.TrimSpace(sec) == "" || sec != env("EMAIL_INTEGRATION_SECRET", "change_me_email_inbound_secret") {
+		if strings.TrimSpace(sec) == "" || sec != utils.Env("EMAIL_INTEGRATION_SECRET", "change_me_email_inbound_secret") {
 			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		// Expected JSON body
@@ -407,7 +408,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 				ContentB64  string `json:"content_base64"`
 			} `json:"attachments"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		// Capture minimal event to Sentry
@@ -498,7 +499,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 				"timestamp":   time.Now().UTC().Format(time.RFC3339),
 			})
 		}
-		go sendDiscordEmbeds(embeds)
+		go utils.SendDiscordEmbeds(embeds)
 		return c.SendStatus(202)
 	})
 }
@@ -612,7 +613,7 @@ func extractBouncedRecipients(s string) []string {
 			parts := strings.Split(ln, ";")
 			if len(parts) >= 2 {
 				addr := strings.TrimSpace(parts[len(parts)-1])
-				if isEmail(addr) {
+				if utils.IsEmail(addr) {
 					out = append(out, addr)
 				}
 			}
@@ -640,11 +641,11 @@ func uniqueStrings(a []string) []string {
 }
 
 func suppressEmail(addr, reason string, dur time.Duration) bool {
-	if !isEmail(addr) {
+	if !utils.IsEmail(addr) {
 		return false
 	}
 	until := time.Now().Add(dur)
-	rec := EmailSuppression{Email: addr, SuspendedUntil: until}
+	rec := utils.EmailSuppression{Email: addr, SuspendedUntil: until}
 	if strings.TrimSpace(reason) != "" {
 		rec.Reason = &reason
 	}

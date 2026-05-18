@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -24,12 +25,12 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
@@ -38,7 +39,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					emailEnabled := true
 					webpushEnabled := false
 					var latest *time.Time
-					var devs []NotificationDevice
+					var devs []utils.NotificationDevice
 					_ = DB.Where("user_id = ? AND platform IN ?", uid, []string{"EMAIL", "WEBPUSH"}).Find(&devs).Error
 					for _, d := range devs {
 						switch strings.ToUpper(strings.TrimSpace(d.Platform)) {
@@ -70,16 +71,16 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					if !isAdmin {
 						return nil, fmt.Errorf("forbidden")
 					}
-					var reports []UserReport
-					q := DB.Model(&UserReport{})
+					var reports []utils.UserReport
+					q := DB.Model(&utils.UserReport{})
 					if taskID, ok := p.Args["task_id"].(int); ok && taskID > 0 {
 						q = q.Where("task_id = ?", taskID)
 					}
@@ -122,15 +123,15 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					if !isAdmin {
 						return nil, fmt.Errorf("forbidden")
 					}
-					var report UserReport
+					var report utils.UserReport
 					if err := DB.First(&report, p.Args["id"].(int)).Error; err != nil {
 						return nil, err
 					}
@@ -158,19 +159,19 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					uid := uint(p.Args["user_id"].(int))
 					// defaults
 					prefs := map[string]bool{"TASK": true, "DAYSHIFT": true}
-					var list []NotificationTypePref
+					var list []utils.NotificationTypePref
 					_ = DB.Where("user_id = ?", uid).Find(&list).Error
 					for _, it := range list {
 						k := strings.ToUpper(strings.TrimSpace(it.NotificationType))
@@ -190,17 +191,17 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					uid := uint(p.Args["user_id"].(int))
-					var devs []NotificationDevice
+					var devs []utils.NotificationDevice
 					if err := DB.Where("user_id = ?", uid).Order("id ASC").Find(&devs).Error; err != nil {
 						return nil, err
 					}
@@ -231,12 +232,12 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
@@ -255,13 +256,13 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 							ids = append(ids, uint(t))
 						}
 					}
-					var users []User
+					var users []utils.User
 					if err := DB.Where("id IN ?", ids).Order("id ASC").Find(&users).Error; err != nil {
 						return nil, err
 					}
 					ridx := map[uint][]string{}
 					if len(users) > 0 {
-						var rls []RoleUser
+						var rls []utils.RoleUser
 						_ = DB.Where("user_id IN ?", ids).Find(&rls).Error
 						for _, r := range rls {
 							ridx[r.UserID] = append(ridx[r.UserID], r.Role)
@@ -269,7 +270,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					blocked := map[uint]bool{}
 					if len(users) > 0 {
-						var blks []Block
+						var blks []utils.Block
 						_ = DB.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
 						for _, b := range blks {
 							blocked[b.UserID] = true
@@ -300,23 +301,23 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					qstr, _ := p.Args["q"].(string)
 					qstr = strings.TrimSpace(qstr)
-					dbq := DB.Model(&User{})
+					dbq := DB.Model(&utils.User{})
 					if qstr != "" {
 						like := "%" + qstr + "%"
 						dbq = dbq.Where("email LIKE ? OR display_name LIKE ?", like, like)
 					}
-					var users []User
+					var users []utils.User
 					if err := dbq.Order("id DESC").Limit(100).Find(&users).Error; err != nil {
 						return nil, err
 					}
@@ -326,7 +327,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					roleMap := map[uint][]string{}
 					if len(ids) > 0 {
-						var roles []RoleUser
+						var roles []utils.RoleUser
 						_ = DB.Where("user_id IN ?", ids).Find(&roles).Error
 						for _, r := range roles {
 							roleMap[r.UserID] = append(roleMap[r.UserID], r.Role)
@@ -334,7 +335,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					blocked := map[uint]bool{}
 					if len(ids) > 0 {
-						var blks []Block
+						var blks []utils.Block
 						_ = DB.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
 						for _, b := range blks {
 							blocked[b.UserID] = true
@@ -375,12 +376,12 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					isAdmin, _ := userHasRole(u.ID, "admin")
-					isManager, _ := userHasRole(u.ID, "manager")
+					u := c.Locals("user").(*utils.User)
+					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
@@ -396,7 +397,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					if v, ok := p.Args["page_size"].(int); ok && v > 0 && v <= 200 {
 						size = v
 					}
-					dbq := DB.Model(&User{})
+					dbq := DB.Model(&utils.User{})
 					if qstr != "" {
 						like := "%" + qstr + "%"
 						dbq = dbq.Where("email LIKE ? OR display_name LIKE ?", like, like)
@@ -427,7 +428,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 						ord = "DESC"
 					}
 					offset := (page - 1) * size
-					var users []User
+					var users []utils.User
 					if err := dbq.Order(col + " " + ord).Offset(offset).Limit(size).Find(&users).Error; err != nil {
 						return nil, err
 					}
@@ -437,7 +438,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					roleMap := map[uint][]string{}
 					if len(ids) > 0 {
-						var roles []RoleUser
+						var roles []utils.RoleUser
 						_ = DB.Where("user_id IN ?", ids).Find(&roles).Error
 						for _, r := range roles {
 							roleMap[r.UserID] = append(roleMap[r.UserID], r.Role)
@@ -445,7 +446,7 @@ func queryFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					blocked := map[uint]bool{}
 					if len(ids) > 0 {
-						var blks []Block
+						var blks []utils.Block
 						_ = DB.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
 						for _, b := range blks {
 							blocked[b.UserID] = true

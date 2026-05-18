@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 type ModerationPolicy struct {
@@ -21,7 +22,7 @@ func defaultModerationPolicy() ModerationPolicy {
 }
 
 func loadModerationPolicy() ModerationPolicy {
-	var row SystemSetting
+	var row utils.SystemSetting
 	if err := DB.Where("`key` = ?", "moderation_policy").First(&row).Error; err != nil || strings.TrimSpace(row.Value) == "" {
 		return defaultModerationPolicy()
 	}
@@ -41,13 +42,13 @@ func loadModerationPolicy() ModerationPolicy {
 func saveModerationPolicy(p ModerationPolicy) error {
 	b, _ := json.Marshal(p)
 	now := time.Now()
-	var existing SystemSetting
+	var existing utils.SystemSetting
 	if err := DB.Where("`key` = ?", "moderation_policy").First(&existing).Error; err == nil {
 		existing.Value = string(b)
 		existing.UpdatedAt = now
 		return DB.Save(&existing).Error
 	}
-	rec := SystemSetting{Key: "moderation_policy", Value: string(b), CreatedAt: now, UpdatedAt: now}
+	rec := utils.SystemSetting{Key: "moderation_policy", Value: string(b), CreatedAt: now, UpdatedAt: now}
 	return DB.Create(&rec).Error
 }
 
@@ -87,13 +88,13 @@ func registerAdminModerationRoutes(app *fiber.App) {
 
 	// Hide/unhide task
 	app.Post("/admin/moderation/tasks/:id/hide", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		if err := DB.Model(&Task{}).Where("id = ?", c.Params("id")).Update("is_hidden", true).Error; err != nil {
+		if err := DB.Model(&utils.Task{}).Where("id = ?", c.Params("id")).Update("is_hidden", true).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
 	})
 	app.Post("/admin/moderation/tasks/:id/unhide", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		if err := DB.Model(&Task{}).Where("id = ?", c.Params("id")).Update("is_hidden", false).Error; err != nil {
+		if err := DB.Model(&utils.Task{}).Where("id = ?", c.Params("id")).Update("is_hidden", false).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -106,7 +107,7 @@ func registerAdminModerationRoutes(app *fiber.App) {
 	})
 	app.Put("/admin/moderation/settings", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
 		var body ModerationPolicy
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		// sanitize

@@ -2,11 +2,13 @@ package main
 
 import (
 	"testing"
+
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 func TestComputePairs(t *testing.T) {
-	users := []User{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
-	pairs := computePairs(users)
+	users := []utils.User{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
+	pairs := utils.ComputePairs(users)
 	if len(pairs) != 2 {
 		t.Fatalf("expected 2 pairs, got %d", len(pairs))
 	}
@@ -17,16 +19,16 @@ func TestComputePairs(t *testing.T) {
 		t.Fatalf("unexpected second pair: %+v", pairs[1])
 	}
 
-	users = []User{{ID: 1}, {ID: 2}, {ID: 3}}
-	pairs = computePairs(users)
+	users = []utils.User{{ID: 1}, {ID: 2}, {ID: 3}}
+	pairs = utils.ComputePairs(users)
 	if len(pairs) != 1 {
 		t.Fatalf("expected 1 pair when odd, got %d", len(pairs))
 	}
 }
 
-func TestIcalEscape(t *testing.T) {
+func TestICalEscape(t *testing.T) {
 	in := "Hello, World; Line\\Break\nNext"
-	out := icalEscape(in)
+	out := utils.ICalEscape(in)
 	if out == in {
 		t.Fatalf("expected escaped string, got same")
 	}
@@ -36,8 +38,8 @@ func TestIcalEscape(t *testing.T) {
 }
 
 func TestGenerateIcalToken(t *testing.T) {
-	a := generateIcalToken()
-	b := generateIcalToken()
+	a := utils.GenerateIcalToken()
+	b := utils.GenerateIcalToken()
 	if a == b {
 		t.Fatalf("expected different tokens")
 	}

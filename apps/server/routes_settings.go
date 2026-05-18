@@ -5,18 +5,19 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 func registerSettingsRoutes(app *fiber.App) {
 	// Auth settings endpoints
 	app.Get("/settings/auth", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		// refresh user
-		var fresh User
+		var fresh utils.User
 		_ = DB.First(&fresh, u.ID).Error
 		hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
-		totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+		totpEnabled, _, _ := utils.GetActiveTOTP(fresh.ID, DB)
 		return c.JSON(fiber.Map{
 			"email_login_enabled": fresh.EmailCodeAllowed,
 			"has_password":        hasPassword,
@@ -24,27 +25,27 @@ func registerSettingsRoutes(app *fiber.App) {
 		})
 	})
 	app.Post("/settings/auth", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			EmailLoginEnabled *bool `json:"email_login_enabled"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.EmailLoginEnabled != nil {
-			_ = DB.Model(&User{}).Where("id = ?", u.ID).Update("email_code_allowed", *body.EmailLoginEnabled).Error
+			_ = DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("email_code_allowed", *body.EmailLoginEnabled).Error
 		}
 		return c.SendStatus(204)
 	})
 
 	// iCal token management under settings
 	app.Get("/ical/tokens", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		var items []IcalKey
+		u := c.Locals("user").(*utils.User)
+		var items []utils.IcalKey
 		if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		base := strings.TrimRight(env("ICAL_BASE_URL", env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+		base := strings.TrimRight(utils.Env("ICAL_BASE_URL", utils.Env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
 		out := make([]map[string]any, 0, len(items))
 		for _, it := range items {
 			out = append(out, map[string]any{
@@ -58,29 +59,29 @@ func registerSettingsRoutes(app *fiber.App) {
 		return c.JSON(out)
 	})
 	app.Post("/ical/tokens", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			Description *string    `json:"description"`
 			ExpiresAt   *time.Time `json:"expires_at"`
 		}
-		_ = parseJSONStrict(c, &body)
+		_ = utils.ParseJSONStrict(c, &body)
 		if body.Description != nil {
 			d := strings.TrimSpace(*body.Description)
-			if !maxLen(d, 255) {
-				return validationError(c, map[string]string{"description": "too long"})
+			if !utils.MaxLen(d, 255) {
+				return utils.ValidationError(c, map[string]string{"description": "too long"})
 			}
 		}
-		tok := generateIcalToken()
-		rec := IcalKey{UserID: u.ID, Token: tok, Description: body.Description, ExpiresAt: body.ExpiresAt}
+		tok := utils.GenerateIcalToken()
+		rec := utils.IcalKey{UserID: u.ID, Token: tok, Description: body.Description, ExpiresAt: body.ExpiresAt}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		base := strings.TrimRight(env("ICAL_BASE_URL", env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+		base := strings.TrimRight(utils.Env("ICAL_BASE_URL", utils.Env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
 		return c.Status(201).JSON(fiber.Map{"id": rec.ID, "url": fmt.Sprintf("%s/%s.ics", base, rec.Token)})
 	})
 	app.Delete("/ical/tokens/:id", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		if err := DB.Where("id = ? AND user_id = ?", c.Params("id"), u.ID).Delete(&IcalKey{}).Error; err != nil {
+		u := c.Locals("user").(*utils.User)
+		if err := DB.Where("id = ? AND user_id = ?", c.Params("id"), u.ID).Delete(&utils.IcalKey{}).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -88,50 +89,50 @@ func registerSettingsRoutes(app *fiber.App) {
 
 	// Push settings (deprecated): map to WEBPUSH device enabled state
 	app.Get("/settings/push", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var cnt int64
-		_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = ? AND is_enabled = 1", u.ID, "WEBPUSH").Count(&cnt).Error
+		_ = DB.Model(&utils.NotificationDevice{}).Where("user_id = ? AND platform = ? AND is_enabled = 1", u.ID, "WEBPUSH").Count(&cnt).Error
 		return c.JSON(fiber.Map{"daily_enabled": cnt > 0})
 	})
 	app.Post("/settings/push", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			DailyEnabled *bool `json:"daily_enabled"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.DailyEnabled == nil {
 			return c.SendStatus(204)
 		}
 		// Ensure a default WEBPUSH device row exists and set its enabled state
-		var dev NotificationDevice
+		var dev utils.NotificationDevice
 		if err := DB.Where("user_id = ? AND platform = ?", u.ID, "WEBPUSH").First(&dev).Error; err != nil {
 			// create
 			var name *string
 			nm := "default"
 			name = &nm
-			dev = NotificationDevice{UserID: u.ID, Name: name, Platform: "WEBPUSH", IsEnabled: *body.DailyEnabled}
+			dev = utils.NotificationDevice{UserID: u.ID, Name: name, Platform: "WEBPUSH", IsEnabled: *body.DailyEnabled}
 			_ = DB.Create(&dev).Error
 		} else {
-			_ = DB.Model(&NotificationDevice{}).Where("id = ?", dev.ID).Update("is_enabled", *body.DailyEnabled).Error
+			_ = DB.Model(&utils.NotificationDevice{}).Where("id = ?", dev.ID).Update("is_enabled", *body.DailyEnabled).Error
 		}
 		return c.SendStatus(204)
 	})
 
 	// Language settings (notification only)
 	app.Get("/settings/lang", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		var fresh User
+		u := c.Locals("user").(*utils.User)
+		var fresh utils.User
 		_ = DB.First(&fresh, u.ID).Error
 		return c.JSON(fiber.Map{"notification_lang": fresh.NotificationLang})
 	})
 	app.Post("/settings/lang", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			NotificationLang *string `json:"notification_lang"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.NotificationLang != nil {
@@ -139,7 +140,7 @@ func registerSettingsRoutes(app *fiber.App) {
 			if v != "ja" && v != "en" {
 				return c.Status(400).JSON(fiber.Map{"error": "invalid notification_lang"})
 			}
-			_ = DB.Model(&User{}).Where("id = ?", u.ID).Update("notification_lang", v).Error
+			_ = DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("notification_lang", v).Error
 		}
 		return c.SendStatus(204)
 	})

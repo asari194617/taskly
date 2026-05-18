@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jhump/protoreflect/desc/protoparse"
@@ -35,12 +36,12 @@ func registerAuthRoutes(app *fiber.App) {
 		var body struct {
 			Email string `json:"email"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		email := strings.ToLower(strings.TrimSpace(body.Email))
-		if !isEmail(email) {
-			return validationError(c, map[string]string{"email": "invalid email"})
+		if !utils.IsEmail(email) {
+			return utils.ValidationError(c, map[string]string{"email": "invalid email"})
 		}
 		ip := c.IP()
 		// IP rate limit (max 10 req/10min)
@@ -62,7 +63,7 @@ func registerAuthRoutes(app *fiber.App) {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})
 		}
 		// cooldown: deny if a code was created within last 60s and not expired
-		var recent LoginCode
+		var recent utils.LoginCode
 		if err := DB.Where("email = ?", email).Order("id DESC").First(&recent).Error; err == nil {
 			if time.Since(recent.CreatedAt) < 60*time.Second && recent.ConsumedAt == nil {
 				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests"})
@@ -75,12 +76,12 @@ func registerAuthRoutes(app *fiber.App) {
 		// generate code
 		code := fmt.Sprintf("%06d", now.UnixNano()%1000000)
 		// In development, log the code for testing when email delivery is unreliable
-		if strings.ToLower(env("NODE_ENV", "development")) == "development" {
+		if strings.ToLower(utils.Env("NODE_ENV", "development")) == "development" {
 			log.Printf("[DEV] Login code for %s: %s", email, code)
 		}
 		// Compose email via email-compose service (gRPC)
 		var subject, html, text string
-		if s, h, t, err := composeLoginCodeGRPC(c.Context(), env("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051"), "ja", email, code, "Taskly"); err == nil {
+		if s, h, t, err := composeLoginCodeGRPC(c.Context(), utils.Env("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051"), "ja", email, code, "Taskly"); err == nil {
 			subject, html, text = s, h, t
 		}
 		// Fallback subject/body if composer failed
@@ -89,11 +90,11 @@ func registerAuthRoutes(app *fiber.App) {
 			text = fmt.Sprintf("ログインコード: %s\n5分以内に入力してください。\n", code)
 			html = text
 		}
-		smtpHost := env("SMTP_HOST", "localhost")
-		smtpPort := env("SMTP_PORT", "25")
-		from := env("SMTP_FROM", "noreply@taskly.local")
-		smtpUser := env("SMTP_USER", from)
-		smtpPass := env("SMTP_PASSWORD", "")
+		smtpHost := utils.Env("SMTP_HOST", "localhost")
+		smtpPort := utils.Env("SMTP_PORT", "25")
+		from := utils.Env("SMTP_FROM", "noreply@taskly.local")
+		smtpUser := utils.Env("SMTP_USER", from)
+		smtpPass := utils.Env("SMTP_PASSWORD", "")
 		// Build RFC5322 message with required headers (From/To/Subject/Date) - HTML email
 		nowRFC := now.Format(time.RFC1123Z)
 		boundary := fmt.Sprintf("taskly-%d", now.UnixNano())
@@ -113,12 +114,12 @@ func registerAuthRoutes(app *fiber.App) {
 			auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 		}
 		// Use manual client with timeouts to prevent hanging
-		toSec, _ := strconv.Atoi(env("SMTP_TIMEOUT", "60"))
+		toSec, _ := strconv.Atoi(utils.Env("SMTP_TIMEOUT", "60"))
 		if toSec <= 0 {
 			toSec = 60
 		}
 		dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
-		mode := strings.ToLower(strings.TrimSpace(env("SMTP_TLS", ""))) // "starttls" | "smtps" | ""
+		mode := strings.ToLower(strings.TrimSpace(utils.Env("SMTP_TLS", ""))) // "starttls" | "smtps" | ""
 		var conn net.Conn
 		var err error
 		if mode == "smtps" || smtpPort == "465" {
@@ -186,7 +187,7 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// store code after successful send
 		exp := now.Add(10 * time.Minute)
-		lc := LoginCode{Email: email, HashedCode: sha256Hex([]byte(code)), ExpiresAt: exp, CreatedAt: now}
+		lc := utils.LoginCode{Email: email, HashedCode: utils.Sha256Hex([]byte(code)), ExpiresAt: exp, CreatedAt: now}
 		if err := DB.Create(&lc).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "server"})
 		}
@@ -198,14 +199,14 @@ func registerAuthRoutes(app *fiber.App) {
 		var body struct {
 			Email string `json:"email"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		email := strings.ToLower(strings.TrimSpace(body.Email))
-		if !isEmail(email) {
-			return validationError(c, map[string]string{"email": "invalid email"})
+		if !utils.IsEmail(email) {
+			return utils.ValidationError(c, map[string]string{"email": "invalid email"})
 		}
-		var u User
+		var u utils.User
 		if err := DB.Where("email = ?", email).First(&u).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				// User must already exist for login; do not auto-create
@@ -224,7 +225,7 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		totpEnabled := false
 		if hasUser {
-			if ok, _, _ := getActiveTOTP(u.ID); ok {
+			if ok, _, _ := utils.GetActiveTOTP(u.ID, DB); ok {
 				totpEnabled = true
 			}
 		}
@@ -232,14 +233,14 @@ func registerAuthRoutes(app *fiber.App) {
 		passkeyEnabled := false
 		if hasUser {
 			var cnt int64
-			_ = DB.Model(&Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
+			_ = DB.Model(&utils.Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
 			passkeyEnabled = cnt > 0
 		}
 		// recovery codes presence (independent of TOTP)
 		recoveryAvailable := false
 		if hasUser {
 			var rc int64
-			_ = DB.Model(&RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&rc).Error
+			_ = DB.Model(&utils.RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&rc).Error
 			recoveryAvailable = rc > 0
 		}
 		methods := []string{}
@@ -276,15 +277,15 @@ func registerAuthRoutes(app *fiber.App) {
 			Totp     string `json:"totp"`
 			Recovery string `json:"recovery_code"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		email := strings.ToLower(strings.TrimSpace(body.Email))
-		if !isEmail(email) {
-			return validationError(c, map[string]string{"email": "invalid email"})
+		if !utils.IsEmail(email) {
+			return utils.ValidationError(c, map[string]string{"email": "invalid email"})
 		}
 		// Lookup user; do not auto-create for non-existing accounts
-		var u User
+		var u utils.User
 		if err := DB.Where("email = ?", email).First(&u).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
@@ -316,7 +317,7 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// Blocklist enforcement
 		var cnt int64
-		if err := DB.Model(&Block{}).
+		if err := DB.Model(&utils.Block{}).
 			Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, now).
 			Count(&cnt).Error; err == nil && cnt > 0 {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
@@ -344,7 +345,7 @@ func registerAuthRoutes(app *fiber.App) {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "code required"})
 			}
 			email := strings.ToLower(strings.TrimSpace(body.Email))
-			var lc LoginCode
+			var lc utils.LoginCode
 			if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err != nil {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 			}
@@ -352,7 +353,7 @@ func registerAuthRoutes(app *fiber.App) {
 			if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
 				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
 			}
-			if lc.HashedCode != sha256Hex([]byte(body.Code)) {
+			if lc.HashedCode != utils.Sha256Hex([]byte(body.Code)) {
 				// 失敗回数インクリメント
 				failCount := lc.FailedAttempts + 1
 				update := map[string]interface{}{"FailedAttempts": failCount}
@@ -360,25 +361,25 @@ func registerAuthRoutes(app *fiber.App) {
 				if failCount >= 5 {
 					update["LockedUntil"] = lc.ExpiresAt
 				}
-				_ = DB.Model(&LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
+				_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
 			}
-			_ = DB.Model(&LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+			_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
 			primaryOK = true
 		}
 		if !primaryOK {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		// 2FA enforcement (TOTP or recovery code)
-		if active, secret, _ := getActiveTOTP(u.ID); active {
+		if active, secret, _ := utils.GetActiveTOTP(u.ID, DB); active {
 			ok := false
 			if body.Totp != "" {
-				if validateTOTP(secret, body.Totp) {
+				if utils.ValidateTOTP(secret, body.Totp) {
 					ok = true
 				}
 			}
 			if !ok && body.Recovery != "" {
-				if consumeRecoveryCode(u.ID, body.Recovery) {
+				if utils.ConsumeRecoveryCode(u.ID, body.Recovery, DB) {
 					ok = true
 				}
 			}
@@ -391,10 +392,10 @@ func registerAuthRoutes(app *fiber.App) {
 		if plat == "" {
 			plat = "web"
 		}
-		if !isAllowedPlatform(plat) {
+		if !utils.IsAllowedPlatform(plat) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
 		}
-		token := generateSessionToken(u.ID, plat)
+		token := utils.GenerateSessionToken(u.ID, plat)
 		ttl := time.Hour * 24 * 30
 		if err := RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "session"})
@@ -404,25 +405,25 @@ func registerAuthRoutes(app *fiber.App) {
 		_ = RDB.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
 		// Mark user as registered upon first successful login
 		if !u.IsRegistered {
-			_ = DB.Model(&User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
+			_ = DB.Model(&utils.User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
 		}
 		// Store hash of token and associated user id for DB-fallback validation
-		DB.Create(&Session{UserID: u.ID, ClientPlatform: plat, HashedToken: sha256Hex([]byte(token)), ExpiresAt: ptrTime(now.Add(ttl))})
+		DB.Create(&utils.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(now.Add(ttl))})
 
 		// Also provide a JWT if needed (optional)
 		claims := jwt.MapClaims{"sub": u.ID, "exp": now.Add(ttl).Unix()}
 		jwtt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		jwtStr, _ := jwtt.SignedString([]byte(env("JWT_SECRET", "dev")))
+		jwtStr, _ := jwtt.SignedString([]byte(utils.Env("JWT_SECRET", "dev")))
 
 		return c.JSON(fiber.Map{"token": token, "jwt": jwtStr})
 	})
 
 	app.Post("/auth/logout", func(c *fiber.Ctx) error {
-		token := parseAuthToken(c.Get("Authorization"))
+		token := utils.ParseAuthToken(c.Get("Authorization"))
 		if token != "" {
 			_ = RDB.Del(c.Context(), "session:"+token).Err()
 			// Best-effort: remove DB session record if present (hashed or legacy plain)
-			_ = DB.Where("hashed_token = ? OR hashed_token = ?", sha256Hex([]byte(token)), token).Delete(&Session{}).Error
+			_ = DB.Where("hashed_token = ? OR hashed_token = ?", utils.Sha256Hex([]byte(token)), token).Delete(&utils.Session{}).Error
 			// remove from user_sessions set if we can resolve uid
 			if uidStr, err := RDB.Get(c.Context(), "session:"+token).Result(); err == nil && uidStr != "" {
 				_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%s", uidStr), token).Err()

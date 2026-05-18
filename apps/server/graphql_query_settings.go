@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -22,11 +23,11 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 			Type: graphql.NewList(apiKeyType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					var items []APIKey
+					u := c.Locals("user").(*utils.User)
+					var items []utils.APIKey
 					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -55,15 +56,15 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 			Type: graphql.NewList(icalTokenType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					var items []IcalKey
+					u := c.Locals("user").(*utils.User)
+					var items []utils.IcalKey
 					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}
-					base := strings.TrimRight(env("ICAL_BASE_URL", env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+					base := strings.TrimRight(utils.Env("ICAL_BASE_URL", utils.Env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
 					out := make([]map[string]any, 0, len(items))
 					for _, it := range items {
 						out = append(out, map[string]any{
@@ -89,7 +90,7 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 			Type: graphql.Int,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return 0, fmt.Errorf("unauthorized")
 					}
 				}
@@ -110,7 +111,7 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 			Type: graphql.Int,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return 0, fmt.Errorf("unauthorized")
 					}
 				}
@@ -131,12 +132,12 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 			Type: mcpInfoType,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
-					enabled := strings.ToLower(env("MCP_ENABLED", "true")) == "true"
-					var rec MCP
+					u := c.Locals("user").(*utils.User)
+					enabled := strings.ToLower(utils.Env("MCP_ENABLED", "true")) == "true"
+					var rec utils.MCP
 					_ = DB.Where("user_id = ?", u.ID).Order("id DESC").First(&rec).Error
 					var expires any
 					if rec.ID != 0 && rec.ExpiresAt != nil {
@@ -156,21 +157,21 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if !userFromSession(c) {
+					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*User)
+					u := c.Locals("user").(*utils.User)
 					pref, _ := p.Args["prefix"].(string)
 					limit := 20
 					if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 100 {
 						limit = v
 					}
-					q := DB.Model(&Log{}).Where("user_id = ?", u.ID)
+					q := DB.Model(&utils.Log{}).Where("user_id = ?", u.ID)
 					if strings.TrimSpace(pref) != "" {
 						q = q.Where("action LIKE ?", strings.TrimSpace(pref)+"%")
 					}
 					q = q.Order("id DESC").Limit(limit)
-					var items []Log
+					var items []utils.Log
 					if err := q.Find(&items).Error; err != nil {
 						return nil, err
 					}

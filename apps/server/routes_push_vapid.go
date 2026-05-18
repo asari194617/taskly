@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -19,7 +20,7 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 		return c.JSON(fiber.Map{"publicKey": pub})
 	})
 	app.Post("/push/test", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		sent, err := sendPushToUser(u.ID, map[string]any{
 			"title": "Taskly",
 			"body":  "プッシュ通知のテスト",
@@ -34,8 +35,8 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 
 	// Debug: list current user's subscriptions (masked endpoints)
 	app.Get("/push/subscriptions", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		var subs []WebPushSubscription
+		u := c.Locals("user").(*utils.User)
+		var subs []utils.WebPushSubscription
 		if err := DB.Where("user_id = ?", u.ID).Find(&subs).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -53,7 +54,7 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 
 // getOrInitVAPID returns base64url public, private keys. Generates and persists if missing.
 func getOrInitVAPID() (string, string, error) {
-	var rec WebPushVAPID
+	var rec utils.WebPushVAPID
 	if err := DB.First(&rec).Error; err == nil && rec.PublicKey != "" && rec.PrivateKey != "" {
 		// If it looks valid (public long, private short), return
 		if len(rec.PublicKey) >= 60 && len(rec.PrivateKey) <= 60 {
@@ -72,8 +73,8 @@ func getOrInitVAPID() (string, string, error) {
 	if len(pub) < len(priv) {
 		pub, priv = priv, pub
 	}
-	rec = WebPushVAPID{PublicKey: pub, PrivateKey: priv}
-	_ = DB.Where("1 = 1").Delete(&WebPushVAPID{})
+	rec = utils.WebPushVAPID{PublicKey: pub, PrivateKey: priv}
+	_ = DB.Where("1 = 1").Delete(&utils.WebPushVAPID{})
 	if err := DB.Create(&rec).Error; err != nil {
 		return "", "", err
 	}
@@ -83,7 +84,7 @@ func getOrInitVAPID() (string, string, error) {
 // sendPushToUser sends a JSON payload to all subscriptions of the user.
 func sendPushToUser(uid uint, payload map[string]any) (int, error) {
 	// fetch subscriptions
-	var subs []WebPushSubscription
+	var subs []utils.WebPushSubscription
 	_ = DB.Where("user_id = ?", uid).Find(&subs).Error
 	if len(subs) == 0 {
 		return 0, nil
@@ -112,7 +113,7 @@ func sendPushToUser(uid uint, payload map[string]any) (int, error) {
 		if err != nil {
 			// Delete gone subscriptions
 			if resp != nil && (resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusNotFound) {
-				_ = DB.Where("user_id = ? AND endpoint = ?", uid, s.Endpoint).Delete(&WebPushSubscription{}).Error
+				_ = DB.Where("user_id = ? AND endpoint = ?", uid, s.Endpoint).Delete(&utils.WebPushSubscription{}).Error
 				continue
 			}
 			log.Printf("webpush send error: %v", err)

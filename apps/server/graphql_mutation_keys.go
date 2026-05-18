@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
 
-// mutationFieldsKeys groups API key and iCal token mutations, and MCP token mutations.
+// mutationFieldsKeys groups API key and iCal token mutations, and utils.MCP token mutations.
 func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 	fields := graphql.Fields{}
 
@@ -27,17 +28,17 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				limit, err := apiKeyLimitForUser(u.ID)
+				u := c.Locals("user").(*utils.User)
+				limit, err := utils.ApiKeyLimitForUser(u.ID, DB)
 				if err != nil {
 					return nil, err
 				}
 				if limit >= 0 {
 					var cur int64
-					if err := DB.Model(&APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
+					if err := DB.Model(&utils.APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
 						return nil, err
 					}
 					if int(cur) >= limit {
@@ -49,7 +50,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if strings.TrimSpace(desc) != "" {
 					descPtr = &desc
 				}
-				plain, hashed, genErr := generateAPIKey()
+				plain, hashed, genErr := utils.GenerateAPIKey()
 				if genErr != nil {
 					return nil, fmt.Errorf("gen")
 				}
@@ -61,7 +62,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("invalid expires_at")
 					}
 				}
-				rec := APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr, ExpiresAt: expPtr}
+				rec := utils.APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -87,12 +88,12 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
-				var rec APIKey
+				var rec utils.APIKey
 				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&rec).Error; err != nil {
 					return nil, fmt.Errorf("not found")
 				}
@@ -141,16 +142,16 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				desc, _ := p.Args["description"].(string)
 				var descPtr *string
 				if strings.TrimSpace(desc) != "" {
 					descPtr = &desc
 				}
-				tok := generateIcalToken()
+				tok := utils.GenerateIcalToken()
 				var expPtr *time.Time
 				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
 					if t, err := time.Parse(time.RFC3339, s); err == nil {
@@ -159,11 +160,11 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("invalid expires_at")
 					}
 				}
-				rec := IcalKey{UserID: u.ID, Token: tok, Description: descPtr, ExpiresAt: expPtr}
+				rec := utils.IcalKey{UserID: u.ID, Token: tok, Description: descPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				base := strings.TrimRight(env("ICAL_BASE_URL", env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+				base := strings.TrimRight(utils.Env("ICAL_BASE_URL", utils.Env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
 				return map[string]any{"id": rec.ID, "url": fmt.Sprintf("%s/%s.ics", base, rec.Token)}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -177,12 +178,12 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
-				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&IcalKey{}).Error; err != nil {
+				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&utils.IcalKey{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				return true, nil
@@ -200,12 +201,12 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
-				var rec IcalKey
+				var rec utils.IcalKey
 				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&rec).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -243,14 +244,14 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				if strings.ToLower(env("MCP_ENABLED", "true")) != "true" {
+				u := c.Locals("user").(*utils.User)
+				if strings.ToLower(utils.Env("MCP_ENABLED", "true")) != "true" {
 					return nil, fmt.Errorf("disabled")
 				}
-				plain, hashed, err := generateAPIKey()
+				plain, hashed, err := utils.GenerateAPIKey()
 				if err != nil {
 					return nil, fmt.Errorf("gen")
 				}
@@ -262,12 +263,12 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("invalid expires_at")
 					}
 				}
-				rec := MCP{UserID: u.ID, HashedToken: hashed, ExpiresAt: expPtr}
-				_ = DB.Where("user_id = ?", u.ID).Delete(&MCP{}).Error
+				rec := utils.MCP{UserID: u.ID, HashedToken: hashed, ExpiresAt: expPtr}
+				_ = DB.Where("user_id = ?", u.ID).Delete(&utils.MCP{}).Error
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.create"}).Error
+				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "mcp.create"}).Error
 				return map[string]any{"ok": true, "token": plain}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -278,14 +279,14 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				if err := DB.Where("user_id = ?", u.ID).Delete(&MCP{}).Error; err != nil {
+				u := c.Locals("user").(*utils.User)
+				if err := DB.Where("user_id = ?", u.ID).Delete(&utils.MCP{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
+				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -300,11 +301,11 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				var rec MCP
+				u := c.Locals("user").(*utils.User)
+				var rec utils.MCP
 				if err := DB.Where("user_id = ?", u.ID).First(&rec).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -323,7 +324,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if err := DB.Save(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&Log{UserID: &u.ID, Action: "mcp.update"}).Error
+				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "mcp.update"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

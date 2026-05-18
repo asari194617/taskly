@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -11,45 +12,45 @@ import (
 func registerNotificationSettingsRoutes(app *fiber.App) {
 	// Methods (per channel enable): EMAIL, WEBPUSH
 	app.Get("/settings/notification-methods", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var emailCnt int64
 		var webCnt int64
-		_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = 'EMAIL' AND is_enabled = 1", u.ID).Count(&emailCnt).Error
-		_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH' AND is_enabled = 1", u.ID).Count(&webCnt).Error
+		_ = DB.Model(&utils.NotificationDevice{}).Where("user_id = ? AND platform = 'EMAIL' AND is_enabled = 1", u.ID).Count(&emailCnt).Error
+		_ = DB.Model(&utils.NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH' AND is_enabled = 1", u.ID).Count(&webCnt).Error
 		return c.JSON(fiber.Map{"email": emailCnt > 0, "webpush": webCnt > 0})
 	})
 	app.Post("/settings/notification-methods", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			Email   *bool `json:"email"`
 			WebPush *bool `json:"webpush"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid json"})
 		}
 		if body.Email != nil {
 			// Ensure at least one EMAIL device row exists
-			var dev NotificationDevice
+			var dev utils.NotificationDevice
 			if err := DB.Where("user_id = ? AND platform = 'EMAIL'", u.ID).First(&dev).Error; err != nil {
 				nm := "email"
-				_ = DB.Create(&NotificationDevice{UserID: u.ID, Name: &nm, Platform: "EMAIL", IsEnabled: *body.Email}).Error
+				_ = DB.Create(&utils.NotificationDevice{UserID: u.ID, Name: &nm, Platform: "EMAIL", IsEnabled: *body.Email}).Error
 			} else {
-				_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = 'EMAIL'", u.ID).Update("is_enabled", *body.Email).Error
+				_ = DB.Model(&utils.NotificationDevice{}).Where("user_id = ? AND platform = 'EMAIL'", u.ID).Update("is_enabled", *body.Email).Error
 			}
 		}
 		if body.WebPush != nil {
-			_ = DB.Model(&NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH'", u.ID).Update("is_enabled", *body.WebPush).Error
+			_ = DB.Model(&utils.NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH'", u.ID).Update("is_enabled", *body.WebPush).Error
 		}
 		return c.SendStatus(204)
 	})
 
 	// Notification types: TASK, TASK_MORNING, TASK_EVENING, DAYSHIFT
 	app.Get("/settings/notification-types", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		types := []string{"TASK", "TASK_MORNING", "TASK_EVENING", "DAYSHIFT"}
 		out := make(map[string]bool, len(types))
 		for _, t := range types {
-			var rec NotificationTypePref
+			var rec utils.NotificationTypePref
 			if err := DB.Where("user_id = ? AND notification_type = ?", u.ID, t).First(&rec).Error; err == nil {
 				out[t] = rec.IsEnabled
 			} else {
@@ -60,9 +61,9 @@ func registerNotificationSettingsRoutes(app *fiber.App) {
 		return c.JSON(out)
 	})
 	app.Post("/settings/notification-types", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body map[string]bool
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid json"})
 		}
 		for k, v := range body {
@@ -70,11 +71,11 @@ func registerNotificationSettingsRoutes(app *fiber.App) {
 			if t != "TASK" && t != "TASK_MORNING" && t != "TASK_EVENING" && t != "DAYSHIFT" {
 				continue
 			}
-			var rec NotificationTypePref
+			var rec utils.NotificationTypePref
 			if err := DB.Where("user_id = ? AND notification_type = ?", u.ID, t).First(&rec).Error; err == nil {
-				_ = DB.Model(&NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", v).Error
+				_ = DB.Model(&utils.NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", v).Error
 			} else {
-				rec = NotificationTypePref{UserID: u.ID, NotificationType: t, IsEnabled: v}
+				rec = utils.NotificationTypePref{UserID: u.ID, NotificationType: t, IsEnabled: v}
 				_ = DB.Create(&rec).Error
 			}
 		}
@@ -83,8 +84,8 @@ func registerNotificationSettingsRoutes(app *fiber.App) {
 
 	// Devices listing (WEBPUSH only for UI)
 	app.Get("/push/devices", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
-		var devs []NotificationDevice
+		u := c.Locals("user").(*utils.User)
+		var devs []utils.NotificationDevice
 		if err := DB.Where("user_id = ? AND platform = 'WEBPUSH'", u.ID).Order("id DESC").Find(&devs).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -99,14 +100,14 @@ func registerNotificationSettingsRoutes(app *fiber.App) {
 		return c.JSON(out)
 	})
 	app.Post("/push/devices/:id", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*User)
+		u := c.Locals("user").(*utils.User)
 		var body struct {
 			IsEnabled *bool `json:"is_enabled"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil || body.IsEnabled == nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil || body.IsEnabled == nil {
 			return c.Status(http.StatusBadRequest).JSON(fiber.Map{"error": "invalid json"})
 		}
-		res := DB.Model(&NotificationDevice{}).Where("id = ? AND user_id = ? AND platform = 'WEBPUSH'", c.Params("id"), u.ID).Update("is_enabled", *body.IsEnabled)
+		res := DB.Model(&utils.NotificationDevice{}).Where("id = ? AND user_id = ? AND platform = 'WEBPUSH'", c.Params("id"), u.ID).Update("is_enabled", *body.IsEnabled)
 		if res.Error != nil || res.RowsAffected == 0 {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}

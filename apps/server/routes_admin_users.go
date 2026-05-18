@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 func registerAdminUsersRoutes(app *fiber.App) {
@@ -16,12 +17,12 @@ func registerAdminUsersRoutes(app *fiber.App) {
 		if limit <= 0 || limit > 500 {
 			limit = 100
 		}
-		dbq := DB.Model(&User{})
+		dbq := DB.Model(&utils.User{})
 		if q != "" {
 			like := "%" + q + "%"
 			dbq = dbq.Where("email LIKE ? OR display_name LIKE ?", like, like)
 		}
-		var users []User
+		var users []utils.User
 		if err := dbq.Order("id DESC").Limit(limit).Find(&users).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -30,7 +31,7 @@ func registerAdminUsersRoutes(app *fiber.App) {
 		for _, u := range users {
 			ids = append(ids, u.ID)
 		}
-		var roles []RoleUser
+		var roles []utils.RoleUser
 		if len(ids) > 0 {
 			_ = DB.Where("user_id IN ?", ids).Find(&roles).Error
 		}
@@ -41,7 +42,7 @@ func registerAdminUsersRoutes(app *fiber.App) {
 		// block status
 		blocked := map[uint]bool{}
 		if len(ids) > 0 {
-			var blks []Block
+			var blks []utils.Block
 			_ = DB.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
 			for _, b := range blks {
 				blocked[b.UserID] = true
@@ -59,7 +60,7 @@ func registerAdminUsersRoutes(app *fiber.App) {
 		var body struct {
 			Role string `json:"role"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		role := strings.ToLower(strings.TrimSpace(body.Role))
@@ -68,14 +69,14 @@ func registerAdminUsersRoutes(app *fiber.App) {
 		}
 		// check exists
 		var cnt int64
-		_ = DB.Model(&RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
+		_ = DB.Model(&utils.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
 		if cnt == 0 {
-			_ = DB.Create(&RoleUser{UserID: toUint(uid), Role: role}).Error
+			_ = DB.Create(&utils.RoleUser{UserID: utils.ToUint(uid), Role: role}).Error
 		}
 		return c.SendStatus(201)
 	})
 	app.Delete("/admin/users/:id/roles/:role", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		if err := DB.Where("user_id = ? AND role = ?", c.Params("id"), c.Params("role")).Delete(&RoleUser{}).Error; err != nil {
+		if err := DB.Where("user_id = ? AND role = ?", c.Params("id"), c.Params("role")).Delete(&utils.RoleUser{}).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -85,7 +86,7 @@ func registerAdminUsersRoutes(app *fiber.App) {
 			Reason    *string `json:"reason"`
 			ExpiresAt *string `json:"expires_at"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
 		var expPtr *time.Time
@@ -96,7 +97,7 @@ func registerAdminUsersRoutes(app *fiber.App) {
 				return c.Status(400).JSON(fiber.Map{"error": "invalid expires_at"})
 			}
 		}
-		rec := Block{UserID: toUint(c.Params("id")), Reason: body.Reason, ExpiresAt: expPtr}
+		rec := utils.Block{UserID: utils.ToUint(c.Params("id")), Reason: body.Reason, ExpiresAt: expPtr}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -104,7 +105,7 @@ func registerAdminUsersRoutes(app *fiber.App) {
 	})
 	app.Post("/admin/users/:id/unblock", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
 		now := time.Now()
-		if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", c.Params("id"), now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
+		if err := DB.Model(&utils.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", c.Params("id"), now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)

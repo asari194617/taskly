@@ -8,11 +8,35 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
+
+// webauthnUserWrapper wraps *utils.User and provides DB access for loading credentials
+type webauthnUserWrapper struct {
+	*utils.User
+	db *gorm.DB
+}
+
+// Only override credentials loading; other methods are promoted from *utils.User
+func (w *webauthnUserWrapper) WebAuthnCredentials() []webauthn.Credential {
+	if w.db == nil || w.User == nil {
+		return []webauthn.Credential{}
+	}
+	var pks []utils.Passkey
+	_ = w.db.Where("user_id = ?", w.User.ID).Find(&pks).Error
+	res := make([]webauthn.Credential, 0, len(pks))
+	for _, p := range pks {
+		cid, _ := base64.RawStdEncoding.DecodeString(p.CredentialID)
+		pub, _ := base64.RawStdEncoding.DecodeString(p.PublicKey)
+		res = append(res, webauthn.Credential{ID: cid, PublicKey: pub, Authenticator: webauthn.Authenticator{SignCount: uint32(p.SignCount)}})
+	}
+	return res
+}
 
 // mutationFieldsAuth groups user/profile/authentication related mutations.
 func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
@@ -22,11 +46,11 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("is_agreed_policies", true).Error; err != nil {
+				u := c.Locals("user").(*utils.User)
+				if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("is_agreed_policies", true).Error; err != nil {
 					return false, err
 				}
 				return true, nil
@@ -43,15 +67,15 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			displayName, _ := p.Args["display_name"].(string)
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				dn := strings.TrimSpace(displayName)
 				if len(dn) > 255 {
 					dn = dn[:255]
 				}
-				if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("display_name", dn).Error; err != nil {
+				if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("display_name", dn).Error; err != nil {
 					return false, err
 				}
 				return true, nil
@@ -67,23 +91,23 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				val, _ := p.Args["email_login_enabled"].(bool)
-				var fresh User
+				var fresh utils.User
 				if err := DB.First(&fresh, u.ID).Error; err != nil {
 					return false, err
 				}
 				hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
-				totpEnabled, _, _ := getActiveTOTP(fresh.ID)
+				totpEnabled, _, _ := utils.GetActiveTOTP(fresh.ID, DB)
 				var pkCount int64
-				_ = DB.Model(&Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+				_ = DB.Model(&utils.Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
 				if !val && !(hasPassword || totpEnabled || pkCount > 0) {
 					return false, fmt.Errorf("cannot disable without another auth factor")
 				}
-				if err := DB.Model(&User{}).Where("id = ?", fresh.ID).Update("email_code_allowed", val).Error; err != nil {
+				if err := DB.Model(&utils.User{}).Where("id = ?", fresh.ID).Update("email_code_allowed", val).Error; err != nil {
 					return false, err
 				}
 				return true, nil
@@ -96,12 +120,12 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
 				if tok, ok := c.Locals("token").(string); ok && tok != "" {
 					_ = RDB.Del(c.Context(), "session:"+tok).Err()
-					_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", c.Locals("user").(*User).ID), tok).Err()
+					_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", c.Locals("user").(*utils.User).ID), tok).Err()
 				}
 				return true, nil
 			}
@@ -113,11 +137,11 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+				u := c.Locals("user").(*utils.User)
+				if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
 					return false, err
 				}
 				if tok, ok := c.Locals("token").(string); ok && tok != "" {
@@ -140,18 +164,18 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		}),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				secret := generateBase32Secret()
+				u := c.Locals("user").(*utils.User)
+				secret := utils.GenerateBase32Secret()
 				key := fmt.Sprintf("totp-setup:%d", u.ID)
 				if err := RDB.Set(c.Context(), key, secret, 10*time.Minute).Err(); err != nil {
 					return nil, fmt.Errorf("server")
 				}
 				issuer := "Taskly"
 				label := fmt.Sprintf("%s:%s", issuer, u.Email)
-				otpauth := fmt.Sprintf("otpauth://totp/%s?secret=%s&issuer=%s", urlEncode(label), secret, urlEncode(issuer))
+				otpauth := fmt.Sprintf("otpauth://totp/%s?secret=%s&issuer=%s", utils.UrlEncode(label), secret, utils.UrlEncode(issuer))
 				return map[string]any{"secret": secret, "otpauth": otpauth}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -165,30 +189,30 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				code, _ := p.Args["code"].(string)
 				key := fmt.Sprintf("totp-setup:%d", u.ID)
 				secret, _ := RDB.Get(c.Context(), key).Result()
 				if secret == "" {
 					return false, fmt.Errorf("setup expired")
 				}
-				if !validateTOTP(secret, code) {
+				if !utils.ValidateTOTP(secret, code) {
 					return false, fmt.Errorf("invalid code")
 				}
-				enc, err := encryptString(secret)
+				enc, err := utils.EncryptString(secret)
 				if err != nil {
 					return false, fmt.Errorf("server")
 				}
-				var ts TOTPSecret
+				var ts utils.TOTPSecret
 				if err := DB.Where("user_id = ?", u.ID).First(&ts).Error; err == nil {
 					ts.Secret = enc
 					ts.IsActive = true
 					_ = DB.Save(&ts).Error
 				} else {
-					_ = DB.Create(&TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
+					_ = DB.Create(&utils.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
 				}
 				_ = RDB.Del(c.Context(), key).Err()
 				return true, nil
@@ -201,11 +225,11 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				var ts TOTPSecret
+				u := c.Locals("user").(*utils.User)
+				var ts utils.TOTPSecret
 				if err := DB.Where("user_id = ?", u.ID).First(&ts).Error; err != nil {
 					return false, fmt.Errorf("not enabled")
 				}
@@ -223,16 +247,16 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Type: graphql.NewList(graphql.String),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				_ = DB.Where("user_id = ? AND is_used = 0", u.ID).Delete(&RecoveryCode{}).Error
+				u := c.Locals("user").(*utils.User)
+				_ = DB.Where("user_id = ? AND is_used = 0", u.ID).Delete(&utils.RecoveryCode{}).Error
 				codes := make([]string, 0, 10)
 				for i := 0; i < 10; i++ {
-					plain := generateRecoveryCode()
-					hashed := sha256Hex([]byte(plain))
-					_ = DB.Create(&RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
+					plain := utils.GenerateRecoveryCode()
+					hashed := utils.Sha256Hex([]byte(plain))
+					_ = DB.Create(&utils.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
 					codes = append(codes, plain)
 				}
 				return codes, nil
@@ -245,14 +269,16 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		Type: graphql.String,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return "", fmt.Errorf("unauthorized")
 				}
 				if WAuth == nil {
 					return "", fmt.Errorf("webauthn not configured")
 				}
-				u := c.Locals("user").(*User)
-				creation, sd, err := WAuth.BeginRegistration(u)
+				u := c.Locals("user").(*utils.User)
+				// wrap the utils.User so we can provide DB access for credential loading
+				wuser := &webauthnUserWrapper{User: u, db: DB}
+				creation, sd, err := WAuth.BeginRegistration(wuser)
 				if err != nil {
 					return "", fmt.Errorf("begin failed")
 				}
@@ -272,13 +298,13 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
 				if WAuth == nil {
 					return false, fmt.Errorf("webauthn not configured")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				raw, _ := RDB.Get(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Result()
 				if raw == "" {
 					return false, fmt.Errorf("session expired")
@@ -288,14 +314,17 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 				payload, _ := p.Args["input"].(string)
 				req, _ := http.NewRequestWithContext(c.Context(), "POST", "", strings.NewReader(payload))
 				req.Header.Set("Content-Type", "application/json")
-				cred, err := WAuth.FinishRegistration(u, sd, req)
+				// wrap so FinishRegistration can read credentials via DB if needed
+				wuser := &webauthnUserWrapper{User: u, db: DB}
+				cred, err := WAuth.FinishRegistration(wuser, sd, req)
+
 				if err != nil {
 					return false, fmt.Errorf("finish failed")
 				}
 				pub := base64.RawStdEncoding.EncodeToString(cred.PublicKey)
 				cid := base64.RawStdEncoding.EncodeToString(cred.ID)
 				devName := "Passkey"
-				rec := Passkey{UserID: u.ID, CredentialID: cid, PublicKey: pub, SignCount: int64(cred.Authenticator.SignCount), DeviceName: &devName}
+				rec := utils.Passkey{UserID: u.ID, CredentialID: cid, PublicKey: pub, SignCount: int64(cred.Authenticator.SignCount), DeviceName: &devName}
 				if err := DB.Create(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
@@ -315,17 +344,17 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
 				name, _ := p.Args["name"].(string)
 				name = strings.TrimSpace(name)
 				if len(name) > 255 {
 					name = name[:255]
 				}
-				var pk Passkey
+				var pk utils.Passkey
 				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&pk).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -346,12 +375,12 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
-				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&Passkey{}).Error; err != nil {
+				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&utils.Passkey{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				return true, nil
@@ -368,16 +397,16 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				curr, _ := p.Args["current"].(string)
 				next, _ := p.Args["next"].(string)
 				if len(strings.TrimSpace(next)) < 8 {
 					return false, fmt.Errorf("password too short")
 				}
-				var fresh User
+				var fresh utils.User
 				if err := DB.First(&fresh, u.ID).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
@@ -391,11 +420,11 @@ func mutationFieldsAuth(t *gqlTypes) graphql.Fields {
 					return false, fmt.Errorf("hash")
 				}
 				hs := string(hash)
-				if err := DB.Model(&User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
+				if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				curTok, _ := c.Locals("token").(string)
-				revokeOtherSessions(c, u.ID, curTok)
+				utils.RevokeOtherSessions(c, u.ID, curTok, DB, RDB)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

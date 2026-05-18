@@ -13,7 +13,7 @@
 ```
 
 - 条件: `subject` または `body` に「日直」が含まれない場合、400 を返します。
-- 判定: `shouldRotateByGemini(subject, body)` により「ずらし」判定（環境により Gemini か簡易キーワード）
+- 判定: `ShouldRotateByGemini(subject, body)` により「ずらし」判定（環境により Gemini か簡易キーワード）
 - 成功時レスポンス: `202 Accepted` + `{ "ok": true, "rotated": true|false }`
 
 ## 4) 補足: 認証・セキュリティ

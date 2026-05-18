@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -30,11 +31,11 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
-				if okp, err := checkPermission(u.ID, "tasks", "create", nil); err != nil {
+				u := c.Locals("user").(*utils.User)
+				if okp, err := utils.CheckPermission(u.ID, "tasks", "create", nil, DB); err != nil {
 					return nil, err
 				} else if !okp {
 					return nil, fmt.Errorf("forbidden")
@@ -47,7 +48,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					descPtr = &desc
 				}
 				typ, _ := p.Args["type"].(string)
-				typ = normalizeTaskType(typ)
+				typ = utils.NormalizeTaskType(typ)
 				irh, _ := p.Args["is_require_hand_in"].(bool)
 				scr, _ := p.Args["is_self_check_required"].(bool)
 				deadlineStr, _ := p.Args["deadline"].(string)
@@ -80,14 +81,14 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !validUntil[until] {
 					return nil, fmt.Errorf("invalid deadline_until")
 				}
-				rec := Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, IsSelfCheckRequired: scr, Deadline: dateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
+				rec := utils.Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, IsSelfCheckRequired: scr, Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
 				// Fire async Teams notification email for Power Automate
-				go sendTeamsNotifyEmailForTask(rec)
+				go utils.SendTeamsNotifyEmailForTask(rec, DB)
 				// Async Discord notification (embed) to align with REST create
-				go sendDiscordTaskEmbed("created", rec, u.Email)
+				go utils.SendDiscordTaskEmbed("created", rec, u.Email)
 				out := map[string]any{
 					"id":                     rec.ID,
 					"title":                  rec.Title,
@@ -124,17 +125,17 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
-				var rec Task
+				var rec utils.Task
 				if err := DB.First(&rec, id).Error; err != nil {
 					return nil, fmt.Errorf("not found")
 				}
 				before := rec
-				if okp, err := checkPermission(u.ID, "tasks", "update", &rec.AddedUserID); err != nil {
+				if okp, err := utils.CheckPermission(u.ID, "tasks", "update", &rec.AddedUserID, DB); err != nil {
 					return nil, err
 				} else if !okp {
 					return nil, fmt.Errorf("forbidden")
@@ -153,7 +154,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					}
 				}
 				if v, ok := p.Args["type"].(string); ok {
-					rec.Type = normalizeTaskType(v)
+					rec.Type = utils.NormalizeTaskType(v)
 				}
 				if v, ok := p.Args["is_require_hand_in"].(bool); ok {
 					rec.IsRequireHandIn = v
@@ -165,7 +166,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					vv := strings.TrimSpace(v)
 					if vv != "" {
 						if t, err := time.Parse("2006-01-02", vv); err == nil {
-							rec.Deadline = dateOnly(t)
+							rec.Deadline = utils.DateOnly(t)
 						} else {
 							return nil, fmt.Errorf("invalid deadline")
 						}
@@ -196,12 +197,12 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 					return nil, fmt.Errorf("db")
 				}
 				// Fire Teams reply for update (if original message exists)
-				if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
-					msg := buildTaskUpdateMessageJa(before, rec)
-					go sendTeamsReplyEmail(rec.ID, mid, msg)
+				if mid, ok := utils.LatestTeamsMessageIDForTask(rec.ID, DB); ok {
+					msg := utils.BuildTaskUpdateMessageJa(before, rec, DB)
+					go utils.SendTeamsReplyEmail(rec.ID, mid, msg)
 				}
 				// Async Discord notification (embed) to align with REST update
-				go sendDiscordTaskEmbed("updated", rec, u.Email)
+				go utils.SendDiscordTaskEmbed("updated", rec, u.Email)
 				out := map[string]any{
 					"id":                     rec.ID,
 					"title":                  rec.Title,
@@ -229,20 +230,20 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
-				var rec Task
+				var rec utils.Task
 				if err := DB.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
-				isAdmin, _ := userHasRole(u.ID, "admin")
-				isManager, _ := userHasRole(u.ID, "manager")
+				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
+				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				allowed := isAdmin || isManager
 				if !allowed {
-					if okp, err := checkPermission(u.ID, "tasks", "delete", &rec.AddedUserID); err != nil {
+					if okp, err := utils.CheckPermission(u.ID, "tasks", "delete", &rec.AddedUserID, DB); err != nil {
 						return false, err
 					} else {
 						allowed = okp
@@ -251,16 +252,16 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
 				}
-				if err := DB.Delete(&Task{}, rec.ID).Error; err != nil {
+				if err := DB.Delete(&utils.Task{}, rec.ID).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				// Fire Teams reply for delete (if original message exists)
-				if mid, ok := latestTeamsMessageIDForTask(rec.ID); ok {
-					msg := buildTaskDeleteMessageJa(rec)
-					go sendTeamsReplyEmail(rec.ID, mid, msg)
+				if mid, ok := utils.LatestTeamsMessageIDForTask(rec.ID, DB); ok {
+					msg := utils.BuildTaskDeleteMessageJa(rec)
+					go utils.SendTeamsReplyEmail(rec.ID, mid, msg)
 				}
 				// Async Discord notification (embed) to align with REST delete
-				go sendDiscordTaskEmbed("deleted", rec, u.Email)
+				go utils.SendDiscordTaskEmbed("deleted", rec, u.Email)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -275,13 +276,13 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
 				// Ensure task exists
-				var rec Task
+				var rec utils.Task
 				if err := DB.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -303,10 +304,10 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-				if !userFromSession(c) {
+				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*User)
+				u := c.Locals("user").(*utils.User)
 				id, _ := p.Args["id"].(int)
 				if err := DB.Exec("DELETE FROM tasks_users_completions WHERE user_id = ? AND task_id = ?", u.ID, id).Error; err != nil {
 					return false, fmt.Errorf("db")

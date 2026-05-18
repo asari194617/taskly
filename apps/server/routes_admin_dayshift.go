@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 func registerAdminDayShiftRoutes(app *fiber.App) {
@@ -14,7 +15,7 @@ func registerAdminDayShiftRoutes(app *fiber.App) {
 			FinishDate  string  `json:"finish_date"`
 			Description *string `json:"description"`
 		}
-		if err := parseJSONStrict(c, &body); err != nil || body.BeginDate == "" || body.FinishDate == "" {
+		if err := utils.ParseJSONStrict(c, &body); err != nil || body.BeginDate == "" || body.FinishDate == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		bd, err1 := time.Parse("2006-01-02", body.BeginDate)
@@ -22,7 +23,7 @@ func registerAdminDayShiftRoutes(app *fiber.App) {
 		if err1 != nil || err2 != nil || !bd.Before(fd) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid dates"})
 		}
-		rec := DayShiftCycle{BeginDate: bd, FinishDate: fd}
+		rec := utils.DayShiftCycle{BeginDate: bd, FinishDate: fd}
 		if body.Description != nil {
 			rec.Description = *body.Description
 		}
@@ -34,7 +35,7 @@ func registerAdminDayShiftRoutes(app *fiber.App) {
 
 	// Delete cycle
 	app.Delete("/admin/dayshift/cycles/:id", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		if err := DB.Delete(&DayShiftCycle{}, c.Params("id")).Error; err != nil {
+		if err := DB.Delete(&utils.DayShiftCycle{}, c.Params("id")).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
