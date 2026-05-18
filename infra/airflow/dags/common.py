@@ -6,10 +6,11 @@ import urllib.error
 from datetime import datetime, timezone
 from typing import Any
 
+from airflow.sdk import Context
+
 __all__ = [
     "discord_failure_callback",
     "discord_success_callback",
-    "discord_notify",
 ]
 
 # Load environment variables from mounted .env if available
@@ -38,22 +39,8 @@ except Exception:
     # Avoid breaking DAG import on Sentry issues
     pass
 
-# Discord helper via provider
-def discord_notify(task_id: str, message: str, webhook_conn_id: str = "discord_webhook"):
-    try:
-        from airflow.providers.discord.operators.discord_webhook import DiscordWebhookOperator
-        return DiscordWebhookOperator(
-            task_id=task_id,
-            message=message,
-            http_conn_id=webhook_conn_id,
-        )
-    except Exception as e:
-        # Fallback to no-op BashOperator if provider not present
-        from airflow.operators.empty import EmptyOperator
-        return EmptyOperator(task_id=task_id)
-
-
 def _send_discord_message(message: str) -> None:
+# Load environment variables from mounted .env if available
     url = os.environ.get("DISCORD_WEBHOOK_URL")
     if url:
         url = url.strip().strip('"').strip("'")
@@ -158,7 +145,7 @@ def _send_discord_embed(title: str, fields: list[dict[str, str]], ts: str | None
         logging.getLogger(__name__).warning("Discord plain text fallback also failed (suppressed)", exc_info=True)
 
 
-def discord_failure_callback(context: dict):
+def discord_failure_callback(context: Context) -> None:
     """Airflow on_failure_callback to send a Discord message when task/DAG fails.
     Works with DISCORD_WEBHOOK_URL or DISCORD_WEBHOOK_TOKEN.
     """
@@ -181,7 +168,7 @@ def discord_failure_callback(context: dict):
     except Exception:
         logging.getLogger(__name__).warning("discord_failure_callback error (suppressed)", exc_info=True)
 
-def discord_success_callback(context: dict[str, Any]):
+def discord_success_callback(context: Context) -> None:
     """Airflow on_success_callback to send a Discord message when DAG succeeds.
     Sends a summary regardless of task-level success notifications.
     """

@@ -1,9 +1,8 @@
 from datetime import datetime, timedelta
 import os
-from airflow import DAG
-from airflow.operators.bash import BashOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.bash import BashOperator
 from common import discord_failure_callback, discord_success_callback
-import os
 
 # Run daily at 02:15 local time (Airflow default UTC unless tz configured)
 default_args = {
@@ -16,7 +15,7 @@ with DAG(
     dag_id="moderation_daily",
     default_args=default_args,
     description="Daily moderation of tasks using Gemini API",
-    schedule_interval="15 2 * * *",
+    schedule="15 2 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     on_failure_callback=discord_failure_callback,

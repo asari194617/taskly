@@ -1,7 +1,7 @@
 from datetime import datetime, time
-from airflow import DAG
+from airflow.sdk import DAG
 from common import discord_failure_callback, discord_success_callback
-from airflow.operators.bash import BashOperator
+from airflow.providers.standard.operators.bash import BashOperator
 import os
 try:
     from dotenv import load_dotenv
@@ -51,7 +51,7 @@ def build_cmd(app):
 with DAG(
     dag_id="notifications",
     description="Taskly notifications queue and delivery",
-    schedule_interval="0 22,8 * * *",  # 07:00,17:00 JST (UTC-9/UTC? adjust as needed)
+    schedule="0 22,8 * * *",  # 07:00,17:00 JST (UTC-9/UTC? adjust as needed)
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["taskly"],

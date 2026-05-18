@@ -1,13 +1,13 @@
 from datetime import datetime
-from airflow import DAG
+from airflow.sdk import DAG
 from common import discord_failure_callback, discord_success_callback
-from airflow.operators.bash import BashOperator
+from airflow.providers.standard.operators.bash import BashOperator
 import os
 
 with DAG(
     dag_id="backup_mysql",
     description="Taskly MySQL backup via FTP",
-    schedule_interval="0 18 * * *",  # 03:00 JST (UTC 18:00)
+    schedule="0 18 * * *",  # 03:00 JST (UTC 18:00)
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["taskly"],

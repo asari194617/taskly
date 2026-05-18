@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta, timezone
 import requests
-import icalendar
+import icalendar  # type: ignore
 import os
 from typing import Optional, List, Dict
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-import pymysql
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+import pymysql  # type: ignore
 
 # Database connection (read/write directly, no API calls)
 DB_HOST = os.environ.get("DB_HOST", "mysql")
@@ -25,10 +25,10 @@ def is_weekend(d: datetime) -> bool:
     return d.weekday() >= 5
 
 
-def fetch_ics(url: str) -> icalendar.Calendar:
+def fetch_ics(url: str) -> icalendar.Component:
     resp = requests.get(url, timeout=SCHOOL_CAL_TIMEOUT)
     resp.raise_for_status()
-    return icalendar.Calendar.from_ical(resp.content)
+    return icalendar.Calendar.from_ical(resp.content.decode('utf-8'))
 
 
 def is_holiday(d: datetime) -> bool:
@@ -445,7 +445,7 @@ def send_830_notifications(**context):
 with DAG(
     dag_id="day_shift_index_increment",
     start_date=datetime(2025, 1, 1),
-    schedule_interval="0 18 * * *",
+    schedule="0 18 * * *",
     catchup=False,
     default_args={"owner": "taskly"},
 ) as dag:

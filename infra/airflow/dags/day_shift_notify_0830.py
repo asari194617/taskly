@@ -4,11 +4,12 @@ import smtplib
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Any
 
 import requests
-import pymysql
+import pymysql  # type: ignore
 try:
-    import icalendar
+    import icalendar  # type: ignore
 except Exception:  # pragma: no cover - allow DAG to load without optional deps
     icalendar = None
 try:
@@ -20,8 +21,8 @@ except Exception:  # pragma: no cover - allow DAG to load without optional deps
     descriptor_pool = None
     message_factory = None
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 
 def mysql_connect():
@@ -52,12 +53,12 @@ SCHOOL_CAL_URL = os.environ.get("SCHOOL_CAL_URL", "").strip()
 SCHOOL_CAL_TIMEOUT = 10
 
 
-def fetch_ics(url: str) -> "icalendar.Calendar":
+def fetch_ics(url: str) -> Any:
     if icalendar is None:
         raise RuntimeError("icalendar module is not available")
     resp = requests.get(url, timeout=SCHOOL_CAL_TIMEOUT)
     resp.raise_for_status()
-    return icalendar.Calendar.from_ical(resp.content)
+    return icalendar.Calendar.from_ical(resp.content.decode('utf-8'))
 
 
 def list_events_for_date(target_date: date) -> list[str]:
@@ -171,10 +172,10 @@ def _get_email_compose_messages():
     pool = descriptor_pool.DescriptorPool()
     pool.Add(file_proto)
     factory = message_factory.MessageFactory(pool)
-    ComposeDayShiftRequest = factory.GetPrototype(
+    ComposeDayShiftRequest = factory.GetPrototype(  # type: ignore
         pool.FindMessageTypeByName("emailcompose.ComposeDayShiftRequest")
     )
-    ComposeResponse = factory.GetPrototype(
+    ComposeResponse = factory.GetPrototype(  # type: ignore
         pool.FindMessageTypeByName("emailcompose.ComposeResponse")
     )
 
@@ -315,9 +316,9 @@ def notify_day_shift(**context):
 
         # Read current cycle and index (0-based) from configs
         idx_str = read_config(conn, "day_shift_current_index").strip()
-        cur_idx = int(idx_str) if idx_str.isdigit() else 0
+        cur_idx: int = int(idx_str) if idx_str.isdigit() else 0
         cid_str = read_config(conn, "day_shift_current_cycle").strip()
-        cur_cid = int(cid_str) if cid_str.isdigit() else 0
+        cur_cid: int = int(cid_str) if cid_str.isdigit() else 0
 
         # Validate configured cycle is active for today; if not, ignore it.
         if cur_cid != 0:
@@ -424,7 +425,10 @@ def notify_day_shift(**context):
         # Filter by NotificationTypePref and EMAIL device overrides
         enabled_users = []
         for u in all_users:
-            uid = int(u.get("id"))
+            uid_raw = u.get("id")
+            if uid_raw is None:
+                continue
+            uid = int(uid_raw)
             # Type off check: if a record exists with DAYSHIFT and is_enabled=0, skip
             with conn.cursor() as cur:
                 cur.execute(
@@ -432,7 +436,8 @@ def notify_day_shift(**context):
                     (uid,),
                 )
                 pref = cur.fetchone()
-            if pref is not None and int(pref.get("is_enabled", 1)) == 0:
+            pref_enabled = pref.get("is_enabled", 1) if pref is not None else 1
+            if pref_enabled is not None and int(pref_enabled) == 0:
                 continue
             # EMAIL device check:
             #   - default: enabled even when no record exists in notification_devices
@@ -443,7 +448,8 @@ def notify_day_shift(**context):
                     (uid,),
                 )
                 dev = cur.fetchone()
-            if dev is not None and int(dev.get("is_enabled", 1)) == 0:
+            dev_enabled = dev.get("is_enabled", 1) if dev is not None else 1
+            if dev_enabled is not None and int(dev_enabled) == 0:
                 continue
 
             enabled_users.append(u)
@@ -527,7 +533,7 @@ def notify_day_shift(**context):
 with DAG(
     dag_id="day_shift_notify_0830",
     start_date=datetime(2025, 1, 1),
-    schedule_interval="30 23 * * *",
+    schedule="30 23 * * *",
     catchup=False,
     default_args={"owner": "taskly"},
 ) as dag:
