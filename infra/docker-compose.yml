@@ -101,11 +101,11 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+      AIRFLOW__API__EXPOSE_CONFIG: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
-      AIRFLOW__WEBSERVER__WEB_SERVER_HOST: 0.0.0.0
-      AIRFLOW__WEBSERVER__BASE_URL: https://airflow-taskly.iy0306.com
-      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
+      AIRFLOW__API__HOST: 0.0.0.0
+      AIRFLOW__API__BASE_URL: https://airflow-taskly.iy0306.com
+      AIRFLOW__API__ENABLE_PROXY_FIX: "True"
       # MySQL connection for DAGs
       DB_HOST: db
       DB_PORT: 3306
@@ -132,7 +132,7 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-webserver.pid; (airflow db init || airflow db upgrade || true); airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow webserver",
+        "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow api-server",
       ]
   email-compose:
     build: ../apps/email-compose
@@ -194,7 +194,7 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-scheduler.pid; (airflow db init || airflow db upgrade || true); airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow scheduler",
+        "rm -f /opt/airflow/airflow-scheduler.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow scheduler",
       ]
 volumes:
   db-data:
