@@ -122,7 +122,7 @@ services:
       WEB_URL: http://localhost:3063
       TZ: Asia/Tokyo
     ports:
-      - "3065:8080"
+      - "3065:3065"
     volumes:
       - airflow-data:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags
@@ -133,7 +133,7 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow api-server",
+        "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow api-server -p 3065",
       ]
   email-compose:
     build: ../apps/email-compose
