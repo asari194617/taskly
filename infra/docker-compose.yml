@@ -101,12 +101,17 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__EXPOSE_CONFIG: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
       AIRFLOW__API__HOST: 0.0.0.0
-      # AIRFLOW__API__BASE_URL: https://airflow-taskly.iy0306.com
+      AIRFLOW__API__BASE_URL: http://localhost:3065
+      AIRFLOW__WEBSERVER__BASE_URL: http://localhost:3065
       AIRFLOW__API__ENABLE_PROXY_FIX: "True"
-      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-taskly-dev-jwt-secret-change-me}
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       # MySQL connection for DAGs
       DB_HOST: db
       DB_PORT: 3306
@@ -133,7 +138,7 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow api-server -p 3065",
+        "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; exec airflow api-server -p 3065",
       ]
   email-compose:
     build: ../apps/email-compose
@@ -166,8 +171,9 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
-      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-taskly-dev-jwt-secret-change-me}
       # MySQL connection for DAGs
       MYSQL_HOST: db
       MYSQL_PORT: 3306
@@ -196,8 +202,39 @@ services:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-scheduler.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow scheduler",
+        "rm -f /opt/airflow/airflow-scheduler.pid; airflow db migrate; exec airflow scheduler",
       ]
+  airflow-dag-processor:
+    build: ./airflow
+    container_name: taskly-airflow-dag-processor
+    env_file:
+      - ../.env
+    depends_on:
+      - db
+      - airflow-webserver
+    restart: unless-stopped
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-taskly-dev-jwt-secret-change-me}
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Tokyo
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags
+      - ../.env:/opt/airflow/.env:ro
+      - ..:/workspace
+    command: ["bash", "-lc", "exec airflow dag-processor"]
 volumes:
   db-data:
   redis-data:
