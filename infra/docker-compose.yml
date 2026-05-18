@@ -102,7 +102,7 @@ services:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__API__EXPOSE_CONFIG: "True"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
       AIRFLOW__API__HOST: 0.0.0.0
       # AIRFLOW__API__BASE_URL: https://airflow-taskly.iy0306.com
       AIRFLOW__API__ENABLE_PROXY_FIX: "True"
@@ -166,7 +166,7 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
       AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET}
       # MySQL connection for DAGs
       MYSQL_HOST: db
@@ -197,23 +197,6 @@ services:
         "bash",
         "-lc",
         "rm -f /opt/airflow/airflow-scheduler.pid; airflow db migrate; airflow users create --role Admin --username airflow --password airflow --email airflow@example.com --firstname Air --lastname Flow || true; exec airflow scheduler",
-      ]
-  airflow-ui:
-    build: ./airflow
-    container_name: taskly-airflow-ui
-    depends_on:
-      - airflow-webserver
-    restart: unless-stopped
-    environment:
-      # UIが通信する先のAPIサーバーのURLを指定
-      AIRFLOW__UI__API_SERVER_URL: http://taskly-airflow-web:8080
-    ports:
-      - "3070:8080"
-    command:
-      [
-        "bash",
-        "-lc",
-        "exec airflow ui",
       ]
 volumes:
   db-data:
