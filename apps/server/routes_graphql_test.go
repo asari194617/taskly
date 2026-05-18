@@ -12,11 +12,11 @@ import (
 	"net/http/httptest"
 
 	miniredis "github.com/alicebob/miniredis/v2"
+	utils "github.com/asari194617/taskly/apps/server/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 	gorm_sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 // setupTestApp initializes in-memory DB/redis and returns a Fiber app with /graphql mounted plus a test user/session token.
@@ -45,8 +45,19 @@ func setupTestApp(t *testing.T) (*fiber.App, string) {
 		t.Fatalf("seed role: %v", err)
 	}
 	token := "test_token"
+	hashedToken := utils.Sha256Hex([]byte(token))
+	// Create session in both DB and Redis for robustness
+	sess := utils.Session{
+		UserID:         u.ID,
+		HashedToken:    hashedToken,
+		ClientPlatform: "web",
+		ExpiresAt:      nil, // no expiry
+	}
+	if err := DB.Create(&sess).Error; err != nil {
+		t.Fatalf("seed session in db: %v", err)
+	}
 	if err := RDB.Set(context.Background(), "session:"+token, fmt.Sprintf("%d", u.ID), time.Hour).Err(); err != nil {
-		t.Fatalf("seed session: %v", err)
+		t.Fatalf("seed session in redis: %v", err)
 	}
 
 	app := fiber.New()
