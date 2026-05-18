@@ -208,7 +208,7 @@ services:
       # UIが通信する先のAPIサーバーのURLを指定
       AIRFLOW__UI__API_SERVER_URL: http://taskly-airflow-web:8080
     ports:
-      - "3066:8080"
+      - "3070:8080"
     command:
       [
         "bash",
