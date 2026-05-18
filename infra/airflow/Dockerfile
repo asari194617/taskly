@@ -1,4 +1,4 @@
-FROM apache/airflow:2.9.2-python3.11
+FROM apache/airflow:3.2.1-python3.14
 
 USER root
 RUN apt-get update && \
@@ -33,8 +33,8 @@ USER airflow
 
 # Python deps for integrations: Sentry, Datadog tracer, Discord provider
 # IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
-ARG AIRFLOW_VERSION=2.9.2
-ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.11.txt"
+ARG AIRFLOW_VERSION=3.2.1
+ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
 RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     sentry-sdk \
     ddtrace \
