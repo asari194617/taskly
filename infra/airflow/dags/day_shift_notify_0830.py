@@ -536,5 +536,6 @@ with DAG(
     schedule="30 23 * * *",
     catchup=False,
     default_args={"owner": "taskly"},
+    tags=["day_shift"],
 ) as dag:
     PythonOperator(task_id="notify_day_shift", python_callable=notify_day_shift)

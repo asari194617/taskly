@@ -448,6 +448,7 @@ with DAG(
     schedule="0 18 * * *",
     catchup=False,
     default_args={"owner": "taskly"},
+    tags=["day_shift"],
 ) as dag:
     inc = PythonOperator(task_id="increment_index", python_callable=increment_if_needed)
 
