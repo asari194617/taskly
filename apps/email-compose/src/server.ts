@@ -92,9 +92,17 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
     ) => {
       try {
         const locale = (call.request?.locale as string) || "ja";
-        const items: TaskDigestItem[] = Array.isArray(call.request?.items)
-          ? (call.request.items as TaskDigestItem[])
+        const rawItems: any[] = Array.isArray(call.request?.items)
+          ? (call.request.items as any[])
           : [];
+        const items: TaskDigestItem[] = rawItems.map((it) => ({
+          whenLabel: it.when_label ?? it.whenLabel ?? "",
+          subject: it.subject,
+          title: it.title,
+          body: it.body,
+          meta: it.meta,
+          badges: it.badges,
+        }));
 
         const { t } = await getT("tasks-digest", locale);
         const element = await TaskDigestEmail({ items, locale });

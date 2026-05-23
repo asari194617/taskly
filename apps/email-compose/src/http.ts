@@ -64,9 +64,15 @@ export function startHttpServer(port: number) {
         for await (const ch of req) chunks.push(ch as Buffer);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         const locale = (body.locale as string) || "ja";
-        const items: TaskDigestItem[] = Array.isArray(body.items)
-          ? body.items
-          : [];
+        const rawItems: any[] = Array.isArray(body.items) ? body.items : [];
+        const items: TaskDigestItem[] = rawItems.map((it) => ({
+          whenLabel: it.when_label ?? it.whenLabel ?? "",
+          subject: it.subject,
+          title: it.title,
+          body: it.body,
+          meta: it.meta,
+          badges: it.badges,
+        }));
         const { t } = await getT("tasks-digest", locale);
         const element = await TaskDigestEmail({ items, locale });
         const html = render(element, { pretty: true });
