@@ -1087,7 +1087,7 @@ func buildTeamsTitleForTask(t utils.Task) string {
 	dateLabel := t.Deadline.Format("1/2")
 	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
 	if label == "" {
-		label = dateLabel + "まで"
+		label = dateLabel
 	} else {
 		label = dateLabel + " " + label
 	}
