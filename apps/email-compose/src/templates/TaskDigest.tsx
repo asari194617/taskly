@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
 import * as React from "react";
 import { Container, Section, Heading, Text } from "@react-email/components";
 import { getT } from "../get-t.js";
@@ -62,16 +63,6 @@ export async function TaskDigestEmail({
   }
 
   const isSingle = safeItems.length === 1;
-  const i = safeItems[0];
-  const title = isSingle
-    ? t("single.title", {
-        when: i.whenLabel,
-        subject: i.subject,
-        task: i.title,
-      })
-    : t("multi.title", {
-        count: safeItems.length,
-      });
 
   safeItems = safeItems.map((it) => ({
     ...it,
@@ -85,6 +76,17 @@ export async function TaskDigestEmail({
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(it);
   }
+
+  const i = safeItems[0];
+  const title = isSingle
+    ? t("single.title", {
+        when: i.whenLabel,
+        subject: i.subject,
+        task: i.title,
+      })
+    : t("multi.title", {
+        count: safeItems.length,
+      });
 
   const badgeClass = (variant: "gray" | "red" | "blue" = "gray") => {
     switch (variant) {

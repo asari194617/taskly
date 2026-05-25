@@ -1,6 +1,6 @@
 {
   "single": {
-    "title": "[Due {{when}}] {{subject}}: {{task}}"
+    "title": "[{{when}}] {{subject}}: {{task}}"
   },
   "multi": {
     "title": "You have {{count}} upcoming tasks"

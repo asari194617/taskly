@@ -1,6 +1,6 @@
 {
   "single": {
-    "title": "【{{when}}まで】{{subject}}: {{task}}"
+    "title": "【{{when}}】{{subject}}: {{task}}"
   },
   "multi": {
     "title": "期限が近い課題が{{count}}件あります"

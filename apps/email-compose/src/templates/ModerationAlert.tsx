@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
 import * as React from "react";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
