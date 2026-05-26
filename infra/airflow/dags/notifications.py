@@ -1,17 +1,19 @@
 from datetime import datetime, time
 from airflow.sdk import DAG
-from common import discord_failure_callback, discord_success_callback
 from airflow.providers.standard.operators.bash import BashOperator
 import os
-try:
-    from dotenv import load_dotenv
-    env_path = "/opt/airflow/.env"
-    if os.path.exists(env_path):
-        load_dotenv(env_path, override=False)
-    else:
-        load_dotenv(override=False)
-except Exception:
-    pass
+
+
+def discord_failure_callback(context):
+    from common import discord_failure_callback as _discord_failure_callback
+
+    _discord_failure_callback(context)
+
+
+def discord_success_callback(context):
+    from common import discord_success_callback as _discord_success_callback
+
+    _discord_success_callback(context)
 
 # Runs queue manager and delivery channels (email / webpush / discord)
 # at 07:00 and 17:00 JST daily. Assumes docker container context where
