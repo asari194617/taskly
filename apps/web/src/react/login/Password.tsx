@@ -47,22 +47,39 @@ export default function Password() {
         throw new Error(text || "エラーが発生しました");
       }
       const data = text ? JSON.parse(text) : {};
-      const passkey =
-        !!data?.passkey_enabled ||
-        (Array.isArray(data?.methods) && data.methods.includes("passkey"));
+      const methods: string[] = Array.isArray(data?.methods)
+        ? data.methods
+        : [];
+      const passkey = !!data?.passkey_enabled || methods.includes("passkey");
+      const emailCode = methods.includes("email_code");
       const totp = !!data?.totp_enabled;
-      if (!totp) {
-        // No MFA required: perform password-only login now
+      const recovery = methods.includes("recovery");
+      const enabled = [
+        passkey ? "passkey" : null,
+        emailCode ? "mail" : null,
+        totp ? "totp" : null,
+        recovery ? "recovery" : null,
+      ].filter(Boolean) as string[];
+      if (enabled.length === 0) {
+        // No MFA configured: password-only login
         await doLogin();
         return;
       }
-      // MFA required: persist password temporarily and move to TOTP or selection
+      // MFA required: persist password temporarily for the next step
       sessionStorage.setItem("login_pw", password);
       const qs = `?email=${encodeURIComponent(email)}`;
-      if (passkey) {
+      if (enabled.length > 1) {
         window.location.assign(withNext(`/login/select${qs}`));
-      } else {
+        return;
+      }
+      if (passkey) {
+        window.location.assign(withNext(`/login/passkey${qs}`));
+      } else if (totp) {
         window.location.assign(withNext(`/login/totp${qs}`));
+      } else if (emailCode) {
+        window.location.assign(withNext(`/login/mail-code${qs}`));
+      } else if (recovery) {
+        window.location.assign(withNext(`/login/recovery${qs}`));
       }
     } catch (e: any) {
       setMessage(e.message || "エラーが発生しました");

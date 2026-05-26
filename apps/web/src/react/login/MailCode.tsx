@@ -85,13 +85,14 @@ export default function MailCode() {
     setLoading(true);
     setMessage(null);
     try {
+      const password = sessionStorage.getItem("login_pw") || undefined;
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Client-Platform": "web",
         },
-        body: JSON.stringify({ email, code }),
+        body: JSON.stringify({ email, password, code }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -100,6 +101,7 @@ export default function MailCode() {
         }
         throw new Error(data?.error || JSON.stringify(data));
       }
+      sessionStorage.removeItem("login_pw");
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         await postLoginRedirect();

@@ -323,69 +323,61 @@ func registerAuthRoutes(app *fiber.App) {
 			Count(&cnt).Error; err == nil && cnt > 0 {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
 		}
-		// Primary factor: if password is set, require password; otherwise allow email code
-		reqPassword := (u.HashedPassword != nil && *u.HashedPassword != "")
-		primaryOK := false
-		if reqPassword {
+		// Step 1: password (only if user has password enabled)
+		hasPassword := u.HashedPassword != nil && *u.HashedPassword != ""
+		if hasPassword {
 			if body.Password == "" {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "password required"})
 			}
-			// verify bcrypt password
-			if err := bcrypt.CompareHashAndPassword([]byte(*u.HashedPassword), []byte(body.Password)); err == nil {
-				primaryOK = true
-			} else {
+			if err := bcrypt.CompareHashAndPassword([]byte(*u.HashedPassword), []byte(body.Password)); err != nil {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password"})
 			}
-		} else {
-			// Respect user setting for email code login
-			if !u.EmailCodeAllowed {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "email code disabled"})
-			}
-			// verify login code (email magic code) using DB
-			if body.Code == "" {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "code required"})
-			}
-			email := strings.ToLower(strings.TrimSpace(body.Email))
-			var lc utils.LoginCode
-			if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
-			}
-			// ロック中なら拒否
-			if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
-				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
-			}
-			if lc.HashedCode != utils.Sha256Hex([]byte(body.Code)) {
-				// 失敗回数インクリメント
-				failCount := lc.FailedAttempts + 1
-				update := map[string]interface{}{"FailedAttempts": failCount}
-				// 5回以上失敗で有効期限までロック
-				if failCount >= 5 {
-					update["LockedUntil"] = lc.ExpiresAt
-				}
-				_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid code"})
-			}
-			_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
-			primaryOK = true
 		}
-		if !primaryOK {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+		// Step 2: MFA (mail_code / TOTP / recovery code)
+		// Required when the user has no password, or when any MFA method is enabled.
+		// Per spec, a password-only user (no MFA configured) skips this step.
+		totpActive, totpSecret, _ := utils.GetActiveTOTP(u.ID, DB)
+		mailCodeEnabled := u.EmailCodeAllowed
+		anyMfaEnabled := totpActive || mailCodeEnabled
+		if !hasPassword && !anyMfaEnabled {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "no auth method"})
 		}
-		// 2FA enforcement (TOTP or recovery code)
-		if active, secret, _ := utils.GetActiveTOTP(u.ID, DB); active {
+		if !hasPassword || anyMfaEnabled {
 			ok := false
-			if body.Totp != "" {
-				if utils.ValidateTOTP(secret, body.Totp) {
+			// mail code
+			if !ok && mailCodeEnabled && body.Code != "" {
+				var lc utils.LoginCode
+				if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err == nil {
+					if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
+						return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
+					}
+					if lc.HashedCode == utils.Sha256Hex([]byte(body.Code)) {
+						_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+						ok = true
+					} else {
+						failCount := lc.FailedAttempts + 1
+						update := map[string]interface{}{"FailedAttempts": failCount}
+						if failCount >= 5 {
+							update["LockedUntil"] = lc.ExpiresAt
+						}
+						_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
+					}
+				}
+			}
+			// TOTP
+			if !ok && totpActive && body.Totp != "" {
+				if utils.ValidateTOTP(totpSecret, body.Totp) {
 					ok = true
 				}
 			}
+			// recovery code
 			if !ok && body.Recovery != "" {
 				if utils.ConsumeRecoveryCode(u.ID, body.Recovery, DB) {
 					ok = true
 				}
 			}
 			if !ok {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "2fa required"})
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "mfa required"})
 			}
 		}
 		// Create session token (opaque, strong randomness) and store in Redis

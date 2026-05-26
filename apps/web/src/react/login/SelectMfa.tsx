@@ -54,7 +54,6 @@ export default function SelectMfa() {
         const totp = !!data?.totp_enabled;
         const recovery =
           Array.isArray(data?.methods) && data.methods.includes("recovery");
-        // If password was entered earlier, email code should not be offered
         setOptions({
           passkey,
           emailCode: emailCode,
