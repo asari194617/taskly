@@ -30,9 +30,9 @@ func registerAuthRoutes(app *fiber.App) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	now := time.Now().In(jst)
 
 	app.Post("/auth/request-code", func(c *fiber.Ctx) error {
+		now := time.Now().In(jst)
 		var body struct {
 			Email string `json:"email"`
 		}
@@ -270,6 +270,7 @@ func registerAuthRoutes(app *fiber.App) {
 
 	// login
 	app.Post("/auth/login", func(c *fiber.Ctx) error {
+		now := time.Now().In(jst)
 		var body struct {
 			Email    string `json:"email"`
 			Password string `json:"password"`
