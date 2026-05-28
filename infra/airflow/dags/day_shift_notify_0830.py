@@ -422,38 +422,76 @@ def notify_day_shift(**context):
                 f"SELECT id, email, display_name FROM users WHERE id IN ({ids_csv}) AND is_deleted = 0"
             )
             all_users = cur.fetchall() or []
-        # Filter by NotificationTypePref and EMAIL device overrides
+        # Filter by NotificationTypePref and EMAIL device overrides (batch queries to avoid N+1)
         enabled_users = []
-        for u in all_users:
-            uid_raw = u.get("id")
-            if uid_raw is None:
-                continue
-            uid = int(uid_raw)
-            # Type off check: if a record exists with DAYSHIFT and is_enabled=0, skip
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT is_enabled FROM notification_type_prefs WHERE user_id=%s AND notification_type='DAYSHIFT' ORDER BY id DESC LIMIT 1",
-                    (uid,),
-                )
-                pref = cur.fetchone()
-            pref_enabled = pref.get("is_enabled", 1) if pref is not None else 1
-            if pref_enabled is not None and int(pref_enabled) == 0:
-                continue
-            # EMAIL device check:
-            #   - default: enabled even when no record exists in notification_devices
-            #   - if there is an EMAIL record with is_enabled = 0, treat as disabled
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT is_enabled FROM notification_devices WHERE user_id=%s AND platform='EMAIL' ORDER BY id DESC LIMIT 1",
-                    (uid,),
-                )
-                dev = cur.fetchone()
-            dev_enabled = dev.get("is_enabled", 1) if dev is not None else 1
-            if dev_enabled is not None and int(dev_enabled) == 0:
-                continue
+        blocked_users = []
 
-            enabled_users.append(u)
-        users = enabled_users
+        # all_users was selected earlier using ids_csv
+        # Build ids with explicit None-check to satisfy static type checkers
+        ids: list[int] = []
+        for u in all_users:
+            uid_val = u.get("id")
+            if uid_val is None:
+                continue
+            try:
+                ids.append(int(uid_val))
+            except Exception:
+                # Skip any invalid id values
+                continue
+        if not ids:
+            users = []
+        else:
+            # Reuse ids_csv style used earlier
+            ids_csv = ",".join(str(i) for i in ids)
+
+            # Fetch active blocks for all users in one query
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT user_id, COUNT(1) AS c FROM blocks WHERE user_id IN ({ids_csv}) AND (expires_at IS NULL OR expires_at > NOW()) GROUP BY user_id"
+                )
+                blk_rows = cur.fetchall() or []
+            blocked_map = {int(r["user_id"]): int(r.get("c", 0) or 0) for r in blk_rows}
+
+            # Fetch latest notification_type_prefs for DAYSHIFT for these users (ordered by id desc)
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT user_id, is_enabled FROM notification_type_prefs WHERE notification_type='DAYSHIFT' AND user_id IN ({ids_csv}) ORDER BY user_id ASC, id DESC"
+                )
+                pref_rows = cur.fetchall() or []
+            pref_map = {}
+            for r in pref_rows:
+                uid = int(r["user_id"])
+                if uid not in pref_map:
+                    pref_map[uid] = int(r.get("is_enabled", 1) or 1)
+
+            # Fetch latest EMAIL device records for these users
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT user_id, is_enabled FROM notification_devices WHERE platform='EMAIL' AND user_id IN ({ids_csv}) ORDER BY user_id ASC, id DESC"
+                )
+                dev_rows = cur.fetchall() or []
+            dev_map = {}
+            for r in dev_rows:
+                uid = int(r["user_id"])
+                if uid not in dev_map:
+                    dev_map[uid] = int(r.get("is_enabled", 1) or 1)
+
+            # Final filtering in Python using pre-fetched maps
+            for u in all_users:
+                uid_raw = u.get("id")
+                if uid_raw is None:
+                    continue
+                uid = int(uid_raw)
+                if blocked_map.get(uid, 0) > 0:
+                    blocked_users.append(u)
+                    continue
+                if pref_map.get(uid, 1) == 0:
+                    continue
+                if dev_map.get(uid, 1) == 0:
+                    continue
+                enabled_users.append(u)
+
+            users = enabled_users
         if not users:
             hook = os.getenv("DISCORD_WEBHOOK_URL", "")
             if hook:
@@ -485,7 +523,7 @@ def notify_day_shift(**context):
 
         names = ", ".join(members)
         subject = "[Taskly] 本日の日直のお知らせ"
-        text_body = f"本日({today.strftime('%Y-%m-%d')})の日直: {names}"
+        text_body = f"本日({today.strftime('%Y/%m/%d')})の日直: {names}"
         html_body = ""
 
         try:
@@ -497,20 +535,34 @@ def notify_day_shift(**context):
             )
         except Exception as e:
             print(f"[DayShift] email-compose gRPC failed: {e}")
+            return
 
         print(text_body)
 
         # Actually send email to all target users via SMTP.
         send_day_shift_emails(users, subject, text_body, html_body)
-        # Discord embeds: report notified users
+        # Discord embeds: report notified users (including blocked ones in Users)
+        blocked_names = [
+            (u.get("display_name") or u.get("email") or "").strip()
+            for u in blocked_users
+            if (u.get("display_name") or u.get("email") or "").strip()
+        ]
+        all_member_names = members + blocked_names
+        users_field_value = ", ".join(all_member_names) or "(none)"
         hook = os.getenv("DISCORD_WEBHOOK_URL", "")
         if hook:
             fields = [
                 {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
                 {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
-                {"name": "Users", "value": names or "(none)", "inline": False},
+                {"name": "Users", "value": users_field_value, "inline": False},
                 {"name": "Count", "value": str(len(users)), "inline": True},
             ]
+            if blocked_names:
+                fields.append({
+                    "name": "Blocked",
+                    "value": ", ".join(blocked_names),
+                    "inline": False,
+                })
             try:
                 requests.post(hook, json={
                     "embeds": [{
