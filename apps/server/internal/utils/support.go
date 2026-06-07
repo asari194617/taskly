@@ -20,7 +20,6 @@ import (
 	"net/smtp"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -317,121 +316,6 @@ func SendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMemb
 		Level: sentry.LevelInfo,
 	})
 	return nil
-}
-
-func RunMigrations(DB *gorm.DB) {
-	// Manual SQL migrations runner (no AutoMigrate). Applies .sql files once.
-	// 1) Locate migrations directory
-	dir := strings.TrimSpace(Env("MIGRATIONS_DIR", ""))
-	if dir == "" {
-		// Try common locations for local/dev and container runtimes
-		candidates := []string{
-			"./migrations",
-			"/app/migrations",
-			"../apps/server/migrations",
-		}
-		for _, c := range candidates {
-			if st, err := os.Stat(c); err == nil && st.IsDir() {
-				dir = c
-				break
-			}
-		}
-	}
-	if dir == "" {
-		log.Printf("migrations: directory not found; skipping")
-		return
-	}
-
-	// 2) Ensure migrations table exists
-	if err := DB.Exec(`CREATE TABLE IF NOT EXISTS migrations (
-		id BIGINT PRIMARY KEY AUTO_INCREMENT,
-		name VARCHAR(255) NOT NULL UNIQUE,
-		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error; err != nil {
-		log.Printf("migrations: ensure table failed: %v", err)
-		return
-	}
-
-	// 3) Load applied migration names
-	type row struct{ Name string }
-	var applied []row
-	_ = DB.Raw("SELECT name FROM migrations").Scan(&applied).Error
-	appliedSet := map[string]struct{}{}
-	for _, r := range applied {
-		appliedSet[r.Name] = struct{}{}
-	}
-
-	// 4) Read .sql files sorted
-	ents, err := os.ReadDir(dir)
-	if err != nil {
-		log.Printf("migrations: readdir %s: %v", dir, err)
-		return
-	}
-	// Simple lexicographic order is fine (0001_.., 0002_..)
-	// filepath is needed for absolute join
-	var files []string
-	for _, e := range ents {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		lower := strings.ToLower(name)
-		if strings.HasSuffix(lower, ".sql") {
-			files = append(files, filepath.Join(dir, name))
-		}
-	}
-	if len(files) == 0 {
-		return
-	}
-	// Sort for deterministic order
-	// (os.ReadDir returns sorted by filename in Go 1.20+, but be explicit)
-	for i := 0; i < len(files)-1; i++ {
-		for j := i + 1; j < len(files); j++ {
-			if files[j] < files[i] {
-				files[i], files[j] = files[j], files[i]
-			}
-		}
-	}
-
-	// 5) Apply pending files
-	for _, fp := range files {
-		name := filepath.Base(fp)
-		if _, ok := appliedSet[name]; ok {
-			continue
-		}
-		// Pre-flight: ensure base tables exist before applying first migration to avoid FK create order issues
-		if name == "0001_init.sql" {
-			// Create users and subjects upfront if missing
-			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS users (
-			  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-			  email VARCHAR(255) NOT NULL UNIQUE,
-			  display_name VARCHAR(255),
-			  hashed_password VARCHAR(255) NULL,
-			  is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
-			_ = DB.Exec(`CREATE TABLE IF NOT EXISTS subjects (
-			  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-			  title VARCHAR(255) NOT NULL,
-			  expires_at DATETIME,
-			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).Error
-		}
-		b, err := os.ReadFile(fp)
-		if err != nil {
-			log.Printf("migrations: read %s: %v", name, err)
-			return
-		}
-		if err := execSQLBatch(string(b), DB); err != nil {
-			log.Printf("migrations: apply %s failed: %v", name, err)
-			return
-		}
-		if err := DB.Exec("INSERT INTO migrations(name) VALUES(?)", name).Error; err != nil {
-			log.Printf("migrations: record %s failed: %v", name, err)
-			return
-		}
-		log.Printf("migrations: applied %s", name)
-	}
 }
 
 // execSQLBatch splits a SQL file by ';' and executes statements sequentially.

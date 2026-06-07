@@ -71,9 +71,6 @@ func main() {
 	wAuth := initWebAuthn()
 	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
 
-	// Run pending migrations first (includes timestamp sanitize/defaults)
-	utils.RunMigrations(db)
-
 	mw := mw.NewMiddleware(db,rdb,wAuth);
 	adminH := adminH.NewAdminHandler(db, rdb, wAuth)
 	handler := handler.NewHandler(db, rdb, wAuth)
