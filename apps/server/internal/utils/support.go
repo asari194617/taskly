@@ -230,14 +230,14 @@ func IsSensitiveValue(v string) bool {
 		return true
 	}
 	// long hex-ish strings
-	hexish := 0
+	hexIsh := 0
 	for i := 0; i < len(v); i++ {
 		c := v[i]
 		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
-			hexish++
+			hexIsh++
 		}
 	}
-	if len(v) >= 24 && hexish > len(v)/2 {
+	if len(v) >= 24 && hexIsh > len(v)/2 {
 		return true
 	}
 	return false
@@ -403,38 +403,38 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
 	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
 	if err != nil || strings.TrimSpace(uidStr) == "" {
-		var sess domain.Session
-		if dberr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&sess).Error; dberr != nil {
+		var session domain.Session
+		if dbErr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; dbErr != nil {
 			if debugAuth {
 				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
 			}
 			return false
 		}
-		if headerPlat != "" && sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
+		if headerPlat != "" && session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
 			if debugAuth {
-				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, sess.ClientPlatform)
+				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
 			}
 			return false
 		}
 		ttl := 30 * 24 * time.Hour
-		if sess.ExpiresAt != nil {
-			rem := time.Until(*sess.ExpiresAt)
+		if session.ExpiresAt != nil {
+			rem := time.Until(*session.ExpiresAt)
 			if rem > 0 && rem < ttl {
 				ttl = rem
 			}
 		}
-		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", sess.UserID), ttl).Err()
-		uidStr = fmt.Sprintf("%d", sess.UserID)
+		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", session.UserID), ttl).Err()
+		uidStr = fmt.Sprintf("%d", session.UserID)
 		if debugAuth {
-			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, sess.ClientPlatform)
+			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
 		}
 	} else {
 		if headerPlat != "" {
-			var sess domain.Session
-			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&sess).Error; err == nil {
-				if sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
+			var session domain.Session
+			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&session).Error; err == nil {
+				if session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
 					if debugAuth {
-						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, sess.ClientPlatform)
+						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
 					}
 					return false
 				}
