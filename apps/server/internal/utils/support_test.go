@@ -1,14 +1,10 @@
-package main
+package utils
 
-import (
-	"testing"
-
-	utils "github.com/asari194617/taskly/apps/server/internal/utils"
-)
+import "testing"
 
 func TestICalEscape(t *testing.T) {
 	in := "Hello, World; Line\\Break\nNext"
-	out := utils.ICalEscape(in)
+	out := ICalEscape(in)
 	if out == in {
 		t.Fatalf("expected escaped string, got same")
 	}
@@ -18,8 +14,8 @@ func TestICalEscape(t *testing.T) {
 }
 
 func TestGenerateIcalToken(t *testing.T) {
-	a := utils.GenerateIcalToken()
-	b := utils.GenerateIcalToken()
+	a := GenerateIcalToken()
+	b := GenerateIcalToken()
 	if a == b {
 		t.Fatalf("expected different tokens")
 	}
