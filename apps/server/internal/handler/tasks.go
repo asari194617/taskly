@@ -145,14 +145,15 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if body.DeadlineUntil != nil && strings.TrimSpace(*body.DeadlineUntil) != "" {
 			rec.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
 		}
-		if err := h.db.Create(&rec).Error; err != nil {
+		recCreated, err := domain.CreateTask(h.db, u.ID, body.Title, body.SubjectID, body.Description, rec.Type, rec.IsRequireHandIn, rec.IsSelfCheckRequired, rec.Deadline, rec.DeadlineSince, rec.DeadlineUntil, u.Email)
+		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		// Asynchronous Teams notification via Outlook/Power Automate email
-		go utils.SendTeamsNotifyEmailForTask(rec, h.db)
+		go utils.SendTeamsNotifyEmailForTask(recCreated, h.db)
 		// Async Discord notification (embed)
-		go utils.SendDiscordTaskEmbed("created", rec, u.Email)
-		return c.Status(201).JSON(rec)
+		go utils.SendDiscordTaskEmbed("created", recCreated, u.Email)
+		return c.Status(201).JSON(recCreated)
 	})
 
 	router.Patch("/:id", func(c *fiber.Ctx) error {
@@ -217,17 +218,58 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		} else if !ok {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		if err := h.db.Save(&rec).Error; err != nil {
+		// perform DB update via domain service
+		_, updated, err := domain.UpdateTask(h.db, rec.ID, func(r *domain.Task) error {
+			if body.Title != nil {
+				r.Title = *body.Title
+			}
+			if body.SubjectID != nil {
+				r.SubjectID = *body.SubjectID
+			}
+			if body.Description != nil {
+				r.Description = body.Description
+			}
+			if body.Type != nil {
+				r.Type = utils.NormalizeTaskType(*body.Type)
+			}
+			if body.IsRequireHandIn != nil {
+				r.IsRequireHandIn = *body.IsRequireHandIn
+			}
+			if body.SelfCheck != nil {
+				r.IsSelfCheckRequired = *body.SelfCheck
+			}
+			if body.Deadline != nil {
+				if strings.TrimSpace(*body.Deadline) == "" {
+					return fmt.Errorf("deadline required")
+				}
+				if t, err := time.Parse("2006-01-02", *body.Deadline); err == nil {
+					r.Deadline = utils.DateOnly(t)
+				} else {
+					return fmt.Errorf("invalid deadline")
+				}
+			}
+			if body.DeadlineSince != nil {
+				r.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
+			}
+			if body.DeadlineUntil != nil {
+				r.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
+			}
+			return nil
+		}, u.Email)
+		if err != nil {
+			if err.Error() == "deadline required" || err.Error() == "invalid deadline" {
+				return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+			}
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		// Fire Teams reply for update
-		if mid, ok := utils.LatestTeamsMessageIDForTask(rec.ID, h.db); ok {
-			msg := utils.BuildTaskUpdateMessageJa(before, rec, h.db)
-			go utils.SendTeamsReplyEmail(rec.ID, mid, msg)
+		if mid, ok := utils.LatestTeamsMessageIDForTask(updated.ID, h.db); ok {
+			msg := utils.BuildTaskUpdateMessageJa(before, updated, h.db)
+			go utils.SendTeamsReplyEmail(updated.ID, mid, msg)
 		}
 		// Async Discord notification (embed)
-		go utils.SendDiscordTaskEmbed("updated", rec, u.Email)
-		return c.JSON(rec)
+		go utils.SendDiscordTaskEmbed("updated", updated, u.Email)
+		return c.JSON(updated)
 	})
 
 	router.Delete("/:id", func(c *fiber.Ctx) error {
@@ -253,16 +295,17 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if !allowed {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		if err := h.db.Delete(&domain.Task{}, rec.ID).Error; err != nil {
+		deleted, err := domain.DeleteTask(h.db, rec.ID, u.Email)
+		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		// Fire Teams reply for delete
-		if mid, ok := utils.LatestTeamsMessageIDForTask(rec.ID, h.db); ok {
-			msg := utils.BuildTaskDeleteMessageJa(rec)
-			go utils.SendTeamsReplyEmail(rec.ID, mid, msg)
+		if mid, ok := utils.LatestTeamsMessageIDForTask(deleted.ID, h.db); ok {
+			msg := utils.BuildTaskDeleteMessageJa(deleted)
+			go utils.SendTeamsReplyEmail(deleted.ID, mid, msg)
 		}
 		// Async Discord notification (embed)
-		go utils.SendDiscordTaskEmbed("deleted", rec, u.Email)
+		go utils.SendDiscordTaskEmbed("deleted", deleted, u.Email)
 		return c.SendStatus(204)
 	})
 }

@@ -82,27 +82,27 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !validUntil[until] {
 					return nil, fmt.Errorf("invalid deadline_until")
 				}
-				rec := domain.Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, IsSelfCheckRequired: scr, Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
-				if err := h.db.Create(&rec).Error; err != nil {
+				recCreated, err := domain.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, utils.DateOnly(dt), since, until, u.Email)
+				if err != nil {
 					return nil, fmt.Errorf("db")
 				}
 				// Fire async Teams notification email for Power Automate
-				go utils.SendTeamsNotifyEmailForTask(rec, h.db)
+				go utils.SendTeamsNotifyEmailForTask(recCreated, h.db)
 				// Async Discord notification (embed) to align with REST create
-				go utils.SendDiscordTaskEmbed("created", rec, u.Email)
+				go utils.SendDiscordTaskEmbed("created", recCreated, u.Email)
 				out := map[string]any{
-					"id":                     rec.ID,
-					"title":                  rec.Title,
-					"subject_id":             rec.SubjectID,
-					"description":            rec.Description,
-					"type":                   rec.Type,
-					"is_require_hand_in":     rec.IsRequireHandIn,
-					"is_self_check_required": rec.IsSelfCheckRequired,
-					"deadline":               rec.Deadline.Format("2006-01-02"),
-					"deadline_since":         rec.DeadlineSince,
-					"deadline_until":         rec.DeadlineUntil,
-					"created_at":             rec.CreatedAt.Format(time.RFC3339),
-					"updated_at":             rec.UpdatedAt.Format(time.RFC3339),
+					"id":                     recCreated.ID,
+					"title":                  recCreated.Title,
+					"subject_id":             recCreated.SubjectID,
+					"description":            recCreated.Description,
+					"type":                   recCreated.Type,
+					"is_require_hand_in":     recCreated.IsRequireHandIn,
+					"is_self_check_required": recCreated.IsSelfCheckRequired,
+					"deadline":               recCreated.Deadline.Format("2006-01-02"),
+					"deadline_since":         recCreated.DeadlineSince,
+					"deadline_until":         recCreated.DeadlineUntil,
+					"created_at":             recCreated.CreatedAt.Format(time.RFC3339),
+					"updated_at":             recCreated.UpdatedAt.Format(time.RFC3339),
 				}
 				return out, nil
 			}
@@ -131,92 +131,86 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				var rec domain.Task
-				if err := h.db.First(&rec, id).Error; err != nil {
-					return nil, fmt.Errorf("not found")
-				}
-				before := rec
-				if okp, err := utils.CheckPermission(u.ID, "tasks", "update", &rec.AddedUserID, h.db); err != nil {
-					return nil, err
-				} else if !okp {
-					return nil, fmt.Errorf("forbidden")
-				}
-				if v, ok := p.Args["title"].(string); ok {
-					rec.Title = v
-				}
-				if v, ok := p.Args["subject_id"].(int); ok {
-					rec.SubjectID = uint(v)
-				}
-				if v, ok := p.Args["description"].(string); ok {
-					if strings.TrimSpace(v) == "" {
-						rec.Description = nil
-					} else {
-						rec.Description = &v
+				// perform update via domain service
+				before, after, err := domain.UpdateTask(h.db, uint(id), func(r *domain.Task) error {
+					if v, ok := p.Args["title"].(string); ok {
+						r.Title = v
 					}
-				}
-				if v, ok := p.Args["type"].(string); ok {
-					rec.Type = utils.NormalizeTaskType(v)
-				}
-				if v, ok := p.Args["is_require_hand_in"].(bool); ok {
-					rec.IsRequireHandIn = v
-				}
-				if v, ok := p.Args["is_self_check_required"].(bool); ok {
-					rec.IsSelfCheckRequired = v
-				}
-				if v, ok := p.Args["deadline"].(string); ok {
-					vv := strings.TrimSpace(v)
-					if vv != "" {
-						if t, err := time.Parse("2006-01-02", vv); err == nil {
-							rec.Deadline = utils.DateOnly(t)
+					if v, ok := p.Args["subject_id"].(int); ok {
+						r.SubjectID = uint(v)
+					}
+					if v, ok := p.Args["description"].(string); ok {
+						if strings.TrimSpace(v) == "" {
+							r.Description = nil
 						} else {
-							return nil, fmt.Errorf("invalid deadline")
+							r.Description = &v
 						}
 					}
-				}
-				if v, ok := p.Args["deadline_since"].(string); ok {
-					vv := strings.ToUpper(strings.TrimSpace(v))
-					if vv == "" {
-						vv = "NONE"
+					if v, ok := p.Args["type"].(string); ok {
+						r.Type = utils.NormalizeTaskType(v)
 					}
-					if vv != "NONE" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
-						return nil, fmt.Errorf("invalid deadline_since")
+					if v, ok := p.Args["is_require_hand_in"].(bool); ok {
+						r.IsRequireHandIn = v
 					}
-					rec.DeadlineSince = vv
-				}
-				if v, ok := p.Args["deadline_until"].(string); ok {
-					vv := strings.ToUpper(strings.TrimSpace(v))
-					if vv == "" {
-						vv = "NONE"
+					if v, ok := p.Args["is_self_check_required"].(bool); ok {
+						r.IsSelfCheckRequired = v
 					}
-					// Allow MORNING, LUNCH, AFTER_SCHOOL, or period enums
-					if vv != "NONE" && vv != "MORNING" && vv != "LUNCH" && vv != "AFTER_SCHOOL" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
-						return nil, fmt.Errorf("invalid deadline_until")
+					if v, ok := p.Args["deadline"].(string); ok {
+						vv := strings.TrimSpace(v)
+						if vv != "" {
+							if t, err := time.Parse("2006-01-02", vv); err == nil {
+								r.Deadline = utils.DateOnly(t)
+							} else {
+								return fmt.Errorf("invalid deadline")
+							}
+						}
 					}
-					rec.DeadlineUntil = vv
-				}
-				if err := h.db.Save(&rec).Error; err != nil {
-					return nil, fmt.Errorf("db")
+					if v, ok := p.Args["deadline_since"].(string); ok {
+						vv := strings.ToUpper(strings.TrimSpace(v))
+						if vv == "" {
+							vv = "NONE"
+						}
+						if vv != "NONE" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
+							return fmt.Errorf("invalid deadline_since")
+						}
+						r.DeadlineSince = vv
+					}
+					if v, ok := p.Args["deadline_until"].(string); ok {
+						vv := strings.ToUpper(strings.TrimSpace(v))
+						if vv == "" {
+							vv = "NONE"
+						}
+						// Allow MORNING, LUNCH, AFTER_SCHOOL, or period enums
+						if vv != "NONE" && vv != "MORNING" && vv != "LUNCH" && vv != "AFTER_SCHOOL" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
+							return fmt.Errorf("invalid deadline_until")
+						}
+						r.DeadlineUntil = vv
+					}
+					return nil
+				}, u.Email)
+				if err != nil {
+					return nil, err
 				}
 				// Fire Teams reply for update (if original message exists)
-				if mid, ok := utils.LatestTeamsMessageIDForTask(rec.ID, h.db); ok {
-					msg := utils.BuildTaskUpdateMessageJa(before, rec, h.db)
-					go utils.SendTeamsReplyEmail(rec.ID, mid, msg)
+				if mid, ok := utils.LatestTeamsMessageIDForTask(after.ID, h.db); ok {
+					msg := utils.BuildTaskUpdateMessageJa(before, after, h.db)
+					go utils.SendTeamsReplyEmail(after.ID, mid, msg)
 				}
 				// Async Discord notification (embed) to align with REST update
-				go utils.SendDiscordTaskEmbed("updated", rec, u.Email)
+				go utils.SendDiscordTaskEmbed("updated", after, u.Email)
 				out := map[string]any{
-					"id":                     rec.ID,
-					"title":                  rec.Title,
-					"subject_id":             rec.SubjectID,
-					"description":            rec.Description,
-					"type":                   rec.Type,
-					"is_require_hand_in":     rec.IsRequireHandIn,
-					"is_self_check_required": rec.IsSelfCheckRequired,
-					"deadline":               rec.Deadline.Format("2006-01-02"),
-					"deadline_since":         rec.DeadlineSince,
-					"deadline_until":         rec.DeadlineUntil,
-					"created_at":             rec.CreatedAt.Format(time.RFC3339),
-					"updated_at":             rec.UpdatedAt.Format(time.RFC3339),
+					"id":                     after.ID,
+					"title":                  after.Title,
+					"subject_id":             after.SubjectID,
+					"description":            after.Description,
+					"type":                   after.Type,
+					"is_require_hand_in":     after.IsRequireHandIn,
+					"is_self_check_required": after.IsSelfCheckRequired,
+					"deadline":               after.Deadline.Format("2006-01-02"),
+					"deadline_since":         after.DeadlineSince,
+					"deadline_until":         after.DeadlineUntil,
+					"created_at":             after.CreatedAt.Format(time.RFC3339),
+					"updated_at":             after.UpdatedAt.Format(time.RFC3339),
 				}
 				return out, nil
 			}
@@ -253,17 +247,18 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
 				}
-				if err := h.db.Delete(&domain.Task{}, rec.ID).Error; err != nil {
+				if deleted, err := domain.DeleteTask(h.db, rec.ID, u.Email); err != nil {
 					return false, fmt.Errorf("db")
+				} else {
+					// Fire Teams reply for delete (if original message exists)
+					if mid, ok := utils.LatestTeamsMessageIDForTask(deleted.ID, h.db); ok {
+						msg := utils.BuildTaskDeleteMessageJa(deleted)
+						go utils.SendTeamsReplyEmail(deleted.ID, mid, msg)
+					}
+					// Async Discord notification (embed) to align with REST delete
+					go utils.SendDiscordTaskEmbed("deleted", deleted, u.Email)
+					return true, nil
 				}
-				// Fire Teams reply for delete (if original message exists)
-				if mid, ok := utils.LatestTeamsMessageIDForTask(rec.ID, h.db); ok {
-					msg := utils.BuildTaskDeleteMessageJa(rec)
-					go utils.SendTeamsReplyEmail(rec.ID, mid, msg)
-				}
-				// Async Discord notification (embed) to align with REST delete
-				go utils.SendDiscordTaskEmbed("deleted", rec, u.Email)
-				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
 		},
@@ -287,8 +282,8 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err := h.db.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
-				// Upsert completion
-				if err := h.db.Exec("INSERT INTO tasks_users_completions(user_id, task_id) VALUES(?, ?) ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP", u.ID, rec.ID).Error; err != nil {
+				// Upsert completion via domain service
+				if err := domain.CompleteTask(h.db, u.ID, rec.ID); err != nil {
 					return false, fmt.Errorf("db")
 				}
 				return true, nil
@@ -310,7 +305,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				if err := h.db.Exec("DELETE FROM tasks_users_completions WHERE user_id = ? AND task_id = ?", u.ID, id).Error; err != nil {
+				if err := domain.UncompleteTask(h.db, u.ID, uint(id)); err != nil {
 					return false, fmt.Errorf("db")
 				}
 				return true, nil
