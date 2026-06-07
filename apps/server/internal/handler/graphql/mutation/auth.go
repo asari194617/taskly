@@ -279,8 +279,8 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				// wrap the domain.User so we can provide h.db access for credential loading
-				wuser := &webauthnUserWrapper{User: u, db: h.db}
-				creation, sd, err := h.wAuth.BeginRegistration(wuser)
+				wUser := &webauthnUserWrapper{User: u, db: h.db}
+				creation, sd, err := h.wAuth.BeginRegistration(wUser)
 				if err != nil {
 					return "", fmt.Errorf("begin failed")
 				}
@@ -317,8 +317,8 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				req, _ := http.NewRequestWithContext(c.Context(), "POST", "", strings.NewReader(payload))
 				req.Header.Set("Content-Type", "application/json")
 				// wrap so FinishRegistration can read credentials via h.db if needed
-				wuser := &webauthnUserWrapper{User: u, db: h.db}
-				cred, err := h.wAuth.FinishRegistration(wuser, sd, req)
+				wUser := &webauthnUserWrapper{User: u, db: h.db}
+				cred, err := h.wAuth.FinishRegistration(wUser, sd, req)
 
 				if err != nil {
 					return false, fmt.Errorf("finish failed")
