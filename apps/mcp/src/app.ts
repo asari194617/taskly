@@ -27,7 +27,7 @@ export async function createApp(pool: DBPool) {
         const hashed = sha256Hex(token);
         const [rows] = await pool.query(
           "SELECT user_id FROM mcps WHERE hashed_token = ? AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1",
-          [hashed]
+          [hashed],
         );
         if (!rows || rows.length === 0) {
           reply.code(401).send({ error: "invalid token" });
@@ -35,7 +35,7 @@ export async function createApp(pool: DBPool) {
         }
         (req as any).userId = rows[0].user_id as number;
       });
-    })
+    }),
   );
 
   app.get("/healthz", async () => ({ ok: true }));
@@ -45,7 +45,7 @@ export async function createApp(pool: DBPool) {
     const q = (req.query as any)?.q as string | undefined;
     const limit = Math.min(
       Math.max(Number((req.query as any)?.limit ?? 200), 1),
-      500
+      500,
     );
     const offset = Math.max(Number((req.query as any)?.offset ?? 0), 0);
     let sql =
@@ -78,7 +78,7 @@ export async function createApp(pool: DBPool) {
         body.deadline,
         body.deadline_since ?? "NONE",
         body.deadline_until ?? "NONE",
-      ]
+      ],
     );
     reply.code(201).send({ id: (res as any).insertId });
   });
@@ -124,7 +124,7 @@ export async function createApp(pool: DBPool) {
     const id = Number((req.params as any).id);
     const [rows] = await pool.query(
       "SELECT id, email, display_name, is_deleted, notification_lang, is_registered, is_agreed_policies, created_at FROM users WHERE id = ? LIMIT 1",
-      [id]
+      [id],
     );
     if (!rows || rows.length === 0)
       return reply.code(404).send({ error: "not found" });
@@ -133,6 +133,10 @@ export async function createApp(pool: DBPool) {
 
   app.patch("/users/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
+    const userId = (req as any).userId as number;
+    if (id !== userId) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
     const body = req.body as any;
     const fields: string[] = [];
     const values: any[] = [];
