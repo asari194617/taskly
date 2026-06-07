@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -273,30 +274,13 @@ func deriveDeadlineLabelEnum(since, until string) string {
 }
 
 func periodIndex(s string) int {
-	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case "P1":
-		return 1
-	case "P2":
-		return 2
-	case "P3":
-		return 3
-	case "P4":
-		return 4
-	case "P5":
-		return 5
-	case "P6":
-		return 6
-	case "P7":
-		return 7
-	case "P8":
-		return 8
-	case "P9":
-		return 9
-	case "P10":
-		return 10
-	default:
-		return 0
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if strings.HasPrefix(s, "P") {
+		if num, err := strconv.Atoi(s[1:]); err == nil && num >= 1 {
+			return num
+		}
 	}
+	return 0
 }
 
 func isUserBlocked(db *sql.DB, uid uint) bool {
