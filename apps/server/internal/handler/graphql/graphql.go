@@ -29,7 +29,7 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 	}
 
 	// GraphQL POST-only endpoint with security features
-	router.Post("/graphql", func(c *fiber.Ctx) error {
+	router.Post("/", func(c *fiber.Ctx) error {
 		// Rate limit: max 150 req/min per IP
 		ipKey := "graphql_rate:" + c.IP()
 		ipCount, _ := h.rdb.Incr(c.Context(), ipKey).Result()
@@ -85,7 +85,7 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 	})
 
 	// Optionally: block GET requests to /graphql
-	router.All("/graphql", func(c *fiber.Ctx) error {
+	router.All("/", func(c *fiber.Ctx) error {
 		if c.Method() != fiber.MethodPost {
 			return c.Status(405).JSON(fiber.Map{"error": "POST only"})
 		}
