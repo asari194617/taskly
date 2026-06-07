@@ -34,8 +34,10 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		var cursorDeadline *time.Time
 		var cursorID uint
 		if cursorDeadlineStr != "" {
-			if t, err := time.Parse(time.RFC3339, cursorDeadlineStr); err == nil {
-				cursorDeadline = &t
+			// cursor_deadline is date-only (YYYY-MM-DD)
+			if t, err := time.Parse("2006-01-02", cursorDeadlineStr); err == nil {
+				td := utils.DateOnly(t)
+				cursorDeadline = &td
 			}
 		}
 		if cursorIDStr != "" {
@@ -46,7 +48,8 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 
 		// Build query
 		dbq := h.db.Model(&domain.Task{})
-		now := time.Now()
+		// compare using date-only to keep ordering/filters consistent with stored Deadline (date-only)
+		now := utils.DateOnly(time.Now())
 		eff := utils.EffectiveDeadlineExpr("")
 		if overdue {
 			dbq = dbq.Where(eff+" < ?", now)
@@ -94,8 +97,8 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if len(items) > limit {
 			last := items[limit-1]
 			items = items[:limit]
-			ed := utils.EffectiveDeadlineTime(last)
-			nextCursor = map[string]string{"cursor_deadline": ed.Format(time.RFC3339), "cursor_id": fmt.Sprintf("%d", last.ID)}
+			// return date-only cursor (YYYY-MM-DD)
+			nextCursor = map[string]string{"cursor_deadline": last.Deadline.Format("2006-01-02"), "cursor_id": fmt.Sprintf("%d", last.ID)}
 		}
 		return c.JSON(fiber.Map{"items": items, "next_cursor": nextCursor})
 	})

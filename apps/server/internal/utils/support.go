@@ -658,7 +658,7 @@ func BuildICSForUser(userID uint, DB *gorm.DB) string {
 		if t.Deadline.IsZero() {
 			continue
 		}
-		// ed := EffectiveDeadlineTime(t)
+
 		var subj domain.Subject
 		_ = DB.First(&subj, t.SubjectID).Error
 		var u domain.User
@@ -884,40 +884,6 @@ func periodIndex(s string) int {
 	return 0
 }
 
-// end time of deadline based on enum until
-func endTimeForUntil(until string) (hour, min int) {
-	switch strings.ToUpper(strings.TrimSpace(until)) {
-	case "MORNING":
-		return 7, 59
-	case "LUNCH":
-		return 13, 00
-	case "AFTER_SCHOOL":
-		return 18, 00
-	case "P1":
-		return 10, 30
-	case "P2":
-		return 12, 10
-	case "P3":
-		return 14, 30
-	case "P4":
-		return 16, 10
-	case "P5":
-		return 17, 50
-	case "P6":
-		return 19, 30
-	case "P7":
-		return 21, 10
-	case "P8":
-		return 22, 50
-	case "P9":
-		return 23, 59
-	case "P10":
-		return 23, 59
-	default:
-		return 23, 59
-	}
-}
-
 // NormalizeTaskType converts user-provided or localized labels into canonical enum values.
 // Allowed enums: ONLINE, FACE_TO_FACE, QUIZ, PRESENTATION, SELF_STUDY, OTHER
 func NormalizeTaskType(s string) string {
@@ -1070,12 +1036,6 @@ func EffectiveDeadlineExpr(alias string) string {
 		return alias + ".deadline"
 	}
 	return "deadline"
-}
-
-// Compute effective deadline timestamp in Go for the given task
-func EffectiveDeadlineTime(t domain.Task) time.Time {
-	h, m := endTimeForUntil(t.DeadlineUntil)
-	return time.Date(t.Deadline.Year(), t.Deadline.Month(), t.Deadline.Day(), h, m, 0, 0, t.Deadline.Location())
 }
 
 // Send Teams notification email for a newly created task
