@@ -5,7 +5,6 @@ go 1.25.4
 require (
 	github.com/SherClockHolmes/webpush-go v1.2.0
 	github.com/alicebob/miniredis/v2 v2.34.0
-	github.com/asari194617/taskly/apps/server/utils v0.0.0
 	github.com/getsentry/sentry-go v0.46.2
 	github.com/getsentry/sentry-go/fiber v0.46.2
 	github.com/go-sql-driver/mysql v1.7.0
@@ -148,5 +147,3 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/asari194617/taskly/apps/server/utils => ./utils

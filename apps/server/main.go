@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/handler"
+	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql"
 	adminH "github.com/asari194617/taskly/apps/server/internal/handler/admin"
 	mw "github.com/asari194617/taskly/apps/server/internal/middleware"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
@@ -74,9 +76,8 @@ func main() {
 
 	mw := mw.NewMiddleware(db,rdb,wAuth);
 	adminH := adminH.NewAdminHandler(db, rdb, wAuth)
-
-	// AutoMigrate is disabled per policy; rely on SQL migrations only.
-	// Ensure only read-only helpers after runMigrations.
+	handler := handler.NewHandler(db, rdb, wAuth)
+	graphql := gqlH.NewHandler(db,rdb,wAuth)
 
 	// Sentry initialization (optional)
 	if dsn := utils.Env("SENTRY_DSN", ""); dsn != "" {
@@ -251,24 +252,45 @@ func main() {
 
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	// GraphQL routes
-	registerGraphQL(app)
-
-	// No in-process batch schedulers in server.
-	// - Day shift rotation/notification: handled by Airflow DAGs (infra/airflow/dags/day_shift_rotations.py)
-	// - Task notifications (email/WebPush): handled by Airflow DAG (infra/airflow/dags/notifications.py)
-	// If an emergency fallback is ever needed, re-enable via dedicated batch apps or DAGs, not here.
+	graphql.RegisterGraphQL(
+		app.Group("/graphql"),
+	)
 
 	// Register extracted route groups
-	registerAuthRoutes(app)
-	registerPushRoutes(app)
-	registerPushVAPIDRoutes(app)
-	registerNotificationSettingsRoutes(app)
-	registerSettingsRoutes(app)
-	registerWebAuthnRoutes(app)
-	registerAPIKeyRoutes(app)
-	register2FARoutes(app)
-	registerTasksRoutes(app)
-	registerReportRoutes(app)
+	handler.Register2FARoutes(
+		app.Group("/2fa"), mw,
+	)
+	handler.RegisterAuthRoutes(
+		app.Group("/auth"),
+	)
+	
+	handler.RegisterPushRoutes(
+		app.Group("/push"), mw,
+	)
+
+	handler.RegisterIcalTokensRoutes(
+		app.Group("/ical/tokens", mw.AuthRequired, mw.Audit),
+	)
+
+	handler.RegisterSettingsRoutes(
+		app.Group("/settings", mw.AuthRequired, mw.Audit),
+	)
+
+	handler.RegisterWebAuthnRoutes(
+		app.Group("/webauthn"),mw,
+	)
+
+	handler.RegisterAPIKeyRoutes(
+		app.Group("/apikeys", mw.AuthRequired, mw.Audit),
+	)
+
+	handler.RegisterTasksRoutes(
+		app.Group("/tasks", mw.AuthRequired, mw.Audit),
+	)
+
+	handler.RegisterReportRoutes(
+		app.Group("reports", mw.AuthRequired, mw.Audit),
+	)
 
 	adminH.RegisterAdminDayShiftRoutes(
 		app.Group("/admin/dayshift", mw.AuthRequired, mw.AdminOnly, mw.Audit),
@@ -286,7 +308,9 @@ func main() {
 		app.Group("/admin/users", mw.AuthRequired, mw.AdminOnly, mw.Audit),
 	)
 
-	registerIntegrationRoutes(app)
+	handler.RegisterIntegrationRoutes(
+		app.Group("/integrations"),
+	)
 
 	// User profile: update display name
 	app.Patch("/users/me", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {

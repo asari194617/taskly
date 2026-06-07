@@ -1,0 +1,189 @@
+package gqlQuery
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
+	graphql "github.com/graphql-go/graphql"
+)
+
+// queryFieldsSettings returns GraphQL fields for settings: API keys, iCal tokens, MCP, logs.
+func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
+	apiKeyType := t.ApiKeyType
+	icalTokenType := t.IcalTokenType
+	mcpInfoType := t.McpInfoType
+	logItemType := t.LogItemType
+
+	return graphql.Fields{
+		// Settings: API Keys
+		"apiKeys": &graphql.Field{
+			Type: graphql.NewList(apiKeyType),
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+					if !utils.UserFromSession(c, h.db, h.rdb) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*domain.User)
+					var items []domain.APIKey
+					if err := h.db.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
+						return nil, err
+					}
+					out := make([]map[string]any, 0, len(items))
+					for _, it := range items {
+						out = append(out, map[string]any{
+							"id":          it.ID,
+							"description": it.Description,
+							"is_valid":    it.IsValid,
+							"expires_at": func() any {
+								if it.ExpiresAt != nil {
+									return it.ExpiresAt.Format(time.RFC3339)
+								}
+								return nil
+							}(),
+							"created_at": it.CreatedAt.Format(time.RFC3339),
+						})
+					}
+					return out, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+		// Settings: iCal tokens
+		"icalTokens": &graphql.Field{
+			Type: graphql.NewList(icalTokenType),
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+					if !utils.UserFromSession(c, h.db, h.rdb) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*domain.User)
+					var items []domain.IcalKey
+					if err := h.db.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
+						return nil, err
+					}
+					base := strings.TrimRight(utils.Env("ICAL_BASE_URL", utils.Env("API_PUBLIC_URL", "http://localhost:8080")+"/ical"), "/")
+					out := make([]map[string]any, 0, len(items))
+					for _, it := range items {
+						out = append(out, map[string]any{
+							"id":          it.ID,
+							"description": it.Description,
+							"url":         fmt.Sprintf("%s/%s.ics", base, it.Token),
+							"created_at":  it.CreatedAt.Format(time.RFC3339),
+							"expires_at": func() any {
+								if it.ExpiresAt != nil {
+									return it.ExpiresAt.Format(time.RFC3339)
+								}
+								return nil
+							}(),
+						})
+					}
+					return out, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+		// Day shift current index from configs
+		"dayShiftIndex": &graphql.Field{
+			Type: graphql.Int,
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+					if !utils.UserFromSession(c, h.db, h.rdb) {
+						return 0, fmt.Errorf("unauthorized")
+					}
+				}
+				var row struct{ V string }
+				if err := h.db.Raw("SELECT value AS v FROM configs WHERE `key`='day_shift_current_index' LIMIT 1").Scan(&row).Error; err != nil {
+					return 0, err
+				}
+				if strings.TrimSpace(row.V) == "" {
+					return 0, nil
+				}
+				var n int
+				fmt.Sscanf(row.V, "%d", &n)
+				return n, nil
+			},
+		},
+		// Day shift current cycle from configs
+		"dayShiftCurrentCycle": &graphql.Field{
+			Type: graphql.Int,
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+					if !utils.UserFromSession(c, h.db, h.rdb) {
+						return 0, fmt.Errorf("unauthorized")
+					}
+				}
+				var row struct{ V string }
+				if err := h.db.Raw("SELECT value AS v FROM configs WHERE `key`='day_shift_current_cycle' LIMIT 1").Scan(&row).Error; err != nil {
+					return 0, err
+				}
+				if strings.TrimSpace(row.V) == "" {
+					return 0, nil
+				}
+				var n int
+				fmt.Sscanf(row.V, "%d", &n)
+				return n, nil
+			},
+		},
+		// MCP info for current user
+		"mcpInfo": &graphql.Field{
+			Type: mcpInfoType,
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+					if !utils.UserFromSession(c, h.db, h.rdb) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*domain.User)
+					enabled := strings.ToLower(utils.Env("MCP_ENABLED", "true")) == "true"
+					var rec domain.MCP
+					_ = h.db.Where("user_id = ?", u.ID).Order("id DESC").First(&rec).Error
+					var expires any
+					if rec.ID != 0 && rec.ExpiresAt != nil {
+						expires = rec.ExpiresAt.Format(time.RFC3339)
+					}
+					return map[string]any{"enabled": enabled, "has_token": rec.ID != 0, "expires_at": expires}, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+		// Logs for current user (prefix/limit)
+		"myLogs": &graphql.Field{
+			Type: graphql.NewList(logItemType),
+			Args: graphql.FieldConfigArgument{
+				"prefix": &graphql.ArgumentConfig{Type: graphql.String},
+				"limit":  &graphql.ArgumentConfig{Type: graphql.Int},
+			},
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+					if !utils.UserFromSession(c, h.db, h.rdb) {
+						return nil, fmt.Errorf("unauthorized")
+					}
+					u := c.Locals("user").(*domain.User)
+					pref, _ := p.Args["prefix"].(string)
+					limit := 20
+					if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 100 {
+						limit = v
+					}
+					q := h.db.Model(&domain.Log{}).Where("user_id = ?", u.ID)
+					if strings.TrimSpace(pref) != "" {
+						q = q.Where("action LIKE ?", strings.TrimSpace(pref)+"%")
+					}
+					q = q.Order("id DESC").Limit(limit)
+					var items []domain.Log
+					if err := q.Find(&items).Error; err != nil {
+						return nil, err
+					}
+					out := make([]map[string]any, 0, len(items))
+					for _, it := range items {
+						out = append(out, map[string]any{"action": it.Action, "created_at": it.CreatedAt.Format(time.RFC3339)})
+					}
+					return out, nil
+				}
+				return nil, fmt.Errorf("context missing")
+			},
+		},
+	}
+}

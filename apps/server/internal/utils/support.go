@@ -32,6 +32,7 @@ import (
 	"google.golang.org/genai"
 	"gorm.io/gorm"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 func Env(key, def string) string {
@@ -1580,4 +1581,21 @@ func CaptureError(err error) {
 		return
 	}
 	sentry.CaptureException(err)
+}
+
+func (w *WebauthnUserWrapper) WebAuthnCredentials() []webauthn.Credential {
+	var passkeys []domain.Passkey
+	if err := w.db.Where("user_id = ?", w.ID).Find(&passkeys).Error; err != nil {
+		return nil
+	}
+
+	creds := make([]webauthn.Credential, 0, len(passkeys))
+	for _, passkey := range passkeys {
+		id, err := base64.RawStdEncoding.DecodeString(passkey.CredentialID)
+		if err != nil {
+			continue
+		}
+		creds = append(creds, webauthn.Credential{ID: id})
+	}
+	return creds
 }

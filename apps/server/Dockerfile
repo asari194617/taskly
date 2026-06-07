@@ -9,8 +9,7 @@ ARG TARGETARCH=amd64
 FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
-# Copy utils module and server code early
-COPY utils utils
+# Copy the server source tree after the refactor to a nested layout
 COPY . .
 # Cache go modules
 RUN --mount=type=cache,target=/go/pkg/mod \
