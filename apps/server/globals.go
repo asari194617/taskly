@@ -15,5 +15,3 @@ var (
 
 // typed context key to avoid collisions
 type ctxKey struct{}
-
-var ctxKeyFiberCtx = ctxKey{}
