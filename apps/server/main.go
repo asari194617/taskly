@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	adminH "github.com/asari194617/taskly/apps/server/internal/handler/admin"
+	mw "github.com/asari194617/taskly/apps/server/internal/middleware"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
 	sentryfiber "github.com/getsentry/sentry-go/fiber"
@@ -62,15 +64,16 @@ func main() {
 		defer ddprofiler.Stop()
 	}
 
-	DB = mustInitDB()
-	RDB = mustInitRedis()
+	db := mustInitDB()       // ローカル変数にする
+  rdb := mustInitRedis()
+	wAuth := initWebAuthn()
 	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
 
-	// Init WebAuthn (Passkey)
-	initWebAuthn()
-
 	// Run pending migrations first (includes timestamp sanitize/defaults)
-	utils.RunMigrations(DB)
+	utils.RunMigrations(db)
+
+	mw := mw.NewMiddleware(db,rdb,wAuth);
+	adminH := adminH.NewAdminHandler(db, rdb, wAuth)
 
 	// AutoMigrate is disabled per policy; rely on SQL migrations only.
 	// Ensure only read-only helpers after runMigrations.
@@ -244,7 +247,7 @@ func main() {
 	}))
 
 	// Restrict API key accessible endpoints
-	app.Use(apiKeyRouteScope)
+	app.Use(mw.ApiKeyRouteScope)
 
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	// GraphQL routes
@@ -266,14 +269,23 @@ func main() {
 	register2FARoutes(app)
 	registerTasksRoutes(app)
 	registerReportRoutes(app)
-	registerAdminDayShiftRoutes(app)
-	registerAdminPermissionsRoutes(app)
-	registerAdminModerationRoutes(app)
-	registerAdminUsersRoutes(app)
+
+	adminDayShiftGroup := app.Group("/admin/dayshift", mw.AuthRequired, mw.AdminOnly, mw.Audit)
+	adminH.RegisterAdminDayShiftRoutes(adminDayShiftGroup)
+
+	adminPermissionsGroup := app.Group("/admin/permissions", mw.AuthRequired, mw.AdminOnly, mw.Audit)
+	adminH.RegisterAdminPermissionsRoutes(adminPermissionsGroup)
+
+	adminModerationGroup := app.Group("/admin/moderation", mw.AuthRequired, mw.AdminOnly, mw.Audit)
+	adminH.RegisterAdminModerationRoutes(adminModerationGroup)
+
+	adminUserGroup := app.Group("/admin/users", mw.AuthRequired, mw.AdminOnly, mw.Audit)
+	adminH.RegisterAdminUsersRoutes(adminUserGroup)
+
 	registerIntegrationRoutes(app)
 
 	// User profile: update display name
-	app.Patch("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
+	app.Patch("/users/me", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var body struct {
 			DisplayName *string `json:"display_name"`
@@ -299,7 +311,7 @@ func main() {
 	})
 
 	// User account delete (soft delete)
-	app.Delete("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
+	app.Delete("/users/me", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		if err := DB.Model(&domain.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
@@ -308,7 +320,7 @@ func main() {
 	})
 
 	// Users/me (auth required)
-	app.Get("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
+	app.Get("/users/me", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		// roles
 		var rls []domain.RoleUser

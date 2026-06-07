@@ -63,7 +63,7 @@ func metricsServer(bind string) {
 }
 
 // initWebAuthn configures the global WebAuthn relying party if possible.
-func initWebAuthn() {
+func initWebAuthn() *webauthn.WebAuthn {
 	if wa, err := webauthn.New(&webauthn.Config{
 		RPDisplayName: utils.Env("WEBAUTHN_RP_NAME", "Taskly"),
 		RPID:          utils.Env("WEBAUTHN_RP_ID", "localhost"),
@@ -73,4 +73,5 @@ func initWebAuthn() {
 	} else {
 		WAuth = wa
 	}
+	return WAuth
 }
