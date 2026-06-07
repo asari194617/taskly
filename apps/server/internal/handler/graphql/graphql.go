@@ -12,7 +12,7 @@ import (
 	graphql "github.com/graphql-go/graphql"
 )
 
-// registerGraphQL builds the schema via modular builders and mounts the /graphql endpoint.
+// RegisterGraphQL builds the schema via modular builders and mounts the /graphql endpoint.
 func (h *Handler) RegisterGraphQL(router fiber.Router) {
 	// Build types, query and mutation via modular helpers
 	types := h.createGQLTypes()

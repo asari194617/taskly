@@ -41,7 +41,7 @@ func (w *webauthnUserWrapper) WebAuthnCredentials() []webauthn.Credential {
 }
 
 // mutationFieldsAuth groups user/profile/authentication related mutations.
-func (h *Handler) mutationFieldsAuth(t *gqlH.GqlTypes) graphql.Fields {
+func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields := graphql.Fields{}
 
 	fields["agreePolicies"] = &graphql.Field{

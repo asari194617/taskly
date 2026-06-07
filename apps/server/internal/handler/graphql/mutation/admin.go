@@ -12,7 +12,7 @@ import (
 )
 
 // mutationFieldsAdminUsers groups admin user management mutations.
-func (h *Handler) mutationFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
+func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 	fields := graphql.Fields{}
 
 	fields["adminUserUpdate"] = &graphql.Field{

@@ -1,4 +1,4 @@
-package gqlshared
+package gqlShared
 
 import (
 	"context"

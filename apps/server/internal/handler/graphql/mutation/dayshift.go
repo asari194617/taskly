@@ -12,7 +12,7 @@ import (
 )
 
 // mutationFieldsDayShift groups DayShift-related mutations.
-func (h *Handler) mutationFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
+func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 	fields := graphql.Fields{}
 
 	fields["adminDayshiftUpdateGroupMembers"] = &graphql.Field{

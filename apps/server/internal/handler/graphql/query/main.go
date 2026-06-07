@@ -1,7 +1,7 @@
 package gqlQuery
 
 import (
-	gqlshared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	gqlShared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
 	"github.com/redis/go-redis/v9"
@@ -9,7 +9,7 @@ import (
 )
 
 // BuildRootQuery creates the GraphQL Query object using provided types.
-func (h *Handler) BuildRootQuery(t *gqlshared.GqlTypes) *graphql.Object {
+func (h *Handler) BuildRootQuery(t *gqlShared.GqlTypes) *graphql.Object {
 	fields := graphql.Fields{}
 	merge := func(src graphql.Fields) {
 		for k, v := range src {

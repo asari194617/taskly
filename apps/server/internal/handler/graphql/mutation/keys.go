@@ -12,7 +12,7 @@ import (
 )
 
 // mutationFieldsKeys groups API key and iCal token mutations, and domain.MCP token mutations.
-func (h *Handler) mutationFieldsKeys(t *gqlH.GqlTypes) graphql.Fields {
+func (h *Handler) mutationFieldsKeys() graphql.Fields {
 	fields := graphql.Fields{}
 
 	fields["apiKeyCreate"] = &graphql.Field{

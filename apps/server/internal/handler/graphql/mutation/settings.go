@@ -11,7 +11,7 @@ import (
 )
 
 // mutationFieldsSettings groups settings-related mutations (configs etc.).
-func (h *Handler) mutationFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
+func (h *Handler) mutationFieldsSettings() graphql.Fields {
 	fields := graphql.Fields{}
 
 	// Update day shift current index in configs (admin/manager only)

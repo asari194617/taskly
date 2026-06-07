@@ -14,7 +14,7 @@ import (
 )
 
 // mutationFieldsReports groups user report mutations.
-func (h *Handler) mutationFieldsReports(t *gqlH.GqlTypes) graphql.Fields {
+func (h *Handler) mutationFieldsReports() graphql.Fields {
 	fields := graphql.Fields{}
 
 	// createUserReport: users can report a task with reason and optional comment

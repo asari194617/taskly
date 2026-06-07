@@ -4,14 +4,14 @@ import (
 	"strings"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
-	gqlshared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	gqlShared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	graphql "github.com/graphql-go/graphql"
 )
 
-type GqlTypes = gqlshared.GqlTypes
+type GqlTypes = gqlShared.GqlTypes
 
 // createGQLTypes constructs all GraphQL types. Keep logic identical to original definitions.
-func (h *Handler) createGQLTypes() *gqlshared.GqlTypes {
+func (h *Handler) createGQLTypes() *gqlShared.GqlTypes {
 	userReportType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "UserReport",
 		Fields: graphql.Fields{
@@ -94,7 +94,7 @@ func (h *Handler) createGQLTypes() *gqlshared.GqlTypes {
 					}
 				}
 				lang := "ja"
-				if c, ok := gqlshared.FiberCtxFromContext(p.Context); ok {
+				if c, ok := gqlShared.FiberCtxFromContext(p.Context); ok {
 					if u, ok2 := c.Locals("user").(*domain.User); ok2 && strings.TrimSpace(u.NotificationLang) != "" {
 						lang = strings.ToLower(u.NotificationLang)
 					}
@@ -256,7 +256,7 @@ func (h *Handler) createGQLTypes() *gqlshared.GqlTypes {
 		},
 	})
 
-	return &gqlshared.GqlTypes{
+	return &gqlShared.GqlTypes{
 		AdminUserType:             adminUserType,
 		UserReportType:            userReportType,
 		NotificationSettingsType:  notificationSettingsType,

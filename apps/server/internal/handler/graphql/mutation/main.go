@@ -1,7 +1,7 @@
 package gqlMutation
 
 import (
-	gqlshared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	gqlShared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
 	"github.com/redis/go-redis/v9"
@@ -9,7 +9,7 @@ import (
 )
 
 // buildRootMutation creates the GraphQL Mutation object using provided types.
-func (h *Handler) BuildRootMutation(t *gqlshared.GqlTypes) *graphql.Object {
+func (h *Handler) BuildRootMutation(t *gqlShared.GqlTypes) *graphql.Object {
 	fields := graphql.Fields{}
 
 	// helper to merge maps
@@ -20,16 +20,16 @@ func (h *Handler) BuildRootMutation(t *gqlshared.GqlTypes) *graphql.Object {
 	}
 
 	// Assemble mutation fields from topic modules
-	merge(h.mutationFieldsDayShift(t))
-	merge(h.mutationFieldsSettings(t))
-	merge(h.mutationFieldsAdminUsers(t))
+	merge(h.mutationFieldsDayShift())
+	merge(h.mutationFieldsSettings())
+	merge(h.mutationFieldsAdminUsers())
 	// Business calendar removed
-	merge(h.mutationFieldsKeys(t))
+	merge(h.mutationFieldsKeys())
 	merge(h.mutationFieldsTasks(t))
-	merge(h.mutationFieldsAuth(t))
+	merge(h.mutationFieldsAuth())
 	merge(h.mutationFieldsSubjects(t))
 	// User reports
-	merge(h.mutationFieldsReports(t))
+	merge(h.mutationFieldsReports())
 
 	rootMutation := graphql.NewObject(graphql.ObjectConfig{
 		Name:   "Mutation",
