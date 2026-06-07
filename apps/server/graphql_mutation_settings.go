@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -24,7 +25,7 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -46,7 +47,7 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.settings.update_day_shift_index"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.settings.update_day_shift_index"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -65,7 +66,7 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				if !isAdmin {
 					return false, fmt.Errorf("forbidden")
@@ -84,7 +85,7 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.settings.set_config"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.settings.set_config"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -102,7 +103,7 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -115,7 +116,7 @@ func mutationFieldsSettings(t *gqlTypes) graphql.Fields {
 				if err := utils.SetConfigString("day_shift_current_cycle", fmt.Sprintf("%d", cid), DB); err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.settings.set_day_shift_current_cycle"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.settings.set_day_shift_current_cycle"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

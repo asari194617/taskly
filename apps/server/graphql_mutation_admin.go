@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -28,7 +29,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -51,10 +52,10 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if len(updates) == 0 {
 					return true, nil
 				}
-				if err := DB.Model(&utils.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+				if err := DB.Model(&domain.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.update:%d", id)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.update:%d", id)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -73,7 +74,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -85,7 +86,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				}
 				dn, _ := p.Args["display_name"].(string)
 				lang, _ := p.Args["notification_lang"].(string)
-				rec := utils.User{Email: email, DisplayName: dn, NotificationLang: strings.ToLower(strings.TrimSpace(lang))}
+				rec := domain.User{Email: email, DisplayName: dn, NotificationLang: strings.ToLower(strings.TrimSpace(lang))}
 				if rec.NotificationLang == "" {
 					rec.NotificationLang = "ja"
 				}
@@ -97,7 +98,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					return nil, fmt.Errorf("db: %s", msg)
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.create:%d", rec.ID)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.create:%d", rec.ID)}).Error
 				return map[string]any{"id": rec.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -114,7 +115,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -147,7 +148,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					if len(parts) > 2 {
 						lang = strings.ToLower(strings.TrimSpace(parts[2]))
 					}
-					rec := utils.User{Email: email, DisplayName: dn, NotificationLang: lang}
+					rec := domain.User{Email: email, DisplayName: dn, NotificationLang: lang}
 					if err := DB.Create(&rec).Error; err != nil {
 						msg := err.Error()
 						if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
@@ -159,7 +160,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					}
 					created++
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.bulk_create:%d", created)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.bulk_create:%d", created)}).Error
 				return map[string]any{"created": created, "errors": errs}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -178,7 +179,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -192,14 +193,14 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				}
 				if enabled {
 					var cnt int64
-					_ = DB.Model(&utils.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
+					_ = DB.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
 					if cnt == 0 {
-						_ = DB.Create(&utils.RoleUser{UserID: uid, Role: role}).Error
+						_ = DB.Create(&domain.RoleUser{UserID: uid, Role: role}).Error
 					}
 				} else {
-					_ = DB.Where("user_id = ? AND role = ?", uid, role).Delete(&utils.RoleUser{}).Error
+					_ = DB.Where("user_id = ? AND role = ?", uid, role).Delete(&domain.RoleUser{}).Error
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.setcustom:%d:%s:%t", uid, role, enabled)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.setcustom:%d:%s:%t", uid, role, enabled)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -217,7 +218,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -226,15 +227,15 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				id := p.Args["user_id"].(int)
 				hard, _ := p.Args["hard"].(bool)
 				if hard {
-					if err := DB.Delete(&utils.User{}, id).Error; err != nil {
+					if err := DB.Delete(&domain.User{}, id).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else {
-					if err := DB.Model(&utils.User{}).Where("id = ?", id).Update("is_deleted", true).Error; err != nil {
+					if err := DB.Model(&domain.User{}).Where("id = ?", id).Update("is_deleted", true).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.delete:%d:%t", id, hard)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.delete:%d:%t", id, hard)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -249,7 +250,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -261,11 +262,11 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					return false, fmt.Errorf("invalid role")
 				}
 				var cnt int64
-				_ = DB.Model(&utils.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
+				_ = DB.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
 				if cnt == 0 {
-					_ = DB.Create(&utils.RoleUser{UserID: uid, Role: role}).Error
+					_ = DB.Create(&domain.RoleUser{UserID: uid, Role: role}).Error
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.add:%d:%s", uid, role)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.add:%d:%s", uid, role)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -280,7 +281,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -288,10 +289,10 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				}
 				uid := uint(p.Args["user_id"].(int))
 				role := strings.ToLower(strings.TrimSpace(p.Args["role"].(string)))
-				if err := DB.Where("user_id = ? AND role = ?", uid, role).Delete(&utils.RoleUser{}).Error; err != nil {
+				if err := DB.Where("user_id = ? AND role = ?", uid, role).Delete(&domain.RoleUser{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.remove:%d:%s", uid, role)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.remove:%d:%s", uid, role)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -306,7 +307,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -324,11 +325,11 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					v := s
 					reasonPtr = &v
 				}
-				rec := utils.Block{UserID: uid, Reason: reasonPtr, ExpiresAt: expPtr}
+				rec := domain.Block{UserID: uid, Reason: reasonPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -343,7 +344,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -351,10 +352,10 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				}
 				uid := uint(p.Args["user_id"].(int))
 				now := time.Now()
-				if err := DB.Model(&utils.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uid, now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
+				if err := DB.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uid, now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -374,7 +375,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -386,18 +387,18 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 					return false, fmt.Errorf("invalid type")
 				}
 				en := p.Args["enabled"].(bool)
-				var rec utils.NotificationTypePref
+				var rec domain.NotificationTypePref
 				if err := DB.Where("user_id = ? AND notification_type = ?", uid, tp).First(&rec).Error; err != nil {
-					rec = utils.NotificationTypePref{UserID: uid, NotificationType: tp, IsEnabled: en}
+					rec = domain.NotificationTypePref{UserID: uid, NotificationType: tp, IsEnabled: en}
 					if err := DB.Create(&rec).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else {
-					if err := DB.Model(&utils.NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", en).Error; err != nil {
+					if err := DB.Model(&domain.NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", en).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_type_pref:%d:%s:%t", uid, tp, en)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_type_pref:%d:%s:%t", uid, tp, en)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -419,7 +420,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -446,11 +447,11 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if v, ok := p.Args["enabled"].(bool); ok {
 					enabled = v
 				}
-				rec := utils.NotificationDevice{UserID: uid, Platform: platform, Name: namePtr, Payload: payloadPtr, IsEnabled: enabled}
+				rec := domain.NotificationDevice{UserID: uid, Platform: platform, Name: namePtr, Payload: payloadPtr, IsEnabled: enabled}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.create:%d:%s", uid, platform)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.create:%d:%s", uid, platform)}).Error
 				return map[string]any{"id": int(rec.ID)}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -471,7 +472,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -499,10 +500,10 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if len(updates) == 0 {
 					return true, nil
 				}
-				if err := DB.Model(&utils.NotificationDevice{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+				if err := DB.Model(&domain.NotificationDevice{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.update:%d", id)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.update:%d", id)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -520,17 +521,17 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
 					return false, fmt.Errorf("forbidden")
 				}
 				id := uint(p.Args["device_id"].(int))
-				if err := DB.Delete(&utils.NotificationDevice{}, id).Error; err != nil {
+				if err := DB.Delete(&domain.NotificationDevice{}, id).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.delete:%d", id)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.delete:%d", id)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -549,7 +550,7 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -559,32 +560,32 @@ func mutationFieldsAdminUsers(t *gqlTypes) graphql.Fields {
 				em := p.Args["email_enabled"].(bool)
 				wp := p.Args["webpush_enabled"].(bool)
 				// Upsert EMAIL device
-				var emDev utils.NotificationDevice
+				var emDev domain.NotificationDevice
 				if err := DB.Where("user_id = ? AND platform = ?", uid, "EMAIL").First(&emDev).Error; err == nil {
-					if err := DB.Model(&utils.NotificationDevice{}).Where("id = ?", emDev.ID).Update("is_enabled", em).Error; err != nil {
+					if err := DB.Model(&domain.NotificationDevice{}).Where("id = ?", emDev.ID).Update("is_enabled", em).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else if em {
 					// create record only when enabling
-					rec := utils.NotificationDevice{UserID: uid, Platform: "EMAIL", IsEnabled: true}
+					rec := domain.NotificationDevice{UserID: uid, Platform: "EMAIL", IsEnabled: true}
 					if err := DB.Create(&rec).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
 				// Upsert WEBPUSH device
-				var wpDev utils.NotificationDevice
+				var wpDev domain.NotificationDevice
 				if err := DB.Where("user_id = ? AND platform = ?", uid, "WEBPUSH").First(&wpDev).Error; err == nil {
-					if err := DB.Model(&utils.NotificationDevice{}).Where("id = ?", wpDev.ID).Update("is_enabled", wp).Error; err != nil {
+					if err := DB.Model(&domain.NotificationDevice{}).Where("id = ?", wpDev.ID).Update("is_enabled", wp).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else if wp {
 					// create record only when enabling
-					rec := utils.NotificationDevice{UserID: uid, Platform: "WEBPUSH", IsEnabled: true}
+					rec := domain.NotificationDevice{UserID: uid, Platform: "WEBPUSH", IsEnabled: true}
 					if err := DB.Create(&rec).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_notifications:%d:%t:%t", uid, em, wp)}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_notifications:%d:%t:%t", uid, em, wp)}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

@@ -12,7 +12,8 @@ import (
 	"net/http/httptest"
 
 	miniredis "github.com/alicebob/miniredis/v2"
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 	gorm_sqlite "gorm.io/driver/sqlite"
@@ -29,7 +30,7 @@ func setupTestApp(t *testing.T) (*fiber.App, string) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := DB.AutoMigrate(&utils.User{}, &utils.Session{}, &utils.RoleUser{}, &utils.Block{}, &utils.APIKey{}, &utils.Subject{} /* omit Task for sqlite */, &utils.ApiActionLog{}, &utils.TOTPSecret{}, &utils.RecoveryCode{}, &utils.Passkey{}, &utils.LoginCode{}, &utils.DayShiftCycle{}, &utils.IcalKey{}, &utils.MCP{}, &utils.Log{}, &utils.DayShiftCycleGroup{}, &utils.DayShiftCycleGroupMember{}, &utils.Migration{}); err != nil {
+	if err := DB.AutoMigrate(&domain.User{}, &domain.Session{}, &domain.RoleUser{}, &domain.Block{}, &domain.APIKey{}, &domain.Subject{} /* omit Task for sqlite */, &domain.ApiActionLog{}, &domain.TOTPSecret{}, &domain.RecoveryCode{}, &domain.Passkey{}, &domain.LoginCode{}, &domain.DayShiftCycle{}, &domain.IcalKey{}, &domain.MCP{}, &domain.Log{}, &domain.DayShiftCycleGroup{}, &domain.DayShiftCycleGroupMember{}, &utils.Migration{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// miniredis for sessions
@@ -37,17 +38,17 @@ func setupTestApp(t *testing.T) (*fiber.App, string) {
 	RDB = redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 	// seed admin user and session token
-	u := utils.User{Email: "admin@example.com", DisplayName: "Admin", NotificationLang: "ja"}
+	u := domain.User{Email: "admin@example.com", DisplayName: "Admin", NotificationLang: "ja"}
 	if err := DB.Create(&u).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	if err := DB.Create(&utils.RoleUser{UserID: u.ID, Role: "admin"}).Error; err != nil {
+	if err := DB.Create(&domain.RoleUser{UserID: u.ID, Role: "admin"}).Error; err != nil {
 		t.Fatalf("seed role: %v", err)
 	}
 	token := "test_token"
 	hashedToken := utils.Sha256Hex([]byte(token))
 	// Create session in both DB and Redis for robustness
-	sess := utils.Session{
+	sess := domain.Session{
 		UserID:         u.ID,
 		HashedToken:    hashedToken,
 		ClientPlatform: "web",
@@ -96,8 +97,8 @@ func doGraphQL(t *testing.T, app *fiber.App, token string, query string, vars ma
 func TestAdminUsersByIds(t *testing.T) {
 	app, tok := setupTestApp(t)
 	// create two users
-	u1 := utils.User{Email: "a@ex.com", DisplayName: "A"}
-	u2 := utils.User{Email: "b@ex.com", DisplayName: "B"}
+	u1 := domain.User{Email: "a@ex.com", DisplayName: "A"}
+	u2 := domain.User{Email: "b@ex.com", DisplayName: "B"}
 	if err := DB.Create(&u1).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -115,13 +116,13 @@ func TestAdminUsersByIds(t *testing.T) {
 func TestDayshiftGroupMutations(t *testing.T) {
 	app, tok := setupTestApp(t)
 	// seed cycle and users
-	cyc := utils.DayShiftCycle{BeginDate: time.Now(), FinishDate: time.Now().AddDate(0, 0, 10), Description: "test"}
+	cyc := domain.DayShiftCycle{BeginDate: time.Now(), FinishDate: time.Now().AddDate(0, 0, 10), Description: "test"}
 	if err := DB.Create(&cyc).Error; err != nil {
 		t.Fatal(err)
 	}
-	u1 := utils.User{Email: "u1@ex.com", DisplayName: "U1"}
-	u2 := utils.User{Email: "u2@ex.com", DisplayName: "U2"}
-	u3 := utils.User{Email: "u3@ex.com", DisplayName: "U3"}
+	u1 := domain.User{Email: "u1@ex.com", DisplayName: "U1"}
+	u2 := domain.User{Email: "u2@ex.com", DisplayName: "U2"}
+	u3 := domain.User{Email: "u3@ex.com", DisplayName: "U3"}
 	_ = DB.Create(&u1).Error
 	_ = DB.Create(&u2).Error
 	_ = DB.Create(&u3).Error
@@ -137,7 +138,7 @@ func TestDayshiftGroupMutations(t *testing.T) {
 	// reorder groups
 	mutReorder := `mutation($cid:Int!,$ids:[Int!]!){ adminDayshiftReorderGroups(cycle_id:$cid, group_ids:$ids) }`
 	_ = doGraphQL(t, app, tok, mutReorder, map[string]any{"cid": int(cyc.ID), "ids": []int{g2, g1}})
-	var g utils.DayShiftCycleGroup
+	var g domain.DayShiftCycleGroup
 	if err := DB.First(&g, g2).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestDayshiftGroupMutations(t *testing.T) {
 	// update members for group 2 (set to only u2)
 	mutUpdate := `mutation($gid:Int!,$ids:[Int!]!){ adminDayshiftUpdateGroupMembers(group_id:$gid,user_ids:$ids) }`
 	_ = doGraphQL(t, app, tok, mutUpdate, map[string]any{"gid": g2, "ids": []int{int(u2.ID)}})
-	var mems []utils.DayShiftCycleGroupMember
+	var mems []domain.DayShiftCycleGroupMember
 	_ = DB.Where("group_id = ?", g2).Order("position asc").Find(&mems).Error
 	if len(mems) != 1 || mems[0].UserID != u2.ID {
 		t.Fatalf("unexpected members: %+v", mems)

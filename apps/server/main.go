@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
 	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
@@ -187,7 +188,7 @@ func main() {
 						"ip":    c.IP(),
 					})
 					// Attach user when available
-					if u, ok := c.Locals("user").(*utils.User); ok && u != nil {
+					if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
 						scope.SetUser(sentry.User{
 							ID:       fmt.Sprintf("%v", u.ID),
 							Email:    u.Email,
@@ -273,7 +274,7 @@ func main() {
 
 	// User profile: update display name
 	app.Patch("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		var body struct {
 			DisplayName *string `json:"display_name"`
 		}
@@ -291,7 +292,7 @@ func main() {
 		if len(updates) == 0 {
 			return c.Status(400).JSON(fiber.Map{"error": "no changes"})
 		}
-		if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
+		if err := DB.Model(&domain.User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -299,8 +300,8 @@ func main() {
 
 	// User account delete (soft delete)
 	app.Delete("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
-		if err := DB.Model(&utils.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+		u := c.Locals("user").(*domain.User)
+		if err := DB.Model(&domain.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -308,9 +309,9 @@ func main() {
 
 	// Users/me (auth required)
 	app.Get("/users/me", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		// roles
-		var rls []utils.RoleUser
+		var rls []domain.RoleUser
 		_ = DB.Where("user_id = ?", u.ID).Find(&rls).Error
 		roles := make([]string, 0, len(rls))
 		isAdmin := false
@@ -330,7 +331,7 @@ func main() {
 	// Public ICS feed
 	app.Get("/ical/:token.ics", func(c *fiber.Ctx) error {
 		token := c.Params("token")
-		var key utils.IcalKey
+		var key domain.IcalKey
 		if err := DB.Where("token = ?", token).First(&key).Error; err != nil {
 			return c.Status(404).SendString("not found")
 		}

@@ -3,14 +3,14 @@ package main
 import (
 	"strings"
 
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
-	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 func registerAdminPermissionsRoutes(app *fiber.App) {
 	// Admin: manage permissions
 	app.Get("/admin/permissions", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		var items []utils.Permission
+		var items []domain.Permission
 		if err := DB.Order("id DESC").Find(&items).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -26,14 +26,14 @@ func registerAdminPermissionsRoutes(app *fiber.App) {
 		if err := c.BodyParser(&body); err != nil || body.UserID == 0 || body.Target == "" || body.Method == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		rec := utils.Permission{UserID: body.UserID, Target: body.Target, Method: strings.ToLower(body.Method), Value: body.Value}
+		rec := domain.Permission{UserID: body.UserID, Target: body.Target, Method: strings.ToLower(body.Method), Value: body.Value}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.Status(201).JSON(rec)
 	})
 	app.Delete("/admin/permissions/:id", authRequired, adminOnly, audit, func(c *fiber.Ctx) error {
-		if err := DB.Delete(&utils.Permission{}, c.Params("id")).Error; err != nil {
+		if err := DB.Delete(&domain.Permission{}, c.Params("id")).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)

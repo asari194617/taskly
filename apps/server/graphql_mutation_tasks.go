@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -34,7 +35,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				if okp, err := utils.CheckPermission(u.ID, "tasks", "create", nil, DB); err != nil {
 					return nil, err
 				} else if !okp {
@@ -81,7 +82,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !validUntil[until] {
 					return nil, fmt.Errorf("invalid deadline_until")
 				}
-				rec := utils.Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, IsSelfCheckRequired: scr, Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
+				rec := domain.Task{AddedUserID: u.ID, Title: title, SubjectID: uint(subjectID), Description: descPtr, Type: typ, IsRequireHandIn: irh, IsSelfCheckRequired: scr, Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -128,9 +129,9 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				var rec utils.Task
+				var rec domain.Task
 				if err := DB.First(&rec, id).Error; err != nil {
 					return nil, fmt.Errorf("not found")
 				}
@@ -233,9 +234,9 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				var rec utils.Task
+				var rec domain.Task
 				if err := DB.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -252,7 +253,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
 				}
-				if err := DB.Delete(&utils.Task{}, rec.ID).Error; err != nil {
+				if err := DB.Delete(&domain.Task{}, rec.ID).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				// Fire Teams reply for delete (if original message exists)
@@ -279,10 +280,10 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
 				// Ensure task exists
-				var rec utils.Task
+				var rec domain.Task
 				if err := DB.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -307,7 +308,7 @@ func mutationFieldsTasks(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
 				if err := DB.Exec("DELETE FROM tasks_users_completions WHERE user_id = ? AND task_id = ?", u.ID, id).Error; err != nil {
 					return false, fmt.Errorf("db")

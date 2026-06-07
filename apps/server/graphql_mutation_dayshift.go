@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 	"gorm.io/gorm"
@@ -25,7 +26,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -45,11 +46,11 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 					}
 				}
 				if err := DB.Transaction(func(tx *gorm.DB) error {
-					if err := tx.Where("group_id = ?", gid).Delete(&utils.DayShiftCycleGroupMember{}).Error; err != nil {
+					if err := tx.Where("group_id = ?", gid).Delete(&domain.DayShiftCycleGroupMember{}).Error; err != nil {
 						return err
 					}
 					for i, id := range ids {
-						if err := tx.Create(&utils.DayShiftCycleGroupMember{GroupID: uint(gid), UserID: uint(id), Position: i + 1}).Error; err != nil {
+						if err := tx.Create(&domain.DayShiftCycleGroupMember{GroupID: uint(gid), UserID: uint(id), Position: i + 1}).Error; err != nil {
 							return err
 						}
 					}
@@ -57,7 +58,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				}); err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.dayshift.group.update_members"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.update_members"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -75,7 +76,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -100,7 +101,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				// update positions transactionally
 				err := DB.Transaction(func(tx *gorm.DB) error {
 					for i, id := range ids {
-						if err := tx.Model(&utils.DayShiftCycleGroup{}).Where("id = ? AND cycle_id = ?", id, cid).Update("position", i+1).Error; err != nil {
+						if err := tx.Model(&domain.DayShiftCycleGroup{}).Where("id = ? AND cycle_id = ?", id, cid).Update("position", i+1).Error; err != nil {
 							return err
 						}
 					}
@@ -109,7 +110,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.dayshift.groups.reorder"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.groups.reorder"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -124,7 +125,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -136,11 +137,11 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 					return nil, fmt.Errorf("invalid dates")
 				}
 				desc := p.Args["description"].(string)
-				rec := utils.DayShiftCycle{BeginDate: bd, FinishDate: fd, Description: desc}
+				rec := domain.DayShiftCycle{BeginDate: bd, FinishDate: fd, Description: desc}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.create"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.create"}).Error
 				return map[string]any{"id": rec.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -157,16 +158,16 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
 					return false, fmt.Errorf("forbidden")
 				}
-				if err := DB.Delete(&utils.DayShiftCycle{}, p.Args["id"].(int)).Error; err != nil {
+				if err := DB.Delete(&domain.DayShiftCycle{}, p.Args["id"].(int)).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.delete"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.delete"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -187,7 +188,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -199,9 +200,9 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 					return nil, fmt.Errorf("user_ids required")
 				}
 				var max int64
-				_ = DB.Model(&utils.DayShiftCycleGroup{}).Where("cycle_id = ?", cid).Select("COALESCE(MAX(position),0)").Scan(&max).Error
+				_ = DB.Model(&domain.DayShiftCycleGroup{}).Where("cycle_id = ?", cid).Select("COALESCE(MAX(position),0)").Scan(&max).Error
 				pos := int(max) + 1
-				g := utils.DayShiftCycleGroup{CycleID: uint(cid), Position: pos}
+				g := domain.DayShiftCycleGroup{CycleID: uint(cid), Position: pos}
 				if err := DB.Create(&g).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -218,9 +219,9 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 					default:
 						continue
 					}
-					_ = DB.Create(&utils.DayShiftCycleGroupMember{GroupID: g.ID, UserID: uint(idInt), Position: i + 1}).Error
+					_ = DB.Create(&domain.DayShiftCycleGroupMember{GroupID: g.ID, UserID: uint(idInt), Position: i + 1}).Error
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.dayshift.group.create"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.create"}).Error
 				return map[string]any{"id": g.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -238,7 +239,7 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 				isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 				if !(isAdmin || isManager) {
@@ -246,13 +247,13 @@ func mutationFieldsDayShift(t *gqlTypes) graphql.Fields {
 				}
 				gid := p.Args["group_id"].(int)
 				cid := p.Args["cycle_id"].(int)
-				if err := DB.Where("group_id IN (SELECT id FROM day_shift_cycle_groups WHERE id = ? AND cycle_id = ?)", gid, cid).Delete(&utils.DayShiftCycleGroupMember{}).Error; err != nil {
+				if err := DB.Where("group_id IN (SELECT id FROM day_shift_cycle_groups WHERE id = ? AND cycle_id = ?)", gid, cid).Delete(&domain.DayShiftCycleGroupMember{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				if err := DB.Delete(&utils.DayShiftCycleGroup{}, "id = ? AND cycle_id = ?", gid, cid).Error; err != nil {
+				if err := DB.Delete(&domain.DayShiftCycleGroup{}, "id = ? AND cycle_id = ?", gid, cid).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "admin.dayshift.group.delete"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.delete"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

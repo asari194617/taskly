@@ -5,12 +5,13 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
 
-// mutationFieldsKeys groups API key and iCal token mutations, and utils.MCP token mutations.
+// mutationFieldsKeys groups API key and iCal token mutations, and domain.MCP token mutations.
 func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 	fields := graphql.Fields{}
 
@@ -31,14 +32,14 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				limit, err := utils.ApiKeyLimitForUser(u.ID, DB)
 				if err != nil {
 					return nil, err
 				}
 				if limit >= 0 {
 					var cur int64
-					if err := DB.Model(&utils.APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
+					if err := DB.Model(&domain.APIKey{}).Where("user_id = ? AND is_valid = 1", u.ID).Count(&cur).Error; err != nil {
 						return nil, err
 					}
 					if int(cur) >= limit {
@@ -62,7 +63,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("invalid expires_at")
 					}
 				}
-				rec := utils.APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr, ExpiresAt: expPtr}
+				rec := domain.APIKey{UserID: u.ID, HashedToken: hashed, Description: descPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -91,9 +92,9 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				var rec utils.APIKey
+				var rec domain.APIKey
 				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&rec).Error; err != nil {
 					return nil, fmt.Errorf("not found")
 				}
@@ -145,7 +146,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				desc, _ := p.Args["description"].(string)
 				var descPtr *string
 				if strings.TrimSpace(desc) != "" {
@@ -160,7 +161,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("invalid expires_at")
 					}
 				}
-				rec := utils.IcalKey{UserID: u.ID, Token: tok, Description: descPtr, ExpiresAt: expPtr}
+				rec := domain.IcalKey{UserID: u.ID, Token: tok, Description: descPtr, ExpiresAt: expPtr}
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -181,9 +182,9 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&utils.IcalKey{}).Error; err != nil {
+				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).Delete(&domain.IcalKey{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
 				return true, nil
@@ -204,9 +205,9 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
-				var rec utils.IcalKey
+				var rec domain.IcalKey
 				if err := DB.Where("id = ? AND user_id = ?", id, u.ID).First(&rec).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -247,7 +248,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return nil, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
+				u := c.Locals("user").(*domain.User)
 				if strings.ToLower(utils.Env("MCP_ENABLED", "true")) != "true" {
 					return nil, fmt.Errorf("disabled")
 				}
@@ -263,12 +264,12 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("invalid expires_at")
 					}
 				}
-				rec := utils.MCP{UserID: u.ID, HashedToken: hashed, ExpiresAt: expPtr}
-				_ = DB.Where("user_id = ?", u.ID).Delete(&utils.MCP{}).Error
+				rec := domain.MCP{UserID: u.ID, HashedToken: hashed, ExpiresAt: expPtr}
+				_ = DB.Where("user_id = ?", u.ID).Delete(&domain.MCP{}).Error
 				if err := DB.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "mcp.create"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "mcp.create"}).Error
 				return map[string]any{"ok": true, "token": plain}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -282,11 +283,11 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
-				if err := DB.Where("user_id = ?", u.ID).Delete(&utils.MCP{}).Error; err != nil {
+				u := c.Locals("user").(*domain.User)
+				if err := DB.Where("user_id = ?", u.ID).Delete(&domain.MCP{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -304,8 +305,8 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if !utils.UserFromSession(c, DB, RDB) {
 					return false, fmt.Errorf("unauthorized")
 				}
-				u := c.Locals("user").(*utils.User)
-				var rec utils.MCP
+				u := c.Locals("user").(*domain.User)
+				var rec domain.MCP
 				if err := DB.Where("user_id = ?", u.ID).First(&rec).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
@@ -324,7 +325,7 @@ func mutationFieldsKeys(t *gqlTypes) graphql.Fields {
 				if err := DB.Save(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "mcp.update"}).Error
+				_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "mcp.update"}).Error
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

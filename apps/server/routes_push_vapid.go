@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -20,7 +20,7 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 		return c.JSON(fiber.Map{"publicKey": pub})
 	})
 	app.Post("/push/test", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		sent, err := sendPushToUser(u.ID, map[string]any{
 			"title": "Taskly",
 			"body":  "プッシュ通知のテスト",
@@ -35,8 +35,8 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 
 	// Debug: list current user's subscriptions (masked endpoints)
 	app.Get("/push/subscriptions", authRequired, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
-		var subs []utils.WebPushSubscription
+		u := c.Locals("user").(*domain.User)
+		var subs []domain.WebPushSubscription
 		if err := DB.Where("user_id = ?", u.ID).Find(&subs).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -54,7 +54,7 @@ func registerPushVAPIDRoutes(app *fiber.App) {
 
 // getOrInitVAPID returns base64url public, private keys. Generates and persists if missing.
 func getOrInitVAPID() (string, string, error) {
-	var rec utils.WebPushVAPID
+	var rec domain.WebPushVAPID
 	if err := DB.First(&rec).Error; err == nil && rec.PublicKey != "" && rec.PrivateKey != "" {
 		// If it looks valid (public long, private short), return
 		if len(rec.PublicKey) >= 60 && len(rec.PrivateKey) <= 60 {
@@ -73,8 +73,8 @@ func getOrInitVAPID() (string, string, error) {
 	if len(pub) < len(priv) {
 		pub, priv = priv, pub
 	}
-	rec = utils.WebPushVAPID{PublicKey: pub, PrivateKey: priv}
-	_ = DB.Where("1 = 1").Delete(&utils.WebPushVAPID{})
+	rec = domain.WebPushVAPID{PublicKey: pub, PrivateKey: priv}
+	_ = DB.Where("1 = 1").Delete(&domain.WebPushVAPID{})
 	if err := DB.Create(&rec).Error; err != nil {
 		return "", "", err
 	}
@@ -84,7 +84,7 @@ func getOrInitVAPID() (string, string, error) {
 // sendPushToUser sends a JSON payload to all subscriptions of the user.
 func sendPushToUser(uid uint, payload map[string]any) (int, error) {
 	// fetch subscriptions
-	var subs []utils.WebPushSubscription
+	var subs []domain.WebPushSubscription
 	_ = DB.Where("user_id = ?", uid).Find(&subs).Error
 	if len(subs) == 0 {
 		return 0, nil
@@ -113,7 +113,7 @@ func sendPushToUser(uid uint, payload map[string]any) (int, error) {
 		if err != nil {
 			// Delete gone subscriptions
 			if resp != nil && (resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusNotFound) {
-				_ = DB.Where("user_id = ? AND endpoint = ?", uid, s.Endpoint).Delete(&utils.WebPushSubscription{}).Error
+				_ = DB.Where("user_id = ? AND endpoint = ?", uid, s.Endpoint).Delete(&domain.WebPushSubscription{}).Error
 				continue
 			}
 			log.Printf("webpush send error: %v", err)

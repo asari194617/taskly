@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -23,18 +24,18 @@ func queryFieldsAdminSubjects(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					includeExpired, _ := p.Args["include_expired"].(bool)
-					dbq := DB.Model(&utils.Subject{})
+					dbq := DB.Model(&domain.Subject{})
 					if !includeExpired {
 						dbq = dbq.Where("expires_at IS NULL OR expires_at > ?", time.Now())
 					}
-					var subs []utils.Subject
+					var subs []domain.Subject
 					if err := dbq.Order("id ASC").Find(&subs).Error; err != nil {
 						return nil, err
 					}

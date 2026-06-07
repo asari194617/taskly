@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 func registerReportRoutes(app *fiber.App) {
 	app.Post("/reports", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		var body struct {
 			TaskID  uint    `json:"task_id"`
 			Reason  string  `json:"reason"`
@@ -26,7 +27,7 @@ func registerReportRoutes(app *fiber.App) {
 		if body.TaskID == 0 || body.Reason == "" || len(body.Reason) > 255 {
 			return utils.ValidationError(c, map[string]string{"task_id": "required", "reason": "required,max=255"})
 		}
-		rec := utils.UserReport{ReporterUserID: &u.ID, TaskID: body.TaskID, Reason: body.Reason, Comment: body.Comment, CreatedAt: time.Now()}
+		rec := domain.UserReport{ReporterUserID: &u.ID, TaskID: body.TaskID, Reason: body.Reason, Comment: body.Comment, CreatedAt: time.Now()}
 		if err := DB.Create(&rec).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db"})
 		}

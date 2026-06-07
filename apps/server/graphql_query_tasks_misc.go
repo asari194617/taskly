@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -41,7 +42,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					if okp, err := utils.CheckPermission(u.ID, "tasks", "read", nil, DB); err != nil {
 						return nil, err
 					} else if !okp {
@@ -67,7 +68,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 							cursorID = uint(v)
 						}
 					}
-					dbq := DB.Model(&utils.Task{})
+					dbq := DB.Model(&domain.Task{})
 					// Use date-only for comparison because deadline is DATE type
 					today := time.Now()
 					today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
@@ -99,7 +100,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					} else {
 						dbq = dbq.Order(eff + " ASC").Order("id ASC")
 					}
-					var items []utils.Task
+					var items []domain.Task
 					if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -115,7 +116,7 @@ func queryFieldsTasks(t *gqlTypes) graphql.Fields {
 					// Preload user's completion map for fetched items
 					completed := map[uint]bool{}
 					if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-						u := c.Locals("user").(*utils.User)
+						u := c.Locals("user").(*domain.User)
 						ids := make([]uint, 0, len(items))
 						for _, it := range items {
 							ids = append(ids, it.ID)
@@ -174,7 +175,7 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) { // session only
 						return nil, fmt.Errorf("unauthorized")
 					}
-					var subs []utils.Subject
+					var subs []domain.Subject
 					now := time.Now()
 					if err := DB.Where("expires_at IS NULL OR expires_at > ?", now).Order("id ASC").Find(&subs).Error; err != nil {
 						return nil, err
@@ -200,8 +201,8 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
-					var roles []utils.RoleUser
+					u := c.Locals("user").(*domain.User)
+					var roles []domain.RoleUser
 					_ = DB.Where("user_id = ?", u.ID).Find(&roles).Error
 					isAdmin := false
 					isManager := false
@@ -233,8 +234,8 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
-					var fresh utils.User
+					u := c.Locals("user").(*domain.User)
+					var fresh domain.User
 					if err := DB.First(&fresh, u.ID).Error; err != nil {
 						return nil, err
 					}
@@ -242,9 +243,9 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					totpEnabled, _, _ := utils.GetActiveTOTP(fresh.ID, DB)
 					// counts for UI logic
 					var pkCount int64
-					_ = DB.Model(&utils.Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+					_ = DB.Model(&domain.Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
 					var rcCount int64
-					_ = DB.Model(&utils.RecoveryCode{}).Where("user_id = ? AND is_used = 0", fresh.ID).Count(&rcCount).Error
+					_ = DB.Model(&domain.RecoveryCode{}).Where("user_id = ? AND is_used = 0", fresh.ID).Count(&rcCount).Error
 					return map[string]any{
 						"email_login_enabled":  fresh.EmailCodeAllowed,
 						"has_password":         hasPassword,
@@ -264,8 +265,8 @@ func queryFieldsMisc(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
-					var items []utils.Passkey
+					u := c.Locals("user").(*domain.User)
+					var items []domain.Passkey
 					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}

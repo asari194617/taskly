@@ -4,7 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -23,10 +24,10 @@ func audit(c *fiber.Ctx) error {
 	if apiKey, ok := c.Locals("apiKey").(string); ok && apiKey != "" {
 		hashed := utils.Sha256Hex([]byte(apiKey))
 		var uid *uint
-		if u, ok := c.Locals("user").(*utils.User); ok {
+		if u, ok := c.Locals("user").(*domain.User); ok {
 			uid = &u.ID
 		}
-		_ = DB.Create(&utils.ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
+		_ = DB.Create(&domain.ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
 	}
 	if err != nil && utils.Env("SENTRY_DSN", "") != "" {
 		// best-effort capture
@@ -38,7 +39,7 @@ func audit(c *fiber.Ctx) error {
 
 // adminOnly allows only admin or manager roles
 func adminOnly(c *fiber.Ctx) error {
-	u := c.Locals("user").(*utils.User)
+	u := c.Locals("user").(*domain.User)
 	isAdmin, err1 := utils.UserHasRole(u.ID, "admin", DB)
 	isManager, err2 := utils.UserHasRole(u.ID, "manager", DB)
 	if err1 != nil || err2 != nil {

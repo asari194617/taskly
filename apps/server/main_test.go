@@ -3,11 +3,12 @@ package main
 import (
 	"testing"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 )
 
 func TestComputePairs(t *testing.T) {
-	users := []utils.User{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
+	users := []domain.User{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
 	pairs := utils.ComputePairs(users)
 	if len(pairs) != 2 {
 		t.Fatalf("expected 2 pairs, got %d", len(pairs))
@@ -19,7 +20,7 @@ func TestComputePairs(t *testing.T) {
 		t.Fatalf("unexpected second pair: %+v", pairs[1])
 	}
 
-	users = []utils.User{{ID: 1}, {ID: 2}, {ID: 3}}
+	users = []domain.User{{ID: 1}, {ID: 2}, {ID: 3}}
 	pairs = utils.ComputePairs(users)
 	if len(pairs) != 1 {
 		t.Fatalf("expected 1 pair when odd, got %d", len(pairs))

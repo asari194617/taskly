@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -96,7 +96,7 @@ func createGQLTypes() *gqlTypes {
 			"created_at": &graphql.Field{Type: graphql.String},
 			"name": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (any, error) {
 				// Resolve localized name based on current user's notification language
-				var subj utils.Subject
+				var subj domain.Subject
 				if m, ok := p.Source.(map[string]any); ok {
 					if idv, ok2 := m["id"]; ok2 {
 						var idUint uint
@@ -115,7 +115,7 @@ func createGQLTypes() *gqlTypes {
 				}
 				lang := "ja"
 				if c, ok := p.Context.Value(ctxKeyFiberCtx).(*fiber.Ctx); ok {
-					if u, ok2 := c.Locals("user").(*utils.User); ok2 && strings.TrimSpace(u.NotificationLang) != "" {
+					if u, ok2 := c.Locals("user").(*domain.User); ok2 && strings.TrimSpace(u.NotificationLang) != "" {
 						lang = strings.ToLower(u.NotificationLang)
 					}
 				}

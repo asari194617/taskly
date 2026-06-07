@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -38,7 +39,7 @@ func mutationFieldsReports(t *gqlTypes) graphql.Fields {
 			if !utils.UserFromSession(c, DB, RDB) {
 				return nil, fmt.Errorf("unauthorized")
 			}
-			u := c.Locals("user").(*utils.User)
+			u := c.Locals("user").(*domain.User)
 			taskID := uint(p.Args["task_id"].(int))
 			reason := strings.TrimSpace(p.Args["reason"].(string))
 			var comment *string = nil
@@ -51,7 +52,7 @@ func mutationFieldsReports(t *gqlTypes) graphql.Fields {
 			if taskID == 0 || reason == "" || len(reason) > 255 {
 				return nil, fmt.Errorf("validation")
 			}
-			rec := utils.UserReport{ReporterUserID: &u.ID, TaskID: taskID, Reason: reason, Comment: comment, CreatedAt: time.Now()}
+			rec := domain.UserReport{ReporterUserID: &u.ID, TaskID: taskID, Reason: reason, Comment: comment, CreatedAt: time.Now()}
 			if err := DB.Create(&rec).Error; err != nil {
 				return nil, err
 			}
@@ -92,7 +93,7 @@ func mutationFieldsReports(t *gqlTypes) graphql.Fields {
 				}
 			}(rec.ID, taskID, reason)
 
-			_ = DB.Create(&utils.Log{UserID: &u.ID, Action: "reports.create"}).Error
+			_ = DB.Create(&domain.Log{UserID: &u.ID, Action: "reports.create"}).Error
 			return map[string]any{"id": int(rec.ID)}, nil
 		},
 	}

@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
 )
@@ -25,13 +26,30 @@ func fiberToHTTPRequest(c *fiber.Ctx) *http.Request {
 	return req
 }
 
+func (w *webauthnUserWrapper) WebAuthnCredentials() []webauthn.Credential {
+	var passkeys []domain.Passkey
+	if err := w.db.Where("user_id = ?", w.ID).Find(&passkeys).Error; err != nil {
+		return nil
+	}
+
+	creds := make([]webauthn.Credential, 0, len(passkeys))
+	for _, passkey := range passkeys {
+		id, err := base64.RawStdEncoding.DecodeString(passkey.CredentialID)
+		if err != nil {
+			continue
+		}
+		creds = append(creds, webauthn.Credential{ID: id})
+	}
+	return creds
+}
+
 func registerWebAuthnRoutes(app *fiber.App) {
 	// Registration
 	app.Post("/webauthn/register/begin", authRequired, audit, func(c *fiber.Ctx) error {
 		if WAuth == nil {
 			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
 		}
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		creation, sd, err := WAuth.BeginRegistration(&webauthnUserWrapper{User: u, db: DB})
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "begin failed"})
@@ -44,7 +62,7 @@ func registerWebAuthnRoutes(app *fiber.App) {
 		if WAuth == nil {
 			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
 		}
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		raw, _ := RDB.Get(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Result()
 		if raw == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "session expired"})
@@ -60,7 +78,7 @@ func registerWebAuthnRoutes(app *fiber.App) {
 		pub := base64.RawStdEncoding.EncodeToString(cred.PublicKey)
 		cid := base64.RawStdEncoding.EncodeToString(cred.ID)
 		devName := "Passkey"
-		rec := utils.Passkey{
+		rec := domain.Passkey{
 			UserID:       u.ID,
 			CredentialID: cid,
 			PublicKey:    pub,
@@ -85,7 +103,7 @@ func registerWebAuthnRoutes(app *fiber.App) {
 		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Email) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		var u utils.User
+		var u domain.User
 		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
@@ -108,7 +126,7 @@ func registerWebAuthnRoutes(app *fiber.App) {
 		if strings.TrimSpace(body.Email) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		var u utils.User
+		var u domain.User
 		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
@@ -125,13 +143,13 @@ func registerWebAuthnRoutes(app *fiber.App) {
 		}
 		// Blocklist enforcement before issuing session
 		var blkCnt int64
-		_ = DB.Model(&utils.Block{}).
+		_ = DB.Model(&domain.Block{}).
 			Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).
 			Count(&blkCnt).Error
 		if blkCnt > 0 {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
 		}
-		_ = DB.Model(&utils.Passkey{}).
+		_ = DB.Model(&domain.Passkey{}).
 			Where("user_id = ? AND credential_id = ?", u.ID, base64.RawStdEncoding.EncodeToString(cred.ID)).
 			Update("sign_count", cred.Authenticator.SignCount).Error
 		// Create session
@@ -149,8 +167,8 @@ func registerWebAuthnRoutes(app *fiber.App) {
 		}
 		_ = RDB.SAdd(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), token).Err()
 		_ = RDB.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
-		DB.AutoMigrate(&utils.Session{})
-		DB.Create(&utils.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(time.Now().Add(ttl))})
+		DB.AutoMigrate(&domain.Session{})
+		DB.Create(&domain.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(time.Now().Add(ttl))})
 		return c.JSON(fiber.Map{"token": token})
 	})
 }

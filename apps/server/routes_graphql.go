@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
-	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 // registerGraphQL builds the schema via modular builders and mounts the /graphql endpoint.

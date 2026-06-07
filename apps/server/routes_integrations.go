@@ -15,7 +15,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
 )
@@ -160,7 +161,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			subjectID, _ := job["subject_id"].(uint)
 			callback, _ := job["status_callback"].(*string)
 			// Create task
-			rec := utils.Task{AddedUserID: addedUserID, Title: title, SubjectID: subjectID, Description: desc}
+			rec := domain.Task{AddedUserID: addedUserID, Title: title, SubjectID: subjectID, Description: desc}
 			var isSuccess bool
 			if err := DB.Create(&rec).Error; err != nil {
 				isSuccess = false
@@ -252,7 +253,7 @@ func registerIntegrationRoutes(app *fiber.App) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		// Resolve user by email
-		var u utils.User
+		var u domain.User
 		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "user not found"})
 		}

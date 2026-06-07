@@ -31,6 +31,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/genai"
 	"gorm.io/gorm"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 )
 
 func Env(key, def string) string {
@@ -112,24 +113,6 @@ func IsEmail(s string) bool {
 }
 
 func MaxLen(s string, n int) bool { return len(s) <= n }
-
-func isEnum(v string, allowed ...string) bool {
-	for _, a := range allowed {
-		if strings.EqualFold(v, a) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchPattern(s string, allowed func(r rune) bool) bool {
-	for _, r := range s {
-		if !allowed(r) {
-			return false
-		}
-	}
-	return true
-}
 
 // --- Scrubbing helpers ---
 // Sanitize URL path by masking token-like segments such as /ical/{token}.ics or Bearer tokens in query
@@ -216,7 +199,6 @@ func IsSensitiveKey(k string) bool {
 	}
 }
 
-func isSensitiveKey(k string) bool { return IsSensitiveKey(k) }
 
 func IsSensitiveValue(v string) bool {
 	s := strings.ToLower(strings.TrimSpace(v))
@@ -303,7 +285,7 @@ func ensureTasksSchema(DB *gorm.DB) {
 // "next" day based on the provided base index and current cycle. baseIndex is
 // interpreted the same way as in the Airflow DAGs: it is 0-based and used with
 // modulo over the ordered groups.
-func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm.DB) (todayMembers []*User, nextMembers []*User, err error) {
+func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm.DB) (todayMembers []*domain.User, nextMembers []*domain.User, err error) {
 	// Detect current cycle by date (same as DAG behavior)
 	todayDate := today.Format("2006-01-02")
 	var cidRow struct{ ID uint }
@@ -311,7 +293,7 @@ func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm
 		return nil, nil, err
 	}
 	if cidRow.ID == 0 {
-		return []*User{}, []*User{}, nil
+		return []*domain.User{}, []*domain.User{}, nil
 	}
 	cycleID := cidRow.ID
 
@@ -324,7 +306,7 @@ func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm
 		return nil, nil, err
 	}
 	if len(groups) == 0 {
-		return []*User{}, []*User{}, nil
+		return []*domain.User{}, []*domain.User{}, nil
 	}
 
 	// configs.day_shift_current_index は 0 始まりのインデックスですが、
@@ -342,7 +324,7 @@ func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm
 	gidNext := groups[giNext].ID
 
 	// helper to load members for a group
-	loadMembers := func(gid uint) ([]*User, error) {
+	loadMembers := func(gid uint) ([]*domain.User, error) {
 		var memberRows []struct {
 			UserID uint
 		}
@@ -350,13 +332,13 @@ func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm
 			return nil, err
 		}
 		if len(memberRows) == 0 {
-			return []*User{}, nil
+			return []*domain.User{}, nil
 		}
 		ids := make([]uint, 0, len(memberRows))
 		for _, mr := range memberRows {
 			ids = append(ids, mr.UserID)
 		}
-		var users []*User
+		var users []*domain.User
 		if err := DB.Where("id IN ? AND is_deleted = 0", ids).Find(&users).Error; err != nil {
 			return nil, err
 		}
@@ -373,7 +355,7 @@ func ResolveDayShiftTodayAndNextMembers(today time.Time, baseIndex int, DB *gorm
 }
 
 // Joins display names (falling back to email) for logs/Discord/email.
-func JoinUserNames(users []*User) string {
+func JoinUserNames(users []*domain.User) string {
 	names := make([]string, 0, len(users))
 	for _, u := range users {
 		name := strings.TrimSpace(u.DisplayName)
@@ -391,7 +373,7 @@ func JoinUserNames(users []*User) string {
 // rendering is handled by the email-compose service; here we simply log the
 // intended recipients and dates for observability. Wiring a full mail send
 // pipeline can be done later by following the composeLoginCodeGRPC pattern.
-func SendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMembers, nextMembers []*User) error {
+func SendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMembers, nextMembers []*domain.User) error {
 	subject := fmt.Sprintf("[Taskly] 日直スキップ: %s", today.Format("2006-01-02"))
 	sentry.AddBreadcrumb(&sentry.Breadcrumb{
 		Category: "dayshift_skip_email",
@@ -603,7 +585,7 @@ func ensureDayShiftGroupSchemaAndBackfill(DB *gorm.DB) {
 
 	// Only backfill when groups table is empty to avoid duplications
 	var groupsCnt int64
-	_ = DB.Model(&DayShiftCycleGroup{}).Count(&groupsCnt).Error
+	_ = DB.Model(&domain.DayShiftCycleGroup{}).Count(&groupsCnt).Error
 	if groupsCnt > 0 {
 		// Still mark as applied to avoid checking on every boot
 		_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
@@ -661,7 +643,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
 	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
 	if err != nil || strings.TrimSpace(uidStr) == "" {
-		var sess Session
+		var sess domain.Session
 		if dberr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&sess).Error; dberr != nil {
 			if debugAuth {
 				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
@@ -688,7 +670,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 		}
 	} else {
 		if headerPlat != "" {
-			var sess Session
+			var sess domain.Session
 			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&sess).Error; err == nil {
 				if sess.ClientPlatform != "" && !strings.EqualFold(headerPlat, sess.ClientPlatform) {
 					if debugAuth {
@@ -702,7 +684,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
 		}
 	}
-	var u User
+	var u domain.User
 	if err := DB.First(&u, uidStr).Error; err != nil {
 		if debugAuth {
 			log.Printf("[auth] %s %s user not found id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
@@ -710,7 +692,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 		return false
 	}
 	var cnt int64
-	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+	if err := DB.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
 		if debugAuth {
 			log.Printf("[auth] %s %s user blocked id=%d", c.Method(), sanitizeURLPath(c.Path()), u.ID)
 		}
@@ -753,7 +735,7 @@ func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gor
 		_ = RDB.SRem(c.Context(), key, t).Err()
 	}
 	curHash := Sha256Hex([]byte(currentToken))
-	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&Session{}).Error
+	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&domain.Session{}).Error
 }
 
 func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
@@ -762,16 +744,16 @@ func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
 		return false
 	}
 	hashed := Sha256Hex([]byte(apiKey))
-	var key APIKey
+	var key domain.APIKey
 	if err := DB.Where("hashed_token = ? AND is_valid = 1 AND (expires_at IS NULL OR expires_at > ?)", hashed, time.Now()).First(&key).Error; err != nil {
 		return false
 	}
-	var u User
+	var u domain.User
 	if err := DB.First(&u, key.UserID).Error; err != nil {
 		return false
 	}
 	var cnt int64
-	if err := DB.Model(&Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+	if err := DB.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
 		return false
 	}
 	c.Locals("user", &u)
@@ -816,7 +798,7 @@ func ConsumeRecoveryCode(userID uint, code string, DB *gorm.DB) bool {
 	hashed := Sha256Hex([]byte(code))
 	ok := false
 	_ = DB.Transaction(func(tx *gorm.DB) error {
-		var rc RecoveryCode
+		var rc domain.RecoveryCode
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND hashed_code = ? AND is_used = 0", userID, hashed).First(&rc).Error; err != nil {
 			return nil
 		}
@@ -831,7 +813,7 @@ func ConsumeRecoveryCode(userID uint, code string, DB *gorm.DB) bool {
 }
 
 func GetActiveTOTP(userID uint, DB *gorm.DB) (bool, string, error) {
-	var ts TOTPSecret
+	var ts domain.TOTPSecret
 	if err := DB.Where("user_id = ? AND is_active = 1", userID).First(&ts).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return false, "", nil
@@ -906,7 +888,7 @@ func BuildICSForUser(userID uint, DB *gorm.DB) string {
 	b.WriteString("PRODID:-//Taskly//EN" + crlf)
 	b.WriteString("CALSCALE:GREGORIAN" + crlf)
 	b.WriteString("METHOD:PUBLISH" + crlf)
-	var tasks []Task
+	var tasks []domain.Task
 	// Order by effective deadline timestamp derived from date + enum
 	eff := EffectiveDeadlineExpr("")
 	_ = DB.Where("added_user_id = ?", userID).Order(eff + " ASC").Limit(500).Find(&tasks).Error
@@ -917,9 +899,9 @@ func BuildICSForUser(userID uint, DB *gorm.DB) string {
 			continue
 		}
 		// ed := EffectiveDeadlineTime(t)
-		var subj Subject
+		var subj domain.Subject
 		_ = DB.First(&subj, t.SubjectID).Error
-		var u User
+		var u domain.User
 		_ = DB.First(&u, t.AddedUserID).Error
 		lang := strings.ToLower(strings.TrimSpace(u.NotificationLang))
 		if lang == "" {
@@ -1152,11 +1134,11 @@ func smtpSendPlain(to, subject, text string) error {
 }
 
 // Build formatted title for Teams email like: "教科名: タイトル(朝まで|X限まで|X〜Y限まで|M/D HH:mmまで)"
-func buildTeamsTitleForTask(t Task, DB *gorm.DB) string {
-	var subj Subject
+func buildTeamsTitleForTask(t domain.Task, DB *gorm.DB) string {
+	var subj domain.Subject
 	_ = DB.First(&subj, t.SubjectID).Error
 	// Determine preferred language from adding user if available
-	var user User
+	var user domain.User
 	_ = DB.First(&user, t.AddedUserID).Error
 	lang := strings.ToLower(strings.TrimSpace(user.NotificationLang))
 	if lang == "" {
@@ -1355,7 +1337,7 @@ func displayUntilJa(until string) string {
 }
 
 func subjectNameJa(id uint, DB *gorm.DB) string {
-	var s Subject
+	var s domain.Subject
 	if err := DB.First(&s, id).Error; err == nil {
 		if strings.TrimSpace(s.NameJa) != "" {
 			return s.NameJa
@@ -1375,7 +1357,7 @@ func strOrUnsetJa(p *string) string {
 }
 
 // Build a Japanese message describing changes between two Task states
-func BuildTaskUpdateMessageJa(before Task, after Task, DB *gorm.DB) string {
+func BuildTaskUpdateMessageJa(before domain.Task, after domain.Task, DB *gorm.DB) string {
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "課題が更新されました (ID:%d)\n", after.ID)
 	// Title
@@ -1416,7 +1398,7 @@ func BuildTaskUpdateMessageJa(before Task, after Task, DB *gorm.DB) string {
 	return b.String()
 }
 
-func BuildTaskDeleteMessageJa(t Task) string {
+func BuildTaskDeleteMessageJa(t domain.Task) string {
 	// Teams 返信用のメッセージはシンプルに固定文言で通知
 	// もし詳細が必要になった場合は、タイトル等を後段に追記する運用に変更可能
 	return "この課題は削除されました。"
@@ -1432,7 +1414,7 @@ func EffectiveDeadlineExpr(alias string) string {
 }
 
 // Compute effective deadline timestamp in Go for the given task
-func EffectiveDeadlineTime(t Task) time.Time {
+func EffectiveDeadlineTime(t domain.Task) time.Time {
 	h, m := endTimeForUntil(t.DeadlineUntil)
 	return time.Date(t.Deadline.Year(), t.Deadline.Month(), t.Deadline.Day(), h, m, 0, 0, t.Deadline.Location())
 }
@@ -1445,7 +1427,7 @@ func abs(x int) int {
 }
 
 // Send Teams notification email for a newly created task
-func SendTeamsNotifyEmailForTask(t Task, DB *gorm.DB) {
+func SendTeamsNotifyEmailForTask(t domain.Task, DB *gorm.DB) {
 	to := Env("TEAMS_NOTIFY_EMAIL", "")
 	if strings.TrimSpace(to) == "" {
 		return
@@ -1503,7 +1485,7 @@ func ToUint(s string) uint {
 // Authorization and permission helpers
 func UserHasRole(userID uint, role string, DB *gorm.DB) (bool, error) {
 	var cnt int64
-	if err := DB.Model(&RoleUser{}).Where("user_id = ? AND role = ?", userID, role).Count(&cnt).Error; err != nil {
+	if err := DB.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", userID, role).Count(&cnt).Error; err != nil {
 		return false, err
 	}
 	return cnt > 0, nil
@@ -1520,7 +1502,7 @@ func ApiKeyLimitForUser(userID uint, DB *gorm.DB) (int, error) {
 	} else if ok {
 		return 100, nil
 	}
-	var p Permission
+	var p domain.Permission
 	if err := DB.Where("user_id = ? AND target = ?", userID, "api_key_limit").Order("id DESC").First(&p).Error; err == nil && p.Value != nil {
 		var v int
 		fmt.Sscanf(*p.Value, "%d", &v)
@@ -1542,7 +1524,7 @@ func CheckPermission(userID uint, target, action string, ownerID *uint, DB *gorm
 	} else if ok {
 		return true, nil
 	}
-	var p Permission
+	var p domain.Permission
 	if err := DB.Where("user_id = ? AND target = ? AND method = ?", userID, target, action).Order("id DESC").First(&p).Error; err == nil {
 		if p.Value == nil || *p.Value == "" || strings.EqualFold(*p.Value, "all") {
 			return true, nil
@@ -1673,7 +1655,7 @@ func SendDiscordEmbeds(embeds []map[string]any) {
 }
 
 // SendDiscordTaskEmbed builds and sends an embed for task events (created/updated/deleted)
-func SendDiscordTaskEmbed(action string, t Task, actor string) {
+func SendDiscordTaskEmbed(action string, t domain.Task, actor string) {
 	// Prepare fields
 	webURL := strings.TrimSpace(Env("WEB_URL", ""))
 	title := "Task"
@@ -1760,19 +1742,19 @@ func performDayShiftRotation(now time.Time, DB *gorm.DB) error {
 	}
 	if storedCID != 0 && storedCID != cyc.ID {
 		// Override with configured cycle
-		var confCyc DayShiftCycle
+		var confCyc domain.DayShiftCycle
 		if err := DB.First(&confCyc, storedCID).Error; err == nil {
 			cyc = &confCyc
 		}
 	}
 	// Legacy assignment-table-based carry-over from previous business day removed.
 	// Prefer new group configuration if present
-	var cfgGroups []DayShiftCycleGroup
+	var cfgGroups []domain.DayShiftCycleGroup
 	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups).Error
 	groups := make([][]uint, 0)
 	if len(cfgGroups) > 0 {
 		for _, g := range cfgGroups {
-			var members []DayShiftCycleGroupMember
+			var members []domain.DayShiftCycleGroupMember
 			_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&members).Error
 			if len(members) == 0 {
 				continue
@@ -1807,8 +1789,8 @@ func performDayShiftRotation(now time.Time, DB *gorm.DB) error {
 	return nil
 }
 
-func getCurrentCycle(d time.Time, DB *gorm.DB) (*DayShiftCycle, error) {
-	var cyc DayShiftCycle
+func getCurrentCycle(d time.Time, DB *gorm.DB) (*domain.DayShiftCycle, error) {
+	var cyc domain.DayShiftCycle
 	// If multiple cycles cover the date, prefer the one with the latest finish_date
 	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).Order("finish_date DESC, id DESC").First(&cyc).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -1845,15 +1827,15 @@ func nextBusinessDay(d time.Time) time.Time {
 	return time.Time{}
 }
 
-func listActiveUsers(DB *gorm.DB) ([]User, error) {
-	var users []User
+func listActiveUsers(DB *gorm.DB) ([]domain.User, error) {
+	var users []domain.User
 	if err := DB.Where("is_deleted = 0").Order("id ASC").Find(&users).Error; err != nil {
 		return nil, err
 	}
 	return users, nil
 }
 
-func ComputePairs(users []User) [][]uint {
+func ComputePairs(users []domain.User) [][]uint {
 	out := [][]uint{}
 	n := len(users)
 	if n < 2 {
@@ -1871,7 +1853,7 @@ func ComputePairs(users []User) [][]uint {
 
 // computeGroups splits users into groups of given size in order.
 // If remainder is non-zero, drop the trailing users (and log) to keep group sizes uniform.
-func computeGroups(users []User, size int) [][]uint {
+func computeGroups(users []domain.User, size int) [][]uint {
 	out := [][]uint{}
 	n := len(users)
 	if size <= 0 {

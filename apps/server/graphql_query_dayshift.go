@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -28,14 +29,14 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					cid := p.Args["cycle_id"].(int)
-					var groups []utils.DayShiftCycleGroup
+					var groups []domain.DayShiftCycleGroup
 					if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&groups).Error; err != nil {
 						return nil, fmt.Errorf("db")
 					}
@@ -56,13 +57,13 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
-					var items []utils.DayShiftCycle
+					var items []domain.DayShiftCycle
 					if err := DB.Order("begin_date DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -88,7 +89,7 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
@@ -104,7 +105,7 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					}
 					qstr, _ := p.Args["q"].(string)
 					qstr = strings.TrimSpace(qstr)
-					dbq := DB.Model(&utils.DayShiftCycle{})
+					dbq := DB.Model(&domain.DayShiftCycle{})
 					if qstr != "" {
 						dbq = dbq.Where("description LIKE ?", "%"+qstr+"%")
 					}
@@ -112,7 +113,7 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if err := dbq.Count(&total).Error; err != nil {
 						return nil, err
 					}
-					var items []utils.DayShiftCycle
+					var items []domain.DayShiftCycle
 					if err := dbq.Order("begin_date DESC").Offset((page - 1) * size).Limit(size).Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -143,20 +144,20 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
 						return nil, fmt.Errorf("forbidden")
 					}
 					cid := p.Args["cycle_id"].(int)
-					var groups []utils.DayShiftCycleGroup
+					var groups []domain.DayShiftCycleGroup
 					if err := DB.Where("cycle_id = ?", cid).Order("position ASC, id ASC").Find(&groups).Error; err != nil {
 						return nil, fmt.Errorf("db")
 					}
 					out := make([]map[string]any, 0, len(groups))
 					for _, g := range groups {
-						var mems []utils.DayShiftCycleGroupMember
+						var mems []domain.DayShiftCycleGroupMember
 						_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&mems).Error
 						ids := make([]int, 0, len(mems))
 						for _, m := range mems {
@@ -182,7 +183,7 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					isAdmin, _ := utils.UserHasRole(u.ID, "admin", DB)
 					isManager, _ := utils.UserHasRole(u.ID, "manager", DB)
 					if !(isAdmin || isManager) {
@@ -197,18 +198,18 @@ func queryFieldsDayShift(t *gqlTypes) graphql.Fields {
 					if v, ok := p.Args["page_size"].(int); ok && v > 0 && v <= 200 {
 						size = v
 					}
-					dbq := DB.Model(&utils.DayShiftCycleGroup{}).Where("cycle_id = ?", cid)
+					dbq := DB.Model(&domain.DayShiftCycleGroup{}).Where("cycle_id = ?", cid)
 					var total int64
 					if err := dbq.Count(&total).Error; err != nil {
 						return nil, err
 					}
-					var groups []utils.DayShiftCycleGroup
+					var groups []domain.DayShiftCycleGroup
 					if err := dbq.Order("position ASC, id ASC").Offset((page - 1) * size).Limit(size).Find(&groups).Error; err != nil {
 						return nil, fmt.Errorf("db")
 					}
 					out := make([]map[string]any, 0, len(groups))
 					for _, g := range groups {
-						var mems []utils.DayShiftCycleGroupMember
+						var mems []domain.DayShiftCycleGroupMember
 						_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&mems).Error
 						ids := make([]int, 0, len(mems))
 						for _, m := range mems {

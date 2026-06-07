@@ -5,7 +5,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -26,8 +27,8 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
-					var items []utils.APIKey
+					u := c.Locals("user").(*domain.User)
+					var items []domain.APIKey
 					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -59,8 +60,8 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
-					var items []utils.IcalKey
+					u := c.Locals("user").(*domain.User)
+					var items []domain.IcalKey
 					if err := DB.Where("user_id = ?", u.ID).Order("id DESC").Find(&items).Error; err != nil {
 						return nil, err
 					}
@@ -135,9 +136,9 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					enabled := strings.ToLower(utils.Env("MCP_ENABLED", "true")) == "true"
-					var rec utils.MCP
+					var rec domain.MCP
 					_ = DB.Where("user_id = ?", u.ID).Order("id DESC").First(&rec).Error
 					var expires any
 					if rec.ID != 0 && rec.ExpiresAt != nil {
@@ -160,18 +161,18 @@ func queryFieldsSettings(t *gqlTypes) graphql.Fields {
 					if !utils.UserFromSession(c, DB, RDB) {
 						return nil, fmt.Errorf("unauthorized")
 					}
-					u := c.Locals("user").(*utils.User)
+					u := c.Locals("user").(*domain.User)
 					pref, _ := p.Args["prefix"].(string)
 					limit := 20
 					if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 100 {
 						limit = v
 					}
-					q := DB.Model(&utils.Log{}).Where("user_id = ?", u.ID)
+					q := DB.Model(&domain.Log{}).Where("user_id = ?", u.ID)
 					if strings.TrimSpace(pref) != "" {
 						q = q.Where("action LIKE ?", strings.TrimSpace(pref)+"%")
 					}
 					q = q.Order("id DESC").Limit(limit)
-					var items []utils.Log
+					var items []domain.Log
 					if err := q.Find(&items).Error; err != nil {
 						return nil, err
 					}

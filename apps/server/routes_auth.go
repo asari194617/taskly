@@ -12,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jhump/protoreflect/desc/protoparse"
@@ -63,7 +64,7 @@ func registerAuthRoutes(app *fiber.App) {
 			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})
 		}
 		// cooldown: deny if a code was created within last 60s and not expired
-		var recent utils.LoginCode
+		var recent domain.LoginCode
 		if err := DB.Where("email = ?", email).Order("id DESC").First(&recent).Error; err == nil {
 			if time.Since(recent.CreatedAt) < 60*time.Second && recent.ConsumedAt == nil {
 				return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "too many requests"})
@@ -187,7 +188,7 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// store code after successful send
 		exp := now.Add(10 * time.Minute)
-		lc := utils.LoginCode{Email: email, HashedCode: utils.Sha256Hex([]byte(code)), ExpiresAt: exp, CreatedAt: now}
+		lc := domain.LoginCode{Email: email, HashedCode: utils.Sha256Hex([]byte(code)), ExpiresAt: exp, CreatedAt: now}
 		if err := DB.Create(&lc).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "server"})
 		}
@@ -206,7 +207,7 @@ func registerAuthRoutes(app *fiber.App) {
 		if !utils.IsEmail(email) {
 			return utils.ValidationError(c, map[string]string{"email": "invalid email"})
 		}
-		var u utils.User
+		var u domain.User
 		if err := DB.Where("email = ?", email).First(&u).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				// User must already exist for login; do not auto-create
@@ -233,14 +234,14 @@ func registerAuthRoutes(app *fiber.App) {
 		passkeyEnabled := false
 		if hasUser {
 			var cnt int64
-			_ = DB.Model(&utils.Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
+			_ = DB.Model(&domain.Passkey{}).Where("user_id = ?", u.ID).Count(&cnt).Error
 			passkeyEnabled = cnt > 0
 		}
 		// recovery codes presence (independent of TOTP)
 		recoveryAvailable := false
 		if hasUser {
 			var rc int64
-			_ = DB.Model(&utils.RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&rc).Error
+			_ = DB.Model(&domain.RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&rc).Error
 			recoveryAvailable = rc > 0
 		}
 		methods := []string{}
@@ -286,7 +287,7 @@ func registerAuthRoutes(app *fiber.App) {
 			return utils.ValidationError(c, map[string]string{"email": "invalid email"})
 		}
 		// Lookup user; do not auto-create for non-existing accounts
-		var u utils.User
+		var u domain.User
 		if err := DB.Where("email = ?", email).First(&u).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
@@ -318,7 +319,7 @@ func registerAuthRoutes(app *fiber.App) {
 		}
 		// Blocklist enforcement
 		var cnt int64
-		if err := DB.Model(&utils.Block{}).
+		if err := DB.Model(&domain.Block{}).
 			Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, now).
 			Count(&cnt).Error; err == nil && cnt > 0 {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
@@ -346,13 +347,13 @@ func registerAuthRoutes(app *fiber.App) {
 			ok := false
 			// mail code
 			if !ok && mailCodeEnabled && body.Code != "" {
-				var lc utils.LoginCode
+				var lc domain.LoginCode
 				if err := DB.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err == nil {
 					if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
 						return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
 					}
 					if lc.HashedCode == utils.Sha256Hex([]byte(body.Code)) {
-						_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+						_ = DB.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
 						ok = true
 					} else {
 						failCount := lc.FailedAttempts + 1
@@ -360,7 +361,7 @@ func registerAuthRoutes(app *fiber.App) {
 						if failCount >= 5 {
 							update["LockedUntil"] = lc.ExpiresAt
 						}
-						_ = DB.Model(&utils.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
+						_ = DB.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
 					}
 				}
 			}
@@ -398,10 +399,10 @@ func registerAuthRoutes(app *fiber.App) {
 		_ = RDB.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
 		// Mark user as registered upon first successful login
 		if !u.IsRegistered {
-			_ = DB.Model(&utils.User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
+			_ = DB.Model(&domain.User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
 		}
 		// Store hash of token and associated user id for DB-fallback validation
-		DB.Create(&utils.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(now.Add(ttl))})
+		DB.Create(&domain.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(now.Add(ttl))})
 
 		// Also provide a JWT if needed (optional)
 		claims := jwt.MapClaims{"sub": u.ID, "exp": now.Add(ttl).Unix()}
@@ -416,7 +417,7 @@ func registerAuthRoutes(app *fiber.App) {
 		if token != "" {
 			_ = RDB.Del(c.Context(), "session:"+token).Err()
 			// Best-effort: remove DB session record if present (hashed or legacy plain)
-			_ = DB.Where("hashed_token = ? OR hashed_token = ?", utils.Sha256Hex([]byte(token)), token).Delete(&utils.Session{}).Error
+			_ = DB.Where("hashed_token = ? OR hashed_token = ?", utils.Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error
 			// remove from user_sessions set if we can resolve uid
 			if uidStr, err := RDB.Get(c.Context(), "session:"+token).Result(); err == nil && uidStr != "" {
 				_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%s", uidStr), token).Err()

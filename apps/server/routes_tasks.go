@@ -6,14 +6,15 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 func registerTasksRoutes(app *fiber.App) {
 	// Tasks CRUD with permissions
 	app.Get("/tasks", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		// Permission: read tasks (default allow)
 		if ok, err := utils.CheckPermission(u.ID, "tasks", "read", nil, DB); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "perm"})
@@ -44,7 +45,7 @@ func registerTasksRoutes(app *fiber.App) {
 		}
 
 		// Build query
-		dbq := DB.Model(&utils.Task{})
+		dbq := DB.Model(&domain.Task{})
 		now := time.Now()
 		eff := utils.EffectiveDeadlineExpr("")
 		if overdue {
@@ -85,7 +86,7 @@ func registerTasksRoutes(app *fiber.App) {
 		} else {
 			dbq = dbq.Order(eff + " ASC").Order("id ASC")
 		}
-		var items []utils.Task
+		var items []domain.Task
 		if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -100,7 +101,7 @@ func registerTasksRoutes(app *fiber.App) {
 	})
 
 	app.Post("/tasks", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		if ok, err := utils.CheckPermission(u.ID, "tasks", "create", nil, DB); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "perm"})
 		} else if !ok {
@@ -125,7 +126,7 @@ func registerTasksRoutes(app *fiber.App) {
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid deadline"})
 		}
-		rec := utils.Task{AddedUserID: u.ID, Title: body.Title, SubjectID: body.SubjectID, Description: body.Description, Deadline: utils.DateOnly(dead), DeadlineSince: "NONE", DeadlineUntil: "NONE"}
+		rec := domain.Task{AddedUserID: u.ID, Title: body.Title, SubjectID: body.SubjectID, Description: body.Description, Deadline: utils.DateOnly(dead), DeadlineSince: "NONE", DeadlineUntil: "NONE"}
 		if body.Type != nil {
 			rec.Type = utils.NormalizeTaskType(*body.Type)
 		}
@@ -152,8 +153,8 @@ func registerTasksRoutes(app *fiber.App) {
 	})
 
 	app.Patch("/tasks/:id", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
-		var rec utils.Task
+		u := c.Locals("user").(*domain.User)
+		var rec domain.Task
 		if err := DB.First(&rec, c.Params("id")).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
@@ -227,11 +228,11 @@ func registerTasksRoutes(app *fiber.App) {
 	})
 
 	app.Delete("/tasks/:id", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		if _, err := strconv.Atoi(c.Params("id")); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
 		}
-		var rec utils.Task
+		var rec domain.Task
 		if err := DB.First(&rec, c.Params("id")).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
@@ -249,7 +250,7 @@ func registerTasksRoutes(app *fiber.App) {
 		if !allowed {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		if err := DB.Delete(&utils.Task{}, rec.ID).Error; err != nil {
+		if err := DB.Delete(&domain.Task{}, rec.ID).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		// Fire Teams reply for delete

@@ -5,14 +5,15 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/asari194617/taskly/apps/server/utils"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
 func register2FARoutes(app *fiber.App) {
 	// 2FA: TOTP setup, activate, disable
 	app.Post("/2fa/totp/setup", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		// generate base32 secret
 		secret := utils.GenerateBase32Secret()
 		// store in Redis temporary
@@ -26,7 +27,7 @@ func register2FARoutes(app *fiber.App) {
 		return c.JSON(fiber.Map{"secret": secret, "otpauth": otpauth})
 	})
 	app.Post("/2fa/totp/activate", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		var body struct {
 			Code string `json:"code"`
 		}
@@ -46,20 +47,20 @@ func register2FARoutes(app *fiber.App) {
 			return c.Status(500).JSON(fiber.Map{"error": "server"})
 		}
 		// upsert
-		var ts utils.TOTPSecret
+		var ts domain.TOTPSecret
 		if err := DB.Where("user_id = ?", u.ID).First(&ts).Error; err == nil {
 			ts.Secret = enc
 			ts.IsActive = true
 			_ = DB.Save(&ts).Error
 		} else {
-			_ = DB.Create(&utils.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
+			_ = DB.Create(&domain.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
 		}
 		_ = RDB.Del(c.Context(), key).Err()
 		return c.SendStatus(204)
 	})
 	app.Post("/2fa/totp/disable", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
-		var ts utils.TOTPSecret
+		u := c.Locals("user").(*domain.User)
+		var ts domain.TOTPSecret
 		if err := DB.Where("user_id = ?", u.ID).First(&ts).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not enabled"})
 		}
@@ -72,15 +73,15 @@ func register2FARoutes(app *fiber.App) {
 
 	// Recovery codes
 	app.Post("/2fa/recovery/generate", authRequired, audit, func(c *fiber.Ctx) error {
-		u := c.Locals("user").(*utils.User)
+		u := c.Locals("user").(*domain.User)
 		// delete existing unused codes
-		_ = DB.Where("user_id = ? AND is_used = 0", u.ID).Delete(&utils.RecoveryCode{}).Error
+		_ = DB.Where("user_id = ? AND is_used = 0", u.ID).Delete(&domain.RecoveryCode{}).Error
 		// generate 10 codes
 		codes := make([]string, 0, 10)
 		for i := 0; i < 10; i++ {
 			plain := utils.GenerateRecoveryCode()
 			hashed := utils.Sha256Hex([]byte(plain))
-			_ = DB.Create(&utils.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
+			_ = DB.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
 			codes = append(codes, plain)
 		}
 		return c.JSON(fiber.Map{"codes": codes})
@@ -96,7 +97,7 @@ func register2FARoutes(app *fiber.App) {
 		if !utils.IsEmail(body.Email) || strings.TrimSpace(body.Code) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
-		var u utils.User
+		var u domain.User
 		if err := DB.Where("email = ?", body.Email).First(&u).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}

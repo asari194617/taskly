@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	mysql_driver "github.com/go-sql-driver/mysql"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -15,7 +16,6 @@ import (
 	gormtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gorm.io/gorm.v1"
 	gorm_mysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	utils "github.com/asari194617/taskly/apps/server/utils"
 )
 
 // mustInitDB opens a MySQL connection using env() variables and migrates the base model.
