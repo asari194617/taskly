@@ -74,21 +74,6 @@ func GetConfigInt(key string, DB *gorm.DB) (int, error) {
 	return n, nil
 }
 
-// getConfigBool returns a boolean-like flag from configs table.
-// "", "0", "false", "no" (case-insensitive) are treated as false;
-// any other non-empty value is true.
-func getConfigBool(key string, DB *gorm.DB) (bool, error) {
-	s, err := GetConfigString(key, DB)
-	if err != nil {
-		return false, err
-	}
-	v := strings.TrimSpace(strings.ToLower(s))
-	if v == "" || v == "0" || v == "false" || v == "no" {
-		return false, nil
-	}
-	return true, nil
-}
-
 // --- JSON parsing & validation helpers ---
 func ParseJSONStrict(c *fiber.Ctx, dst any) error {
 	dec := json.NewDecoder(bytes.NewReader(c.Body()))
@@ -160,8 +145,6 @@ func SanitizeQueryString(q string) string {
 	return strings.Join(parts, "&")
 }
 
-func sanitizeQueryString(q string) string { return SanitizeQueryString(q) }
-
 // Scrub values in a map[string]any recursively when keys or values look sensitive
 func ScrubPIIMap(m map[string]any) {
 	for k, v := range m {
@@ -225,60 +208,6 @@ func IsSensitiveValue(v string) bool {
 		return true
 	}
 	return false
-}
-
-// ensureDeadlineDateColumn alters tasks.deadline to DATE (from DATETIME) if necessary.
-// This keeps the legacy field date-only, matching current requirements.
-// Deprecated: migrations are handled exclusively via SQL files in apps/server/migrations
-// Remove in-process schema alteration.
-func ensureDeadlineDateColumn(DB *gorm.DB) {
-	// Best effort: MySQL syntax (GORM uses MySQL driver in this project).
-	// If tasks table/column doesn't exist yet (fresh DB), SELECT returns 0 rows and we skip.
-	var dt string
-	type res struct{ Cnt int }
-	var r res
-	_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'deadline'").Scan(&r).Error
-	if r.Cnt == 0 {
-		return
-	}
-	if err := DB.Raw("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'deadline'").Scan(&dt).Error; err == nil {
-		if strings.ToLower(strings.TrimSpace(dt)) == "date" {
-			return
-		}
-	}
-	// No in-process ALTER; handled by migrations.
-}
-
-// ensureTasksSchema verifies the tasks table has expected column data types for the new model.
-// If the table has no rows and types mismatch, it will drop and recreate the table.
-// Deprecated: schema verification is handled by migrations; do not modify at runtime.
-func ensureTasksSchema(DB *gorm.DB) {
-	// Check table exists
-	type res struct{ Cnt int }
-	var r res
-	_ = DB.Raw("SELECT COUNT(1) AS cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks'").Scan(&r).Error
-	if r.Cnt == 0 {
-		return
-	}
-	// Check row count
-	var rowCnt int64
-	_ = DB.Table("tasks").Count(&rowCnt).Error
-	// Read column data types
-	type col struct {
-		ColumnName string
-		DataType   string
-	}
-	var cols []col
-	_ = DB.Raw("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME IN ('deadline','deadline_since','deadline_until')").Scan(&cols).Error
-	exp := map[string]string{"deadline": "date", "deadline_since": "enum", "deadline_until": "enum"}
-	mismatch := false
-	for _, c := range cols {
-		if exp[strings.ToLower(c.ColumnName)] != strings.ToLower(strings.TrimSpace(c.DataType)) {
-			mismatch = true
-		}
-	}
-	_ = mismatch
-	// No destructive changes; rely on migrations.
 }
 
 // resolveDayShiftTodayAndNextMembers returns the users for today and the
@@ -504,8 +433,6 @@ func RunMigrations(DB *gorm.DB) {
 	}
 }
 
-func isSensitiveValue(v string) bool { return IsSensitiveValue(v) }
-
 // execSQLBatch splits a SQL file by ';' and executes statements sequentially.
 // This is a minimal splitter suited for our simple DDL/DML migrations without procedures.
 func execSQLBatch(sqlText string, DB *gorm.DB) error {
@@ -568,30 +495,6 @@ func execSQLBatch(sqlText string, DB *gorm.DB) error {
 }
 
 func PtrTime(t time.Time) *time.Time { return &t }
-
-// ensureDayShiftGroupSchemaAndBackfill guarantees the new generalized day shift
-// group tables exist and migrates legacy pairs into groups once.
-// Deprecated: handled externally.
-func ensureDayShiftGroupSchemaAndBackfill(DB *gorm.DB) {
-	// Create/alter tables idempotently
-	// No AutoMigrate here.
-
-	// One-time data migration: convert existing pairs to groups if not yet marked as applied
-	var existing Migration
-	if err := DB.Where("name = ?", "0009_dayshift_groups").First(&existing).Error; err == nil {
-		// Already migrated
-		return
-	}
-
-	// Only backfill when groups table is empty to avoid duplications
-	var groupsCnt int64
-	_ = DB.Model(&domain.DayShiftCycleGroup{}).Count(&groupsCnt).Error
-	if groupsCnt > 0 {
-		// Still mark as applied to avoid checking on every boot
-		_ = DB.Create(&Migration{Name: "0009_dayshift_groups"}).Error
-		return
-	}
-}
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
 func Sha256Hex(b []byte) string {
@@ -970,90 +873,6 @@ func ICalEscape(s string) string {
 	return r
 }
 
-// SMTP helper to send multipart email
-func smtpSend(to, subject, text, html string) error {
-	smtpHost := Env("SMTP_HOST", "localhost")
-	smtpPort := Env("SMTP_PORT", "25")
-	from := Env("SMTP_FROM", "noreply@taskly.local")
-	smtpUser := Env("SMTP_USER", from)
-	smtpPass := Env("SMTP_PASSWORD", "")
-	nowRFC := time.Now().Format(time.RFC1123Z)
-	boundary := fmt.Sprintf("taskly-%d", time.Now().UnixNano())
-	msg := []byte(
-		"From: " + from + "\r\n" +
-			"To: " + to + "\r\n" +
-			"Subject: " + subject + "\r\n" +
-			"Date: " + nowRFC + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
-			"--" + boundary + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + text + "\r\n" +
-			"--" + boundary + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + html + "\r\n" +
-			"--" + boundary + "--\r\n",
-	)
-	var auth smtp.Auth
-	if smtpPass != "" {
-		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-	}
-	toSec, _ := strconv.Atoi(Env("SMTP_TIMEOUT", "60"))
-	if toSec <= 0 {
-		toSec = 60
-	}
-	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
-	mode := strings.ToLower(strings.TrimSpace(Env("SMTP_TLS", "")))
-	var conn net.Conn
-	var err error
-	if mode == "smtps" || smtpPort == "465" {
-		// SMTPS (implicit TLS) - enforce certificate verification
-		conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost, InsecureSkipVerify: false})
-	} else {
-		// Plain TCP first; may upgrade via STARTTLS
-		conn, err = dialer.Dial("tcp", smtpHost+":"+smtpPort)
-	}
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
-	cl, err := smtp.NewClient(conn, smtpHost)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = cl.Quit() }()
-	if mode == "starttls" {
-		if ok, _ := cl.Extension("STARTTLS"); ok {
-			// Enforce certificate verification
-			if err := cl.StartTLS(&tls.Config{ServerName: smtpHost, InsecureSkipVerify: false}); err != nil {
-				return err
-			}
-		}
-	}
-	if auth != nil {
-		if ok, _ := cl.Extension("AUTH"); ok {
-			if err := cl.Auth(auth); err != nil {
-				return err
-			}
-		}
-	}
-	if err := cl.Mail(from); err != nil {
-		return err
-	}
-	if err := cl.Rcpt(to); err != nil {
-		return err
-	}
-	w, err := cl.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(msg); err != nil {
-		_ = w.Close()
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
 // SMTP helper to send plain text email (no HTML/multipart)
 func smtpSendPlain(to, subject, text string) error {
 	smtpHost := Env("SMTP_HOST", "localhost")
@@ -1199,30 +1018,13 @@ func deriveDeadlineLabelEnum(since, until string) string {
 }
 
 func periodIndex(s string) int {
-	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case "P1":
-		return 1
-	case "P2":
-		return 2
-	case "P3":
-		return 3
-	case "P4":
-		return 4
-	case "P5":
-		return 5
-	case "P6":
-		return 6
-	case "P7":
-		return 7
-	case "P8":
-		return 8
-	case "P9":
-		return 9
-	case "P10":
-		return 10
-	default:
-		return 0
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if strings.HasPrefix(s, "P") {
+		if num, err := strconv.Atoi(s[1:]); err == nil && num >= 1 {
+			return num
+		}
 	}
+	return 0
 }
 
 // end time of deadline based on enum until
@@ -1419,13 +1221,6 @@ func EffectiveDeadlineTime(t domain.Task) time.Time {
 	return time.Date(t.Deadline.Year(), t.Deadline.Month(), t.Deadline.Day(), h, m, 0, 0, t.Deadline.Location())
 }
 
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
 // Send Teams notification email for a newly created task
 func SendTeamsNotifyEmailForTask(t domain.Task, DB *gorm.DB) {
 	to := Env("TEAMS_NOTIFY_EMAIL", "")
@@ -1558,61 +1353,8 @@ func CheckPermission(userID uint, target, action string, ownerID *uint, DB *gorm
 // (server no longer runs in-process schedulers; handled by Airflow)
 
 func isBusinessDay(d time.Time) bool {
-	// Business calendar feature removed; consider Mon-Fri as business days.
 	wd := d.Weekday()
 	return wd != time.Saturday && wd != time.Sunday
-}
-
-// (batch day shift notification moved to Airflow)
-
-// (daily tasks digest moved to Airflow notifications DAG)
-
-func buildEmailHTML(title, contentHTML string) string {
-	return fmt.Sprintf(`<!doctype html><html><head><meta charset="utf-8"/></head>
-  <body style="background-color:#0b0f19; padding:24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;">
-    <div style="max-width:560px; margin:0 auto; background-color:#0b0f19;">
-      <div style="background:#0f172a; color:#e2e8f0; border:1px solid #1f2937; border-radius:12px; padding:20px;">
-        <h1 style="font-size:18px; margin:0 0 12px 0;">%s</h1>
-        <div style="font-size:14px; line-height:1.7; color:#cbd5e1;">%s</div>
-      </div>
-      <div style="text-align:center; color:#64748b; font-size:12px; margin-top:16px;">Taskly</div>
-    </div>
-  </body></html>`, ICalEscape(title), contentHTML)
-}
-
-// sendDiscordContent posts a simple content message to Discord webhook if configured. Fire-and-forget friendly.
-func sendDiscordContent(content string) {
-	hook := Env("DISCORD_WEBHOOK_URL", "")
-	if strings.TrimSpace(hook) == "" {
-		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
-		return
-	}
-	if strings.TrimSpace(content) == "" {
-		log.Printf("discord: skipped (empty content)")
-		return
-	}
-	payload := fmt.Sprintf(`{"content": %q}`, content)
-	req, err := http.NewRequest("POST", hook, strings.NewReader(payload))
-	if err != nil {
-		log.Printf("discord: build request error: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "taskly-server/1.0")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("discord: post error: %v", err)
-		return
-	}
-	// Drain and close body
-	_, _ = io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("discord: non-2xx status: %d", resp.StatusCode)
-		return
-	}
-	log.Printf("discord: sent ok")
 }
 
 // Posts one or more embeds to the Discord webhook. Logs basic diagnostics.
@@ -1696,111 +1438,6 @@ func SendDiscordTaskEmbed(action string, t domain.Task, actor string) {
 	SendDiscordEmbeds([]map[string]any{embed})
 }
 
-// sendDiscordDayShiftNotifyEmbed sends an embed about day shift notification sending
-func sendDiscordDayShiftNotifyEmbed(date time.Time, userNames []string, actor string) {
-	title := "Day Shift Notified"
-	color := 0x3498db // blue
-	users := ""
-	if len(userNames) > 0 {
-		users = strings.Join(userNames, ", ")
-	} else {
-		users = "(none)"
-	}
-	fields := []map[string]any{
-		{"name": "Date", "value": date.Format("2006-01-02"), "inline": true},
-		{"name": "Users", "value": users, "inline": false},
-		{"name": "By", "value": actor, "inline": true},
-	}
-	embed := map[string]any{
-		"title":     title,
-		"color":     color,
-		"fields":    fields,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}
-	SendDiscordEmbeds([]map[string]any{embed})
-}
-
-func performDayShiftRotation(now time.Time, DB *gorm.DB) error {
-	d := now
-	for !isBusinessDay(d) {
-		d = d.Add(24 * time.Hour)
-	}
-	cyc, err := getCurrentCycle(d, DB)
-	if err != nil {
-		return err
-	}
-	if cyc == nil {
-		return nil
-	}
-	// Respect current cycle from configs if set; server does not rotate or increment
-	storedCIDStr, _ := GetConfigString("day_shift_current_cycle", DB)
-	storedCID := uint(0)
-	if strings.TrimSpace(storedCIDStr) != "" {
-		var x uint64
-		fmt.Sscanf(storedCIDStr, "%d", &x)
-		storedCID = uint(x)
-	}
-	if storedCID != 0 && storedCID != cyc.ID {
-		// Override with configured cycle
-		var confCyc domain.DayShiftCycle
-		if err := DB.First(&confCyc, storedCID).Error; err == nil {
-			cyc = &confCyc
-		}
-	}
-	// Legacy assignment-table-based carry-over from previous business day removed.
-	// Prefer new group configuration if present
-	var cfgGroups []domain.DayShiftCycleGroup
-	_ = DB.Where("cycle_id = ?", cyc.ID).Order("position ASC, id ASC").Find(&cfgGroups).Error
-	groups := make([][]uint, 0)
-	if len(cfgGroups) > 0 {
-		for _, g := range cfgGroups {
-			var members []domain.DayShiftCycleGroupMember
-			_ = DB.Where("group_id = ?", g.ID).Order("position ASC, id ASC").Find(&members).Error
-			if len(members) == 0 {
-				continue
-			}
-			arr := make([]uint, 0, len(members))
-			for _, m := range members {
-				arr = append(arr, m.UserID)
-			}
-			groups = append(groups, arr)
-		}
-	}
-	if len(groups) == 0 {
-		// Auto compute groups from active users using env group size (default 2)
-		actUsers, err := listActiveUsers(DB)
-		if err != nil || len(actUsers) < 1 {
-			return err
-		}
-		gs := 2
-		if v := strings.TrimSpace(Env("DAYSHIFT_GROUP_SIZE", "")); v != "" {
-			if n, e := strconv.Atoi(v); e == nil && n >= 1 {
-				gs = n
-			}
-		}
-		groups = computeGroups(actUsers, gs)
-		if len(groups) == 0 {
-			return nil
-		}
-	}
-	// Determine today's index via configs; actual assignment expansion is handled
-	// by downstream index-based batches, so server no longer persists per-day
-	// day_shift_assignments rows here.
-	return nil
-}
-
-func getCurrentCycle(d time.Time, DB *gorm.DB) (*domain.DayShiftCycle, error) {
-	var cyc domain.DayShiftCycle
-	// If multiple cycles cover the date, prefer the one with the latest finish_date
-	if err := DB.Where("begin_date <= ? AND finish_date >= ?", d.Format("2006-01-02"), d.Format("2006-01-02")).Order("finish_date DESC, id DESC").First(&cyc).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &cyc, nil
-}
-
 func DateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
@@ -1847,32 +1484,6 @@ func ComputePairs(users []domain.User) [][]uint {
 	}
 	for i := 0; i < n; i += 2 {
 		out = append(out, []uint{users[i].ID, users[i+1].ID})
-	}
-	return out
-}
-
-// computeGroups splits users into groups of given size in order.
-// If remainder is non-zero, drop the trailing users (and log) to keep group sizes uniform.
-func computeGroups(users []domain.User, size int) [][]uint {
-	out := [][]uint{}
-	n := len(users)
-	if size <= 0 {
-		size = 2
-	}
-	if n < size {
-		return out
-	}
-	rem := n % size
-	if rem != 0 {
-		log.Printf("[DayShift] users not divisible by group size (n=%d, size=%d), dropping last %d user(s)", n, size, rem)
-		n = n - rem
-	}
-	for i := 0; i < n; i += size {
-		grp := make([]uint, 0, size)
-		for j := 0; j < size; j++ {
-			grp = append(grp, users[i+j].ID)
-		}
-		out = append(out, grp)
 	}
 	return out
 }
@@ -1953,22 +1564,6 @@ func shouldRotateHeuristic(s string) bool {
 		}
 	}
 	return false
-}
-
-// Notify Discord with a simple embed indicating day shift rotation occurred
-func notifyDayShiftRotationDiscord(target time.Time) {
-	hook := Env("DISCORD_WEBHOOK_URL", "")
-	if hook == "" {
-		return
-	}
-	embed := fmt.Sprintf(`{"embeds":[{"title":"Day Shift Rotation Executed","description":"Rotation processed for %s","color":5814783}]}`, target.Format("2006-01-02"))
-	req, _ := http.NewRequest("POST", hook, strings.NewReader(embed))
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err == nil && resp != nil {
-		_ = resp.Body.Close()
-	}
 }
 
 // Shift all assignments from the next business day after 'start' one business day forward,
