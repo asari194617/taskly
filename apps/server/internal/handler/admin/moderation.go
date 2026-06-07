@@ -53,19 +53,6 @@ func (h *Handler)saveModerationPolicy(p ModerationPolicy) error {
 	return h.db.Create(&rec).Error
 }
 
-func severityRank(s string) int {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "low":
-		return 1
-	case "medium":
-		return 2
-	case "high":
-		return 3
-	default:
-		return 0
-	}
-}
-
 func (h *Handler) RegisterAdminModerationRoutes(router fiber.Router) {
 	// List flagged items
 	router.Get("/flagged", func(c *fiber.Ctx) error {

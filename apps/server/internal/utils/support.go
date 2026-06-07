@@ -206,8 +206,6 @@ func ScrubPIIMap(m map[string]any) {
 	}
 }
 
-func scrubPIIMap(m map[string]any) { ScrubPIIMap(m) }
-
 func IsSensitiveKey(k string) bool {
 	k = strings.ToLower(strings.TrimSpace(k))
 	switch k {
@@ -350,67 +348,6 @@ func SendDayShiftSkipEmail(ctx context.Context, today, next time.Time, todayMemb
 		},
 		Level: sentry.LevelInfo,
 	})
-	return nil
-}
-
-// execSQLBatch splits a SQL file by ';' and executes statements sequentially.
-// This is a minimal splitter suited for our simple DDL/DML migrations without procedures.
-func execSQLBatch(sqlText string, DB *gorm.DB) error {
-	// Normalize newlines and remove BOM if present
-	s := strings.TrimSpace(sqlText)
-	if strings.HasPrefix(s, "\uFEFF") {
-		s = strings.TrimPrefix(s, "\uFEFF")
-	}
-	// Remove single-line comments starting with --
-	lines := strings.Split(s, "\n")
-	for i, ln := range lines {
-		t := strings.TrimSpace(ln)
-		if strings.HasPrefix(t, "--") {
-			lines[i] = ""
-		}
-	}
-	s = strings.Join(lines, "\n")
-	// Remove simple block comments /* ... */ (non-nested)
-	for {
-		start := strings.Index(s, "/*")
-		if start < 0 {
-			break
-		}
-		end := strings.Index(s[start+2:], "*/")
-		if end < 0 {
-			break
-		}
-		s = s[:start] + s[start+2+end+2:]
-	}
-	parts := strings.Split(s, ";")
-	// Disable FK checks during batch to allow creating tables out of order
-	if err := DB.Exec("SET FOREIGN_KEY_CHECKS=0").Error; err != nil {
-		return err
-	}
-	for _, p := range parts {
-		stmt := strings.TrimSpace(p)
-		if stmt == "" {
-			continue
-		}
-		if err := DB.Exec(stmt).Error; err != nil {
-			msg := strings.ToLower(err.Error())
-			// Ignore idempotent errors for already-existing or already-removed schema elements
-			// - duplicate column (1060)
-			// - duplicate key/index (1061)
-			// - drop unknown column/key (1091)
-			// - fulltext index exists (treated as duplicate key)
-			// - unknown table when dropping or altering (1051)
-			if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "errno: 1060") || strings.Contains(msg, "duplicate key") || strings.Contains(msg, "errno: 1061") || strings.Contains(msg, "unknown column") || strings.Contains(msg, "errno: 1091") || strings.Contains(msg, "can't drop") || strings.Contains(msg, "unknown table") || strings.Contains(msg, "errno: 1051") {
-				continue
-			}
-			// Re-enable before returning
-			_ = DB.Exec("SET FOREIGN_KEY_CHECKS=1").Error
-			return err
-		}
-	}
-	if err := DB.Exec("SET FOREIGN_KEY_CHECKS=1").Error; err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -1360,75 +1297,6 @@ func SendDiscordTaskEmbed(action string, t domain.Task, actor string) {
 
 func DateOnly(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-}
-
-func prevBusinessDay(d time.Time) time.Time {
-	x := d.Add(-24 * time.Hour)
-	for i := 0; i < 10; i++ {
-		if isBusinessDay(x) {
-			return DateOnly(x)
-		}
-		x = x.Add(-24 * time.Hour)
-	}
-	return time.Time{}
-}
-
-func nextBusinessDay(d time.Time) time.Time {
-	x := d.Add(24 * time.Hour)
-	for i := 0; i < 30; i++ {
-		if isBusinessDay(x) {
-			return DateOnly(x)
-		}
-		x = x.Add(24 * time.Hour)
-	}
-	return time.Time{}
-}
-
-func listActiveUsers(DB *gorm.DB) ([]domain.User, error) {
-	var users []domain.User
-	if err := DB.Where("is_deleted = 0").Order("id ASC").Find(&users).Error; err != nil {
-		return nil, err
-	}
-	return users, nil
-}
-
-func ComputePairs(users []domain.User) [][]uint {
-	out := [][]uint{}
-	n := len(users)
-	if n < 2 {
-		return out
-	}
-	if n%2 == 1 {
-		log.Printf("[DayShift] odd number of active users (%d), dropping last (id=%d)", n, users[n-1].ID)
-		n = n - 1
-	}
-	for i := 0; i < n; i += 2 {
-		out = append(out, []uint{users[i].ID, users[i+1].ID})
-	}
-	return out
-}
-
-// Mark optional helpers as used to satisfy static analysis when rotation is disabled in some builds
-var (
-	_ = prevBusinessDay
-	_ = nextBusinessDay
-	_ = listActiveUsers
-	_ = businessDaysBetween
-)
-
-func businessDaysBetween(start time.Time, end time.Time) int {
-	s := DateOnly(start)
-	e := DateOnly(end)
-	cnt := 0
-	for d := s; !d.After(e); d = d.Add(24 * time.Hour) {
-		if isBusinessDay(d) {
-			cnt++
-		}
-	}
-	if cnt > 0 {
-		return cnt - 1
-	}
-	return 0
 }
 
 // Decide whether to rotate day shift based on Gemini API analysis of subject/body.
