@@ -50,7 +50,7 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		dbq := h.db.Model(&domain.Task{})
 		// compare using date-only to keep ordering/filters consistent with stored Deadline (date-only)
 		now := utils.DateOnly(time.Now())
-		eff := utils.EffectiveDeadlineExpr("")
+		eff := "effective_deadline"
 		if overdue {
 			dbq = dbq.Where(eff+" < ?", now)
 		} else {

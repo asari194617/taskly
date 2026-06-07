@@ -73,11 +73,17 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					until = "NONE"
 				}
 				// validate enums
-				validSince := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
-				// Accept outside-of-class labels and period enums for deadline_until
-				validUntil := map[string]bool{"NONE": true, "MORNING": true, "LUNCH": true, "AFTER_SCHOOL": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
-				if !validSince[since] {
+				validPeriods := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
+				validTimeLabels := map[string]bool{"MORNING": true, "LUNCH": true, "AFTER_SCHOOL": true}
+				if !validPeriods[since] {
 					return nil, fmt.Errorf("invalid deadline_since")
+				}
+				validUntil := make(map[string]bool)
+				for k, v := range validPeriods {
+					validUntil[k] = v
+				}
+				for k, v := range validTimeLabels {
+					validUntil[k] = v
 				}
 				if !validUntil[until] {
 					return nil, fmt.Errorf("invalid deadline_until")

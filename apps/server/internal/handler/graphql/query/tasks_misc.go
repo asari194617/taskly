@@ -72,7 +72,7 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					// Use date-only for comparison because deadline is DATE type
 					today := time.Now()
 					today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
-					eff := utils.EffectiveDeadlineExpr("")
+					eff := "effective_deadline"
 					if overdue {
 						dbq = dbq.Where(eff+" < ?", today)
 					} else {
