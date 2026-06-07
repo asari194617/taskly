@@ -11,19 +11,19 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/handler"
-	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql"
 	adminH "github.com/asari194617/taskly/apps/server/internal/handler/admin"
+	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql"
 	mw "github.com/asari194617/taskly/apps/server/internal/middleware"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
-	sentryfiber "github.com/getsentry/sentry-go/fiber"
+	sentryFiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
-	fibertrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gofiber/fiber.v2"
+	fiberTrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/gofiber/fiber.v2"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
-	ddprofiler "gopkg.in/DataDog/dd-trace-go.v1/profiler"
+	ddProfiler "gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
 func main() {
@@ -49,34 +49,7 @@ func main() {
 	tracer.Start(tOpts...)
 	defer tracer.Stop()
 
-	// Enforce JWT_SECRET in non-development environments
-	nodeEnv := strings.ToLower(utils.Env("NODE_ENV", "development"))
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if nodeEnv != "development" && jwtSecret == "" {
-		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
-	}
-
-	// Optional: Start Datadog profiler when enabled
-	if strings.ToLower(utils.Env("DD_PROFILING_ENABLED", "false")) == "true" {
-		_ = ddprofiler.Start(
-			ddprofiler.WithService(serviceName),
-			ddprofiler.WithEnv(envName),
-			ddprofiler.WithVersion(version),
-		)
-		defer ddprofiler.Stop()
-	}
-
-	db := mustInitDB()       // ローカル変数にする
-  rdb := mustInitRedis()
-	wAuth := initWebAuthn()
-	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
-
-	mw := mw.NewMiddleware(db,rdb,wAuth);
-	adminH := adminH.NewAdminHandler(db, rdb, wAuth)
-	handler := handler.NewHandler(db, rdb, wAuth)
-	graphql := gqlH.NewHandler(db,rdb,wAuth)
-
-	// Sentry initialization (optional)
+	// Sentry initialization (optional) - moved earlier so Sentry is available
 	if dsn := utils.Env("SENTRY_DSN", ""); dsn != "" {
 		_ = sentry.Init(sentry.ClientOptions{
 			Dsn:              dsn,
@@ -137,8 +110,8 @@ func main() {
 				}
 				// For HTTP breadcrumbs, scrub URL and headers in data
 				if strings.EqualFold(crumb.Category, "http") && crumb.Data != nil {
-					if urlv, ok := crumb.Data["url"].(string); ok && urlv != "" {
-						crumb.Data["url"] = utils.SanitizeURLPath(urlv)
+					if urlV, ok := crumb.Data["url"].(string); ok && urlV != "" {
+						crumb.Data["url"] = utils.SanitizeURLPath(urlV)
 					}
 				}
 				if crumb.Data != nil {
@@ -161,6 +134,33 @@ func main() {
 		defer sentry.Flush(2 * time.Second)
 	}
 
+	// Enforce JWT_SECRET in non-development environments
+	nodeEnv := strings.ToLower(utils.Env("NODE_ENV", "development"))
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if nodeEnv != "development" && jwtSecret == "" {
+		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
+	}
+
+	// Optional: Start Datadog profiler when enabled
+	if strings.ToLower(utils.Env("DD_PROFILING_ENABLED", "false")) == "true" {
+		_ = ddProfiler.Start(
+			ddProfiler.WithService(serviceName),
+			ddProfiler.WithEnv(envName),
+			ddProfiler.WithVersion(version),
+		)
+		defer ddProfiler.Stop()
+	}
+
+	db := mustInitDB() // ローカル変数にする
+	rdb := mustInitRedis()
+	wAuth := initWebAuthn()
+	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
+
+	mw := mw.NewMiddleware(db, rdb, wAuth)
+	adminH := adminH.NewAdminHandler(db, rdb, wAuth)
+	handler := handler.NewHandler(db, rdb, wAuth)
+	graphql := gqlH.NewHandler(db, rdb, wAuth)
+
 	// Centralized error handler to send all errors to Sentry with request/user context
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -172,7 +172,7 @@ func main() {
 			}
 
 			// Get Sentry hub from Fiber context (set by Sentry middleware)
-			hub := sentryfiber.GetHubFromContext(c)
+			hub := sentryFiber.GetHubFromContext(c)
 			if hub == nil {
 				hub = sentry.CurrentHub()
 			}
@@ -210,11 +210,11 @@ func main() {
 	})
 
 	// Trace inbound HTTP requests with Datadog (must be registered early)
-	app.Use(fibertrace.Middleware(
-		fibertrace.WithServiceName(serviceName),
-		fibertrace.WithSpanOptions(),
+	app.Use(fiberTrace.Middleware(
+		fiberTrace.WithServiceName(serviceName),
+		fiberTrace.WithSpanOptions(),
 		// Ensure span resource uses route pattern (avoids leaking tokens in paths)
-		fibertrace.WithResourceNamer(func(c *fiber.Ctx) string {
+		fiberTrace.WithResourceNamer(func(c *fiber.Ctx) string {
 			if r := c.Route(); r != nil {
 				return r.Method + " " + r.Path
 			}
@@ -224,7 +224,7 @@ func main() {
 	))
 
 	// Capture panics and attach request context to Sentry
-	app.Use(sentryfiber.New(sentryfiber.Options{
+	app.Use(sentryFiber.New(sentryFiber.Options{
 		Repanic:         true,            // let Fiber recover middleware handle the response
 		WaitForDelivery: false,           // don't block requests on delivery
 		Timeout:         2 * time.Second, // used only when WaitForDelivery is true
@@ -260,7 +260,7 @@ func main() {
 	handler.RegisterAuthRoutes(
 		app.Group("/auth"),
 	)
-	
+
 	handler.RegisterPushRoutes(
 		app.Group("/push"), mw,
 	)
@@ -274,7 +274,7 @@ func main() {
 	)
 
 	handler.RegisterWebAuthnRoutes(
-		app.Group("/webauthn"),mw,
+		app.Group("/webauthn"), mw,
 	)
 
 	handler.RegisterAPIKeyRoutes(

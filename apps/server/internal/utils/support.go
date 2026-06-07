@@ -24,14 +24,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/getsentry/sentry-go"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/genai"
 	"gorm.io/gorm"
-	"github.com/asari194617/taskly/apps/server/internal/domain"
-	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 func Env(key, def string) string {
@@ -39,6 +39,42 @@ func Env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// MustEnv returns the environment variable value for the given key.
+// If the variable is not set (empty), the function will log.Fatal and exit.
+func MustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	msg := fmt.Sprintf("required environment variable %s is not set", key)
+	// Send to Sentry if initialized (no-op if not)
+	sentry.CaptureMessage(msg)
+	// Flush briefly to attempt delivery
+	_ = sentry.Flush(2 * time.Second)
+
+	// Send to Discord webhook (use helper)
+	SendDiscordEnvMissing(key, msg)
+
+	log.Fatalf("%s", msg)
+	return ""
+}
+
+// SendDiscordEnvMissing posts a standardized embed to the configured Discord webhook
+// for a missing environment variable event. It's a thin wrapper around
+// SendDiscordEmbeds so callers don't need to construct embeds themselves.
+func SendDiscordEnvMissing(key, msg string) {
+	embed := map[string]any{
+		"title":       "Missing environment variable",
+		"description": msg,
+		"color":       15158332, // red-ish
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"fields": []map[string]any{
+			{"name": "variable", "value": key, "inline": true},
+			{"name": "host", "value": Env("HOSTNAME", Env("API_HOST", "unknown")), "inline": true},
+		},
+	}
+	SendDiscordEmbeds([]map[string]any{embed})
 }
 
 // --- Config helpers (configs table) ---
@@ -181,7 +217,6 @@ func IsSensitiveKey(k string) bool {
 		return false
 	}
 }
-
 
 func IsSensitiveValue(v string) bool {
 	s := strings.ToLower(strings.TrimSpace(v))
