@@ -235,14 +235,14 @@ func main() {
 	app.Get("/ical/:token.ics", func(c *fiber.Ctx) error {
 		token := c.Params("token")
 		var key domain.IcalKey
-		if err := DB.Where("token = ?", token).First(&key).Error; err != nil {
+		if err := db.Where("token = ?", token).First(&key).Error; err != nil {
 			return c.Status(404).SendString("not found")
 		}
 		// enforce expiry if set
 		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
 			return c.Status(404).SendString("not found")
 		}
-		ics := utils.BuildICSForUser(key.UserID, DB)
+		ics := utils.BuildICSForUser(key.UserID, db)
 		c.Set("Content-Type", "text/calendar; charset=utf-8")
 		return c.SendString(ics)
 	})
