@@ -12,6 +12,3 @@ var (
 	RDB   *redis.Client
 	WAuth *webauthn.WebAuthn
 )
-
-// typed context key to avoid collisions
-type ctxKey struct{}
