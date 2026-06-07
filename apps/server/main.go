@@ -270,17 +270,21 @@ func main() {
 	registerTasksRoutes(app)
 	registerReportRoutes(app)
 
-	adminDayShiftGroup := app.Group("/admin/dayshift", mw.AuthRequired, mw.AdminOnly, mw.Audit)
-	adminH.RegisterAdminDayShiftRoutes(adminDayShiftGroup)
+	adminH.RegisterAdminDayShiftRoutes(
+		app.Group("/admin/dayshift", mw.AuthRequired, mw.AdminOnly, mw.Audit),
+	)
 
-	adminPermissionsGroup := app.Group("/admin/permissions", mw.AuthRequired, mw.AdminOnly, mw.Audit)
-	adminH.RegisterAdminPermissionsRoutes(adminPermissionsGroup)
+	adminH.RegisterAdminPermissionsRoutes(
+		app.Group("/admin/permissions", mw.AuthRequired, mw.AdminOnly, mw.Audit),
+	)
 
-	adminModerationGroup := app.Group("/admin/moderation", mw.AuthRequired, mw.AdminOnly, mw.Audit)
-	adminH.RegisterAdminModerationRoutes(adminModerationGroup)
+	adminH.RegisterAdminModerationRoutes(
+		app.Group("/admin/moderation", mw.AuthRequired, mw.AdminOnly, mw.Audit),
+	)
 
-	adminUserGroup := app.Group("/admin/users", mw.AuthRequired, mw.AdminOnly, mw.Audit)
-	adminH.RegisterAdminUsersRoutes(adminUserGroup)
+	adminH.RegisterAdminUsersRoutes(
+		app.Group("/admin/users", mw.AuthRequired, mw.AdminOnly, mw.Audit),
+	)
 
 	registerIntegrationRoutes(app)
 
