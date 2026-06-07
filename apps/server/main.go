@@ -49,8 +49,8 @@ func main() {
 	tracer.Start(tOpts...)
 	defer tracer.Stop()
 
-	// Sentry initialization (optional) - moved earlier so Sentry is available
-	if dsn := utils.Env("SENTRY_DSN", ""); dsn != "" {
+	// Sentry initialization
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
 		_ = sentry.Init(sentry.ClientOptions{
 			Dsn:              dsn,
 			TracesSampleRate: 0.1,
@@ -135,9 +135,8 @@ func main() {
 	}
 
 	// Enforce JWT_SECRET in non-development environments
-	nodeEnv := strings.ToLower(utils.Env("NODE_ENV", "development"))
 	jwtSecret := os.Getenv("JWT_SECRET")
-	if nodeEnv != "development" && jwtSecret == "" {
+	if jwtSecret == "" {
 		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
 	}
 
@@ -310,7 +309,7 @@ func main() {
 	)
 
 	handler.RegisterUsersRoutes(
-		app.Group("/users/", mw.AuthRequired, mw.Audit),
+		app.Group("/users", mw.AuthRequired, mw.Audit),
 	)
 
 	// Public ICS feed
