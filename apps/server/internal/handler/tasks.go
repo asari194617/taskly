@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -9,14 +11,40 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
+
+type sqlCountingLogger struct {
+	gormlogger.Interface
+	count *int
+}
+
+func (l sqlCountingLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
+	return sqlCountingLogger{Interface: l.Interface.LogMode(level), count: l.count}
+}
+
+func (l sqlCountingLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	if l.count != nil {
+		*l.count++
+	}
+	l.Interface.Trace(ctx, begin, fc, err)
+}
 
 func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 	// Tasks CRUD with permissions
 	router.Get("/", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
+		sqlCount := 0
+		requestDB := h.db
+		if strings.ToLower(strings.TrimSpace(utils.Env("TASKS_SQL_DEBUG", ""))) == "true" {
+			requestDB = h.db.Session(&gorm.Session{Logger: sqlCountingLogger{Interface: h.db.Config.Logger, count: &sqlCount}.LogMode(gormlogger.Info)})
+			defer func() {
+				log.Printf("[sql-count] %s %s total=%d", c.Method(), c.Path(), sqlCount)
+			}()
+		}
 		// Permission: read tasks (default allow)
-		if ok, err := utils.CheckPermission(u.ID, "tasks", "read", nil, h.db); err != nil {
+		if ok, err := utils.CheckPermission(u.ID, "tasks", "read", nil, requestDB); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "perm"})
 		} else if !ok {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
@@ -47,7 +75,7 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		}
 
 		// Build query
-		dbq := h.db.Model(&domain.Task{})
+		dbq := requestDB.Model(&domain.Task{})
 		// compare using date-only to keep ordering/filters consistent with stored Deadline (date-only)
 		now := utils.DateOnly(time.Now())
 		eff := "effective_deadline"
@@ -57,8 +85,8 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			dbq = dbq.Where(eff+" >= ?", now)
 		}
 		// Hide moderated content from non-admin/manager
-		isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-		isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
+		isAdmin, _ := utils.UserHasRole(u.ID, "admin", requestDB)
+		isManager, _ := utils.UserHasRole(u.ID, "manager", requestDB)
 		if !(isAdmin || isManager) {
 			dbq = dbq.Where("is_hidden = 0")
 		}
