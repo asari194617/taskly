@@ -58,7 +58,7 @@ func mustInitRedis() *redis.Client {
 func mustInitSentry() bool {
 	dsn := utils.Env("SENTRY_DSN", "")
 	if strings.TrimSpace(dsn) == "" {
-		utils.SendDiscordEmbeds([]map[string]any{{
+		go utils.SendDiscordEmbeds([]map[string]any{{
 			"title":       "Missing SENTRY_DSN",
 			"description": "Sentry was not initialized because SENTRY_DSN is not set.",
 			"color":       15158332,
@@ -138,7 +138,7 @@ func mustInitSentry() bool {
 			return crumb
 		},
 	}); err != nil {
-		utils.SendDiscordEmbeds([]map[string]any{{
+		go utils.SendDiscordEmbeds([]map[string]any{{
 			"title":       "Sentry initialization failed",
 			"description": fmt.Sprintf("sentry.Init returned an error: %v", err),
 			"color":       15158332,

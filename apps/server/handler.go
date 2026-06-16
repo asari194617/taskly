@@ -88,6 +88,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 		AllowCredentials: strings.ToLower(utils.Env("CORS_ALLOW_CREDENTIALS", "true")) == "true",
 		AllowHeaders:     "Authorization,authorization, Content-Type,content-type, X-Client-Platform,x-client-platform, X-API-Key,x-api-key",
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		MaxAge:       86400,
 	}))
 
 	app.Use(sentryFiber.New(sentryFiber.Options{

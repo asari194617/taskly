@@ -14,6 +14,11 @@ import (
 )
 
 func main() {
+	// Fail fast before any expensive startup work.
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
+	}
+
 	// Start Datadog tracer (reads most settings from env; override agent addr explicitly if provided)
 	serviceName := utils.Env("DD_SERVICE", "taskly-server")
 	envName := utils.Env("DD_ENV", utils.Env("SENTRY_ENVIRONMENT", utils.Env("NODE_ENV", "development")))
@@ -38,12 +43,6 @@ func main() {
 
 	if mustInitSentry() {
 		defer sentry.Flush(2 * time.Second)
-	}
-
-	// Enforce JWT_SECRET in non-development environments
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
 	}
 
 	// Optional: Start Datadog profiler when enabled

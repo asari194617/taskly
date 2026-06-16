@@ -390,6 +390,10 @@ func ParseAuthToken(authHeader string) string {
 }
 
 func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
+	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
+		return true
+	}
+
 	// Optional debug logging for auth flow (no secrets). Enable by setting DEBUG_AUTH=true
 	debugAuth := strings.ToLower(strings.TrimSpace(Env("DEBUG_AUTH", ""))) == "true"
 	raw := c.Get("Authorization")
@@ -445,16 +449,12 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 		}
 	}
 	var u domain.User
-	if err := DB.First(&u, uidStr).Error; err != nil {
+	blockSubquery := DB.Model(&domain.Block{}).
+		Select("1").
+		Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uidStr, time.Now())
+	if err := DB.Where("id = ? AND NOT EXISTS (?)", uidStr, blockSubquery).First(&u).Error; err != nil {
 		if debugAuth {
-			log.Printf("[auth] %s %s user not found id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
-		}
-		return false
-	}
-	var cnt int64
-	if err := DB.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
-		if debugAuth {
-			log.Printf("[auth] %s %s user blocked id=%d", c.Method(), sanitizeURLPath(c.Path()), u.ID)
+			log.Printf("[auth] %s %s user not found or blocked id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
 		}
 		return false
 	}
