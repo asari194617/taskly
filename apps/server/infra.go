@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"strings"
 	"time"
 
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v2"
 	"github.com/getsentry/sentry-go"
 	mysql_driver "github.com/go-sql-driver/mysql"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -162,14 +163,25 @@ func mustInitSentry() bool {
 
 // metricsServer starts a Prometheus metrics HTTP server on the given bind address.
 func metricsServer(bind string) {
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promHttp.Handler())
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true, // 起動ログが邪魔な場合は無効に
+	})
+
+	// 2. prometheus の http.Handler を Fiber のハンドラーに変換して登録
+	app.Get("/metrics", adaptor.HTTPHandler(promHttp.Handler()))
+
+	// 3. リスナーを作成してバックグラウンドで起動
 	ln, err := net.Listen("tcp", bind)
 	if err != nil {
 		log.Printf("metrics listen err: %v", err)
 		return
 	}
-	go func() { _ = http.Serve(ln, mux) }()
+
+	go func() {
+		if err := app.Listener(ln); err != nil {
+			log.Printf("metrics server err: %v", err)
+		}
+	}()
 }
 
 // initWebAuthn configures the global WebAuthn relying party if possible.

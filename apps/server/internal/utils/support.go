@@ -813,23 +813,9 @@ func smtpSendPlain(to, subject, text string) error {
 func buildTeamsTitleForTask(t domain.Task, DB *gorm.DB) string {
 	var subj domain.Subject
 	_ = DB.First(&subj, t.SubjectID).Error
-	// Determine preferred language from adding user if available
-	var user domain.User
-	_ = DB.First(&user, t.AddedUserID).Error
-	lang := strings.ToLower(strings.TrimSpace(user.NotificationLang))
-	if lang == "" {
-		lang = "ja"
-	}
 	subjName := ""
-	if lang == "en" {
-		if subj.NameEn != nil && *subj.NameEn != "" {
-			subjName = *subj.NameEn
-		}
-	}
-	if subjName == "" {
-		if strings.TrimSpace(subj.NameJa) != "" {
-			subjName = subj.NameJa
-		}
+	if strings.TrimSpace(subj.NameJa) != "" {
+		subjName = subj.NameJa
 	}
 	dateLabel := t.Deadline.Format("1/2")
 	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
@@ -840,8 +826,6 @@ func buildTeamsTitleForTask(t domain.Task, DB *gorm.DB) string {
 	}
 	return fmt.Sprintf("%s: %s(%s)", subjName, t.Title, label)
 }
-
-// (removed obsolete meta parsing helpers)
 
 // deriveDeadlineLabelEnum maps enums into symbolic labels like 朝まで or N限/N〜M限まで
 func deriveDeadlineLabelEnum(since, until string) string {
@@ -1164,14 +1148,6 @@ func CheckPermission(userID uint, target, action string, ownerID *uint, DB *gorm
 	default:
 		return false, nil
 	}
-}
-
-// Day shift helpers and schedulers
-// (server no longer runs in-process schedulers; handled by Airflow)
-
-func isBusinessDay(d time.Time) bool {
-	wd := d.Weekday()
-	return wd != time.Saturday && wd != time.Sunday
 }
 
 // Posts one or more embeds to the Discord webhook. Logs basic diagnostics.
