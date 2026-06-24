@@ -13,6 +13,7 @@ import { requestMailCode } from "./flow";
 export default function SelectMfa() {
   const [email] = React.useState(getEmailFromQuery());
   const [loading, setLoading] = React.useState(false);
+  const [sendingMail, setSendingMail] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [options, setOptions] = React.useState<{
     passkey: boolean;
@@ -60,8 +61,8 @@ export default function SelectMfa() {
           totp,
           recovery,
         });
-      } catch (e: any) {
-        setMessage(e.message || "エラーが発生しました");
+      } catch (e: unknown) {
+        setMessage(e instanceof Error ? e.message : "エラーが発生しました");
       } finally {
         setLoading(false);
       }
@@ -84,17 +85,32 @@ export default function SelectMfa() {
                 type="button"
                 className="w-full justify-start h-12"
                 onClick={async () => {
-                  setLoading(true);
+                  setSendingMail(true);
+                  setMessage(
+                    "メールを送信しています。しばらくお待ちください。",
+                  );
                   try {
-                    await requestMailCode(email);
-                  } finally {
+                    const result = await requestMailCode(email);
+                    if (!result.ok) {
+                      throw new Error(
+                        result.error || "メールの送信に失敗しました",
+                      );
+                    }
                     window.location.href = withNext(`/login/mail-code${qs}`);
+                  } catch (e: unknown) {
+                    setMessage(
+                      e instanceof Error
+                        ? e.message
+                        : "メールの送信に失敗しました",
+                    );
+                  } finally {
+                    setSendingMail(false);
                   }
                 }}
-                disabled={loading}
+                disabled={loading || sendingMail}
                 variant="secondary"
               >
-                メールコードで続行
+                {sendingMail ? "メールを送信中…" : "メールコードで続行"}
               </Button>
             )}
             {options.passkey && (
@@ -104,7 +120,7 @@ export default function SelectMfa() {
                 onClick={() =>
                   (window.location.href = withNext(`/login/passkey${qs}`))
                 }
-                disabled={loading}
+                disabled={loading || sendingMail}
                 variant="secondary"
               >
                 パスキーで続行
@@ -117,7 +133,7 @@ export default function SelectMfa() {
                 onClick={() =>
                   (window.location.href = withNext(`/login/totp${qs}`))
                 }
-                disabled={loading}
+                disabled={loading || sendingMail}
                 variant="secondary"
               >
                 認証コード（TOTP）で続行
@@ -130,7 +146,7 @@ export default function SelectMfa() {
                 onClick={() =>
                   (window.location.href = withNext(`/login/recovery${qs}`))
                 }
-                disabled={loading}
+                disabled={loading || sendingMail}
                 variant="secondary"
               >
                 リカバリーコードで続行
