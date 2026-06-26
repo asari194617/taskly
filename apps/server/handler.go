@@ -104,27 +104,58 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	app.Use(middleware.ApiKeyRouteScope)
 
+	/* ヘルスチェック */
 	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
+
+	/* GraphQL */
 	graphqlHandler.RegisterGraphQL(app.Group("/graphql"))
 
+	/* 2段階認証 */
 	appHandler.Register2FARoutes(app.Group("/2fa"), middleware)
+
+	/* 認証 */
 	appHandler.RegisterAuthRoutes(app.Group("/auth"))
+
+	/* 認証 */
 	appHandler.RegisterPushRoutes(app.Group("/push"), middleware)
+
+	/* 設定画面のiCal */
 	appHandler.RegisterIcalTokensRoutes(app.Group("/ical/tokens", middleware.AuthRequired, middleware.Audit))
+
+	/* ユーザー設定 */
 	appHandler.RegisterSettingsRoutes(app.Group("/settings", middleware.AuthRequired, middleware.Audit))
+
+	/* パスキー */
 	appHandler.RegisterWebAuthnRoutes(app.Group("/webauthn"), middleware)
+
+	/* APIキー */
 	appHandler.RegisterAPIKeyRoutes(app.Group("/apikeys", middleware.AuthRequired, middleware.Audit))
+
+	/* 課題 */
 	appHandler.RegisterTasksRoutes(app.Group("/tasks", middleware.AuthRequired, middleware.Audit))
+
+	/* 通報 */
 	appHandler.RegisterReportRoutes(app.Group("reports", middleware.AuthRequired, middleware.Audit))
 
+	/* 管理者画面: 日直 */
 	adminHandler.RegisterAdminDayShiftRoutes(app.Group("/admin/dayshift", middleware.AuthRequired, middleware.AdminOnly, middleware.Audit))
+
+	/* 管理者画面: 権限 (ロールなど) */
 	adminHandler.RegisterAdminPermissionsRoutes(app.Group("/admin/permissions", middleware.AuthRequired, middleware.AdminOnly, middleware.Audit))
+
+	/* 管理者画面: モデレーション */
 	adminHandler.RegisterAdminModerationRoutes(app.Group("/admin/moderation", middleware.AuthRequired, middleware.AdminOnly, middleware.Audit))
+
+	/* 管理者画面: ユーザー */
 	adminHandler.RegisterAdminUsersRoutes(app.Group("/admin/users", middleware.AuthRequired, middleware.AdminOnly, middleware.Audit))
 
+	/* 外部サービスとの連携 */
 	appHandler.RegisterIntegrationRoutes(app.Group("/integrations"))
+
+	/* ユーザー情報など */
 	appHandler.RegisterUsersRoutes(app.Group("/users", middleware.AuthRequired, middleware.Audit))
 
+	/* iCal */
 	registerIcalFeedRoute(app, db)
 
 	return app
