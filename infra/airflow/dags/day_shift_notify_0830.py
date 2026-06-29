@@ -172,12 +172,21 @@ def _get_email_compose_messages():
     pool = descriptor_pool.DescriptorPool()
     pool.Add(file_proto)
     factory = message_factory.MessageFactory(pool)
-    ComposeDayShiftRequest = factory.GetPrototype(  # type: ignore
-        pool.FindMessageTypeByName("emailcompose.ComposeDayShiftRequest")
-    )
-    ComposeResponse = factory.GetPrototype(  # type: ignore
-        pool.FindMessageTypeByName("emailcompose.ComposeResponse")
-    )
+
+    def _get_message_class(message_name: str):
+        descriptor = pool.FindMessageTypeByName(message_name)
+        get_message_class = getattr(message_factory, "GetMessageClass", None)
+        if callable(get_message_class):
+            return get_message_class(descriptor)
+
+        get_prototype = getattr(factory, "GetPrototype", None)
+        if callable(get_prototype):
+            return get_prototype(descriptor)
+
+        raise RuntimeError("protobuf message factory does not provide a compatible message class API")
+
+    ComposeDayShiftRequest = _get_message_class("emailcompose.ComposeDayShiftRequest")
+    ComposeResponse = _get_message_class("emailcompose.ComposeResponse")
 
     _email_compose_messages = (ComposeDayShiftRequest, ComposeResponse)
     return _email_compose_messages
