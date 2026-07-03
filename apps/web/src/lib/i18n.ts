@@ -27,6 +27,7 @@ export const t = (lang: Lang) => ({
     other: lang === "ja" ? "その他" : "Other",
     calendar: lang === "ja" ? "カレンダー" : "Calendar",
     mcpServer: lang === "ja" ? "MCPサーバー" : "MCP Server",
+    login: lang === "ja" ? "ログイン" : "Login",
     logout: lang === "ja" ? "ログアウト" : "Logout",
     user: lang === "ja" ? "ユーザー" : "User",
     search: lang === "ja" ? "検索" : "Search",

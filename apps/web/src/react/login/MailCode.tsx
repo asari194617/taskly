@@ -104,13 +104,15 @@ export default function MailCode() {
       sessionStorage.removeItem("login_pw");
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
+        // Keep loading=true so the button stays disabled until the redirect
+        setMessage("認証しました。リダイレクトしています…");
         await postLoginRedirect();
-      } else {
-        setMessage("予期せぬレスポンスです");
+        return;
       }
+      setMessage("予期せぬレスポンスです");
+      setLoading(false);
     } catch (e: any) {
       setMessage(e.message || "エラーが発生しました");
-    } finally {
       setLoading(false);
     }
   };
@@ -139,7 +141,7 @@ export default function MailCode() {
             onClick={doLogin}
             disabled={loading || !email || code.length === 0}
           >
-            続行
+            {loading ? "認証中…" : "続行"}
           </Button>
           <Button
             type="button"

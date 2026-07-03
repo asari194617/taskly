@@ -11,6 +11,7 @@ import {
 import {
   Home as HomeIcon,
   User as UserIcon,
+  LogIn,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -22,6 +23,7 @@ type Me = { id: number; email: string; display_name?: string | null };
 
 export default function UserMenu() {
   const [me, setMe] = React.useState<Me | null>(null);
+  const [authed, setAuthed] = React.useState(false);
   const [lang, setLang] = React.useState<Lang>("ja");
 
   // 言語状態を管理
@@ -52,7 +54,11 @@ export default function UserMenu() {
     const token =
       (typeof window !== "undefined" && localStorage.getItem("api_token")) ||
       "";
-    if (!token) return;
+    if (!token) {
+      setAuthed(false);
+      return;
+    }
+    setAuthed(true);
     gql<{ me: Me }>(`query{ me{ id email display_name } }`)
       .then((data) => setMe(data.me))
       .catch(() =>
@@ -100,30 +106,40 @@ export default function UserMenu() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium leading-none">
-              {name || dict.common.user}
-            </span>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <a href="/home">
-          <DropdownMenuItem className="cursor-pointer">
-            <HomeIcon className="mr-2 h-4 w-4" /> {dict.common.home}
-          </DropdownMenuItem>
-        </a>
-        <a href="/settings">
-          <DropdownMenuItem className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" /> {dict.common.settings}
-          </DropdownMenuItem>
-        </a>
-        <DropdownMenuItem
-          className="text-destructive focus:text-destructive cursor-pointer"
-          onClick={logout}
-        >
-          <LogOut className="mr-2 h-4 w-4" /> {dict.common.logout}
-        </DropdownMenuItem>
+        {authed ? (
+          <>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium leading-none">
+                  {name || dict.common.user}
+                </span>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <a href="/home">
+              <DropdownMenuItem className="cursor-pointer">
+                <HomeIcon className="mr-2 h-4 w-4" /> {dict.common.home}
+              </DropdownMenuItem>
+            </a>
+            <a href="/settings">
+              <DropdownMenuItem className="cursor-pointer">
+                <Settings className="mr-2 h-4 w-4" /> {dict.common.settings}
+              </DropdownMenuItem>
+            </a>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive cursor-pointer"
+              onClick={logout}
+            >
+              <LogOut className="mr-2 h-4 w-4" /> {dict.common.logout}
+            </DropdownMenuItem>
+          </>
+        ) : (
+          <a href="/login">
+            <DropdownMenuItem className="cursor-pointer">
+              <LogIn className="mr-2 h-4 w-4" /> {dict.common.login}
+            </DropdownMenuItem>
+          </a>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

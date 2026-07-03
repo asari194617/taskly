@@ -26,6 +26,37 @@ export default function Password() {
     if (!email || !password) return;
     setLoading(true);
     try {
+      // Verify the password server-side first. The server only answers
+      // "mfa required" after the password check has passed.
+      const loginRes = await fetch(`${apiBase}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+      const loginData = await loginRes.json().catch(() => ({}));
+      if (loginRes.ok) {
+        // Password-only account: logged in without an MFA step
+        if (loginData?.token) {
+          localStorage.setItem("api_token", loginData.token);
+          await postLoginRedirect();
+          return;
+        }
+        setMessage("予期せぬレスポンスです");
+        return;
+      }
+      if (loginData?.error === "user_not_found") {
+        throw new Error("このメールアドレスのユーザーは存在しません");
+      }
+      if (loginData?.error === "invalid password") {
+        throw new Error("パスワードが正しくありません");
+      }
+      if (loginData?.error !== "mfa required") {
+        throw new Error(loginData?.error || "エラーが発生しました");
+      }
+      // Password verified; find available MFA methods for the next step
       const res = await fetch(`${apiBase}/auth/options`, {
         method: "POST",
         headers: {
@@ -60,12 +91,7 @@ export default function Password() {
         totp ? "totp" : null,
         recovery ? "recovery" : null,
       ].filter(Boolean) as string[];
-      if (enabled.length === 0) {
-        // No MFA configured: password-only login
-        await doLogin();
-        return;
-      }
-      // MFA required: persist password temporarily for the next step
+      // Persist password temporarily for the MFA step
       sessionStorage.setItem("login_pw", password);
       const qs = `?email=${encodeURIComponent(email)}`;
       if (enabled.length > 1) {
@@ -80,38 +106,8 @@ export default function Password() {
         window.location.assign(withNext(`/login/mail-code${qs}`));
       } else if (recovery) {
         window.location.assign(withNext(`/login/recovery${qs}`));
-      }
-    } catch (e: any) {
-      setMessage(e.message || "エラーが発生しました");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const doLogin = async () => {
-    setMessage(null);
-    setLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Platform": "web",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data?.error === "user_not_found") {
-          throw new Error("このメールアドレスのユーザーは存在しません");
-        }
-        throw new Error(data?.error || JSON.stringify(data));
-      }
-      if (data?.token) {
-        localStorage.setItem("api_token", data.token);
-        await postLoginRedirect();
       } else {
-        setMessage("予期せぬレスポンスです");
+        setMessage("利用できる認証方法がありません");
       }
     } catch (e: any) {
       setMessage(e.message || "エラーが発生しました");
