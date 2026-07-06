@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"time"
 
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	"github.com/gofiber/fiber/v2"
 	"github.com/getsentry/sentry-go"
 	mysql_driver "github.com/go-sql-driver/mysql"
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	promHttp "github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	sqlTrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/database/sql"
@@ -22,7 +22,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// mustInitDB opens a MySQL connection using env() variables and migrates the base model.
+// DB接続を開く
 func mustInitDB() *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4,utf8&loc=Asia%%2FTokyo",
 		utils.MustEnv("MYSQL_USER"),

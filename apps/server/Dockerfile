@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-	go build -buildvcs=false -trimpath -ldflags "-s -w" -tags timetzdata -o /out/api ./
+	go build -buildvcs=false -trimpath -ldflags "-s -w" -tags timetzdata -o /out/api ./cmd/server
 
 # Extract CA certificates (for outbound HTTPS if needed)
 FROM --platform=$BUILDPLATFORM alpine:3.20 AS certs

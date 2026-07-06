@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"log"
@@ -13,7 +13,7 @@ import (
 	ddProfiler "gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
-func main() {
+func Run() {
 	// Fail fast before any expensive startup work.
 	if os.Getenv("JWT_SECRET") == "" {
 		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
