@@ -45,7 +45,7 @@ jobs:
       PROD_COMPOSE_PROFILES: ${{ secrets.PROD_COMPOSE_PROFILES }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Prepare SSH (agent + askpass)
         run: |
