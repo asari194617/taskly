@@ -20,7 +20,7 @@ require (
 	google.golang.org/genai v1.57.0
 	google.golang.org/grpc v1.72.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.74.6
-	gorm.io/driver/mysql v1.5.7
+	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
 )
