@@ -5,8 +5,15 @@
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "npm" # See documentation for possible values
+    directory: "/apps/web/" # Location of package manifests
     schedule:
-      interval: "weekly"
-      
+      interval: "daily"
+  - package-ecosystem: "npm"
+    directory: "/apps/email-composer/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "gomod"
+    directory: "/apps/server/"
+    schedule:
+      interval: "daily"
