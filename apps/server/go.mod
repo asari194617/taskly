@@ -9,7 +9,7 @@ require (
 	github.com/getsentry/sentry-go/fiber v0.46.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-webauthn/webauthn v0.17.3
-	github.com/gofiber/fiber/v2 v2.52.13
+	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jhump/protoreflect v1.17.0
