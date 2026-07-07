@@ -4,7 +4,7 @@ go 1.25.4
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.2.0
-	github.com/alicebob/miniredis/v2 v2.34.0
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/getsentry/sentry-go v0.46.2
 	github.com/getsentry/sentry-go/fiber v0.46.2
 	github.com/go-sql-driver/mysql v1.10.0
@@ -53,7 +53,6 @@ require (
 	github.com/DataDog/sketches-go v1.4.7 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
