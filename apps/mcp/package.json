@@ -16,18 +16,18 @@
   },
   "dependencies": {
     "fastify": "5.10.0",
-    "fastify-plugin": "4.5.1",
-    "mysql2": "3.11.3",
-    "@modelcontextprotocol/sdk": "0.4.0",
-    "zod": "3.23.8",
-    "undici": "6.27.0"
+    "fastify-plugin": "6.0.0",
+    "mysql2": "3.22.6",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3",
+    "undici": "8.7.0"
   },
   "devDependencies": {
-    "@types/node": "20.12.12",
-    "typescript": "5.6.3",
-    "jest": "29.7.0",
-    "ts-jest": "29.2.5",
-    "@types/jest": "29.5.12",
-    "@jest/types": "29.6.3"
+    "@types/node": "26.1.0",
+    "typescript": "6.0.3",
+    "jest": "30.4.2",
+    "ts-jest": "29.4.11",
+    "@types/jest": "30.0.0",
+    "@jest/types": "30.4.1"
   }
 }
