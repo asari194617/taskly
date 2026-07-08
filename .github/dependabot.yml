@@ -10,10 +10,19 @@ updates:
     schedule:
       interval: "daily"
   - package-ecosystem: "npm"
-    directory: "/apps/email-composer/"
+    directory: "/apps/email-compose/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "npm"
+    directory: "/apps/mcp/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "gomod"
+    directory: "/apps/dmarc-processor/"
     schedule:
       interval: "daily"
   - package-ecosystem: "gomod"
     directory: "/apps/server/"
     schedule:
       interval: "daily"
+  
