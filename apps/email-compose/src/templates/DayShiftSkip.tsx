@@ -1,7 +1,7 @@
 import * as React from "react";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
-import { Container } from "@react-email/components";
+import { Container } from "react-email";
 
 export const DayShiftSkipEmail = async ({
   todayDate,

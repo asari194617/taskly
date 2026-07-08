@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
 import * as React from "react";
-import { Container, Section, Heading, Text } from "@react-email/components";
+import { Container, Section, Heading, Text } from "react-email";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
 
@@ -139,7 +139,9 @@ export async function TaskDigestEmail({
 
                   {/* description */}
                   {x.body ? (
-                    <Text className="m-0 mt-1.5 p-0 text-gray-500">{x.body}</Text>
+                    <Text className="m-0 mt-1.5 p-0 text-gray-500">
+                      {x.body}
+                    </Text>
                   ) : null}
                 </div>
               ))}

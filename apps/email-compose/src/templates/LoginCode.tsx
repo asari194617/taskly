@@ -1,7 +1,7 @@
 import * as React from "react";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
-import { Section, Text, Hr } from "@react-email/components";
+import { Section, Text, Hr } from "react-email";
 
 export async function LoginCodeEmail({
   code,

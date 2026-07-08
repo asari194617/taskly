@@ -2,7 +2,7 @@
 import * as React from "react";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
-import { Text, Section, Link } from "@react-email/components";
+import { Text, Section, Link } from "react-email";
 
 type Highlight = {
   id?: string | number;

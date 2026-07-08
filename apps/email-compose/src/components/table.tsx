@@ -1,4 +1,4 @@
-import { Text, Section, Row, Column } from "@react-email/components";
+import { Text, Section, Row, Column } from "react-email";
 
 interface CommonFrameProps {
   title: string;
@@ -11,9 +11,7 @@ interface CommonFrameProps {
 export const Table = (props: CommonFrameProps) => {
   return (
     <Section>
-      <Text className="text-gray-600 text-sm">
-        {props.title}
-      </Text>
+      <Text className="text-gray-600 text-sm">{props.title}</Text>
       <Section className="mt-2 mb-4 border border-gray-300 rounded">
         {props.rows.map((row, index) => (
           <Row key={index}>

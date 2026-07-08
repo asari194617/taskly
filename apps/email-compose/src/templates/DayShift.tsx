@@ -1,4 +1,4 @@
-import { Section, Text } from "@react-email/components";
+import { Section, Text } from "react-email";
 import { getT } from "../get-t.js";
 import { Layout } from "./Layout.js";
 import { Table } from "../components/table.js";
@@ -12,9 +12,13 @@ interface DayShiftProps {
 export const DayShiftEmail = async (props: DayShiftProps) => {
   const { t } = await getT("day-shift", props.locale);
   // React EmailのPreviewは配列に対してもundefinedを渡すので、最初に除外しておく
-  const memberStr = props.members !== undefined ? props.members.join(", ") : t("events_none");
-  const eventStr = props.events !== undefined && props.events.length > 0 ? props.events.join(", ") : t("events_none");
-  
+  const memberStr =
+    props.members !== undefined ? props.members.join(", ") : t("events_none");
+  const eventStr =
+    props.events !== undefined && props.events.length > 0
+      ? props.events.join(", ")
+      : t("events_none");
+
   return (
     <Layout
       title={t("title")}
@@ -30,13 +34,13 @@ export const DayShiftEmail = async (props: DayShiftProps) => {
       <Table
         title={t("table_title")}
         rows={[
-          { 
-            title: t("members_label"), 
-            value: memberStr
+          {
+            title: t("members_label"),
+            value: memberStr,
           },
           {
             title: t("events_label"),
-            value: eventStr
+            value: eventStr,
           },
         ]}
       />

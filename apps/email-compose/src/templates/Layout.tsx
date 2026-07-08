@@ -9,8 +9,8 @@ import {
   Heading,
   Preview,
   Img,
-  Link
-} from "@react-email/components";
+  Link,
+} from "react-email";
 
 export function Layout({
   children,
@@ -83,7 +83,10 @@ export function Layout({
           {/* コンテンツ */}
           <Section className="w-full max-w-md">
             <Section className="rounded-xl bg-white p-4 border border-neutral-200">
-              <p className="m-0"><Link href="https://taskly.iy0306.com">Webサイト</Link>で、リアルタイムで分かりやすい情報を見てみましょう</p>
+              <p className="m-0">
+                <Link href="https://taskly.iy0306.com">Webサイト</Link>
+                で、リアルタイムで分かりやすい情報を見てみましょう
+              </p>
             </Section>
             <Section className="rounded-xl bg-white p-4 border border-neutral-200 mt-4">
               <Img
