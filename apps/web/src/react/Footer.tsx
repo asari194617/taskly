@@ -95,8 +95,8 @@ export default function Footer() {
 
   return (
     <footer className="border-t bg-background text-foreground">
-      <div className="container py-10">
-        <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="container py-10 mx-auto px-2">
+        <div className="grid grid-cols-1 gap-8 @xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
           {SECTIONS.map((sec) => (
             <div key={sec.title} className="space-y-3">
               <div className="text-sm font-semibold text-foreground/90 dark:text-foreground">

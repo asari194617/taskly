@@ -58,7 +58,7 @@ const canonical = typeof Astro.url !== 'undefined' ? Astro.url.toString() : unde
     <meta name="theme-color" content="#0b0f19" />
   </head>
   <body class="min-h-screen flex flex-col">
-    <header class="container p-4 flex items-center justify-between">
+    <header class="p-4 flex items-center justify-between">
       <style>
         .logo {
           height: 1.5rem;
@@ -89,7 +89,7 @@ const canonical = typeof Astro.url !== 'undefined' ? Astro.url.toString() : unde
         <UserMenu client:load />
       </div>
     </header>
-    <main class="container p-4 flex-1">
+    <main class="p-4 flex-1">
       <slot />
     </main>
     <AppShell client:load />
