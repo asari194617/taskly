@@ -17,7 +17,7 @@ export async function createApp(pool: DBPool) {
   app.register(
     fp(async (instance) => {
       instance.addHook("preHandler", async (req, reply) => {
-        if (req.routerPath === "/healthz") return; // public
+        if (req.url === "/healthz") return; // public
         const token = (req.headers["x-mcp-token"] ||
           req.headers["x-mcp-api-token"]) as string | undefined;
         if (!token) {
