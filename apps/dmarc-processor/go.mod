@@ -6,7 +6,7 @@ require (
 	github.com/getsentry/sentry-go v0.29.0
 	github.com/gofiber/fiber/v2 v2.52.14
 	gorm.io/driver/mysql v1.6.0
-	gorm.io/gorm v1.30.0
+	gorm.io/gorm v1.31.2
 )
 
 require (
