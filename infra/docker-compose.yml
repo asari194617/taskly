@@ -175,6 +175,7 @@ services:
     depends_on:
       - db
       - airflow-webserver
+      - email-compose
     restart: unless-stopped
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
@@ -197,6 +198,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       DB_HOST: db
       DB_PORT: 3306
       DB_NAME: ${MYSQL_DATABASE}
@@ -229,6 +231,7 @@ services:
     depends_on:
       - db
       - airflow-webserver
+      - email-compose
     restart: unless-stopped
     environment:
       AIRFLOW__CORE__PARALLELISM: "8"
@@ -249,6 +252,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       DB_HOST: db
       DB_PORT: 3306
       DB_NAME: ${MYSQL_DATABASE}

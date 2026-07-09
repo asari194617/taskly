@@ -1,6 +1,7 @@
 from datetime import datetime, date, timedelta, timezone
 import os
 import smtplib
+import time
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -198,6 +199,8 @@ def compose_day_shift_email_via_grpc(members, events, locale: str, app_name: str
     ComposeDayShiftRequest, ComposeResponse = _get_email_compose_messages()
     addr = os.getenv("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051").strip()
     timeout = int(os.getenv("EMAIL_COMPOSE_GRPC_TIMEOUT", "10"))
+    max_attempts = int(os.getenv("EMAIL_COMPOSE_GRPC_MAX_ATTEMPTS", "3"))
+    retry_delay = float(os.getenv("EMAIL_COMPOSE_GRPC_RETRY_DELAY", "1"))
 
     req = ComposeDayShiftRequest(
         locale=locale,
@@ -206,15 +209,45 @@ def compose_day_shift_email_via_grpc(members, events, locale: str, app_name: str
         events=events,
     )
 
-    with grpc.insecure_channel(addr) as channel:
-        method = channel.unary_unary(
-            "/emailcompose.EmailComposer/ComposeDayShift",
-            request_serializer=ComposeDayShiftRequest.SerializeToString,
-            response_deserializer=ComposeResponse.FromString,
-        )
-        res = method(req, timeout=timeout)
+    def _is_retryable_error(exc: Exception) -> bool:
+        code = getattr(exc, "code", None)
+        if callable(code):
+            try:
+                if code() == grpc.StatusCode.UNAVAILABLE:
+                    return True
+            except Exception:
+                pass
 
-    return res.subject, res.html, res.text
+        message = str(exc).lower()
+        retryable_markers = (
+            "dns resolution failed",
+            "address lookup failed",
+            "name not found",
+            "hostname lookup error",
+            "unavailable",
+        )
+        return any(marker in message for marker in retryable_markers)
+
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with grpc.insecure_channel(addr) as channel:
+                method = channel.unary_unary(
+                    "/emailcompose.EmailComposer/ComposeDayShift",
+                    request_serializer=ComposeDayShiftRequest.SerializeToString,
+                    response_deserializer=ComposeResponse.FromString,
+                )
+                res = method(req, timeout=timeout)
+            return res.subject, res.html, res.text
+        except Exception as exc:
+            last_error = exc
+            if attempt >= max_attempts or not _is_retryable_error(exc):
+                raise
+            time.sleep(retry_delay * (2 ** (attempt - 1)))
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("email-compose gRPC call failed")
 
 
 def send_day_shift_emails(users, subject: str, text_body: str, html_body: str) -> None:
