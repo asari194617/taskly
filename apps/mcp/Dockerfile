@@ -1,7 +1,7 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
-RUN npm ci || npm i
+RUN npm ci --legacy-peer-deps || npm i --legacy-peer-deps
 
 FROM deps AS build
 WORKDIR /app
