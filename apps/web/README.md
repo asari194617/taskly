@@ -1,1 +1,3 @@
-Astro app placeholder. To be scaffolded.
+# Taskly (Web app)
+
+Webクライアント用のフォルダ
