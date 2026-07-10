@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -63,6 +63,11 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+
+	queueSchema, err := loadNotificationsQueueSchema(db)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Always use Asia/Tokyo (JST)
 	now := time.Now()
@@ -158,7 +163,7 @@ func main() {
 				pf := devicePrefs[uid]
 				// Do not enqueue email digests; they will be built live at delivery time
 				if pf.WebPush {
-					if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, meta, badges_json, user_id, channel, created_at) VALUES (?,?,?,?,?,?,?,?,'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.Meta, it.Badges, uid); err != nil {
+					if err := enqueueNotification(db, queueSchema, it, uid); err != nil {
 						log.Println("enqueue webpush:", err)
 					}
 				}
@@ -180,12 +185,65 @@ func main() {
 			pf := devicePrefs[it.UserID]
 			// Do not enqueue email digests; they will be built live at delivery time
 			if pf.WebPush {
-				if _, err := db.Exec(`INSERT INTO notifications_queue (kind, when_label, subject, title, body, meta, badges_json, user_id, channel, created_at) VALUES (?,?,?,?,?,?,?,?,'webpush', NOW())`, it.Kind, it.WhenLabel, it.Subject, it.Title, it.Body, it.Meta, it.Badges, it.UserID); err != nil {
+				if err := enqueueNotification(db, queueSchema, it, it.UserID); err != nil {
 					log.Println("enqueue webpush:", err)
 				}
 			}
 		}
 	}
+}
+
+type notificationsQueueSchema struct {
+	hasMeta       bool
+	hasBadgesJSON bool
+}
+
+func loadNotificationsQueueSchema(db *sql.DB) (notificationsQueueSchema, error) {
+	meta, err := tableColumnExists(db, "notifications_queue", "meta")
+	if err != nil {
+		return notificationsQueueSchema{}, err
+	}
+	badges, err := tableColumnExists(db, "notifications_queue", "badges_json")
+	if err != nil {
+		return notificationsQueueSchema{}, err
+	}
+	return notificationsQueueSchema{hasMeta: meta, hasBadgesJSON: badges}, nil
+}
+
+func tableColumnExists(db *sql.DB, tableName, columnName string) (bool, error) {
+	row := db.QueryRow(
+		`SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+		tableName,
+		columnName,
+	)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func enqueueNotification(db *sql.DB, schema notificationsQueueSchema, item NotifyItem, userID uint) error {
+	columns := []string{"kind", "when_label", "subject", "title", "body"}
+	values := []any{item.Kind, item.WhenLabel, item.Subject, item.Title, item.Body}
+
+	if schema.hasMeta {
+		columns = append(columns, "meta")
+		values = append(values, item.Meta)
+	}
+	if schema.hasBadgesJSON {
+		columns = append(columns, "badges_json")
+		values = append(values, item.Badges)
+	}
+
+	columns = append(columns, "user_id", "channel", "created_at")
+	values = append(values, userID, "webpush", time.Now())
+
+	placeholders := strings.Repeat("?,", len(columns))
+	placeholders = strings.TrimSuffix(placeholders, ",")
+	query := fmt.Sprintf("INSERT INTO notifications_queue (%s) VALUES (%s)", strings.Join(columns, ", "), placeholders)
+	_, err := db.Exec(query, values...)
+	return err
 }
 
 func hostPort(h, p string) string {
