@@ -1,4 +1,4 @@
-FROM node:20-alpine AS deps
+FROM node:26 AS deps
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
 RUN npm ci --legacy-peer-deps || npm i --legacy-peer-deps
@@ -9,7 +9,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc -p .
 
-FROM node:20-alpine AS runner
+FROM node:26 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules

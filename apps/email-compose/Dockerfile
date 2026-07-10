@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 
-FROM node:20-alpine AS deps
+FROM node:26 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Use BuildKit cache to speed up installs
@@ -13,7 +13,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:26 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 # Install production deps only
