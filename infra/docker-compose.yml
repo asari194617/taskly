@@ -30,15 +30,6 @@ services:
       - "3061:6379" # Redis
     volumes:
       - redis-data:/data
-  postfix:
-    build: ./docker/postfix
-    container_name: taskly-postfix
-    restart: unless-stopped
-    ports:
-      - "3062:25" # SMTP
-    environment:
-      - MYNETWORKS=0.0.0.0/0
-      - RELAY_NETWORKS=:0.0.0.0/0
   server:
     build: ../apps/server
     env_file:

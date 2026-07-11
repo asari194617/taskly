@@ -203,7 +203,7 @@
 - Airflow
   - 対応: 非開発環境では Airflow メタストアに Postgres を利用。UI は認証で保護。
 
-参考: `infra/docker-compose.yml`, `infra/docker/postfix/main.cf`
+参考: `infra/docker-compose.yml`
 
 ---
 

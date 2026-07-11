@@ -5,7 +5,6 @@ Taskly is a simple, fast class management service. This monorepo contains:
 - apps/server: Go (Fiber) Application Server with GraphQL (for app traffic) and REST (for API key integrations), backed by MySQL, Redis, Prometheus metrics
 - apps/web: Astro frontend (GraphQL to application server), using shadcn/ui
 - apps/mcp: MCP server (TypeScript)
-- infra/docker/postfix: Postfix Docker for outbound email
 - infra/prometheus: Prometheus scrape config
 - docs: OpenAPI spec
 

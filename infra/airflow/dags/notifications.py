@@ -100,7 +100,7 @@ with DAG(
             "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
             "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
             "TIMEZONE": os.environ.get("TIMEZONE", "Asia/Tokyo"),
-            "SMTP_HOST": os.environ.get("SMTP_HOST", "postfix"),
+            "SMTP_HOST": os.environ.get("SMTP_HOST", ""),
             "SMTP_PORT": os.environ.get("SMTP_PORT", "25"),
             "SMTP_FROM": os.environ.get("SMTP_FROM", "noreply@taskly.local"),
             "SMTP_USER": os.environ.get("SMTP_USER", os.environ.get("SMTP_FROM", "noreply@taskly.local")),

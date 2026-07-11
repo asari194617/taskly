@@ -13,7 +13,15 @@ updates:
     directory: "/apps/email-compose/"
     schedule:
       interval: "daily"
+  - package-ecosystem: "docker"
+    directory: "/apps/email-compose/"
+    schedule:
+      interval: "daily"
   - package-ecosystem: "npm"
+    directory: "/apps/mcp/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "docker"
     directory: "/apps/mcp/"
     schedule:
       interval: "daily"
@@ -21,8 +29,20 @@ updates:
     directory: "/apps/dmarc-processor/"
     schedule:
       interval: "daily"
+  - package-ecosystem: "docker"
+    directory: "/apps/dmarc-processor/"
+    schedule:
+      interval: "daily"
   - package-ecosystem: "gomod"
     directory: "/apps/server/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "docker"
+    directory: "/apps/server/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "github-actions"
+    directory: "/.github/workflows/"
     schedule:
       interval: "daily"
   
