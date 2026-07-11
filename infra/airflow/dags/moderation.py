@@ -25,11 +25,8 @@ with DAG(
 
     run_moderation = BashOperator(
         task_id="run_moderation",
-        bash_command="cd /workspace/batches/moderation && go run .",
+        bash_command="/opt/airflow/bin/moderation",
         env={
-            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
-            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
-            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),

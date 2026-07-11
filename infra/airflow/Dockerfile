@@ -1,33 +1,29 @@
-FROM apache/airflow:3.2.1-python3.14
+FROM golang:1.26.5-bookworm AS batch-builder
+
+WORKDIR /src
+COPY batches/go.mod batches/go.sum ./batches/
+WORKDIR /src/batches
+RUN go mod download
+COPY batches/ ./
+RUN set -eux; \
+    mkdir -p /out/bin; \
+    go build -trimpath -o /out/bin/backup-mysql ./backup-mysql; \
+    go build -trimpath -o /out/bin/moderation ./moderation; \
+    go build -trimpath -o /out/bin/day-shift-rotations ./day-shift-rotations; \
+    go build -trimpath -o /out/bin/notifications-que-manager ./notifications/que-manager; \
+    cd notifications/delivery-channels/email && go build -trimpath -o /out/bin/notifications-delivery-channels-email .; \
+    cd /src/batches && cd notifications/delivery-channels/discord && go build -trimpath -o /out/bin/notifications-delivery-channels-discord .; \
+    cd /src/batches && cd notifications/delivery-channels/web-push && go build -trimpath -o /out/bin/notifications-delivery-channels-web-push .
+
+FROM apache/airflow:3.3.0-python3.14
 
 USER root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git ca-certificates default-mysql-client gzip curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Configure Go environment
-ENV GOPATH=/home/airflow/go \
-    GOMODCACHE=/home/airflow/go/pkg/mod \
-    GOCACHE=/home/airflow/.cache/go-build \
-    PATH="/usr/local/go/bin:/home/airflow/go/bin:/usr/lib/go/bin:/usr/local/bin:/home/airflow/.local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-RUN mkdir -p /home/airflow/go/bin /home/airflow/go/pkg/mod /home/airflow/.cache/go-build && \
-    chown -R airflow:root /home/airflow/go /home/airflow/.cache
-
-# Install modern Go toolchain (1.22.x)
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-      amd64) GOARCH=amd64 ;; \
-      arm64) GOARCH=arm64 ;; \
-      *) echo "Unsupported architecture: $arch"; exit 1 ;; \
-    esac; \
-    curl -fsSL "https://go.dev/dl/go1.22.7.linux-$GOARCH.tar.gz" -o /tmp/go.tgz; \
-    rm -rf /usr/local/go; \
-    tar -C /usr/local -xzf /tmp/go.tgz; \
-        rm /tmp/go.tgz; \
-        ln -sf /usr/local/go/bin/go /usr/bin/go; \
-        ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
+RUN mkdir -p /opt/airflow/bin && chown -R airflow:root /opt/airflow/bin
+COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
 
 USER airflow
 
