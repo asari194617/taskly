@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"os"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
@@ -25,7 +26,7 @@ func (h *Handler) RegisterIntegrationRoutes(router fiber.Router) {
 	// Unified Teams integration secret header verification helper
 	requireTeamsSecret := func(c *fiber.Ctx) bool {
 		sec := c.Get("x-teams-integration-secret")
-		return sec != "" && sec == utils.Env("TEAMS_INTEGRATION_SECRET", "change_me")
+		return sec != "" && sec == os.Getenv("TEAMS_INTEGRATION_SECRET")
 	}
 
 	// Callback endpoint for Power Automate to report posting result
@@ -192,7 +193,7 @@ func (h *Handler) RegisterIntegrationRoutes(router fiber.Router) {
 			if callback != nil && *callback != "" {
 				cbURL := *callback
 				payload := fmt.Sprintf(`{"is_success":%t,"task_id":%d}`, isSuccess, rec.ID)
-				secret := utils.Env("TEAMS_INTEGRATION_SECRET", "")
+				secret := os.Getenv("TEAMS_INTEGRATION_SECRET")
 				// HMAC signature
 				var sig string
 				if secret != "" {
@@ -392,7 +393,7 @@ func (h *Handler) RegisterIntegrationRoutes(router fiber.Router) {
 	router.Post("/email/inbound", func(c *fiber.Ctx) error {
 		// Auth via header
 		sec := c.Get("X-Email-Integration-Secret")
-		if strings.TrimSpace(sec) == "" || sec != utils.Env("EMAIL_INTEGRATION_SECRET", "change_me_email_inbound_secret") {
+		if strings.TrimSpace(sec) == "" || sec != os.Getenv("EMAIL_INTEGRATION_SECRET") {
 			return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		// Expected JSON body
