@@ -117,7 +117,7 @@ jobs:
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
-          docker compose up -d --build --force-recreate --remove-orphans db redis postfix server email-compose dmarc-processor mcp airflow-webserver airflow-scheduler
+          docker compose up -d --build --force-recreate --remove-orphans db redis postfix server email-compose mcp airflow-webserver airflow-scheduler
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
           EOS

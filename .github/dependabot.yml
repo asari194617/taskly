@@ -26,14 +26,6 @@ updates:
     schedule:
       interval: "daily"
   - package-ecosystem: "gomod"
-    directory: "/apps/dmarc-processor/"
-    schedule:
-      interval: "daily"
-  - package-ecosystem: "docker"
-    directory: "/apps/dmarc-processor/"
-    schedule:
-      interval: "daily"
-  - package-ecosystem: "gomod"
     directory: "/apps/server/"
     schedule:
       interval: "daily"
