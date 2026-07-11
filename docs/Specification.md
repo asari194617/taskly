@@ -25,7 +25,7 @@ A simple, fast class management service.
     }
     ```
     
-    - 処理には時間がかかるので、タスク追加時に非同期処理として実装してください。✅
+    - 処理には時間がかかるので、タスク追加時に非同期処理として実装する。✅
     - 処理が終了すると、任意のエンドポイントに
     
     ```json
@@ -42,17 +42,18 @@ A simple, fast class management service.
 
 ## Languages
 
-- Japanese✅
-- English✅
+- Japanese
+- English
 
 ## Themes
 
-- Dark✅
-- Light (Default)✅
+- Dark
+- Light (Default)
+- Device-preferences
 
 # Features
 
-- 課題の追加✅・編集✅・削除✅・通知・検索
+- 課題のCRUD・通知・検索
 - 日直の通知✅
 - (ユーザー画面)APIキーの管理✅
 - ブロックリスト
@@ -81,8 +82,8 @@ A simple, fast class management service.
 
 ## Tech stacks
 
-- Backend Application server and Batch transactions: Go (Fiber)
-- Front: Astro (Shadcnを全面利用, CloudFlare Pagesで動作させる)
+- アプリケーションサーバー/バッチ処理: Go (Fiber)
+- Front: Astro (Shadcnを利用し、CloudFlare Pagesにデプロイ)
 - iOS/iPad: Swift
 - Android: Kotlin
 - Mac: Swift
@@ -91,14 +92,14 @@ A simple, fast class management service.
 - 明日もやるかどうかの判定: Gemini’s API (毎回文面が異なるため)
 - CI/CD: GitHub Actions (アプリケーションサーバーのみ)
 - DB: MySQL✅
-// - メール生成: React Email
-- Metrics: Prometheus (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)✅
+- メール生成: React Email
+- Metrics: Prometheus, Datadog (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)✅
 - (APIとiCalとMCPとTeamsを除く)各プラットフォームとアプリケーションサーバーのやりとり: GraphQL✅
 - APIプラットフォーム: REST API✅
 
 ## Schemas
 
-(schemas.mdに分離)
+[schema.md](./schemas.md)
 
 ## Pages
 
@@ -108,7 +109,8 @@ A simple, fast class management service.
 
 ### Note
 
-- それぞれの課題は期限が近い順に日付ごとにトップページに表示し、過ぎた課題を表示する必要はありません。✅
+- それぞれの課題は、期限が近い順, 日付ごとでトップページに表示される
+- 期限を過ぎた課題は表示しない
 
 ## Attention
 
