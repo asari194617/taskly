@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"os"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
@@ -407,7 +408,7 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		// Also provide a JWT if needed (optional)
 		claims := jwt.MapClaims{"sub": u.ID, "exp": now.Add(ttl).Unix()}
 		jwtt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		jwtStr, _ := jwtt.SignedString([]byte(utils.Env("JWT_SECRET", "dev")))
+		jwtStr, _ := jwtt.SignedString([]byte(os.Getenv("JWT_SECRET")))
 
 		return c.JSON(fiber.Map{"token": token, "jwt": jwtStr})
 	})
