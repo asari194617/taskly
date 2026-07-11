@@ -35,4 +35,4 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build compose services
         working-directory: infra
-        run: docker compose build
+        run: docker compose build --parallel

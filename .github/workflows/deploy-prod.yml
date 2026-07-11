@@ -37,6 +37,26 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            context: ./apps/server
+            file: ./apps/server/Dockerfile
+            cache_scope: api
+          - service: email-compose
+            context: ./apps/email-compose
+            file: ./apps/email-compose/Dockerfile
+            cache_scope: email-compose
+          - service: mcp
+            context: ./apps/mcp
+            file: ./apps/mcp/Dockerfile
+            cache_scope: mcp
+          - service: airflow
+            context: ./infra/airflow
+            file: ./infra/airflow/Dockerfile
+            cache_scope: airflow
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -51,44 +71,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and push api image
+      - name: Build and push ${{ matrix.service }} image
         uses: docker/build-push-action@v7
         with:
-          context: ./apps/server
-          file: ./apps/server/Dockerfile
-          push: true
-          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          tags: ghcr.io/${{ github.repository }}/api:latest
-
-      - name: Build and push email-compose image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./apps/email-compose
-          file: ./apps/email-compose/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
           provenance: false
           platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          tags: ghcr.io/${{ github.repository }}/email-compose:latest
-
-      - name: Build and push mcp image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./apps/mcp
-          file: ./apps/mcp/Dockerfile
-          push: true
-          provenance: false
-          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          tags: ghcr.io/${{ github.repository }}/mcp:latest
-
-      - name: Build and push airflow image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./infra/airflow
-          file: ./infra/airflow/Dockerfile
-          push: true
-          provenance: false
-          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          tags: ghcr.io/${{ github.repository }}/airflow:latest
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,scope=${{ matrix.cache_scope }},mode=max
 
   deploy:
     needs: [select-runner, publish-images]
