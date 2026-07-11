@@ -21,10 +21,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 	go build -buildvcs=false -trimpath -ldflags "-s -w" -tags timetzdata -o /out/api ./cmd/server
 
 # Extract CA certificates (for outbound HTTPS if needed)
-FROM --platform=$BUILDPLATFORM alpine:3.20 AS certs
+FROM --platform=$BUILDPLATFORM alpine:3.24 AS certs
 RUN apk add --no-cache ca-certificates
 
-FROM --platform=$TARGETPLATFORM alpine:3.20
+FROM --platform=$TARGETPLATFORM alpine:3.24
 WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata bash curl grep sed findutils mariadb-client
 COPY --from=build /out/api /app/api
