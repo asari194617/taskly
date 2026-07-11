@@ -31,8 +31,67 @@ jobs:
       - id: pick
         run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
-  deploy:
+  publish-images:
     needs: select-runner
+    runs-on: ${{ needs.select-runner.outputs.label }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push api image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/server
+          file: ./apps/server/Dockerfile
+          push: true
+          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          tags: ghcr.io/${{ github.repository }}/api:latest
+
+      - name: Build and push email-compose image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/email-compose
+          file: ./apps/email-compose/Dockerfile
+          push: true
+          provenance: false
+          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          tags: ghcr.io/${{ github.repository }}/email-compose:latest
+
+      - name: Build and push mcp image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./apps/mcp
+          file: ./apps/mcp/Dockerfile
+          push: true
+          provenance: false
+          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          tags: ghcr.io/${{ github.repository }}/mcp:latest
+
+      - name: Build and push airflow image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./infra/airflow
+          file: ./infra/airflow/Dockerfile
+          push: true
+          provenance: false
+          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          tags: ghcr.io/${{ github.repository }}/airflow:latest
+
+  deploy:
+    needs: [select-runner, publish-images]
     runs-on: ${{ needs.select-runner.outputs.label }}
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
@@ -117,7 +176,8 @@ jobs:
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
-          docker compose up -d --build --force-recreate --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler
+          docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+          docker compose up -d --no-build --force-recreate --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
           EOS
