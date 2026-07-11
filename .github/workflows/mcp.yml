@@ -42,7 +42,7 @@ jobs:
           cache-dependency-path: apps/mcp/package-lock.json
       - name: Install
         working-directory: apps/mcp
-        run: npm ci || npm install
+        run: npm ci || npm install --legacy-peer-deps
       - name: Build
         working-directory: apps/mcp
         run: npm run build
