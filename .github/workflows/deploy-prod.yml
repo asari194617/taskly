@@ -102,6 +102,8 @@ jobs:
       PROD_WORKDIR: ${{ secrets.PROD_WORKDIR }}
       PROD_ENV: ${{ secrets.PROD_ENV }}
       PROD_COMPOSE_PROFILES: ${{ secrets.PROD_COMPOSE_PROFILES }}
+      GHCR_USERNAME: ${{ github.repository_owner }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -176,6 +178,7 @@ jobs:
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
           docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose up -d --no-build --force-recreate --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose ps
