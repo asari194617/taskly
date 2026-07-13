@@ -53,7 +53,7 @@ jobs:
           ls -la artifacts
 
       - name: Upload build artifacts (linux/windows)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-linux-win
           path: artifacts/*
@@ -85,7 +85,7 @@ jobs:
           ls -la artifacts
 
       - name: Upload build artifacts (macos)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-macos
           path: artifacts/*
