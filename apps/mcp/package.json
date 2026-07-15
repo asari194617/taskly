@@ -17,7 +17,7 @@
   "dependencies": {
     "fastify": "5.10.0",
     "fastify-plugin": "6.0.0",
-    "mysql2": "3.22.6",
+    "mysql2": "3.23.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "4.4.3",
     "undici": "8.7.0"
