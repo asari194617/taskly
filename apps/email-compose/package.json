@@ -18,7 +18,7 @@
     "@react-email/ui": "^6.7.0",
     "@sentry/node": "^10.64.0",
     "@sentry/profiling-node": "^10.65.0",
-    "dd-trace": "^6.2.0",
+    "dd-trace": "^6.3.0",
     "dotenv": "^17.4.2",
     "google-protobuf": "^4.0.2",
     "i18next": "^26.3.5",
