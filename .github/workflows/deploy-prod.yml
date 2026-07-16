@@ -54,7 +54,7 @@ jobs:
             file: ./apps/mcp/Dockerfile
             cache_scope: mcp
           - service: airflow
-            context: ./infra/airflow
+            context: .
             file: ./infra/airflow/Dockerfile
             cache_scope: airflow
     steps:
