@@ -172,8 +172,9 @@ jobs:
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          docker compose down --remove-orphans || true
           docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
-          docker compose up -d --no-build --force-recreate --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+          docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
           EOS

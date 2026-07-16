@@ -16,12 +16,12 @@ def discord_success_callback(context):
     _discord_success_callback(context)
 
 # Runs queue manager and delivery channels (email / webpush / discord)
-# at 07:00 and 17:00 JST daily. Assumes docker container context where
-# `go run` works, or built binaries available. Adjust cmd paths to your
-# environment.
+# at 07:00 and 17:00 JST daily. The batch programs are built into the
+# Airflow image and executed directly from /opt/airflow/bin.
 
 def build_cmd(app):
     # Echo key envs for diagnostics, then run. For email channel, do SMTP reachability pre-check via openssl s_client.
+    binary_name = app.replace("/", "-")
     base = (
         "set -euo pipefail; "
         "echo '--- NOTIFICATIONS ENV ---'; env | grep -E '^(SMTP_|EMAIL_COMPOSE_|APP_NAME|LOCALE|WEB_URL|VAPID_)' || true; "
@@ -45,10 +45,9 @@ def build_cmd(app):
             "  fi; "
             "fi; "
         )
-        run = f"cd /workspace/batches/{app} && go run ."
-        return base + precheck + run
+        return base + precheck + f"/opt/airflow/bin/{binary_name}"
     # Default path (discord, web-push, queue-manager, etc.)
-    return base + f"cd /workspace/batches/{app} && go run ."
+    return base + f"/opt/airflow/bin/{binary_name}"
 
 with DAG(
     dag_id="notifications",
@@ -65,9 +64,6 @@ with DAG(
         task_id="queue_manager",
         bash_command=build_cmd("notifications/que-manager"),
         env={
-            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
-            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
-            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
             "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
             "DB_USER": os.environ.get("DB_USER", os.environ.get("MYSQL_USER", "taskly")),
@@ -86,9 +82,6 @@ with DAG(
         task_id="email_delivery",
         bash_command=build_cmd("notifications/delivery-channels/email"),
         env={
-            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
-            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
-            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
             "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
             "DB_USER": os.environ.get("DB_USER", os.environ.get("MYSQL_USER", "taskly")),
@@ -119,9 +112,6 @@ with DAG(
         task_id="webpush_delivery",
         bash_command=build_cmd("notifications/delivery-channels/web-push"),
         env={
-            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
-            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
-            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             # DB settings
             "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
             "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
@@ -146,9 +136,6 @@ with DAG(
         task_id="discord_delivery",
         bash_command=build_cmd("notifications/delivery-channels/discord"),
         env={
-            "GOPATH": os.environ.get("GOPATH", "/home/airflow/go"),
-            "GOMODCACHE": os.environ.get("GOMODCACHE", "/home/airflow/go/pkg/mod"),
-            "GOCACHE": os.environ.get("GOCACHE", "/home/airflow/.cache/go-build"),
             # Provide both DB_* and MYSQL_* for compatibility with different batch apps
             "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
             "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),

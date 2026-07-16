@@ -67,7 +67,9 @@ services:
       - "3066:3066"
   airflow-webserver:
     image: ghcr.io/asari194617/taskly/airflow:latest
-    build: ./airflow
+    build:
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
     container_name: taskly-airflow-web
     env_file:
       - ../.env
@@ -146,7 +148,9 @@ services:
       - "3068:50052"
   airflow-scheduler:
     image: ghcr.io/asari194617/taskly/airflow:latest
-    build: ./airflow
+    build:
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
     container_name: taskly-airflow-scheduler
     env_file:
       - ../.env
@@ -203,7 +207,9 @@ services:
       ]
   airflow-dag-processor:
     image: ghcr.io/asari194617/taskly/airflow:latest
-    build: ./airflow
+    build:
+      context: ..
+      dockerfile: infra/airflow/Dockerfile
     container_name: taskly-airflow-dag-processor
     env_file:
       - ../.env

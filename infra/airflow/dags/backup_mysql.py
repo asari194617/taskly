@@ -17,13 +17,8 @@ with DAG(
 
     run_backup = BashOperator(
         task_id="run_backup",
-        bash_command="cd /workspace/batches/backup-mysql && go run .",
+        bash_command="/opt/airflow/bin/backup-mysql",
         env={
-            # Ensure Go can resolve module cache during task runs
-            "GOPATH": "/home/airflow/go",
-            "GOMODCACHE": "/home/airflow/go/pkg/mod",
-            "GOCACHE": "/home/airflow/.cache/go-build",
-            "PATH": "/usr/local/go/bin:/home/airflow/go/bin:/usr/lib/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             # DB connection for mysqldump (explicit constants to avoid localhost fallback)
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
