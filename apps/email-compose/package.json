@@ -24,7 +24,7 @@
     "i18next": "^26.3.5",
     "i18next-resources-to-backend": "^1.2.1",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react-dom": "^19.2.8",
     "react-i18next": "^17.0.10",
     "redis": "^6.1.0",
     "tslog": "^5.0.1",
