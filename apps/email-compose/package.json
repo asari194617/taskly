@@ -27,7 +27,7 @@
     "react-dom": "^19.2.7",
     "react-i18next": "^17.0.10",
     "redis": "^6.1.0",
-    "tslog": "^5.0.0",
+    "tslog": "^5.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
