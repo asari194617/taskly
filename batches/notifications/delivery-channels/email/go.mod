@@ -6,7 +6,7 @@ require (
 	github.com/asari194617/taskly/batches/notifications/delivery-channels/common v0.0.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jhump/protoreflect v1.18.0
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 )
 
 require (
