@@ -17,7 +17,7 @@ require (
 	github.com/prometheus/client_golang v1.23.3-0.20251103151724-a5ae20370e5e
 	github.com/redis/go-redis/v9 v9.21.0
 	golang.org/x/crypto v0.54.0
-	google.golang.org/genai v1.63.0
+	google.golang.org/genai v1.67.0
 	google.golang.org/grpc v1.82.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.74.8
 	gorm.io/driver/mysql v1.6.0
