@@ -15,7 +15,7 @@ require (
 	github.com/jhump/protoreflect v1.18.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.3-0.20251103151724-a5ae20370e5e
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.22.0
 	golang.org/x/crypto v0.54.0
 	google.golang.org/genai v1.67.0
 	google.golang.org/grpc v1.82.0
