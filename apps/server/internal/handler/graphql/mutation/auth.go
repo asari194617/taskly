@@ -126,11 +126,8 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("unauthorized")
 				}
 				u := c.Locals("user").(*domain.User)
-				if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+				if err := utils.SoftDeleteUser(c.Context(), u.ID, h.db, h.rdb); err != nil {
 					return false, err
-				}
-				if tok, ok := c.Locals("token").(string); ok && tok != "" {
-					utils.RevokeSession(c, tok, u.ID, h.db, h.rdb)
 				}
 				utils.ClearSessionCookie(c)
 				return true, nil

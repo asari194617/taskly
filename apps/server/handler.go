@@ -173,7 +173,7 @@ func registerIcalFeedRoute(app fiber.Router, db *gorm.DB) {
 	app.Get("/ical/:token.ics", func(c *fiber.Ctx) error {
 		token := c.Params("token")
 		var key domain.IcalKey
-		if err := db.Where("token = ?", token).First(&key).Error; err != nil {
+		if err := db.Joins("JOIN users ON users.id = ical_keys.user_id").Where("ical_keys.token = ? AND users.is_deleted = 0", token).First(&key).Error; err != nil {
 			return c.Status(404).SendString("not found")
 		}
 		// enforce expiry if set
