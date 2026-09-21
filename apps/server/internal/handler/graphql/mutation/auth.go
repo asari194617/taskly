@@ -122,7 +122,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("unauthorized")
 				}
 				if tok, ok := c.Locals("token").(string); ok && tok != "" {
-					utils.RevokeSession(c, tok, c.Locals("user").(*domain.User).ID, h.db, h.rdb)
+					if err := utils.RevokeSession(c, tok, c.Locals("user").(*domain.User).ID, h.db, h.rdb); err != nil {
+						utils.CaptureError(err)
+						return false, fmt.Errorf("session revocation failed")
+					}
 				}
 				utils.ClearSessionCookie(c)
 				return true, nil

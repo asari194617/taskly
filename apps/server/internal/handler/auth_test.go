@@ -363,6 +363,37 @@ func TestCookieSessionCSRFAndLogoutRevokesDatabaseFallback(t *testing.T) {
 	}
 }
 
+func TestLogoutReportsRedisRevocationFailure(t *testing.T) {
+	t.Setenv("API_CORS_ORIGINS", "https://taskly.example")
+	app, mr, db, user := newAuthTransactionTestApp(t)
+	if err := db.Model(&user).Update("email_code_allowed", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	rw, body, err := doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{
+		"email": "mfa@example.com", "password": "correct-password",
+	}, map[string]string{"X-Client-Platform": "web", "Origin": "https://taskly.example"})
+	if err != nil || rw.Code != fiber.StatusOK {
+		t.Fatalf("login status=%d err=%v body=%s", rw.Code, err, body)
+	}
+	cookie := rw.Result().Cookies()[0]
+	mr.Close()
+	req := httptest.NewRequest(fiber.MethodPost, "/auth/logout", nil)
+	req.AddCookie(cookie)
+	req.Header.Set("Origin", "https://taskly.example")
+	req.Header.Set(utils.CSRFHeaderName, utils.CSRFHeaderValue)
+	response, err := app.Test(req, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != fiber.StatusServiceUnavailable {
+		t.Fatalf("logout status=%d, want 503", response.StatusCode)
+	}
+	if len(response.Cookies()) != 0 {
+		t.Fatal("logout cleared the cookie despite failed revocation")
+	}
+}
+
 func doJSONRequest(app *fiber.App, method, path string, body any, headers map[string]string) (*httptest.ResponseRecorder, []byte, error) {
 	var buf bytes.Buffer
 	if body != nil {

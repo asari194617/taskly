@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -158,15 +159,23 @@ func RequireCookieCSRF(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *redis.Client) {
+func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *redis.Client) error {
 	if strings.TrimSpace(token) == "" {
-		return
+		return nil
 	}
-	_ = RDB.Del(c.Context(), "session:"+token).Err()
+	var failures []error
+	if err := DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error; err != nil {
+		failures = append(failures, fmt.Errorf("delete persisted session: %w", err))
+	}
+	if err := RDB.Del(c.Context(), "session:"+token).Err(); err != nil {
+		failures = append(failures, fmt.Errorf("delete cached session: %w", err))
+	}
 	if userID != 0 {
-		_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", userID), token).Err()
+		if err := RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", userID), token).Err(); err != nil {
+			failures = append(failures, fmt.Errorf("remove session index: %w", err))
+		}
 	}
-	_ = DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error
+	return errors.Join(failures...)
 }
 
 // SoftDeleteUser revokes persisted credentials together with the account update.

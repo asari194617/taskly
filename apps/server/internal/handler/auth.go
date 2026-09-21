@@ -526,7 +526,10 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		if token != "" {
 			var session domain.Session
 			_ = h.db.Where("hashed_token = ? OR hashed_token = ?", utils.Sha256Hex([]byte(token)), token).Order("id DESC").First(&session).Error
-			utils.RevokeSession(c, token, session.UserID, h.db, h.rdb)
+			if err := utils.RevokeSession(c, token, session.UserID, h.db, h.rdb); err != nil {
+				utils.CaptureError(err)
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "session revocation failed"})
+			}
 		}
 		utils.ClearSessionCookie(c)
 		return c.SendStatus(fiber.StatusNoContent)
