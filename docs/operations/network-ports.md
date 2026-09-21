@@ -15,9 +15,9 @@ service name on the Compose `default` network.
 | `3065/tcp` | `127.0.0.1` only | Nginx upstream for Airflow |
 | `3066/tcp` | `127.0.0.1` only | Nginx upstream for MCP |
 
-MySQL (`3306`), Redis (`6379`), and email-compose gRPC (`50051`, `50052`)
+MySQL (`3306`), Redis (`6379`), and email-compose gRPC (`50051`)
 have no host port mapping. Containers reach them as `db:3306`, `redis:6379`,
-and `email-compose:50051`/`email-compose:50052`.
+and `email-compose:50051`.
 
 The host and cloud firewalls should deny unsolicited inbound traffic by
 default. Allow `80/tcp` and `443/tcp` publicly, and limit `22/tcp` to trusted

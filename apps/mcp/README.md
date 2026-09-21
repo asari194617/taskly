@@ -48,8 +48,9 @@ HTTP server environment variables:
 - `MCP_PORT` (default `3066`)
 - `DB_HOST`, `DB_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
 
-When running on the host against the repository's Compose database, use
-`DB_HOST=127.0.0.1` and `DB_PORT=3060`. Inside Compose, use `db:3306`.
+Inside Compose, use `DB_HOST=db` and `DB_PORT=3306`. The default Compose
+configuration does not publish MySQL on the host; a host-run MCP process needs
+an explicitly configured tunnel or port mapping.
 
 ## stdio bridge
 
