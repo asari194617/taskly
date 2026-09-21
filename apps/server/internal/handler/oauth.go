@@ -130,12 +130,14 @@ func (h *Handler) oauthCallback(c *fiber.Ctx) error {
 	if code == "" {
 		return c.SendStatus(400)
 	}
-	token, err := oauthExchange(cfg, code, pending.Verifier)
+	tokens, err := oauthExchange(cfg, code, pending.Verifier)
 	if err != nil {
 		return c.SendStatus(502)
 	}
-	userID, email, err := oauthUserID(cfg, token)
-	if err != nil {
+	userID, email, userErr := oauthUserID(cfg, tokens.Access)
+	// The OAuth token is only a bridge to Taskly's HttpOnly session. Revoke
+	// the refresh family before issuing that session so no orphan token remains.
+	if revokeErr := oauthRevoke(cfg, tokens.Refresh); userErr != nil || revokeErr != nil {
 		return c.SendStatus(502)
 	}
 	var user domain.User
@@ -166,7 +168,12 @@ func safeOAuthNext(raw string) string {
 
 var oauthHTTPClient = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
-func oauthExchange(cfg oauthClientConfig, code, verifier string) (string, error) {
+type oauthTokenPair struct {
+	Access  string
+	Refresh string
+}
+
+func oauthExchange(cfg oauthClientConfig, code, verifier string) (oauthTokenPair, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -174,29 +181,49 @@ func oauthExchange(cfg oauthClientConfig, code, verifier string) (string, error)
 	form.Set("code_verifier", verifier)
 	req, err := http.NewRequest(http.MethodPost, cfg.Issuer+"/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return oauthTokenPair{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
 	resp, err := oauthHTTPClient.Do(req)
 	if err != nil {
-		return "", err
+		return oauthTokenPair{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", errors.New("token exchange failed")
+		return oauthTokenPair{}, errors.New("token exchange failed")
 	}
 	var payload struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		TokenType    string `json:"token_type"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<10)).Decode(&payload); err != nil {
-		return "", err
+		return oauthTokenPair{}, err
 	}
-	if payload.AccessToken == "" || !strings.EqualFold(payload.TokenType, "Bearer") {
-		return "", errors.New("invalid token response")
+	if payload.AccessToken == "" || payload.RefreshToken == "" || !strings.EqualFold(payload.TokenType, "Bearer") {
+		return oauthTokenPair{}, errors.New("invalid token response")
 	}
-	return payload.AccessToken, nil
+	return oauthTokenPair{Access: payload.AccessToken, Refresh: payload.RefreshToken}, nil
+}
+
+func oauthRevoke(cfg oauthClientConfig, token string) error {
+	form := url.Values{"token": {token}}
+	req, err := http.NewRequest(http.MethodPost, cfg.Issuer+"/oauth/revoke", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
+	resp, err := oauthHTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("token revocation failed")
+	}
+	return nil
 }
 
 func oauthUserID(cfg oauthClientConfig, token string) (uint64, string, error) {

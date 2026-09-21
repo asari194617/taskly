@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
@@ -19,6 +20,7 @@ func TestOAuthCallbackBindsStateAndPreservesUserID(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 	var expectedChallenge string
+	var revokeCalls atomic.Int32
 	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth/token":
@@ -34,7 +36,7 @@ func TestOAuthCallbackBindsStateAndPreservesUserID(t *testing.T) {
 				w.WriteHeader(400)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "test-access", "token_type": "Bearer"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "test-access", "refresh_token": "test-refresh", "token_type": "Bearer"})
 		case "/oauth/userinfo":
 			if r.Header.Get("Authorization") != "Bearer test-access" {
 				t.Errorf("missing bearer token")
@@ -42,6 +44,15 @@ func TestOAuthCallbackBindsStateAndPreservesUserID(t *testing.T) {
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"sub": "1", "email": "mfa@example.com"})
+		case "/oauth/revoke":
+			id, secret, ok := r.BasicAuth()
+			if !ok || id != "taskly-web" || secret != "test-secret" || r.FormValue("token") != "test-refresh" {
+				t.Errorf("invalid token revocation request")
+				w.WriteHeader(401)
+				return
+			}
+			revokeCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
 		default:
 			w.WriteHeader(404)
 		}
@@ -98,6 +109,9 @@ func TestOAuthCallbackBindsStateAndPreservesUserID(t *testing.T) {
 	}
 	if sessionCookie == nil || !sessionCookie.HttpOnly {
 		t.Fatal("session cookie missing")
+	}
+	if revokeCalls.Load() != 1 {
+		t.Fatalf("refresh token not revoked before session issue: %d calls", revokeCalls.Load())
 	}
 	var session domain.Session
 	if err := db.Where("user_id=?", user.ID).First(&session).Error; err != nil {
