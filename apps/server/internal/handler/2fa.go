@@ -19,7 +19,10 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 	router.Post("/totp/setup", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		// generate base32 secret
-		secret := utils.GenerateBase32Secret()
+		secret, err := utils.GenerateBase32Secret()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "server"})
+		}
 		// store in Redis temporary
 		key := fmt.Sprintf("totp-setup:%d", u.ID)
 		if err := h.rdb.Set(c.Context(), key, secret, 10*time.Minute).Err(); err != nil {
@@ -99,7 +102,10 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 				return err
 			}
 			for i := 0; i < 10; i++ {
-				plain := utils.GenerateRecoveryCode()
+				plain, err := utils.GenerateRecoveryCode()
+				if err != nil {
+					return err
+				}
 				hashed := utils.Sha256Hex([]byte(plain))
 				if err := tx.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error; err != nil {
 					return err
@@ -108,7 +114,7 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 			}
 			return nil
 		}); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "db"})
+			return c.Status(500).JSON(fiber.Map{"error": "server"})
 		}
 		return c.JSON(fiber.Map{"codes": codes})
 	})

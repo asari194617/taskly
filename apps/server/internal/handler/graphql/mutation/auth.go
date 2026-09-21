@@ -150,7 +150,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return nil, fmt.Errorf("unauthorized")
 				}
 				u := c.Locals("user").(*domain.User)
-				secret := utils.GenerateBase32Secret()
+				secret, err := utils.GenerateBase32Secret()
+				if err != nil {
+					return nil, fmt.Errorf("server")
+				}
 				key := fmt.Sprintf("totp-setup:%d", u.ID)
 				if err := h.rdb.Set(c.Context(), key, secret, 10*time.Minute).Err(); err != nil {
 					return nil, fmt.Errorf("server")
@@ -251,7 +254,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 						return err
 					}
 					for i := 0; i < 10; i++ {
-						plain := utils.GenerateRecoveryCode()
+						plain, err := utils.GenerateRecoveryCode()
+						if err != nil {
+							return err
+						}
 						hashed := utils.Sha256Hex([]byte(plain))
 						if err := tx.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error; err != nil {
 							return err

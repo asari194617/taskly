@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -37,7 +38,7 @@ type authTransaction struct {
 
 func randomOpaqueToken() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil

@@ -10,16 +10,18 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"fmt"
-	"github.com/asari194617/taskly/apps/server/internal/domain"
-	"github.com/gofiber/fiber/v2"
-	"github.com/pquerna/otp/totp"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"io"
 	"log"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/gofiber/fiber/v2"
+	"github.com/pquerna/otp/totp"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 const (
@@ -40,7 +42,7 @@ func Sha256Hex(b []byte) string {
 
 func GenerateAPIKey() (plain string, hashed string, err error) {
 	buf := make([]byte, 32)
-	if _, err = rand.Read(buf); err != nil {
+	if _, err = io.ReadFull(rand.Reader, buf); err != nil {
 		return "", "", err
 	}
 	plain = fmt.Sprintf("tsk_%x", buf)
@@ -48,12 +50,12 @@ func GenerateAPIKey() (plain string, hashed string, err error) {
 	return
 }
 
-func GenerateIcalToken() string {
+func GenerateIcalToken() (string, error) {
 	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("ict_%d", time.Now().UnixNano())
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return "", err
 	}
-	return fmt.Sprintf("ict_%x", buf)
+	return fmt.Sprintf("ict_%x", buf), nil
 }
 
 func ParseAuthToken(authHeader string) string {
@@ -284,13 +286,13 @@ func IsAllowedPlatform(p string) bool {
 	}
 }
 
-func GenerateSessionToken(uid uint, platform string) string {
+func GenerateSessionToken(uid uint, platform string) (string, error) {
 	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("sess_%d_%s_%d", uid, platform, time.Now().UnixNano())
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		return "", err
 	}
 	enc := base64.RawURLEncoding.EncodeToString(b)
-	return fmt.Sprintf("sess_%d_%s_%s", uid, platform, enc)
+	return fmt.Sprintf("sess_%d_%s_%s", uid, platform, enc), nil
 }
 
 func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) {
@@ -357,26 +359,26 @@ func UserFromMCPToken(c *fiber.Ctx, DB *gorm.DB) bool {
 // 2FA helpers
 func UrlEncode(s string) string { return url.QueryEscape(s) }
 
-func GenerateBase32Secret() string {
+func GenerateBase32Secret() (string, error) {
 	b := make([]byte, 20)
-	if _, err := rand.Read(b); err != nil {
-		return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		return "", err
 	}
-	return strings.TrimRight(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), "=")
+	return strings.TrimRight(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), "="), nil
 }
 
 func ValidateTOTP(secret, code string) bool {
 	return totp.Validate(code, secret)
 }
 
-func GenerateRecoveryCode() string {
+func GenerateRecoveryCode() (string, error) {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	const groups = 4
 	const perGroup = 4
 	out := make([]byte, 0, groups*perGroup+(groups-1))
 	buf := make([]byte, groups*perGroup)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Sprintf("%08x", time.Now().UnixNano())
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return "", err
 	}
 	for i := 0; i < groups*perGroup; i++ {
 		out = append(out, alphabet[int(buf[i])%len(alphabet)])
@@ -384,7 +386,7 @@ func GenerateRecoveryCode() string {
 			out = append(out, '-')
 		}
 	}
-	return string(out)
+	return string(out), nil
 }
 
 func ConsumeRecoveryCode(userID uint, code string, DB *gorm.DB) bool {
@@ -427,7 +429,7 @@ func EncryptString(plain string) (string, error) {
 		return "", err
 	}
 	nonce := make([]byte, gcm.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
 	ct := gcm.Seal(nil, nonce, []byte(plain), nil)

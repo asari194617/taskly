@@ -1,15 +1,20 @@
 package gqlH
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestGraphQLRejectsExpensiveRequests(t *testing.T) {
@@ -79,5 +84,62 @@ func TestMissingSessionReturnsUnauthorized(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != 401 {
 		t.Fatalf("status = %d, want 401", res.StatusCode)
+	}
+}
+
+type failedGraphQLRandomReader struct{}
+
+func (failedGraphQLRandomReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestSecretMutationsFailOnRandomError(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&domain.IcalKey{}, &domain.RecoveryCode{}); err != nil {
+		t.Fatal(err)
+	}
+	u := domain.User{ID: 9, Email: "test@example.com"}
+	if err := db.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: "old"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	redisServer := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error { c.Locals("user", &u); return c.Next() })
+	NewHandler(db, rdb, nil).RegisterGraphQL(app.Group("/graphql"))
+	original := rand.Reader
+	rand.Reader = failedGraphQLRandomReader{}
+	t.Cleanup(func() { rand.Reader = original })
+	for _, query := range []string{
+		"mutation { icalCreate { id url } }",
+		"mutation { totpSetup { secret otpauth } }",
+		"mutation { recoveryGenerate }",
+	} {
+		req := httptest.NewRequest("POST", "/graphql/", strings.NewReader(fmt.Sprintf(`{"query":%q}`, query)))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != 400 {
+			t.Errorf("%s: status = %d, want 400", query, res.StatusCode)
+		}
+	}
+	var ical []domain.IcalKey
+	if err := db.Find(&ical).Error; err != nil {
+		t.Fatal(err)
+	}
+	var codes []domain.RecoveryCode
+	if err := db.Where("user_id = ?", u.ID).Find(&codes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(ical) != 0 || len(codes) != 1 || codes[0].HashedCode != "old" {
+		t.Fatalf("secret rows changed: ical=%+v recovery=%+v", ical, codes)
+	}
+	if redisServer.Exists(fmt.Sprintf("totp-setup:%d", u.ID)) {
+		t.Fatal("TOTP secret persisted")
 	}
 }

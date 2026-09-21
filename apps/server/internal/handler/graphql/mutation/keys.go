@@ -152,7 +152,10 @@ func (h *Handler) mutationFieldsKeys() graphql.Fields {
 				if strings.TrimSpace(desc) != "" {
 					descPtr = &desc
 				}
-				tok := utils.GenerateIcalToken()
+				tok, err := utils.GenerateIcalToken()
+				if err != nil {
+					return nil, fmt.Errorf("server")
+				}
 				var expPtr *time.Time
 				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
 					if t, err := time.Parse(time.RFC3339, s); err == nil {
