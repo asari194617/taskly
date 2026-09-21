@@ -86,14 +86,17 @@ export async function postLoginRedirect() {
   const target = getNextParam() || "/home";
   try {
     const res = await gql<{ me: { is_agreed_policies: boolean } }>(
-      "query{ me{ is_agreed_policies } }"
+      "query{ me{ is_agreed_policies } }",
+      undefined,
+      { redirectOnUnauthorized: false }
     );
+    if (!res.me) throw new Error("session missing");
     if (!res.me?.is_agreed_policies) {
       window.location.replace(`/consent?next=${encodeURIComponent(target)}`);
       return;
     }
   } catch {
-    // ignore
+    throw new Error("ログイン状態を確認できませんでした。通信状態とブラウザの Cookie 設定を確認して、もう一度お試しください。");
   }
   window.location.replace(target);
 }
