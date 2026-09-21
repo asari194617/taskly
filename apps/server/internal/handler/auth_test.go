@@ -182,7 +182,11 @@ func TestLoginCodeExpiryAttemptsAndConsumption(t *testing.T) {
 				t.Fatal(err)
 			}
 			code := "123456"
-			now := time.Now()
+			jst, err := time.LoadLocation("Asia/Tokyo")
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().In(jst)
 			expiry := now.Add(10 * time.Minute)
 			if scenario == "expired" {
 				expiry = now.Add(-time.Second)
