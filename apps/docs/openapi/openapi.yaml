@@ -4,8 +4,10 @@ info:
   version: 1.0.0
   description: Public REST surface accessible with an API key. All requests must include the X-API-Key header.
 servers:
+  - url: https://api.taskly.iy0306.com
+    description: Production
   - url: http://localhost:3063
-    description: Local server
+    description: Local development
 security:
   - ApiKeyAuth: []
 components:

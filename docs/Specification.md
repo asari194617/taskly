@@ -1,5 +1,7 @@
 # Taskly
 
+> この文書は実装済み機能と将来構想を含むプロダクト仕様です。`✅` は実装済みを示し、印のない項目（ネイティブクライアントなど）は計画を含みます。現行の起動・運用手順は `README.md` と `docs/README.md` を参照してください。
+
 # Overview
 
 A simple, fast class management service.
@@ -90,7 +92,7 @@ A simple, fast class management service.
 - Windows: WinUI 3
 - CDN: CloudFlare R2 (S3のクライアントを使って管理)✅
 - 明日もやるかどうかの判定: Gemini’s API (毎回文面が異なるため)
-- CI/CD: GitHub Actions (アプリケーションサーバーのみ)
+- CI/CD: GitHub Actions (API、MCP、メール生成、Airflowイメージのビルドと本番デプロイ)
 - DB: MySQL✅
 - メール生成: React Email
 - Metrics: Prometheus, Datadog (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)✅
@@ -99,7 +101,7 @@ A simple, fast class management service.
 
 ## Schemas
 
-[schema.md](./schemas.md)
+[schema.md](./schema.md)
 
 ## Pages
 

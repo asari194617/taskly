@@ -3,7 +3,7 @@
     "Taskly-server": {
       "command": "node",
       "args": [
-        "/Users/iy0306/github/asaritomohiro/taskly/apps/mcp/dist/stdio.js"
+        "/absolute/path/to/taskly/apps/mcp/dist/stdio.js"
       ],
       "env": {
         "TASKLY_MCP_BASE_URL": "http://localhost:3066",
