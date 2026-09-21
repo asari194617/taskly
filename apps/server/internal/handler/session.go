@@ -34,7 +34,10 @@ func validateLoginClient(c *fiber.Ctx, platform string) error {
 }
 
 func (h *Handler) issueSession(c *fiber.Ctx, userID uint, platform string, now time.Time) error {
-	token := utils.GenerateSessionToken(userID, platform)
+	token, err := utils.GenerateSessionToken(userID, platform)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session"})
+	}
 	expires := now.Add(utils.SessionTTL)
 	if err := h.rdb.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", userID), utils.SessionTTL).Err(); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "session"})

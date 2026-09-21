@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"crypto/rand"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,10 +23,40 @@ func TestICalEscape(t *testing.T) {
 }
 
 func TestGenerateIcalToken(t *testing.T) {
-	a := GenerateIcalToken()
-	b := GenerateIcalToken()
+	a, err := GenerateIcalToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := GenerateIcalToken()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if a == b {
 		t.Fatalf("expected different tokens")
+	}
+}
+
+type failingRandomReader struct{}
+
+func (failingRandomReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestSecretGeneratorsFailClosedOnRandomError(t *testing.T) {
+	original := rand.Reader
+	rand.Reader = failingRandomReader{}
+	t.Cleanup(func() { rand.Reader = original })
+
+	for name, generate := range map[string]func() (string, error){
+		"ical":     GenerateIcalToken,
+		"session":  func() (string, error) { return GenerateSessionToken(1, "web") },
+		"totp":     GenerateBase32Secret,
+		"recovery": GenerateRecoveryCode,
+	} {
+		t.Run(name, func(t *testing.T) {
+			value, err := generate()
+			if value != "" || !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Fatalf("value = %q, error = %v", value, err)
+			}
+		})
 	}
 }
 

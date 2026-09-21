@@ -45,7 +45,10 @@ func (h *Handler) RegisterIcalTokensRoutes(router fiber.Router) {
 				return utils.ValidationError(c, map[string]string{"description": "too long"})
 			}
 		}
-		tok := utils.GenerateIcalToken()
+		tok, err := utils.GenerateIcalToken()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "server"})
+		}
 		rec := domain.IcalKey{UserID: u.ID, Token: tok, Description: body.Description, ExpiresAt: body.ExpiresAt}
 		if err := h.db.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
