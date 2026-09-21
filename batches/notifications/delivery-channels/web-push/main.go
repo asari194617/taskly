@@ -140,7 +140,9 @@ func fetchUserSubscriptions(db *sql.DB, userID sql.NullInt64) ([]WebPushSubscrip
 	if !userID.Valid || userID.Int64 == 0 {
 		return nil, nil
 	}
-	rows, err := db.Query(`SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE user_id = ? AND (is_revoked IS NULL OR is_revoked = 0)`, userID.Int64)
+	// Unsubscribe deletes the subscription row, so there is no revocation flag
+	// in the canonical schema to filter on here.
+	rows, err := db.Query(`SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE user_id = ?`, userID.Int64)
 	if err != nil {
 		return nil, err
 	}
