@@ -23,9 +23,12 @@ import (
 
 const (
 	SessionCookieName = "taskly_session"
-	CSRFHeaderName    = "X-CSRF-Protection"
-	CSRFHeaderValue   = "1"
-	SessionTTL        = 30 * 24 * time.Hour
+	// X-Client-Platform is a non-safelisted header that the production nginx
+	// preflight already permits. Requiring it in addition to an exact Origin
+	// check prevents cross-origin form submissions from using the cookie.
+	CSRFHeaderName  = "X-Client-Platform"
+	CSRFHeaderValue = "web"
+	SessionTTL      = 30 * 24 * time.Hour
 )
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)

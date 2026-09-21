@@ -19,10 +19,6 @@ export function webFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   if (!headers.has("X-Client-Platform")) {
     headers.set("X-Client-Platform", "web");
   }
-  const method = (init.method || "GET").toUpperCase();
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    headers.set("X-CSRF-Protection", "1");
-  }
   return fetch(input, {
     ...init,
     headers,
