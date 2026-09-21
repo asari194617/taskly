@@ -15,11 +15,17 @@ it("recognizes an authenticated session and sends cookies", async () => {
 });
 
 it("treats rejected or invalid sessions as unauthenticated", async () => {
-  vi.mocked(webFetch).mockResolvedValueOnce({ ok: false } as Response);
-  expect(await checkSession()).toBe(false);
-  vi.mocked(webFetch).mockRejectedValueOnce(new Error("offline"));
+  vi.mocked(webFetch).mockResolvedValueOnce({ ok: false, status: 401 } as Response);
   expect(await checkSession()).toBe(false);
   expect(loginRedirect(false, "/settings?tab=security#passkeys")).toBe("/login?next=%2Fsettings%3Ftab%3Dsecurity%23passkeys");
+});
+
+it("does not start a login loop when the session check is unavailable", async () => {
+  vi.mocked(webFetch).mockResolvedValueOnce({ ok: false, status: 429 } as Response);
+  expect(await checkSession()).toBeNull();
+  vi.mocked(webFetch).mockRejectedValueOnce(new Error("offline"));
+  expect(await checkSession()).toBeNull();
+  expect(loginRedirect(null, "/settings")).toBeNull();
 });
 
 it("accepts only a local post-login destination", () => {
