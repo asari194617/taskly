@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/jobs"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -173,14 +174,10 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if body.DeadlineUntil != nil && strings.TrimSpace(*body.DeadlineUntil) != "" {
 			rec.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
 		}
-		recCreated, err := domain.CreateTask(h.db, u.ID, body.Title, body.SubjectID, body.Description, rec.Type, rec.IsRequireHandIn, rec.IsSelfCheckRequired, rec.Deadline, rec.DeadlineSince, rec.DeadlineUntil, u.Email)
+		recCreated, err := jobs.CreateTask(h.db, u.ID, body.Title, body.SubjectID, body.Description, rec.Type, rec.IsRequireHandIn, rec.IsSelfCheckRequired, rec, u.Email)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		// Asynchronous Teams notification via Outlook/Power Automate email
-		go utils.SendTeamsNotifyEmailForTask(recCreated, h.db)
-		// Async Discord notification (embed)
-		go utils.SendDiscordTaskEmbed("created", recCreated, u.Email)
 		return c.Status(201).JSON(recCreated)
 	})
 
@@ -191,7 +188,6 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
 		// Keep a copy for change diff
-		before := rec
 		var body struct {
 			Title           *string `json:"title"`
 			SubjectID       *uint   `json:"subject_id"`
@@ -247,7 +243,7 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
 		// perform DB update via domain service
-		_, updated, err := domain.UpdateTask(h.db, rec.ID, func(r *domain.Task) error {
+		_, updated, err := jobs.UpdateTask(h.db, rec.ID, func(r *domain.Task) error {
 			if body.Title != nil {
 				r.Title = *body.Title
 			}
@@ -290,13 +286,6 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			}
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		// Fire Teams reply for update
-		if mid, ok := utils.LatestTeamsMessageIDForTask(updated.ID, h.db); ok {
-			msg := utils.BuildTaskUpdateMessageJa(before, updated, h.db)
-			go utils.SendTeamsReplyEmail(updated.ID, mid, msg)
-		}
-		// Async Discord notification (embed)
-		go utils.SendDiscordTaskEmbed("updated", updated, u.Email)
 		return c.JSON(updated)
 	})
 
@@ -323,17 +312,10 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if !allowed {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		deleted, err := domain.DeleteTask(h.db, rec.ID, u.Email)
+		_, err := jobs.DeleteTask(h.db, rec.ID, u.Email)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		// Fire Teams reply for delete
-		if mid, ok := utils.LatestTeamsMessageIDForTask(deleted.ID, h.db); ok {
-			msg := utils.BuildTaskDeleteMessageJa(deleted)
-			go utils.SendTeamsReplyEmail(deleted.ID, mid, msg)
-		}
-		// Async Discord notification (embed)
-		go utils.SendDiscordTaskEmbed("deleted", deleted, u.Email)
 		return c.SendStatus(204)
 	})
 }

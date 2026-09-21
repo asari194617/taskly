@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"errors"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/jobs"
 	"github.com/gofiber/fiber/v2"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (h *Handler) registerTeamsIntegrationRoutes(router fiber.Router) {
@@ -22,6 +25,7 @@ func (h *Handler) registerTeamsIntegrationRoutes(router fiber.Router) {
 			Title          string  `json:"title"`
 			Description    *string `json:"description"`
 			SubjectID      uint    `json:"subject_id"`
+			Deadline       string  `json:"deadline"`
 			StatusCallback *string `json:"status_callback"`
 		}
 		if err := c.BodyParser(&body); err != nil || body.Email == "" || body.Title == "" || body.SubjectID == 0 {
@@ -32,23 +36,44 @@ func (h *Handler) registerTeamsIntegrationRoutes(router fiber.Router) {
 				return c.Status(400).JSON(fiber.Map{"error": "invalid status_callback"})
 			}
 		}
+		var deadline time.Time
+		if body.Deadline != "" {
+			var err error
+			deadline, err = time.Parse("2006-01-02", body.Deadline)
+			if err != nil {
+				return c.Status(400).JSON(fiber.Map{"error": "invalid deadline (YYYY-MM-DD)"})
+			}
+		}
 		// Resolve user by email
 		var u domain.User
 		if err := h.db.Where("email = ?", body.Email).First(&u).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "user not found"})
 		}
-		// Enqueue job
-		job := teamsJob{
+		key := strings.TrimSpace(c.Get("Idempotency-Key"))
+		if len(key) > 200 {
+			return c.Status(400).JSON(fiber.Map{"error": "idempotency key too long"})
+		}
+		var dedup *string
+		if key != "" {
+			value := "teams-inbound:" + key
+			dedup = &value
+		}
+		job := jobs.TeamsInbound{
 			Title:          body.Title,
 			Description:    body.Description,
 			AddedUserID:    u.ID,
 			SubjectID:      body.SubjectID,
+			Deadline:       deadline,
 			StatusCallback: body.StatusCallback,
 		}
-		if h.teams.Enqueue(job) {
-			return c.SendStatus(fiber.StatusAccepted)
+		stored, err := jobs.Enqueue(h.db, "teams_inbound", job, dedup)
+		if err == nil {
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{"job_id": stored.ID, "status": stored.Status})
 		}
-		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "queue unavailable"})
+		if errors.Is(err, jobs.ErrIdempotencyConflict) {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "idempotency key conflict"})
+		}
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "database unavailable"})
 	})
 }
 

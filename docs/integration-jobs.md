@@ -1,0 +1,9 @@
+# Integration jobs
+
+The server checks and creates the schema in `apps/server/migrations/0025_integration_jobs.sql` on startup; it fails to start if that check fails. The migration can also be applied ahead of deployment. It creates `integration_jobs` and links inbound Teams jobs to their created task. An inbound request returns HTTP 202 only after the job insert commits. A database failure returns HTTP 503. Teams inbound accepts `deadline` in `YYYY-MM-DD` form and uses the reception date when the field is omitted, since the task table requires a date.
+
+The server polls due jobs, leases each row, and recovers expired leases after a restart. A job is retried up to three times with increasing delays, then marked `failed`. The admin API provides `GET /admin/integration-jobs?status=failed` (up to 100 newest rows) and `POST /admin/integration-jobs/:id/retry`. Other valid status filters are `pending`, `processing`, and `succeeded`. These routes require an admin session.
+
+Teams callers can send `Idempotency-Key` to deduplicate repeated inbound requests. Reusing a key with a different body returns HTTP 409. The task insert, Teams log, and callback job are committed together, so replaying an inbound job cannot insert the task twice. Task CRUD and its email/Discord jobs are also committed together.
+
+External email, Discord, and callback delivery is **at least once**. A process can die after the remote service accepts a message and before the job is marked `succeeded`; the lease expiry can then cause a duplicate. Teams callbacks carry a stable `Idempotency-Key` header so receivers can suppress duplicates. SMTP and Discord do not provide a shared transaction with this database, so operators should inspect the remote service before manually retrying a failed delivery. The job ID, type, attempts, and last error are visible in the admin API; request payloads are intentionally omitted.

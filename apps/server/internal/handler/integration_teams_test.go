@@ -1,13 +1,13 @@
 package handler
 
 import (
-	"errors"
-	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/jobs"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -46,67 +46,46 @@ func TestParseTeamsStatusPayload(t *testing.T) {
 	}
 }
 
-type sequenceHTTPClient struct {
-	responses []int
-	calls     int
-}
-
-func (c *sequenceHTTPClient) Do(*http.Request) (*http.Response, error) {
-	c.calls++
-	if c.calls > len(c.responses) {
-		return nil, errors.New("unexpected call")
-	}
-	return &http.Response{
-		StatusCode: c.responses[c.calls-1],
-		Body:       io.NopCloser(strings.NewReader("response")),
-	}, nil
-}
-
-func TestTeamsProcessorCallbackRetriesWithInjectedBackoff(t *testing.T) {
-	t.Setenv("TEAMS_CALLBACK_ALLOWED_ORIGINS", "https://example.test")
-	db, err := gorm.Open(sqlite.Open("file:teams-callback?mode=memory&cache=shared"), &gorm.Config{})
+func TestTeamsInboundAcceptsOnlyCommittedJob(t *testing.T) {
+	t.Setenv("TEAMS_INTEGRATION_SECRET", "test-secret")
+	db, err := gorm.Open(sqlite.Open("file:teams-inbound-route?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
+		t.Fatal(err)
 	}
-	if err := db.Exec(`CREATE TABLE tasks_teams_logs (
-		task_id integer PRIMARY KEY,
-		attempts integer,
-		last_status text,
-		last_error text,
-		last_response_status integer,
-		last_response_body text
-	)`).Error; err != nil {
-		t.Fatalf("create callback log table: %v", err)
+	if err := db.Exec(`CREATE TABLE users (id integer primary key, email text)`).Error; err != nil {
+		t.Fatal(err)
 	}
-	if err := db.Exec("INSERT INTO tasks_teams_logs (task_id) VALUES (9)").Error; err != nil {
-		t.Fatalf("seed callback log: %v", err)
+	if err := db.Exec(`INSERT INTO users(id, email) VALUES (1, 'user@example.test')`).Error; err != nil {
+		t.Fatal(err)
 	}
-
-	client := &sequenceHTTPClient{responses: []int{500, 204}}
-	delays := []time.Duration{}
-	processor := newTeamsProcessor(db)
-	processor.client = client
-	processor.secret = func() string { return "test-secret" }
-	processor.sleep = func(delay time.Duration) { delays = append(delays, delay) }
-
-	processor.sendCallback(9, true, "https://example.test/callback")
-
-	if client.calls != 2 {
-		t.Fatalf("callback calls = %d, want 2", client.calls)
+	if err := db.AutoMigrate(&jobs.Job{}); err != nil {
+		t.Fatal(err)
 	}
-	if len(delays) != 1 || delays[0] != time.Second {
-		t.Fatalf("backoff delays = %v, want [1s]", delays)
+	app := fiber.New()
+	NewHandler(db, nil, nil).registerTeamsIntegrationRoutes(app.Group("/integrations"))
+	request := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/integrations/teams/inbound", strings.NewReader(`{"email":"user@example.test","title":"task","subject_id":1}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Teams-Integration-Secret", "test-secret")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
 	}
-	var row struct {
-		Attempts           int
-		LastStatus         string
-		ResponseStatusCode int `gorm:"column:last_response_status"`
+	if status := request(); status != http.StatusAccepted {
+		t.Fatalf("status = %d", status)
 	}
-	if err := db.Table("tasks_teams_logs").Where("task_id = ?", 9).Take(&row).Error; err != nil {
-		t.Fatalf("read callback log: %v", err)
+	var count int64
+	if err := db.Model(&jobs.Job{}).Count(&count).Error; err != nil || count != 1 {
+		t.Fatalf("jobs = %d, %v", count, err)
 	}
-	if row.Attempts != 2 || row.LastStatus != "callback_sent" || row.ResponseStatusCode != 204 {
-		t.Fatalf("callback log = %#v", row)
+	if err := db.Migrator().DropTable(&jobs.Job{}); err != nil {
+		t.Fatal(err)
+	}
+	if status := request(); status != http.StatusServiceUnavailable {
+		t.Fatalf("DB failure status = %d", status)
 	}
 }
 

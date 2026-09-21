@@ -158,6 +158,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	/* 外部サービスとの連携 */
 	appHandler.RegisterIntegrationRoutes(app.Group("/integrations"))
+	appHandler.RegisterIntegrationJobRoutes(app.Group("/admin/integration-jobs", middleware.AuthRequired, middleware.AdminOnly, middleware.Audit))
 
 	/* ユーザー情報など */
 	appHandler.RegisterUsersRoutes(app.Group("/users", middleware.AuthRequired, middleware.Audit))

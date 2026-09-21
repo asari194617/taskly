@@ -7,6 +7,7 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/jobs"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -88,14 +89,10 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !validUntil[until] {
 					return nil, fmt.Errorf("invalid deadline_until")
 				}
-				recCreated, err := domain.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, utils.DateOnly(dt), since, until, u.Email)
+				recCreated, err := jobs.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}, u.Email)
 				if err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				// Fire async Teams notification email for Power Automate
-				go utils.SendTeamsNotifyEmailForTask(recCreated, h.db)
-				// Async Discord notification (embed) to align with REST create
-				go utils.SendDiscordTaskEmbed("created", recCreated, u.Email)
 				out := map[string]any{
 					"id":                     recCreated.ID,
 					"title":                  recCreated.Title,
@@ -138,7 +135,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
 				// perform update via domain service
-				before, after, err := domain.UpdateTask(h.db, uint(id), func(r *domain.Task) error {
+				_, after, err := jobs.UpdateTask(h.db, uint(id), func(r *domain.Task) error {
 					if v, ok := p.Args["title"].(string); ok {
 						r.Title = v
 					}
@@ -197,13 +194,6 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err != nil {
 					return nil, err
 				}
-				// Fire Teams reply for update (if original message exists)
-				if mid, ok := utils.LatestTeamsMessageIDForTask(after.ID, h.db); ok {
-					msg := utils.BuildTaskUpdateMessageJa(before, after, h.db)
-					go utils.SendTeamsReplyEmail(after.ID, mid, msg)
-				}
-				// Async Discord notification (embed) to align with REST update
-				go utils.SendDiscordTaskEmbed("updated", after, u.Email)
 				out := map[string]any{
 					"id":                     after.ID,
 					"title":                  after.Title,
@@ -253,16 +243,9 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
 				}
-				if deleted, err := domain.DeleteTask(h.db, rec.ID, u.Email); err != nil {
+				if _, err := jobs.DeleteTask(h.db, rec.ID, u.Email); err != nil {
 					return false, fmt.Errorf("db")
 				} else {
-					// Fire Teams reply for delete (if original message exists)
-					if mid, ok := utils.LatestTeamsMessageIDForTask(deleted.ID, h.db); ok {
-						msg := utils.BuildTaskDeleteMessageJa(deleted)
-						go utils.SendTeamsReplyEmail(deleted.ID, mid, msg)
-					}
-					// Async Discord notification (embed) to align with REST delete
-					go utils.SendDiscordTaskEmbed("deleted", deleted, u.Email)
 					return true, nil
 				}
 			}

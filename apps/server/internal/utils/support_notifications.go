@@ -304,11 +304,11 @@ func EffectiveDeadlineExpr(alias string) string {
 	return "deadline"
 }
 
-// Send Teams notification email for a newly created task
-func SendTeamsNotifyEmailForTask(t domain.Task, DB *gorm.DB) {
+// SendTeamsNotifyEmailForTaskSync sends a newly created task to Power Automate.
+func SendTeamsNotifyEmailForTaskSync(t domain.Task, DB *gorm.DB) error {
 	to := Env("TEAMS_NOTIFY_EMAIL", "")
 	if strings.TrimSpace(to) == "" {
-		return
+		return fmt.Errorf("TEAMS_NOTIFY_EMAIL is not configured")
 	}
 	subject := "[Taskly]tasks:add"
 	formatted := buildTeamsTitleForTask(t, DB)
@@ -318,10 +318,7 @@ func SendTeamsNotifyEmailForTask(t domain.Task, DB *gorm.DB) {
 	}
 	// JSON body consumed by Power Automate
 	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), formatted, desc, time.Now().Format(time.RFC3339))
-	// Fire and forget
-	go func() {
-		_ = smtpSendPlain(to, subject, body)
-	}()
+	return smtpSendPlain(to, subject, body)
 }
 
 // Look up the latest Teams message id for a task from tasks_teams_logs
@@ -341,13 +338,13 @@ func LatestTeamsMessageIDForTask(taskID uint, DB *gorm.DB) (string, bool) {
 	return "", false
 }
 
-// Send Teams reply email for an existing message (update/delete events)
-func SendTeamsReplyEmail(taskID uint, messageID string, message string) {
+// SendTeamsReplyEmailSync sends an update/delete reply for an existing message.
+func SendTeamsReplyEmailSync(taskID uint, messageID string, message string) error {
 	to := Env("TEAMS_NOTIFY_EMAIL", "")
 	if strings.TrimSpace(to) == "" {
-		return
+		return fmt.Errorf("TEAMS_NOTIFY_EMAIL is not configured")
 	}
 	subject := "[Taskly]tasks:reply"
 	body := fmt.Sprintf(`{"message_id":%q,"task_id":%q,"message":%q}`, messageID, fmt.Sprintf("%d", taskID), message)
-	go func() { _ = smtpSendPlain(to, subject, body) }()
+	return smtpSendPlain(to, subject, body)
 }

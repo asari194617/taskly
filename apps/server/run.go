@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/jobs"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
@@ -55,6 +56,9 @@ func Run() {
 	}
 
 	db := mustInitDB() // ローカル変数にする
+	if err := jobs.EnsureSchema(db); err != nil {
+		log.Fatalf("integration jobs schema: %v", err)
+	}
 	rdb := mustInitRedis()
 	wAuth := initWebAuthn()
 	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
