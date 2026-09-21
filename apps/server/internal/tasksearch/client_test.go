@@ -23,7 +23,7 @@ func TestSearchBuildsVisibleDeadlineCursorQuery(t *testing.T) {
 			t.Error(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"hits":{"hits":[{"_id":"42","sort":["2026-09-30",42]}]}}`))
+		_, _ = w.Write([]byte(`{"hits":{"hits":[{"_id":"42","sort":[1790726400000,42]}]}}`))
 	}))
 	defer server.Close()
 	c := &Client{base: server.URL, http: server.Client()}
@@ -32,7 +32,8 @@ func TestSearchBuildsVisibleDeadlineCursorQuery(t *testing.T) {
 	if err != nil || len(hits) != 1 || hits[0].ID != 42 {
 		t.Fatalf("hits=%v err=%v", hits, err)
 	}
-	if !reflect.DeepEqual(body["search_after"], []any{"2026-09-28", float64(12)}) {
+	deadline, _ := time.Parse("2006-01-02", "2026-09-28")
+	if !reflect.DeepEqual(body["search_after"], []any{float64(deadline.UnixMilli()), float64(12)}) {
 		t.Fatalf("cursor=%v", body["search_after"])
 	}
 	query := body["query"].(map[string]any)["bool"].(map[string]any)

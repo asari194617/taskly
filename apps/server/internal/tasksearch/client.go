@@ -115,11 +115,15 @@ func (c *Client) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 		direction = "desc"
 	}
 	body := map[string]any{"size": o.Size, "_source": false, "query": query,
-		"sort": []any{map[string]any{"deadline": map[string]any{"order": direction, "format": "strict_date"}}, map[string]any{"task_id": direction}}}
+		"sort": []any{map[string]any{"deadline": direction}, map[string]any{"task_id": direction}}}
 	if len(o.After) == 2 {
 		body["search_after"] = o.After
 	} else if o.CursorID != 0 && o.CursorDeadline != "" {
-		body["search_after"] = []any{o.CursorDeadline, o.CursorID}
+		deadline, err := time.Parse("2006-01-02", o.CursorDeadline)
+		if err != nil {
+			return nil, err
+		}
+		body["search_after"] = []any{deadline.UnixMilli(), o.CursorID}
 	}
 	b, status, err := c.request(ctx, http.MethodPost, "/"+indexName+"/_search?allow_partial_search_results=false", body)
 	if err != nil {
