@@ -338,14 +338,15 @@ export default function SettingsSecurity() {
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="font-medium">
+              <label htmlFor="security-email-login" className="font-medium">
                 {dict.settingsSecurity.emailLogin.title}
-              </div>
+              </label>
               <div className="text-sm text-muted-foreground">
                 {dict.settingsSecurity.emailLogin.note}
               </div>
             </div>
             <Switch
+              id="security-email-login"
               checked={!!auth?.email_login_enabled}
               onCheckedChange={toggleEmailLogin}
             />

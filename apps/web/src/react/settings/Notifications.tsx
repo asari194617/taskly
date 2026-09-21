@@ -61,9 +61,7 @@ export default function SettingsNotifications() {
   const [pushOn, setPushOn] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [perm, setPerm] = React.useState<NotificationPermission>(
-    typeof Notification !== "undefined" ? Notification.permission : "default"
-  );
+  const [perm, setPerm] = React.useState<NotificationPermission>("default");
   const [typeTask, setTypeTask] = React.useState<boolean>(true);
   const [typeMorning, setTypeMorning] = React.useState<boolean>(true);
   const [typeEvening, setTypeEvening] = React.useState<boolean>(true);
@@ -117,6 +115,9 @@ export default function SettingsNotifications() {
     })();
   }, [loadDevices]);
   React.useEffect(() => {
+    setPerm(
+      typeof Notification !== "undefined" ? Notification.permission : "default"
+    );
     let mounted = true;
     (async () => {
       try {
@@ -373,20 +374,21 @@ export default function SettingsNotifications() {
         </h1>
         <Accordion type="multiple" className="w-full">
           <AccordionItem value="item-1">
-            <AccordionTrigger>通知方法</AccordionTrigger>
+            <AccordionTrigger>{dict.settingsNotifications.methods}</AccordionTrigger>
             <AccordionContent className="flex flex-col gap-4 text-balance">
               <Card className="p-4 space-y-3">
                 <div className="font-bold flex items-center justify-between">
-                  <div>メール</div>
-                  <Switch checked={emailOn} onCheckedChange={toggleEmail} disabled={saving} />
+                  <label htmlFor="notification-email">{dict.settingsNotifications.email}</label>
+                  <Switch id="notification-email" checked={emailOn} onCheckedChange={toggleEmail} disabled={saving} />
                 </div>
               </Card>
               <Card className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
-                    Webプッシュ通知
-                  </p>
+                  <label htmlFor="notification-web-push" className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    {dict.settingsNotifications.webPushLabel}
+                  </label>
                   <Switch
+                    id="notification-web-push"
                     checked={pushOn}
                     onCheckedChange={togglePush}
                     disabled={loading || (perm === "denied" && !pushOn)}
@@ -402,12 +404,12 @@ export default function SettingsNotifications() {
                         variant="outline"
                         disabled={!pushOn || perm === "denied"}
                       >
-                        通知端末の設定
+                        {dict.settingsNotifications.deviceSettings}
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-md">
                       <DialogHeader>
-                        <DialogTitle>通知端末の設定</DialogTitle>
+                        <DialogTitle>{dict.settingsNotifications.deviceSettings}</DialogTitle>
                         <DialogDescription>
                           Web
                           Push通知設定をしている各端末で、通知を受け取るかどうかを設定できます。
@@ -417,10 +419,11 @@ export default function SettingsNotifications() {
                         {devices.map((d) => (
                           <Card key={d.id} className="p-4 space-y-3">
                             <div className="flex items-center justify-between">
-                              <small className="text-sm leading-none font-medium">
-                                {d.name || "Web Push"}
-                              </small>
+                              <label htmlFor={`notification-device-${d.id}`} className="text-sm leading-none font-medium">
+                                {d.name || dict.settingsNotifications.defaultDevice}
+                              </label>
                               <Switch
+                                id={`notification-device-${d.id}`}
                                 checked={!!d.is_enabled}
                                 onCheckedChange={(v) => toggleDevice(d.id, v)}
                               />
@@ -447,35 +450,38 @@ export default function SettingsNotifications() {
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="item-2">
-            <AccordionTrigger>通知の種類</AccordionTrigger>
+            <AccordionTrigger>{dict.settingsNotifications.types}</AccordionTrigger>
             <AccordionContent className="flex flex-col gap-4 text-balance">
               <Card className="p-4 space-y-3">
                 {/* 期限が近い課題 */}
                 <div className="flex items-center justify-between">
-                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
-                    期限が近い課題
-                  </p>
+                  <label htmlFor="notification-task" className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    {dict.settingsNotifications.taskDue}
+                  </label>
                   <Switch
+                    id="notification-task"
                     checked={typeTask}
                     disabled={saving}
                     onCheckedChange={(v) => toggleType("TASK", typeTask, v, setTypeTask)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <p className="ml-1 leading-7 [&:not(:first-child)]:mt-6">
-                    朝の通知
-                  </p>
+                  <label htmlFor="notification-morning" className="ml-1 leading-7 [&:not(:first-child)]:mt-6">
+                    {dict.settingsNotifications.morning}
+                  </label>
                   <Switch
+                    id="notification-morning"
                     checked={typeMorning}
                     disabled={saving || !typeTask}
                     onCheckedChange={(v) => toggleType("TASK_MORNING", typeMorning, v, setTypeMorning)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <p className="ml-1 leading-7 [&:not(:first-child)]:mt-6">
-                    夕方の通知
-                  </p>
+                  <label htmlFor="notification-evening" className="ml-1 leading-7 [&:not(:first-child)]:mt-6">
+                    {dict.settingsNotifications.evening}
+                  </label>
                   <Switch
+                    id="notification-evening"
                     checked={typeEvening}
                     disabled={saving || !typeTask}
                     onCheckedChange={(v) => toggleType("TASK_EVENING", typeEvening, v, setTypeEvening)}
@@ -484,10 +490,11 @@ export default function SettingsNotifications() {
               </Card>
               <Card className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
-                    日直のお知らせ
-                  </p>
+                  <label htmlFor="notification-day-shift" className="font-bold leading-7 [&:not(:first-child)]:mt-6">
+                    {dict.settingsNotifications.dayShift}
+                  </label>
                   <Switch
+                    id="notification-day-shift"
                     checked={typeDayShift}
                     disabled={saving}
                     onCheckedChange={(v) => toggleType("DAYSHIFT", typeDayShift, v, setTypeDayShift)}

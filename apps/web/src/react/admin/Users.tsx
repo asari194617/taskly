@@ -415,6 +415,7 @@ export default function AdminUsers() {
                       <TableCell>{d.name || "-"}</TableCell>
                       <TableCell>
                         <Switch
+                          aria-label={`${d.name || d.platform} 有効`}
                           checked={d.is_enabled}
                           onCheckedChange={(v) => toggleDeviceEnabled(d.id, v)}
                         />
