@@ -97,7 +97,6 @@ import {
   normalizeTaskSearch,
   updateTaskCompletion,
 } from "@/features/tasks/state.mjs";
-import { getToken, requireAuth } from "@/lib/auth-guard";
 
 // Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
 
@@ -201,10 +200,6 @@ export default function TasksList() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   // One-time bootstrap: subjects and my role; avoid reloading on each search
   React.useEffect(() => {
-    if (!getToken()) {
-      requireAuth();
-      return;
-    }
     loadSubjects()
       .then(setSubjects)
       .catch((e) => setError(e?.message || dict.tasks.loadFailed));
@@ -220,10 +215,6 @@ export default function TasksList() {
 
   // Search tasks with cancellation; only refetch when q changes
   React.useEffect(() => {
-    if (!getToken()) {
-      requireAuth();
-      return;
-    }
     const ac = new AbortController();
     (async () => {
       try {

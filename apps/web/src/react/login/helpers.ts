@@ -1,4 +1,5 @@
 import { gql } from "../../lib/graphql";
+export { webFetch } from "../../lib/api";
 
 export const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";

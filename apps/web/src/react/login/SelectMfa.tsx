@@ -12,6 +12,7 @@ import {
   getEmailFromQuery,
   readAuthTransaction,
   withNext,
+  webFetch,
 } from "./helpers";
 import { requestMailCode } from "./flow";
 
@@ -41,7 +42,7 @@ export default function SelectMfa() {
           });
           return;
         }
-        const res = await fetch(`${apiBase}/auth/options`, {
+        const res = await webFetch(`${apiBase}/auth/options`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

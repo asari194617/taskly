@@ -43,8 +43,6 @@ type LogItem = { action: string; created_at: string };
 
 export default function SettingsMcp() {
   const { dict } = useLang();
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [info, setInfo] = React.useState<McpInfo | null>(null);
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
   const [logs, setLogs] = React.useState<LogItem[]>([]);
@@ -99,11 +97,9 @@ export default function SettingsMcp() {
     }
   }
   React.useEffect(() => {
-    if (token) {
-      loadInfo();
-      loadLogs();
-    }
-  }, [token]);
+    loadInfo();
+    loadLogs();
+  }, []);
 
   // Keyboard shortcut: Cmd/Ctrl+N to open "issue token" dialog when not having one
   React.useEffect(() => {

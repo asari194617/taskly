@@ -51,33 +51,30 @@ export default function UserMenu() {
   const dict = React.useMemo(() => t(lang), [lang]);
 
   React.useEffect(() => {
-    const token =
-      (typeof window !== "undefined" && localStorage.getItem("api_token")) ||
-      "";
-    if (!token) {
-      setAuthed(false);
-      return;
-    }
-    setAuthed(true);
-    gql<{ me: Me }>(`query{ me{ id email display_name } }`)
-      .then((data) => setMe(data.me))
-      .catch(() =>
-        toast({
-          variant: "destructive",
-          title: dict.toast.userInfoFetchError,
-        })
-      );
-  }, [dict.toast.userInfoFetchError]);
+    gql<{ me: Me }>(`query{ me{ id email display_name } }`, undefined, {
+      redirectOnUnauthorized: false,
+    })
+      .then((data) => {
+        setMe(data.me);
+        setAuthed(true);
+      })
+      .catch(() => {
+        setAuthed(false);
+      });
+  }, []);
 
   const logout = async () => {
     try {
-      await gql<{ logout: boolean }>(`mutation{ logout }`);
-    } catch {}
-    try {
-      localStorage.removeItem("api_token");
-    } catch {}
-    toast({ title: dict.toast.loggedOut });
-    window.location.href = "/login";
+      const result = await gql<{ logout: boolean }>(`mutation{ logout }`);
+      if (!result.logout) throw new Error("logout failed");
+      toast({ title: dict.toast.loggedOut });
+      window.location.href = "/login";
+    } catch {
+      toast({
+        variant: "destructive",
+        title: lang === "ja" ? "ログアウトに失敗しました" : "Logout failed",
+      });
+    }
   };
 
   const rawName = me?.display_name || me?.email || "";

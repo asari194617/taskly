@@ -98,12 +98,13 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
+					utils.ClearSessionCookie(c)
 					return false, fmt.Errorf("unauthorized")
 				}
 				if tok, ok := c.Locals("token").(string); ok && tok != "" {
-					_ = h.rdb.Del(c.Context(), "session:"+tok).Err()
-					_ = h.rdb.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", c.Locals("user").(*domain.User).ID), tok).Err()
+					utils.RevokeSession(c, tok, c.Locals("user").(*domain.User).ID, h.db, h.rdb)
 				}
+				utils.ClearSessionCookie(c)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -122,9 +123,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, err
 				}
 				if tok, ok := c.Locals("token").(string); ok && tok != "" {
-					_ = h.rdb.Del(c.Context(), "session:"+tok).Err()
-					_ = h.rdb.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), tok).Err()
+					utils.RevokeSession(c, tok, u.ID, h.db, h.rdb)
 				}
+				utils.ClearSessionCookie(c)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

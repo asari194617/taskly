@@ -8,7 +8,7 @@ import {
 import { Label } from "../../components/ui/label";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
-import { apiBase, clearAuthTransaction, withNext } from "./helpers";
+import { apiBase, clearAuthTransaction, webFetch, withNext } from "./helpers";
 
 export default function Begin() {
   const [email, setEmail] = React.useState("");
@@ -21,7 +21,7 @@ export default function Begin() {
     if (!email) return;
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/auth/options`, {
+      const res = await webFetch(`${apiBase}/auth/options`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

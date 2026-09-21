@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"net/smtp"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/jhump/protoreflect/desc/protoparse"
 	"github.com/jhump/protoreflect/dynamic"
 	grpcdyn "github.com/jhump/protoreflect/dynamic/grpcdynamic"
@@ -293,6 +291,9 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		if !utils.IsAllowedPlatform(platform) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
 		}
+		if err := validateLoginClient(c, platform); err != nil {
+			return err
+		}
 
 		email := strings.ToLower(strings.TrimSpace(body.Email))
 		var u domain.User
@@ -498,41 +499,21 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 				}
 			}
 		}
-		// Create session token (opaque, strong randomness) and store in Redis
-		token := utils.GenerateSessionToken(u.ID, platform)
-		ttl := time.Hour * 24 * 30
-		if err := h.rdb.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "session"})
-		}
-		// track user sessions for revocation
-		_ = h.rdb.SAdd(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), token).Err()
-		_ = h.rdb.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
 		// Mark user as registered upon first successful login
 		if !u.IsRegistered {
 			_ = h.db.Model(&domain.User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
 		}
-		// Store hash of token and associated user id for DB-fallback validation
-		h.db.Create(&domain.Session{UserID: u.ID, ClientPlatform: platform, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(now.Add(ttl))})
-
-		// Also provide a JWT if needed (optional)
-		claims := jwt.MapClaims{"sub": u.ID, "exp": now.Add(ttl).Unix()}
-		jwtt := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		jwtStr, _ := jwtt.SignedString([]byte(os.Getenv("JWT_SECRET")))
-
-		return c.JSON(fiber.Map{"token": token, "jwt": jwtStr})
+		return h.issueSession(c, u.ID, platform, now)
 	})
 
 	router.Post("/logout", func(c *fiber.Ctx) error {
-		token := utils.ParseAuthToken(c.Get("Authorization"))
+		token := utils.SessionTokenFromRequest(c)
 		if token != "" {
-			_ = h.rdb.Del(c.Context(), "session:"+token).Err()
-			// Best-effort: remove DB session record if present (hashed or legacy plain)
-			_ = h.db.Where("hashed_token = ? OR hashed_token = ?", utils.Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error
-			// remove from user_sessions set if we can resolve uid
-			if uidStr, err := h.rdb.Get(c.Context(), "session:"+token).Result(); err == nil && uidStr != "" {
-				_ = h.rdb.SRem(c.Context(), fmt.Sprintf("user_sessions:%s", uidStr), token).Err()
-			}
+			var session domain.Session
+			_ = h.db.Where("hashed_token = ? OR hashed_token = ?", utils.Sha256Hex([]byte(token)), token).Order("id DESC").First(&session).Error
+			utils.RevokeSession(c, token, session.UserID, h.db, h.rdb)
 		}
+		utils.ClearSessionCookie(c)
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 }

@@ -14,6 +14,7 @@ import {
   postLoginRedirect,
   withNext,
   clearAuthTransaction,
+  webFetch,
 } from "./helpers";
 
 export default function Passkey() {
@@ -25,7 +26,7 @@ export default function Passkey() {
     setMessage(null);
     setLoading(true);
     try {
-      const beginRes = await fetch(`${apiBase}/webauthn/login/begin`, {
+      const beginRes = await webFetch(`${apiBase}/webauthn/login/begin`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -88,7 +89,7 @@ export default function Passkey() {
             : null,
         },
       };
-      const finishRes = await fetch(`${apiBase}/webauthn/login/finish`, {
+      const finishRes = await webFetch(`${apiBase}/webauthn/login/finish`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,9 +104,8 @@ export default function Passkey() {
         }
         throw new Error(data?.error || "passkey login failed");
       }
-      if (data?.token) {
+      if (data?.authenticated) {
         clearAuthTransaction();
-        localStorage.setItem("api_token", data.token);
         await postLoginRedirect();
       } else {
         setMessage("予期せぬレスポンスです");

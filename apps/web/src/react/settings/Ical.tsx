@@ -67,8 +67,6 @@ function fromRFC3339ToLocalInput(s?: string | null): string {
 
 export default function SettingsIcal() {
   const { dict } = useLang();
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<IItem[]>([]);
   const [desc, setDesc] = React.useState("");
   const HELP_URL =
@@ -89,8 +87,8 @@ export default function SettingsIcal() {
     }
   }
   React.useEffect(() => {
-    if (token) load();
-  }, [token]);
+    load();
+  }, []);
   const [expires, setExpires] = React.useState<string>(""); // local "yyyy-MM-ddTHH:mm"
   async function create() {
     try {

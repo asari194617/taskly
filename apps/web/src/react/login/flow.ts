@@ -1,6 +1,6 @@
 // Global-ish helpers for login flow side-effects that should outlive a single component.
 // Keep it small and dependency-free so it's safe across Astro page transitions.
-import { apiBase } from "./helpers";
+import { apiBase, webFetch } from "./helpers";
 
 const KEY_SENT_AT = (email: string) => `mail_code_requested_at:${email}`;
 const KEY_LAST_ERROR = (email: string) => `mail_code_last_error:${email}`;
@@ -16,7 +16,7 @@ export async function requestMailCode(
 ): Promise<MailCodeRequestResult> {
   if (!email) return { ok: false, error: "メールアドレスが未入力です" };
   try {
-    const res = await fetch(`${apiBase}/auth/request-code`, {
+    const res = await webFetch(`${apiBase}/auth/request-code`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

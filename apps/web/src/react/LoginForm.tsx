@@ -10,6 +10,7 @@ import {
 } from "../components/ui/card";
 import { Modal } from "../components/ui/modal";
 import { gql } from "../lib/graphql";
+import { webFetch } from "../lib/api";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
@@ -82,7 +83,7 @@ export default function LoginForm() {
     setTotpAvailable(false);
     if (!email) return;
     try {
-      const res = await fetch(`${apiBase}/auth/options`, {
+      const res = await webFetch(`${apiBase}/auth/options`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -133,7 +134,7 @@ export default function LoginForm() {
     setSending(true);
     setMessage(null);
     try {
-      const res = await fetch(`${apiBase}/auth/request-code`, {
+      const res = await webFetch(`${apiBase}/auth/request-code`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -154,7 +155,7 @@ export default function LoginForm() {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await webFetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -164,8 +165,7 @@ export default function LoginForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
-      if (data?.token) {
-        localStorage.setItem("api_token", data.token);
+      if (data?.authenticated) {
         await postLoginRedirect();
         return;
       }
@@ -196,7 +196,7 @@ export default function LoginForm() {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await webFetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -220,9 +220,8 @@ export default function LoginForm() {
         }
         throw new Error(data?.error || JSON.stringify(data));
       }
-      if (data?.token) {
+      if (data?.authenticated) {
         setAuthTransaction("");
-        localStorage.setItem("api_token", data.token);
         setMessage("ログインしました");
         // Redirect immediately to consent if not agreed; else to target/home
         await postLoginRedirect();
@@ -257,7 +256,7 @@ export default function LoginForm() {
     setLoading(true);
     setMessage(null);
     try {
-      const beginRes = await fetch(`${apiBase}/webauthn/login/begin`, {
+      const beginRes = await webFetch(`${apiBase}/webauthn/login/begin`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -295,7 +294,7 @@ export default function LoginForm() {
             : null,
         },
       };
-      const finishRes = await fetch(`${apiBase}/webauthn/login/finish`, {
+      const finishRes = await webFetch(`${apiBase}/webauthn/login/finish`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -305,8 +304,7 @@ export default function LoginForm() {
       });
       const data = await finishRes.json();
       if (!finishRes.ok) throw new Error(data?.error || "passkey login failed");
-      if (data?.token) {
-        localStorage.setItem("api_token", data.token);
+      if (data?.authenticated) {
         setMessage("ログインしました（パスキー）");
         // redirect after passkey login with consent check
         await postLoginRedirect();

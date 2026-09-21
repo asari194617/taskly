@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { webFetch } from "@/lib/api";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
@@ -72,10 +73,8 @@ export default function SettingsNotifications() {
 
   const loadDevices = React.useCallback(async () => {
     try {
-      const token = localStorage.getItem("api_token") || "";
-      const res = await fetch(`${apiBase}/push/devices`, {
+      const res = await webFetch(`${apiBase}/push/devices`, {
         headers: {
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
       });
@@ -88,13 +87,11 @@ export default function SettingsNotifications() {
   React.useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem("api_token") || "";
         const h = {
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         } as any;
         // methods
-        const m = await fetch(`${apiBase}/settings/notification-methods`, {
+        const m = await webFetch(`${apiBase}/settings/notification-methods`, {
           headers: h,
         });
         if (m.ok) {
@@ -103,7 +100,7 @@ export default function SettingsNotifications() {
           if (typeof j.webpush === "boolean") setPushOn(j.webpush);
         }
         // types
-        const t = await fetch(`${apiBase}/settings/notification-types`, {
+        const t = await webFetch(`${apiBase}/settings/notification-types`, {
           headers: h,
         });
         if (t.ok) {
@@ -139,7 +136,7 @@ export default function SettingsNotifications() {
   }, []);
 
   const fetchVapidKey = async (): Promise<string> => {
-    const res = await fetch(`${apiBase}/push/vapidPublicKey`);
+    const res = await webFetch(`${apiBase}/push/vapidPublicKey`);
     if (!res.ok) throw new Error("VAPIDキーの取得に失敗しました");
     const data = await res.json();
     if (!data?.publicKey) throw new Error("VAPIDキーが空です");
@@ -219,12 +216,10 @@ export default function SettingsNotifications() {
       }
       if (!sub) throw new Error("subscription failed");
       const key = sub.toJSON() as any;
-      const token = localStorage.getItem("api_token") || "";
-      const res = await fetch(`${apiBase}/push/subscribe`, {
+      const res = await webFetch(`${apiBase}/push/subscribe`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({
@@ -252,12 +247,10 @@ export default function SettingsNotifications() {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     if (sub) {
-      const token = localStorage.getItem("api_token") || "";
-      const res = await fetch(`${apiBase}/push/unsubscribe`, {
+      const res = await webFetch(`${apiBase}/push/unsubscribe`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({ endpoint: sub.endpoint }),
@@ -296,12 +289,10 @@ export default function SettingsNotifications() {
   const toggleEmail = async (next: boolean) => {
     setEmailOn(next);
     try {
-      const token = localStorage.getItem("api_token") || "";
-      await fetch(`${apiBase}/settings/notification-methods`, {
+      await webFetch(`${apiBase}/settings/notification-methods`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({ email: next }),
@@ -311,12 +302,10 @@ export default function SettingsNotifications() {
 
   const toggleType = async (key: string, next: boolean) => {
     try {
-      const token = localStorage.getItem("api_token") || "";
-      await fetch(`${apiBase}/settings/notification-types`, {
+      await webFetch(`${apiBase}/settings/notification-types`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({ [key]: next }),
@@ -326,12 +315,10 @@ export default function SettingsNotifications() {
 
   const toggleDevice = async (id: number, next: boolean) => {
     try {
-      const token = localStorage.getItem("api_token") || "";
-      const res = await fetch(`${apiBase}/push/devices/${id}`, {
+      const res = await webFetch(`${apiBase}/push/devices/${id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({ is_enabled: next }),
@@ -346,11 +333,9 @@ export default function SettingsNotifications() {
 
   const testPush = async () => {
     try {
-      const token = localStorage.getItem("api_token") || "";
-      const res = await fetch(`${apiBase}/push/test`, {
+      const res = await webFetch(`${apiBase}/push/test`, {
         method: "POST",
         headers: {
-          Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
       });

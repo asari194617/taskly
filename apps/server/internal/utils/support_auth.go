@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
 	"fmt"
@@ -15,8 +16,16 @@ import (
 	"gorm.io/gorm"
 	"log"
 	"net/url"
+	"os"
 	"strings"
 	"time"
+)
+
+const (
+	SessionCookieName = "taskly_session"
+	CSRFHeaderName    = "X-CSRF-Protection"
+	CSRFHeaderValue   = "1"
+	SessionTTL        = 30 * 24 * time.Hour
 )
 
 // helpers moved from main.go (auth, crypto, email, ical, dayshift)
@@ -55,6 +64,105 @@ func ParseAuthToken(authHeader string) string {
 	return s
 }
 
+// SessionTokenFromRequest accepts the HttpOnly cookie used by the web client
+// and the Authorization header used by native clients. If both are present,
+// they must identify the same session to avoid ambiguous authentication.
+func SessionTokenFromRequest(c *fiber.Ctx) string {
+	cookieToken := strings.TrimSpace(c.Cookies(SessionCookieName))
+	bearerToken := ParseAuthToken(c.Get("Authorization"))
+	if cookieToken != "" && bearerToken != "" && subtle.ConstantTimeCompare([]byte(cookieToken), []byte(bearerToken)) != 1 {
+		return ""
+	}
+	if cookieToken != "" {
+		c.Locals("session_auth_method", "cookie")
+		return cookieToken
+	}
+	if bearerToken != "" {
+		c.Locals("session_auth_method", "bearer")
+	}
+	return bearerToken
+}
+
+func SessionCookieSecure() bool {
+	if strings.ToLower(Env("NODE_ENV", "development")) == "production" {
+		return true
+	}
+	if raw := strings.TrimSpace(os.Getenv("SESSION_COOKIE_SECURE")); raw != "" {
+		return strings.EqualFold(raw, "true") || raw == "1"
+	}
+	return false
+}
+
+func SetSessionCookie(c *fiber.Ctx, token string, expires time.Time) {
+	c.Cookie(&fiber.Cookie{
+		Name:     SessionCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  expires,
+		MaxAge:   int(time.Until(expires).Seconds()),
+		Secure:   SessionCookieSecure(),
+		HTTPOnly: true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+	})
+}
+
+func ClearSessionCookie(c *fiber.Ctx) {
+	c.Cookie(&fiber.Cookie{
+		Name:     SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		Secure:   SessionCookieSecure(),
+		HTTPOnly: true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+	})
+}
+
+func AllowedWebOrigins() map[string]struct{} {
+	raw := Env("API_CORS_ORIGINS", "http://localhost:4321,http://127.0.0.1:4321,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173")
+	allowed := make(map[string]struct{})
+	for _, origin := range strings.Split(raw, ",") {
+		origin = strings.TrimSpace(strings.TrimSuffix(origin, "/"))
+		if origin != "" && origin != "*" {
+			allowed[origin] = struct{}{}
+		}
+	}
+	return allowed
+}
+
+func IsAllowedWebOrigin(origin string) bool {
+	origin = strings.TrimSpace(strings.TrimSuffix(origin, "/"))
+	if origin == "" {
+		return false
+	}
+	_, ok := AllowedWebOrigins()[origin]
+	return ok
+}
+
+// RequireCookieCSRF protects unsafe requests authenticated by the browser
+// cookie. Bearer and API-key clients remain unaffected.
+func RequireCookieCSRF(c *fiber.Ctx) error {
+	if strings.TrimSpace(c.Cookies(SessionCookieName)) == "" || c.Method() == fiber.MethodGet || c.Method() == fiber.MethodHead || c.Method() == fiber.MethodOptions {
+		return c.Next()
+	}
+	if !IsAllowedWebOrigin(c.Get("Origin")) || subtle.ConstantTimeCompare([]byte(c.Get(CSRFHeaderName)), []byte(CSRFHeaderValue)) != 1 {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "csrf validation failed"})
+	}
+	return c.Next()
+}
+
+func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *redis.Client) {
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	_ = RDB.Del(c.Context(), "session:"+token).Err()
+	if userID != 0 {
+		_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", userID), token).Err()
+	}
+	_ = DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error
+}
+
 func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
 		return true
@@ -62,11 +170,10 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 
 	// Optional debug logging for auth flow (no secrets). Enable by setting DEBUG_AUTH=true
 	debugAuth := strings.ToLower(strings.TrimSpace(Env("DEBUG_AUTH", ""))) == "true"
-	raw := c.Get("Authorization")
-	token := ParseAuthToken(raw)
+	token := SessionTokenFromRequest(c)
 	if token == "" {
 		if debugAuth {
-			log.Printf("[auth] %s %s missing Authorization", c.Method(), sanitizeURLPath(c.Path()))
+			log.Printf("[auth] %s %s missing or ambiguous session credential", c.Method(), sanitizeURLPath(c.Path()))
 		}
 		return false
 	}
@@ -86,7 +193,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 			}
 			return false
 		}
-		ttl := 30 * 24 * time.Hour
+		ttl := SessionTTL
 		if session.ExpiresAt != nil {
 			rem := time.Until(*session.ExpiresAt)
 			if rem > 0 && rem < ttl {

@@ -98,6 +98,16 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 		if h.wAuth == nil {
 			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
 		}
+		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
+		if plat == "" {
+			plat = "web"
+		}
+		if !utils.IsAllowedPlatform(plat) {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
+		}
+		if err := validateLoginClient(c, plat); err != nil {
+			return err
+		}
 		var body struct {
 			Email string `json:"email"`
 		}
@@ -149,22 +159,6 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 			return c.Status(500).JSON(fiber.Map{"error": "credential storage"})
 		}
 		// Create session
-		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
-		if plat == "" {
-			plat = "web"
-		}
-		if !utils.IsAllowedPlatform(plat) {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
-		}
-		token := utils.GenerateSessionToken(u.ID, plat)
-		ttl := 30 * 24 * time.Hour
-		if err := h.rdb.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "session"})
-		}
-		_ = h.rdb.SAdd(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), token).Err()
-		_ = h.rdb.Expire(c.Context(), fmt.Sprintf("user_sessions:%d", u.ID), ttl).Err()
-		h.db.AutoMigrate(&domain.Session{})
-		h.db.Create(&domain.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(time.Now().Add(ttl))})
-		return c.JSON(fiber.Map{"token": token})
+		return h.issueSession(c, u.ID, plat, time.Now())
 	})
 }

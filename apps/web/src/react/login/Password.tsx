@@ -14,6 +14,7 @@ import {
   withNext,
   postLoginRedirect,
   saveAuthTransaction,
+  webFetch,
 } from "./helpers";
 
 export default function Password() {
@@ -29,7 +30,7 @@ export default function Password() {
     try {
       // Verify the password server-side first. The server only answers
       // "mfa required" after the password check has passed.
-      const loginRes = await fetch(`${apiBase}/auth/login`, {
+      const loginRes = await webFetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -72,8 +73,7 @@ export default function Password() {
       }
       if (loginRes.ok) {
         // Password-only account: logged in without an MFA step
-        if (loginData?.token) {
-          localStorage.setItem("api_token", loginData.token);
+        if (loginData?.authenticated) {
           await postLoginRedirect();
           return;
         }
