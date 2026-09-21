@@ -8,6 +8,7 @@
     "preview": "astro preview",
     "test:canonical": "node --test scripts/canonical-url.test.mjs && node scripts/check-canonical-urls.mjs",
     "test:security-headers": "node scripts/check-security-headers.mjs",
+    "test:unit": "node --test src/features/tasks/state.test.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

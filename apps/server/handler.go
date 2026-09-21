@@ -71,6 +71,11 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 			return c.Status(status).JSON(fiber.Map{"error": err.Error()})
 		},
 	})
+	appHandler.Start()
+	app.Hooks().OnShutdown(func() error {
+		appHandler.Close()
+		return nil
+	})
 
 	app.Use(fiberTrace.Middleware(
 		fiberTrace.WithServiceName(serviceName),
