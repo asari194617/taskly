@@ -103,7 +103,8 @@ func main() {
 				subj = "課題"
 			}
 			// メタ（科目 + 期限ラベル）
-			meta := fmt.Sprintf("%s %s", subj, deadlineLabel(t, t.Deadline))
+			deadline := deadlineLabel(t, t.Deadline)
+			meta := fmt.Sprintf("%s %s", subj, deadline)
 			// バッジJSON
 			badges := buildBadgesJSON(t)
 			items = append(items, NotifyItem{
@@ -111,7 +112,7 @@ func main() {
 				WhenLabel: label,
 				Subject:   subj,
 				Title:     t.Title,
-				Body:      fmt.Sprintf("%s まで", deadlineLabel(t, t.Deadline)),
+				Body:      deadline,
 				UserID:    0, // expand to all users by preferences below
 				Meta:      meta,
 				Badges:    badges,
@@ -302,10 +303,9 @@ func whenLabel(base, target time.Time) string {
 }
 
 func deadlineLabel(t Task, d time.Time) string {
-	// 例: 10/16 5限まで, 朝まで, など
 	date := d.Format("1/2")
 	label := deriveDeadlineLabelEnum(t.DeadlineSince, t.DeadlineUntil)
-	if strings.TrimSpace(label) == "" {
+	if label == "" {
 		return date + " まで"
 	}
 	return date + " " + label
@@ -315,18 +315,19 @@ func deriveDeadlineLabelEnum(since, until string) string {
 	sIdx := periodIndex(since)
 	uIdx := periodIndex(until)
 	if strings.EqualFold(until, "MORNING") {
-		return "朝"
+		return "朝まで"
+	}
+	if strings.EqualFold(until, "LUNCH") {
+		return "昼休みまで"
+	}
+	if strings.EqualFold(until, "AFTER_SCHOOL") {
+		return "放課後まで"
 	}
 	if uIdx > 0 && (sIdx == 0 || sIdx == uIdx) {
-		return fmt.Sprintf("%d限", uIdx)
+		return fmt.Sprintf("%d限まで", uIdx)
 	}
-	if sIdx > 0 && uIdx > 0 {
-		if sIdx == uIdx {
-			return fmt.Sprintf("%d限", uIdx)
-		}
-		if sIdx < uIdx {
-			return fmt.Sprintf("%d〜%d限", sIdx, uIdx)
-		}
+	if sIdx > 0 && uIdx > 0 && sIdx < uIdx {
+		return fmt.Sprintf("%d〜%d限まで", sIdx, uIdx)
 	}
 	return ""
 }
