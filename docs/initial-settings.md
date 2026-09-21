@@ -84,7 +84,8 @@
 ## 運用上の注意
 
 - 本番 `.env` の秘密値をリポジトリへ commit しないでください。
-- Compose は API、MySQL、Redis、Airflow、MCP のポートをホストへ公開します。
-  ファイアウォールや外部リバースプロキシで公開範囲と TLS を管理してください。
+- Compose は API、metrics、Airflow、MCP を `127.0.0.1` のみに公開します。
+  MySQL、Redis、email-compose は Docker 内部ネットワークだけで通信します。
+  公開ポート一覧と確認方法は `operations/network-ports.md` を参照してください。
 - `infra/docker-compose.yml` 内に Traefik や TLS 終端サービスはありません。
 - デプロイ後は `docker compose ps` と各 health endpoint を確認してください。

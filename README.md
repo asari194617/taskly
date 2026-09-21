@@ -45,8 +45,9 @@ The main local endpoints are:
 | MCP HTTP API | `http://localhost:3066` |
 | Airflow UI | `http://localhost:3065` |
 
-MySQL and Redis are exposed on host ports `3060` and `3061`. Services inside
-Compose use `db:3306` and `redis:6379` instead.
+The API, metrics, MCP, and Airflow ports bind to host loopback only. MySQL,
+Redis, and email-compose are available only on the Compose network. See the
+[production port inventory](docs/operations/network-ports.md) for details.
 
 To stop the local stack:
 
