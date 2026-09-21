@@ -28,7 +28,7 @@ RUN apk add --no-cache ca-certificates
 
 FROM --platform=$TARGETPLATFORM alpine:3.24
 WORKDIR /app
-RUN apk add --no-cache ca-certificates tzdata bash curl grep sed findutils mariadb-client
+RUN apk add --no-cache ca-certificates tzdata bash curl grep sed findutils
 COPY --from=build /out/api /app/api
 COPY --from=build /out/migrate /app/migrate
 COPY ./migrations /app/migrations
@@ -36,13 +36,7 @@ COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 ENV API_PORT=8080
 EXPOSE 8080 9464
 
-# Backup script and cron
-COPY ./scripts/backup.sh /usr/local/bin/backup.sh
-RUN chmod +x /usr/local/bin/backup.sh && echo "TZ=Asia/Tokyo" > /etc/crontabs/root \
-	&& echo "# Daily MySQL backup at 03:00" >> /etc/crontabs/root \
-	&& echo "0 3 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1" >> /etc/crontabs/root
-
-# Entrypoint runs API and crond side-by-side
+# Entrypoint runs the API; backup scheduling is owned by Airflow.
 COPY ./scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

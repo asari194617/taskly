@@ -3,6 +3,7 @@ module github.com/asari194617/taskly/batches
 go 1.25.0
 
 require (
+	filippo.io/age v1.2.1
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/jhump/protoreflect v1.17.0
 	github.com/jlaffaye/ftp v0.2.0
