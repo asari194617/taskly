@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/graphql", () => ({ gql: vi.fn() }));
 
 import { gql } from "@/lib/graphql";
-import { searchTasks, updateTask, setTaskCompleted } from "./api";
+import { createTask, deleteTask, reportTask, searchTasks, updateTask, setTaskCompleted } from "./api";
 import { runOptimisticMutation, scheduleTaskCompletion } from "./state.mjs";
 
 const query = vi.mocked(gql);
@@ -15,6 +15,40 @@ afterEach(() => {
 });
 
 describe("task search and update", () => {
+  it("keeps the create, delete, and report request contracts", async () => {
+    const input = {
+      title: "report",
+      subject_id: 7,
+      deadline: "2026-09-22",
+      is: true,
+      scr: false,
+    };
+    query.mockResolvedValueOnce({ createTask: { id: 8, ...input } });
+    expect(await createTask(input)).toMatchObject({ id: 8, title: "report" });
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining("createTask"),
+      input,
+    );
+
+    query.mockResolvedValueOnce({ deleteTask: true });
+    await deleteTask(8);
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining("deleteTask"),
+      { id: 8 },
+    );
+
+    query.mockResolvedValueOnce({ createUserReport: { id: 5 } });
+    await reportTask(8, "incorrect", "details");
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining("createUserReport"),
+      {
+        task_id: 8,
+        reason: "incorrect",
+        comment: "details",
+      },
+    );
+  });
+
   it("passes search terms and cancellation to the API", async () => {
     const signal = new AbortController().signal;
     const cursor = { cursor_deadline: "2026-09-22", cursor_id: "50" };
