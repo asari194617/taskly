@@ -154,15 +154,18 @@ func fetchUserSubscriptions(db *sql.DB, userID sql.NullInt64) ([]WebPushSubscrip
 	return out, nil
 }
 
-// loadVAPIDFromDB loads keys from web_push_vapid if present, otherwise from env.
+// loadVAPIDFromDB loads keys from the canonical table, then the legacy GORM
+// table during migration, and finally the environment.
 func loadVAPIDFromDB(db *sql.DB) (pub, priv, subj string) {
-	row := db.QueryRow(`SELECT public_key, private_key FROM web_push_vapid ORDER BY id DESC LIMIT 1`)
-	var p, s string
-	if err := row.Scan(&p, &s); err == nil && strings.TrimSpace(p) != "" && strings.TrimSpace(s) != "" {
-		pub = p
-		priv = s
-		subj = dcCommon.ValueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
-		return
+	for _, table := range []string{"web_push_vapid", "web_push_v_api_ds"} {
+		row := db.QueryRow(`SELECT public_key, private_key FROM ` + table + ` ORDER BY id DESC LIMIT 1`)
+		var p, s string
+		if err := row.Scan(&p, &s); err == nil && strings.TrimSpace(p) != "" && strings.TrimSpace(s) != "" {
+			pub = p
+			priv = s
+			subj = dcCommon.ValueOr(os.Getenv("VAPID_SUBJECT"), "mailto:noreply@taskly.local")
+			return
+		}
 	}
 	priv = os.Getenv("VAPID_PRIVATE_KEY")
 	pub = os.Getenv("VAPID_PUBLIC_KEY")

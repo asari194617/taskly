@@ -31,6 +31,13 @@ type WebPushVAPID struct {
 	CreatedAt  time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
+// TableName keeps the API and the notification delivery batch on the same
+// canonical table. GORM otherwise expands the VAPID acronym to
+// "web_push_v_api_ds", while the schema and batch use "web_push_vapid".
+func (WebPushVAPID) TableName() string {
+	return "web_push_vapid"
+}
+
 // Web Push subscription for PWA notifications
 type WebPushSubscription struct {
 	ID        uint      `gorm:"primaryKey"`

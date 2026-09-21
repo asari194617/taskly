@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
@@ -18,6 +19,26 @@ func (h *Handler) getOrInitVAPID() (string, string, error) {
 			return rec.PublicKey, rec.PrivateKey, nil
 		}
 		// Otherwise, regenerate
+	}
+
+	// Before WebPushVAPID declared its canonical table name, GORM stored keys
+	// in web_push_v_api_ds. Preserve that key pair so existing browser
+	// subscriptions remain valid while moving it to web_push_vapid.
+	var legacy domain.WebPushVAPID
+	legacyExists := h.db.Migrator().HasTable("web_push_v_api_ds")
+	if legacyExists {
+		err := h.db.Table("web_push_v_api_ds").Order("id DESC").First(&legacy).Error
+		if err != nil || legacy.PublicKey == "" || legacy.PrivateKey == "" {
+			legacyExists = false
+		}
+	}
+	if legacyExists {
+		legacy.ID = 0
+		legacy.CreatedAt = time.Time{}
+		if err := h.db.Create(&legacy).Error; err != nil {
+			return "", "", err
+		}
+		return legacy.PublicKey, legacy.PrivateKey, nil
 	}
 	// Generate new VAPID pair (assume k1=private, k2=public for this library)
 	k1, k2, err := webpush.GenerateVAPIDKeys()
