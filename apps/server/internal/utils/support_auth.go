@@ -1,0 +1,305 @@
+package utils
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base32"
+	"encoding/base64"
+	"fmt"
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/gofiber/fiber/v2"
+	"github.com/pquerna/otp/totp"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+	"log"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// helpers moved from main.go (auth, crypto, email, ical, dayshift)
+func Sha256Hex(b []byte) string {
+	h := sha256.Sum256(b)
+	return fmt.Sprintf("%x", h[:])
+}
+
+func GenerateAPIKey() (plain string, hashed string, err error) {
+	buf := make([]byte, 32)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	plain = fmt.Sprintf("tsk_%x", buf)
+	hashed = Sha256Hex([]byte(plain))
+	return
+}
+
+func GenerateIcalToken() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("ict_%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("ict_%x", buf)
+}
+
+func ParseAuthToken(authHeader string) string {
+	s := strings.TrimSpace(authHeader)
+	if s == "" {
+		return ""
+	}
+	parts := strings.SplitN(s, " ", 2)
+	if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+		return strings.TrimSpace(parts[1])
+	}
+	return s
+}
+
+func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
+	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
+		return true
+	}
+
+	// Optional debug logging for auth flow (no secrets). Enable by setting DEBUG_AUTH=true
+	debugAuth := strings.ToLower(strings.TrimSpace(Env("DEBUG_AUTH", ""))) == "true"
+	raw := c.Get("Authorization")
+	token := ParseAuthToken(raw)
+	if token == "" {
+		if debugAuth {
+			log.Printf("[auth] %s %s missing Authorization", c.Method(), sanitizeURLPath(c.Path()))
+		}
+		return false
+	}
+	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
+	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
+	if err != nil || strings.TrimSpace(uidStr) == "" {
+		var session domain.Session
+		if dbErr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; dbErr != nil {
+			if debugAuth {
+				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
+			}
+			return false
+		}
+		if headerPlat != "" && session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
+			if debugAuth {
+				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
+			}
+			return false
+		}
+		ttl := 30 * 24 * time.Hour
+		if session.ExpiresAt != nil {
+			rem := time.Until(*session.ExpiresAt)
+			if rem > 0 && rem < ttl {
+				ttl = rem
+			}
+		}
+		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", session.UserID), ttl).Err()
+		uidStr = fmt.Sprintf("%d", session.UserID)
+		if debugAuth {
+			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
+		}
+	} else {
+		if headerPlat != "" {
+			var session domain.Session
+			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&session).Error; err == nil {
+				if session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
+					if debugAuth {
+						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
+					}
+					return false
+				}
+			}
+		}
+		if debugAuth {
+			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
+		}
+	}
+	var u domain.User
+	blockSubquery := DB.Model(&domain.Block{}).
+		Select("1").
+		Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uidStr, time.Now())
+	if err := DB.Where("id = ? AND NOT EXISTS (?)", uidStr, blockSubquery).First(&u).Error; err != nil {
+		if debugAuth {
+			log.Printf("[auth] %s %s user not found or blocked id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
+		}
+		return false
+	}
+	c.Locals("user", &u)
+	c.Locals("token", token)
+	if debugAuth {
+		log.Printf("[auth] %s %s OK user=%d plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), u.ID, headerPlat)
+	}
+	return true
+}
+
+func IsAllowedPlatform(p string) bool {
+	switch strings.ToLower(p) {
+	case "web", "ios", "android", "mac", "windows":
+		return true
+	default:
+		return false
+	}
+}
+
+func GenerateSessionToken(uid uint, platform string) string {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("sess_%d_%s_%d", uid, platform, time.Now().UnixNano())
+	}
+	enc := base64.RawURLEncoding.EncodeToString(b)
+	return fmt.Sprintf("sess_%d_%s_%s", uid, platform, enc)
+}
+
+func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) {
+	key := fmt.Sprintf("user_sessions:%d", userID)
+	toks, _ := RDB.SMembers(c.Context(), key).Result()
+	for _, t := range toks {
+		if t == currentToken || strings.TrimSpace(t) == "" {
+			continue
+		}
+		_ = RDB.Del(c.Context(), "session:"+t).Err()
+		_ = RDB.SRem(c.Context(), key, t).Err()
+	}
+	curHash := Sha256Hex([]byte(currentToken))
+	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&domain.Session{}).Error
+}
+
+func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
+	apiKey := c.Get("X-API-Key")
+	if apiKey == "" {
+		return false
+	}
+	hashed := Sha256Hex([]byte(apiKey))
+	var key domain.APIKey
+	if err := DB.Where("hashed_token = ? AND is_valid = 1 AND (expires_at IS NULL OR expires_at > ?)", hashed, time.Now()).First(&key).Error; err != nil {
+		return false
+	}
+	var u domain.User
+	if err := DB.First(&u, key.UserID).Error; err != nil {
+		return false
+	}
+	var cnt int64
+	if err := DB.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, time.Now()).Count(&cnt).Error; err == nil && cnt > 0 {
+		return false
+	}
+	c.Locals("user", &u)
+	c.Locals("apiKey", apiKey)
+	return true
+}
+
+// 2FA helpers
+func UrlEncode(s string) string { return url.QueryEscape(s) }
+
+func GenerateBase32Secret() string {
+	b := make([]byte, 20)
+	if _, err := rand.Read(b); err != nil {
+		return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+	}
+	return strings.TrimRight(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), "=")
+}
+
+func ValidateTOTP(secret, code string) bool {
+	return totp.Validate(code, secret)
+}
+
+func GenerateRecoveryCode() string {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	const groups = 4
+	const perGroup = 4
+	out := make([]byte, 0, groups*perGroup+(groups-1))
+	buf := make([]byte, groups*perGroup)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%08x", time.Now().UnixNano())
+	}
+	for i := 0; i < groups*perGroup; i++ {
+		out = append(out, alphabet[int(buf[i])%len(alphabet)])
+		if (i+1)%perGroup == 0 && i+1 < groups*perGroup {
+			out = append(out, '-')
+		}
+	}
+	return string(out)
+}
+
+func ConsumeRecoveryCode(userID uint, code string, DB *gorm.DB) bool {
+	hashed := Sha256Hex([]byte(code))
+	ok := false
+	_ = DB.Transaction(func(tx *gorm.DB) error {
+		var rc domain.RecoveryCode
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND hashed_code = ? AND is_used = 0", userID, hashed).First(&rc).Error; err != nil {
+			return nil
+		}
+		rc.IsUsed = true
+		if err := tx.Save(&rc).Error; err != nil {
+			return err
+		}
+		ok = true
+		return nil
+	})
+	return ok
+}
+
+func GetActiveTOTP(userID uint, DB *gorm.DB) (bool, string, error) {
+	var ts domain.TOTPSecret
+	if err := DB.Where("user_id = ? AND is_active = 1", userID).First(&ts).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false, "", nil
+		}
+		return false, "", err
+	}
+	secret, err := decryptString(ts.Secret)
+	if err != nil {
+		return false, "", err
+	}
+	return true, secret, nil
+}
+
+func getEncKey() []byte {
+	keyStr := Env("TOTP_ENC_KEY", "dev_totp_key")
+	sum := sha256.Sum256([]byte(keyStr))
+	return sum[:]
+}
+
+func EncryptString(plain string) (string, error) {
+	key := getEncKey()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ct := gcm.Seal(nil, nonce, []byte(plain), nil)
+	out := append(nonce, ct...)
+	return base64.RawStdEncoding.EncodeToString(out), nil
+}
+
+func decryptString(enc string) (string, error) {
+	key := getEncKey()
+	raw, err := base64.RawStdEncoding.DecodeString(enc)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	ns := gcm.NonceSize()
+	if len(raw) < ns {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	nonce, ct := raw[:ns], raw[ns:]
+	pt, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
+}

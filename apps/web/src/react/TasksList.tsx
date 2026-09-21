@@ -43,17 +43,10 @@ import {
   deriveLabelFromEnums,
 } from "@/components/DeadlinePicker";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import {
   Select,
@@ -84,24 +77,27 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { t, type Lang } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-
-type Task = {
-  id: number;
-  title: string;
-  subject_id: number;
-  deadline?: string | null;
-  deadline_since?: string | null;
-  deadline_until?: string | null;
-  description?: string | null;
-  type?: string | null;
-  is_require_hand_in?: boolean;
-  is_self_check_required?: boolean;
-  is_completed?: boolean;
-  is_hidden?: boolean;
-};
-type Subject = { id: number; name_ja: string; name_en?: string | null };
+import { useLang } from "@/react/LanguageProvider";
+import { SubjectSelect as SubjectSelectControl } from "@/features/tasks/SubjectSelect";
+import {
+  createTask as createTaskRequest,
+  deleteTask as deleteTaskRequest,
+  loadSubjects,
+  loadViewerRole,
+  reportTask,
+  searchTasks,
+  setTaskCompleted,
+  updateTask as updateTaskRequest,
+  type Subject,
+  type Task,
+} from "@/features/tasks/api";
+import {
+  normalizeTaskSearch,
+  updateTaskCompletion,
+} from "@/features/tasks/state.mjs";
+import { getToken, requireAuth } from "@/lib/auth-guard";
 
 // Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
 
@@ -143,23 +139,7 @@ function localizeTaskType(
 }
 
 export default function TasksList() {
-  // Language management
-  const [lang, setLang] = React.useState<Lang>("ja");
-  React.useEffect(() => {
-    const updateLang = () => {
-      const stored = localStorage.getItem("display_lang") as Lang | null;
-      setLang(stored || "ja");
-    };
-    updateLang();
-    window.addEventListener("languagechange", updateLang);
-    window.addEventListener("storage", (e) => {
-      if (e.key === "display_lang") updateLang();
-    });
-    return () => {
-      window.removeEventListener("languagechange", updateLang);
-    };
-  }, []);
-  const dict = React.useMemo(() => t(lang), [lang]);
+  const { lang, dict } = useLang();
 
   const formatHeadingForDate = React.useCallback(
     (d: Date): string => {
@@ -187,8 +167,16 @@ export default function TasksList() {
   >("all");
   // Pending completion/uncompletion operations with undo window
   const [pending, setPending] = React.useState<
-    Record<number, { target: boolean; timeout: any }>
+    Record<number, { target: boolean; timeout: ReturnType<typeof setTimeout> }>
   >({});
+  const pendingTimers = React.useRef(new Set<ReturnType<typeof setTimeout>>());
+  React.useEffect(
+    () => () => {
+      for (const timer of pendingTimers.current) clearTimeout(timer);
+      pendingTimers.current.clear();
+    },
+    [],
+  );
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
   const [newSubjectId, setNewSubjectId] = React.useState("");
@@ -213,20 +201,17 @@ export default function TasksList() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   // One-time bootstrap: subjects and my role; avoid reloading on each search
   React.useEffect(() => {
-    const token = localStorage.getItem("api_token");
-    if (!token) {
-      window.location.replace("/login");
+    if (!getToken()) {
+      requireAuth();
       return;
     }
-    gql<{ subjects: Subject[] }>(`query{ subjects{ id name_ja name_en } }`)
-      .then((s) => setSubjects(s.subjects || []))
+    loadSubjects()
+      .then(setSubjects)
       .catch((e) => setError(e?.message || dict.tasks.loadFailed));
-    gql<{ me: { is_admin: boolean; is_manager: boolean } }>(
-      `query{ me{ is_admin is_manager } }`
-    )
-      .then((me) => {
-        setIsAdmin(!!me?.me?.is_admin);
-        setIsManager(!!me?.me?.is_manager);
+    loadViewerRole()
+      .then((role) => {
+        setIsAdmin(role.isAdmin);
+        setIsManager(role.isManager);
       })
       .catch(() => {
         /* ignore role load error for now */
@@ -235,55 +220,17 @@ export default function TasksList() {
 
   // Search tasks with cancellation; only refetch when q changes
   React.useEffect(() => {
-    const token = localStorage.getItem("api_token");
-    if (!token) {
-      window.location.replace("/login");
+    if (!getToken()) {
+      requireAuth();
       return;
     }
     const ac = new AbortController();
     (async () => {
       try {
-        const t = await gql<{ tasks: { items: Task[] } }>(
-          `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_completed is_hidden } } }`,
-          { q: q || undefined },
-          { signal: ac.signal }
-        );
-        setItems(t.tasks.items ?? []);
+        setItems(await searchTasks(q, ac.signal));
       } catch (e: any) {
         if (e?.name === "AbortError") return;
-        const msg: string = e?.message || "";
-        // Fallback for servers that don't yet have is_completed field
-        if (/Cannot query field "is_completed"/i.test(msg)) {
-          try {
-            const t2 = await gql<{
-              tasks: { items: Omit<Task, "is_completed">[] };
-            }>(
-              `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required } } }`,
-              { q: q || undefined },
-              { signal: ac.signal }
-            );
-            // Inject is_completed=false for fallback
-            setItems(
-              (t2.tasks.items as Task[]).map((x) => ({
-                ...x,
-                is_completed: false,
-              }))
-            );
-            return;
-          } catch (e2: any) {
-            if (e2?.name === "AbortError") return;
-            setError(e2?.message || dict.tasks.loadFailed);
-            return;
-          }
-        }
-        setError(msg || dict.tasks.loadFailed);
-      } finally {
-        // Ensure UI is interactive even if server returns no items structure
-        // If no error and no items were set, show an empty state instead of skeleton
-        // Avoid overwriting when items already populated or an error is shown
-        // Note: this runs only after non-aborted attempts
-        // Using functional updater to avoid race conditions
-        setItems((cur) => (cur == null && !error ? [] : cur));
+        setError(e?.message || dict.tasks.loadFailed);
       }
     })();
     return () => ac.abort();
@@ -293,8 +240,7 @@ export default function TasksList() {
   const [qInput, setQInput] = React.useState("");
   React.useEffect(() => {
     const id = setTimeout(() => {
-      const trimmed = qInput.trim();
-      setQ(trimmed.length >= 2 ? trimmed : "");
+      setQ(normalizeTaskSearch(qInput));
     }, 500);
     return () => clearTimeout(id);
   }, [qInput]);
@@ -381,67 +327,14 @@ export default function TasksList() {
     subjects: Subject[];
     placeholder?: string;
   }) {
-    const { value, onChange, subjects, placeholder } = props;
-    const [open, setOpen] = React.useState(false);
-    const [filter, setFilter] = React.useState("");
-    const selected = subjects.find((s) => String(s.id) === value);
-    const filtered = subjects.filter((s) => {
-      const name = lang === "en" && s.name_en ? s.name_en : s.name_ja;
-      return name.toLowerCase().includes(filter.toLowerCase());
-    });
-    const displayName = (s: Subject) =>
-      lang === "en" && s.name_en ? s.name_en : s.name_ja;
     return (
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            type="button"
-            className="w-full justify-between"
-          >
-            <span className="truncate">
-              {selected
-                ? displayName(selected)
-                : placeholder || dict.tasks.selectPlaceholder}
-            </span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="h-4 w-4 opacity-60"
-            >
-              <path d="M12 15.5 6 9.5 7.5 8l4.5 4.5L16.5 8 18 9.5z" />
-            </svg>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] p-2">
-          <div className="p-1">
-            <Input
-              placeholder={dict.common.search}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            />
-          </div>
-          <div className="max-h-60 overflow-auto">
-            {filtered.map((s) => (
-              <DropdownMenuItem
-                key={s.id}
-                onClick={() => {
-                  onChange(String(s.id));
-                  setOpen(false);
-                }}
-              >
-                {displayName(s)}
-              </DropdownMenuItem>
-            ))}
-            {filtered.length === 0 && (
-              <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                {dict.tasks.notFound}
-              </div>
-            )}
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <SubjectSelectControl
+        {...props}
+        language={lang}
+        searchLabel={dict.common.search}
+        emptyLabel={dict.tasks.notFound}
+        placeholder={props.placeholder || dict.tasks.selectPlaceholder}
+      />
     );
   }
 
@@ -457,11 +350,7 @@ export default function TasksList() {
     }
     setCreating(true);
     try {
-      const res = await gql<{ createTask: Task }>(
-        `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
-          createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required }
-        }`,
-        {
+      const created = await createTaskRequest({
           title: newTitle.trim(),
           subject_id: parseInt(newSubjectId, 10),
           is: newRequire,
@@ -470,9 +359,8 @@ export default function TasksList() {
           ...sinceUntilFromMeta(newDate, newMeta), // enums
           description: newDesc || undefined,
           type: newType || undefined,
-        }
-      );
-      setItems((prev) => (prev ? [res.createTask, ...prev] : [res.createTask]));
+        });
+      setItems((prev) => (prev ? [created, ...prev] : [created]));
       setNewTitle("");
       setNewSubjectId("");
       setNewDate("");
@@ -534,12 +422,7 @@ export default function TasksList() {
       )
     );
     try {
-      await gql<{ updateTask: Task }>(
-        `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
-          updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id }
-        }`,
-        {
-          id,
+      await updateTaskRequest(id, {
           title: editTitle,
           subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
           is: editRequire,
@@ -548,8 +431,7 @@ export default function TasksList() {
           ...sinceUntilFromMeta(editDate, editMeta),
           description: editDesc,
           type: editType,
-        }
-      );
+        });
       toast({ title: dict.toast.updated });
       cancelEdit();
     } catch (e: any) {
@@ -567,10 +449,7 @@ export default function TasksList() {
     // optimistic remove
     setItems((cur) => (cur || []).filter((x) => x.id !== id));
     try {
-      await gql<{ deleteTask: boolean }>(
-        `mutation($id:Int!){ deleteTask(id:$id) }`,
-        { id }
-      );
+      await deleteTaskRequest(id);
       toast({ title: dict.toast.deleted });
     } catch (e: any) {
       setItems(prev);
@@ -586,51 +465,37 @@ export default function TasksList() {
   function toggleWithPending(task: Task) {
     // optimistic flip state for visual feedback
     setItems((cur) =>
-      (cur || []).map((x) =>
-        x.id === task.id ? { ...x, is_completed: !x.is_completed } : x
-      )
+      updateTaskCompletion(cur || [], task.id, !task.is_completed)
     );
     const existing = pending[task.id];
     if (existing) {
       // Undo: cancel timer and revert state
       clearTimeout(existing.timeout);
+      pendingTimers.current.delete(existing.timeout);
       setPending((p) => {
         const cp = { ...p };
         delete cp[task.id];
         return cp;
       });
       setItems((cur) =>
-        (cur || []).map((x) =>
-          x.id === task.id ? { ...x, is_completed: !x.is_completed } : x
-        )
+        updateTaskCompletion(cur || [], task.id, !!task.is_completed)
       );
       return;
     }
     const target = !task.is_completed;
     const timeout = setTimeout(async () => {
+      pendingTimers.current.delete(timeout);
       setPending((p) => {
         const cp = { ...p };
         delete cp[task.id];
         return cp;
       });
       try {
-        if (target) {
-          await gql<{ completeTask: boolean }>(
-            `mutation($id:Int!){ completeTask(id:$id) }`,
-            { id: task.id }
-          );
-        } else {
-          await gql<{ uncompleteTask: boolean }>(
-            `mutation($id:Int!){ uncompleteTask(id:$id) }`,
-            { id: task.id }
-          );
-        }
+        await setTaskCompleted(task.id, target);
       } catch (err: any) {
         // revert on error
         setItems((cur) =>
-          (cur || []).map((x) =>
-            x.id === task.id ? { ...x, is_completed: !target } : x
-          )
+          updateTaskCompletion(cur || [], task.id, !target)
         );
         toast({
           variant: "destructive",
@@ -639,6 +504,7 @@ export default function TasksList() {
         });
       }
     }, 3000);
+    pendingTimers.current.add(timeout);
     setPending((p) => ({ ...p, [task.id]: { target, timeout } }));
   }
 
@@ -666,13 +532,10 @@ export default function TasksList() {
     }
     try {
       setReportSubmittingId(taskId);
-      await gql<{ createUserReport: { id: number } }>(
-        `mutation($task_id:Int!,$reason:String!,$comment:String){ createUserReport(task_id:$task_id, reason:$reason, comment:$comment){ id } }`,
-        {
-          task_id: taskId,
-          reason: reportReason.trim(),
-          comment: reportComment.trim() || undefined,
-        }
+      await reportTask(
+        taskId,
+        reportReason.trim(),
+        reportComment.trim() || undefined,
       );
       toast({ title: dict.toast.created });
       setReportReason("");
@@ -736,8 +599,7 @@ export default function TasksList() {
               onChange={(e) => setQInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  const trimmed = qInput.trim();
-                  setQ(trimmed.length >= 2 ? trimmed : "");
+                  setQ(normalizeTaskSearch(qInput));
                 }
               }}
             />

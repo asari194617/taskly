@@ -77,12 +77,14 @@ export function useLang() {
       const stored = localStorage.getItem("display_lang");
       if (stored === "en" || stored === "ja") setLangState(stored as Lang);
     };
-    window.addEventListener("languagechange", update);
-    window.addEventListener("storage", (e) => {
+    const handleStorage = (e: StorageEvent) => {
       if (e.key === "display_lang") update();
-    });
+    };
+    window.addEventListener("languagechange", update);
+    window.addEventListener("storage", handleStorage);
     return () => {
       window.removeEventListener("languagechange", update);
+      window.removeEventListener("storage", handleStorage);
     };
   }, []);
   const setLang = React.useCallback((l: Lang) => {

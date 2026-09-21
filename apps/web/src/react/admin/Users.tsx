@@ -28,7 +28,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -64,20 +63,29 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
-type AUser = {
-  id: number;
-  email: string;
-  display_name?: string | null;
-  notification_lang?: string | null;
-  email_login_enabled?: boolean | null;
-  roles: string[];
-  is_blocked: boolean;
-};
+import { getToken, requireAuth } from "@/lib/auth-guard";
+import {
+  blockUser,
+  bulkCreateUsers,
+  createDevice as createDeviceRequest,
+  createUser,
+  deleteDevice as deleteDeviceRequest,
+  deleteUser,
+  loadAdminUsers,
+  loadDevices,
+  loadNotificationSettings,
+  saveNotificationChannels,
+  saveNotificationType,
+  setBuiltInRole,
+  setCustomRole,
+  unblockUser as unblockUserRequest,
+  updateDeviceEnabled,
+  updateUser,
+  type AdminUser as AUser,
+  type Device,
+} from "@/features/admin-users/api";
 
 export default function AdminUsers() {
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [q, setQ] = React.useState("");
   const [items, setItems] = React.useState<AUser[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -125,16 +133,6 @@ export default function AdminUsers() {
   const [typeTask, setTypeTask] = React.useState(true);
   const [typeDayShift, setTypeDayShift] = React.useState(true);
   // Devices
-  type Device = {
-    id: number;
-    user_id: number;
-    platform: string;
-    name?: string | null;
-    payload?: string | null;
-    is_enabled: boolean;
-    created_at: string;
-    updated_at: string;
-  };
   const [devices, setDevices] = React.useState<Device[]>([]);
   const [newDevPlatform, setNewDevPlatform] = React.useState("WEBPUSH");
   const [newDevName, setNewDevName] = React.useState("");
@@ -150,18 +148,13 @@ export default function AdminUsers() {
   async function load() {
     setLoading(true);
     try {
-      const d = await gql<{
-        adminUsersPaginated: { items: AUser[]; total: number };
-      }>(
-        `query($q:String,$sb:String,$sd:String,$p:Int,$ps:Int){ adminUsersPaginated(q:$q,sort_by:$sb,sort_dir:$sd,page:$p,page_size:$ps){ items{ id email display_name notification_lang email_login_enabled roles is_blocked } total } }`,
-        {
-          q: q || undefined,
-          sb: sortBy || undefined,
-          sd: sortDir || undefined,
-          p: page,
-          ps: pageSize,
-        }
-      );
+      const d = await loadAdminUsers({
+        query: q || undefined,
+        sortBy: sortBy || undefined,
+        sortDir: sortDir || undefined,
+        page,
+        pageSize,
+      });
       setItems(d.adminUsersPaginated?.items || []);
       setTotal(d.adminUsersPaginated?.total || 0);
     } catch (e: any) {
@@ -175,8 +168,12 @@ export default function AdminUsers() {
     }
   }
   React.useEffect(() => {
+    if (!getToken()) {
+      requireAuth();
+      return;
+    }
     load();
-  }, [token]);
+  }, []);
   React.useEffect(() => {
     load();
   }, [page, sortBy, sortDir]);
@@ -191,10 +188,7 @@ export default function AdminUsers() {
 
   async function addRole(id: number, role: string) {
     try {
-      await gql<{ adminUserAddRole: boolean }>(
-        `mutation($id:Int!,$r:String!){ adminUserAddRole(user_id:$id, role:$r) }`,
-        { id, r: role }
-      );
+      await setBuiltInRole(id, role, true);
       load();
     } catch (e: any) {
       toast({
@@ -206,10 +200,7 @@ export default function AdminUsers() {
   }
   async function removeRole(id: number, role: string) {
     try {
-      await gql<{ adminUserRemoveRole: boolean }>(
-        `mutation($id:Int!,$r:String!){ adminUserRemoveRole(user_id:$id, role:$r) }`,
-        { id, r: role }
-      );
+      await setBuiltInRole(id, role, false);
       load();
     } catch (e: any) {
       toast({
@@ -227,10 +218,7 @@ export default function AdminUsers() {
   async function submitBlock() {
     if (!blockTarget) return;
     try {
-      await gql<{ adminUserBlock: boolean }>(
-        `mutation($id:Int!,$reason:String){ adminUserBlock(user_id:$id, reason:$reason) }`,
-        { id: blockTarget.id, reason: blockReason || undefined }
-      );
+      await blockUser(blockTarget.id, blockReason || undefined);
       setOpenBlock(false);
       setBlockTarget(null);
       setBlockReason("");
@@ -246,10 +234,7 @@ export default function AdminUsers() {
   }
   async function unblockUser(id: number) {
     try {
-      await gql<{ adminUserUnblock: boolean }>(
-        `mutation($id:Int!){ adminUserUnblock(user_id:$id) }`,
-        { id }
-      );
+      await unblockUserRequest(id);
       load();
     } catch (e: any) {
       toast({
@@ -292,16 +277,12 @@ export default function AdminUsers() {
   async function submitEdit() {
     if (!editTarget) return;
     try {
-      await gql<{ adminUserUpdate: boolean }>(
-        `mutation($id:Int!,$email:String,$dn:String,$lang:String,$ema:Boolean){ adminUserUpdate(user_id:$id, email:$email, display_name:$dn, notification_lang:$lang, email_login_enabled:$ema) }`,
-        {
-          id: editTarget.id,
-          email: editEmail || undefined,
-          dn: editDisplayName || undefined,
-          lang: editLang || undefined,
-          ema: editEmailLogin,
-        }
-      );
+      await updateUser(editTarget.id, {
+        email: editEmail || undefined,
+        displayName: editDisplayName || undefined,
+        language: editLang || undefined,
+        emailLogin: editEmailLogin,
+      });
       setOpenEdit(false);
       load();
       toast({ title: "更新しました" });
@@ -537,13 +518,10 @@ export default function AdminUsers() {
       return;
     }
     try {
-      await gql<{ adminUserCreate: { id: number } }>(
-        `mutation($email:String!,$dn:String,$lang:String){ adminUserCreate(email:$email, display_name:$dn, notification_lang:$lang){ id } }`,
-        {
-          email: newEmail.trim(),
-          dn: newDisplayName || undefined,
-          lang: newLang || undefined,
-        }
+      await createUser(
+        newEmail.trim(),
+        newDisplayName || undefined,
+        newLang || undefined,
       );
       setOpenCreate(false);
       setNewEmail("");
@@ -567,18 +545,13 @@ export default function AdminUsers() {
       return;
     }
     try {
-      const res = await gql<{
-        adminUserBulkCreate: { created: number; errors: string[] };
-      }>(
-        `mutation($csv:String!){ adminUserBulkCreate(csv:$csv){ created errors } }`,
-        { csv: bulkCsv }
-      );
+      const result = await bulkCreateUsers(bulkCsv);
       setOpenBulk(false);
       setBulkCsv("");
       load();
-      const errs = res.adminUserBulkCreate?.errors || [];
+      const errs = result.errors || [];
       toast({
-        title: `作成 ${res.adminUserBulkCreate?.created || 0} 件`,
+        title: `作成 ${result.created || 0} 件`,
         description: errs.length ? errs.join("\n") : undefined,
       });
     } catch (e: any) {
@@ -596,10 +569,7 @@ export default function AdminUsers() {
     enabled: boolean
   ) {
     try {
-      await gql<{ adminUserSetCustomRole: boolean }>(
-        `mutation($id:Int!,$role:String!,$en:Boolean!){ adminUserSetCustomRole(user_id:$id, role:$role, enabled:$en) }`,
-        { id: userId, role, en: enabled }
-      );
+      await setCustomRole(userId, role, enabled);
       load();
     } catch (e: any) {
       toast({
@@ -652,21 +622,7 @@ export default function AdminUsers() {
   async function openNotifDialog(u: AUser) {
     setNotifTarget(u);
     try {
-      const d = await gql<{
-        adminUserNotificationSettings: {
-          email_enabled: boolean;
-          webpush_enabled: boolean;
-        };
-        adminUserNotificationTypePrefs: { TASK: boolean; DAYSHIFT: boolean };
-        adminUserDevices: Device[];
-      }>(
-        `query($id:Int!){
-          adminUserNotificationSettings(user_id:$id){ email_enabled webpush_enabled }
-          adminUserNotificationTypePrefs(user_id:$id){ TASK DAYSHIFT }
-          adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at }
-        }`,
-        { id: u.id }
-      );
+      const d = await loadNotificationSettings(u.id);
       setNotifEmail(d.adminUserNotificationSettings?.email_enabled ?? true);
       setNotifPush(d.adminUserNotificationSettings?.webpush_enabled ?? false);
       setTypeTask(d.adminUserNotificationTypePrefs?.TASK ?? true);
@@ -686,19 +642,10 @@ export default function AdminUsers() {
     if (!notifTarget) return;
     try {
       // save channels (email/webpush)
-      await gql<{ adminUserSetNotificationSettings: boolean }>(
-        `mutation($id:Int!,$em:Boolean!,$wp:Boolean!){ adminUserSetNotificationSettings(user_id:$id, email_enabled:$em, webpush_enabled:$wp) }`,
-        { id: notifTarget.id, em: notifEmail, wp: notifPush }
-      );
+      await saveNotificationChannels(notifTarget.id, notifEmail, notifPush);
       // save type prefs
-      await gql<{ adminUserSetNotificationTypePref: boolean }>(
-        `mutation($id:Int!,$tp:String!,$en:Boolean!){ adminUserSetNotificationTypePref(user_id:$id, notification_type:$tp, enabled:$en) }`,
-        { id: notifTarget.id, tp: "TASK", en: typeTask }
-      );
-      await gql<{ adminUserSetNotificationTypePref: boolean }>(
-        `mutation($id:Int!,$tp:String!,$en:Boolean!){ adminUserSetNotificationTypePref(user_id:$id, notification_type:$tp, enabled:$en) }`,
-        { id: notifTarget.id, tp: "DAYSHIFT", en: typeDayShift }
-      );
+      await saveNotificationType(notifTarget.id, "TASK", typeTask);
+      await saveNotificationType(notifTarget.id, "DAYSHIFT", typeDayShift);
       setOpenNotif(false);
       toast({ title: "通知設定を更新しました" });
     } catch (e: any) {
@@ -712,17 +659,10 @@ export default function AdminUsers() {
 
   async function toggleDeviceEnabled(devId: number, enabled: boolean) {
     try {
-      await gql<{ adminUserUpdateDevice: boolean }>(
-        `mutation($id:Int!,$en:Boolean){ adminUserUpdateDevice(device_id:$id, is_enabled:$en) }`,
-        { id: devId, en: enabled }
-      );
+      await updateDeviceEnabled(devId, enabled);
       // refresh list
       if (notifTarget) {
-        const r = await gql<{ adminUserDevices: Device[] }>(
-          `query($id:Int!){ adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at } }`,
-          { id: notifTarget.id }
-        );
-        setDevices(r.adminUserDevices || []);
+        setDevices(await loadDevices(notifTarget.id));
       }
     } catch (e: any) {
       toast({
@@ -735,16 +675,9 @@ export default function AdminUsers() {
 
   async function deleteDevice(devId: number) {
     try {
-      await gql<{ adminUserDeleteDevice: boolean }>(
-        `mutation($id:Int!){ adminUserDeleteDevice(device_id:$id) }`,
-        { id: devId }
-      );
+      await deleteDeviceRequest(devId);
       if (notifTarget) {
-        const r = await gql<{ adminUserDevices: Device[] }>(
-          `query($id:Int!){ adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at } }`,
-          { id: notifTarget.id }
-        );
-        setDevices(r.adminUserDevices || []);
+        setDevices(await loadDevices(notifTarget.id));
       }
     } catch (e: any) {
       toast({
@@ -758,27 +691,19 @@ export default function AdminUsers() {
   async function createDevice() {
     if (!notifTarget) return;
     try {
-      await gql<{ adminUserCreateDevice: { id: number } }>(
-        `mutation($id:Int!,$pf:String!,$name:String,$payload:String,$en:Boolean){ adminUserCreateDevice(user_id:$id, platform:$pf, name:$name, payload:$payload, enabled:$en){ id } }`,
-        {
-          id: notifTarget.id,
-          pf: newDevPlatform,
-          name: newDevName || undefined,
-          payload: newDevPayload || undefined,
-          en: newDevEnabled,
-        }
-      );
+      await createDeviceRequest(notifTarget.id, {
+        platform: newDevPlatform,
+        name: newDevName || undefined,
+        payload: newDevPayload || undefined,
+        enabled: newDevEnabled,
+      });
       // reset form
       setNewDevPlatform("WEBPUSH");
       setNewDevName("");
       setNewDevPayload("");
       setNewDevEnabled(true);
       // refresh list
-      const r = await gql<{ adminUserDevices: Device[] }>(
-        `query($id:Int!){ adminUserDevices(user_id:$id){ id user_id platform name payload is_enabled created_at updated_at } }`,
-        { id: notifTarget.id }
-      );
-      setDevices(r.adminUserDevices || []);
+      setDevices(await loadDevices(notifTarget.id));
       toast({ title: "デバイスを追加しました" });
     } catch (e: any) {
       toast({
@@ -799,10 +724,7 @@ export default function AdminUsers() {
       return;
     }
     try {
-      await gql<{ adminUserDelete: boolean }>(
-        `mutation($id:Int!,$h:Boolean){ adminUserDelete(user_id:$id, hard:$h) }`,
-        { id: deleteTarget.id, h: deleteHard }
-      );
+      await deleteUser(deleteTarget.id, deleteHard);
       setOpenDelete(false);
       load();
       toast({ title: "削除しました" });

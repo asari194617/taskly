@@ -25,23 +25,32 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
-import { getApiBase } from "@/lib/api";
-import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
-
-type AuthState = {
-  email_login_enabled: boolean;
-  has_password: boolean;
-  totp_enabled: boolean;
-  passkey_count?: number;
-  recovery_codes_count?: number;
-};
+import { getToken, requireAuth } from "@/lib/auth-guard";
+import {
+  activateTotpSetup,
+  beginPasskeyRegistration,
+  beginTotpSetup,
+  deletePasskey,
+  disableTotpSetup,
+  finishPasskeyRegistration,
+  generateRecoveryCodes,
+  loadSecuritySettings,
+  renamePasskey,
+  setEmailLogin,
+  setPassword,
+  type AuthState,
+  type Passkey,
+} from "@/features/security/api";
+import {
+  base64urlToBuffer,
+  bufferToBase64url,
+} from "@/features/security/webauthn";
 
 export default function SettingsSecurity() {
   const { dict } = useLang();
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
+  const token = typeof window !== "undefined" ? getToken() : null;
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -55,22 +64,18 @@ export default function SettingsSecurity() {
   const [pwCurrent, setPwCurrent] = React.useState("");
   const [pwNext, setPwNext] = React.useState("");
   const [pkOpen, setPkOpen] = React.useState(false);
-  const [passkeys, setPasskeys] = React.useState<
-    Array<{ id: number; device_name: string; created_at: string }>
-  >([]);
+  const [passkeys, setPasskeys] = React.useState<Passkey[]>([]);
   const [editingPk, setEditingPk] = React.useState<{
     id: number;
     name: string;
   } | null>(null);
 
   React.useEffect(() => {
-    if (!token) return;
-    gql<{
-      authSettings: AuthState;
-      myPasskeys: { id: number; device_name: string; created_at: string }[];
-    }>(
-      `query{ authSettings{ email_login_enabled has_password totp_enabled passkey_count recovery_codes_count } myPasskeys{ id device_name created_at } }`
-    )
+    if (!token) {
+      requireAuth();
+      return;
+    }
+    loadSecuritySettings()
       .then((d) => {
         setAuth(d.authSettings);
         setPasskeys(d.myPasskeys || []);
@@ -84,10 +89,7 @@ export default function SettingsSecurity() {
     const prev = auth;
     setAuth((s) => (s ? { ...s, email_login_enabled: v } : s));
     try {
-      await gql<{ setAuthSettings: boolean }>(
-        `mutation($on:Boolean!){ setAuthSettings(email_login_enabled:$on) }`,
-        { on: v }
-      );
+      await setEmailLogin(v);
     } catch {
       if (prev) setAuth(prev);
       toast({ variant: "destructive", title: dict.toast.updateFailed });
@@ -95,20 +97,15 @@ export default function SettingsSecurity() {
   }
 
   async function beginTotp() {
-    const d = await gql<{ totpSetup: { secret: string; otpauth: string } }>(
-      `mutation{ totpSetup{ secret otpauth } }`
-    );
-    setTotpSecret(d.totpSetup.secret);
-    setTotpUri(d.totpSetup.otpauth);
+    const setup = await beginTotpSetup();
+    setTotpSecret(setup.secret);
+    setTotpUri(setup.otpauth);
     setTotpStep(1);
     setTotpOpen(true);
   }
   async function activateTotp() {
     try {
-      await gql<{ totpActivate: boolean }>(
-        `mutation($code:String!){ totpActivate(code:$code) }`,
-        { code: totpCode }
-      );
+      await activateTotpSetup(totpCode);
       toast({ title: dict.settingsSecurity.totp.activate });
       setAuth((s) => (s ? { ...s, totp_enabled: true } : s));
       setTotpSecret("");
@@ -124,26 +121,20 @@ export default function SettingsSecurity() {
   }
   async function disableTotp() {
     try {
-      await gql<{ totpDisable: boolean }>(`mutation{ totpDisable }`);
+      await disableTotpSetup();
       setAuth((s) => (s ? { ...s, totp_enabled: false } : s));
     } catch {}
   }
 
   async function generateRecovery() {
-    const data = await gql<{ recoveryGenerate: string[] }>(
-      `mutation{ recoveryGenerate }`
-    );
-    setRecoveryCodes(data.recoveryGenerate);
+    setRecoveryCodes(await generateRecoveryCodes());
     setRecoveryOpen(true);
   }
 
   async function registerPasskey() {
     try {
       // Begin via GraphQL and convert fields
-      const resp = await gql<{ webauthnRegisterBegin: string }>(
-        `mutation{ webauthnRegisterBegin }`
-      );
-      const options = JSON.parse(resp.webauthnRegisterBegin);
+      const options = await beginPasskeyRegistration();
       if (
         options?.publicKey?.challenge &&
         typeof options.publicKey.challenge === "string"
@@ -181,24 +172,12 @@ export default function SettingsSecurity() {
           clientDataJSON: bufferToBase64url(attResp.clientDataJSON),
         },
       };
-      const finished = await gql<boolean>(
-        `mutation($input:String!){ webauthnRegisterFinish(input:$input) }`,
-        { input: JSON.stringify(finishPayload) }
-      );
+      const finished = await finishPasskeyRegistration(finishPayload);
       if (finished) {
         toast({ title: dict.settingsSecurity.passkey.registered });
         // reload list/counts
         try {
-          const d = await gql<{
-            myPasskeys: {
-              id: number;
-              device_name: string;
-              created_at: string;
-            }[];
-            authSettings: AuthState;
-          }>(
-            `query{ myPasskeys{ id device_name created_at } authSettings{ passkey_count recovery_codes_count email_login_enabled has_password totp_enabled } }`
-          );
+          const d = await loadSecuritySettings();
           setPasskeys(d.myPasskeys || []);
           setAuth((s) => ({ ...(s || {}), ...d.authSettings } as AuthState));
         } catch {}
@@ -273,10 +252,7 @@ export default function SettingsSecurity() {
                   <Button
                     onClick={async () => {
                       try {
-                        await gql<{ setPassword: boolean }>(
-                          `mutation($current:String,$next:String!){ setPassword(current:$current, next:$next) }`,
-                          { current: pwCurrent || undefined, next: pwNext }
-                        );
+                        await setPassword(pwCurrent || undefined, pwNext);
                         toast({ title: dict.toast.updated });
                         setPwCurrent("");
                         setPwNext("");
@@ -337,10 +313,7 @@ export default function SettingsSecurity() {
                       className="flex-1"
                       onClick={async () => {
                         try {
-                          await gql<{ setPassword: boolean }>(
-                            `mutation($current:String,$next:String!){ setPassword(current:$current, next:$next) }`,
-                            { current: pwCurrent || undefined, next: pwNext }
-                          );
+                          await setPassword(pwCurrent || undefined, pwNext);
                           toast({ title: dict.toast.updated });
                           setPwCurrent("");
                           setPwNext("");
@@ -533,10 +506,7 @@ export default function SettingsSecurity() {
                                 size="sm"
                                 onClick={async () => {
                                   try {
-                                    await gql(
-                                      `mutation($id:Int!,$name:String!){ renamePasskey(id:$id,name:$name) }`,
-                                      { id: pk.id, name: editingPk.name }
-                                    );
+                                    await renamePasskey(pk.id, editingPk.name);
                                     setPasskeys((list) =>
                                       list.map((it) =>
                                         it.id === pk.id
@@ -593,10 +563,7 @@ export default function SettingsSecurity() {
                                 variant="destructive"
                                 onClick={async () => {
                                   try {
-                                    await gql(
-                                      `mutation($id:Int!){ deletePasskey(id:$id) }`,
-                                      { id: pk.id }
-                                    );
+                                    await deletePasskey(pk.id);
                                     setPasskeys((list) =>
                                       list.filter((it) => it.id !== pk.id)
                                     );
@@ -668,10 +635,7 @@ export default function SettingsSecurity() {
                                 size="sm"
                                 onClick={async () => {
                                   try {
-                                    await gql(
-                                      `mutation($id:Int!,$name:String!){ renamePasskey(id:$id,name:$name) }`,
-                                      { id: pk.id, name: editingPk.name }
-                                    );
+                                    await renamePasskey(pk.id, editingPk.name);
                                     setPasskeys((list) =>
                                       list.map((it) =>
                                         it.id === pk.id
@@ -728,10 +692,7 @@ export default function SettingsSecurity() {
                                 variant="destructive"
                                 onClick={async () => {
                                   try {
-                                    await gql(
-                                      `mutation($id:Int!){ deletePasskey(id:$id) }`,
-                                      { id: pk.id }
-                                    );
+                                    await deletePasskey(pk.id);
                                     setPasskeys((list) =>
                                       list.filter((it) => it.id !== pk.id)
                                     );
@@ -832,24 +793,4 @@ export default function SettingsSecurity() {
       </div>
     </SettingsShell>
   );
-}
-
-function base64urlToBuffer(base64url: string) {
-  const padding = "=".repeat((4 - (base64url.length % 4)) % 4);
-  const base64 = (base64url + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  const buffer = new ArrayBuffer(raw.length);
-  const view = new Uint8Array(buffer);
-  for (let i = 0; i < raw.length; ++i) view[i] = raw.charCodeAt(i);
-  return buffer;
-}
-function bufferToBase64url(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++)
-    binary += String.fromCharCode(bytes[i]);
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
 }

@@ -42,9 +42,7 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
   PencilIcon,
-  Calendar as CalendarIcon,
 } from "lucide-react";
-import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -54,26 +52,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
-
-type Cycle = {
-  id: number;
-  begin_date: string;
-  finish_date: string;
-  description: string;
-};
-type Group = {
-  id: number;
-  cycle_id: number;
-  position: number;
-  user_ids: number[];
-};
-type AdminUser = {
-  id: number;
-  email: string;
-  display_name: string;
-};
+import { DatePicker } from "@/features/admin-day-shift/DatePicker";
+import { getToken, requireAuth } from "@/lib/auth-guard";
+import {
+  createCycle as createCycleRequest,
+  createGroup as createGroupRequest,
+  deleteCycle as deleteCycleRequest,
+  deleteGroup as deleteGroupRequest,
+  loadCurrentCycleId,
+  loadCycles as loadCyclesRequest,
+  loadDayShiftIndex,
+  loadGroupIds,
+  loadGroups as loadGroupsRequest,
+  loadUsersByIds,
+  reorderGroups as reorderGroupsRequest,
+  searchAdminUsers,
+  setCurrentCycle,
+  updateDayShiftIndex,
+  updateGroupMembers,
+  type AdminUser,
+  type Cycle,
+  type Group,
+} from "@/features/admin-day-shift/api";
 type Assignment = {
   id: number;
   date: string; // YYYY-MM-DD
@@ -83,8 +84,6 @@ type Assignment = {
 };
 
 export default function AdminDayShift() {
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [cycles, setCycles] = React.useState<Cycle[]>([]);
   const [cid, setCid] = React.useState<string>("");
   const [autoCid, setAutoCid] = React.useState<string>("");
@@ -129,16 +128,7 @@ export default function AdminDayShift() {
   async function loadCycles() {
     try {
       setLoadingCycles(true);
-      const d = await gql<{
-        adminDayshiftCyclesPaginated: { items: Cycle[]; total: number };
-        dayShiftCurrentCycle: number;
-      }>(
-        `query($page:Int,$size:Int){
-          adminDayshiftCyclesPaginated(page:$page,page_size:$size){ items{ id begin_date finish_date description } total }
-          dayShiftCurrentCycle
-        }`,
-        { page: cyclePage, size: pageSize }
-      );
+      const d = await loadCyclesRequest(cyclePage, pageSize);
       setCycles(d.adminDayshiftCyclesPaginated?.items || []);
       setCycleTotal(d.adminDayshiftCyclesPaginated?.total || 0);
       const curId = d.dayShiftCurrentCycle;
@@ -161,24 +151,16 @@ export default function AdminDayShift() {
     }
     try {
       setLoadingGroups(true);
-      const d = await gql<{
-        adminDayshiftGroupsPaginated: { items: Group[]; total: number };
-      }>(
-        `query($cid:Int!,$page:Int,$size:Int){ adminDayshiftGroupsPaginated(cycle_id:$cid,page:$page,page_size:$size){ items{ id cycle_id position user_ids } total } }`,
-        { cid: Number(active), page: groupPage, size: pageSize }
-      );
+      const d = await loadGroupsRequest(Number(active), groupPage, pageSize);
       const arr = d.adminDayshiftGroupsPaginated?.items || [];
       setGroupTotal(d.adminDayshiftGroupsPaginated?.total || 0);
       setGroups(arr);
       // fetch user details for rendering
       const ids = Array.from(new Set(arr.flatMap((g) => g.user_ids)));
       if (ids.length > 0) {
-        const ures = await gql<{ adminUsersByIds: AdminUser[] }>(
-          `query($ids:[Int!]!){ adminUsersByIds(ids:$ids){ id email display_name } }`,
-          { ids }
-        );
+        const users = await loadUsersByIds(ids);
         const um: Record<number, AdminUser> = {};
-        for (const u of ures.adminUsersByIds || []) um[u.id] = u;
+        for (const u of users) um[u.id] = u;
         setUserMap(um);
       } else {
         setUserMap({});
@@ -194,30 +176,20 @@ export default function AdminDayShift() {
     }
   }
   React.useEffect(() => {
-    if (token) {
+    if (getToken()) {
       loadCycles();
-      gql<{ dayShiftIndex: number }>(`query{ dayShiftIndex }`)
-        .then((d) => setCurrentIndex(d.dayShiftIndex ?? 0))
+      loadDayShiftIndex()
+        .then(setCurrentIndex)
         .catch(() => setCurrentIndex(0));
-      // Try new query; fallback to legacy adminDayshiftCurrentCycle
-      gql<{ dayShiftCurrentCycle: number }>(`query{ dayShiftCurrentCycle }`)
-        .then((d) => {
-          const v = d.dayShiftCurrentCycle || 0;
+      loadCurrentCycleId()
+        .then((v) => {
           setCurrentCycleId(v ? String(v) : "");
         })
-        .catch(async () => {
-          try {
-            const dd = await gql<{
-              adminDayshiftCurrentCycle: { id: number } | null;
-            }>(`query{ adminDayshiftCurrentCycle{ id } }`);
-            const v = dd.adminDayshiftCurrentCycle?.id || 0;
-            setCurrentCycleId(v ? String(v) : "");
-          } catch {
-            setCurrentCycleId("");
-          }
-        });
+        .catch(() => setCurrentCycleId(""));
+    } else {
+      requireAuth();
     }
-  }, [token, cyclePage]);
+  }, [cyclePage]);
   React.useEffect(() => {
     setGroupPage(1);
   }, [cid, autoCid]);
@@ -234,10 +206,7 @@ export default function AdminDayShift() {
 
   async function createCycle() {
     try {
-      await gql<{ adminDayshiftCreateCycle: { id: number } }>(
-        `mutation($b:String!,$f:String!,$d:String!){ adminDayshiftCreateCycle(begin_date:$b, finish_date:$f, description:$d){ id } }`,
-        { b: begin, f: finish, d: desc }
-      );
+      await createCycleRequest(begin, finish, desc);
       setBegin("");
       setFinish("");
       setDesc("");
@@ -252,10 +221,7 @@ export default function AdminDayShift() {
   }
   async function deleteCycle(id: number) {
     try {
-      await gql<{ adminDayshiftDeleteCycle: boolean }>(
-        `mutation($id:Int!){ adminDayshiftDeleteCycle(id:$id) }`,
-        { id }
-      );
+      await deleteCycleRequest(id);
       if (String(id) === cid) setCid("");
       loadCycles();
     } catch (e: any) {
@@ -269,10 +235,7 @@ export default function AdminDayShift() {
   async function createGroup() {
     if (!cid || selectedUsers.length === 0) return;
     try {
-      await gql<{ adminDayshiftCreateGroup: { id: number } }>(
-        `mutation($cid:Int!,$ids:[Int!]!){ adminDayshiftCreateGroup(cycle_id:$cid, user_ids:$ids){ id } }`,
-        { cid: Number(cid), ids: selectedUsers.map((u) => u.id) }
-      );
+      await createGroupRequest(Number(cid), selectedUsers.map((u) => u.id));
       setSelectedUsers([]);
       setUserQuery("");
       loadGroups();
@@ -287,10 +250,7 @@ export default function AdminDayShift() {
   async function deleteGroup(id: number) {
     if (!cid) return;
     try {
-      await gql<{ adminDayshiftDeleteGroup: boolean }>(
-        `mutation($cid:Int!,$gid:Int!){ adminDayshiftDeleteGroup(cycle_id:$cid, group_id:$gid) }`,
-        { cid: Number(cid), gid: id }
-      );
+      await deleteGroupRequest(Number(cid), id);
       loadGroups();
     } catch (e: any) {
       toast({
@@ -302,10 +262,7 @@ export default function AdminDayShift() {
   }
   async function reorderGroups(newOrder: number[]) {
     try {
-      await gql<{ adminDayshiftReorderGroups: boolean }>(
-        `mutation($cid:Int!,$ids:[Int!]!){ adminDayshiftReorderGroups(cycle_id:$cid, group_ids:$ids) }`,
-        { cid: Number(cid), ids: newOrder }
-      );
+      await reorderGroupsRequest(Number(cid), newOrder);
       loadGroups();
     } catch (e: any) {
       toast({
@@ -317,11 +274,7 @@ export default function AdminDayShift() {
   }
   async function moveUp(idx: number) {
     // We need full order for reordering stability; fetch ids for entire cycle
-    const res = await gql<{ adminDayshiftGroupIds: number[] }>(
-      `query($cid:Int!){ adminDayshiftGroupIds(cycle_id:$cid) }`,
-      { cid: Number(cid) }
-    );
-    const order = res.adminDayshiftGroupIds || [];
+    const order = await loadGroupIds(Number(cid));
     const globalIndex = (groupPage - 1) * pageSize + idx;
     if (globalIndex <= 0 || globalIndex >= order.length) return;
     [order[globalIndex - 1], order[globalIndex]] = [
@@ -331,11 +284,7 @@ export default function AdminDayShift() {
     reorderGroups(order);
   }
   async function moveDown(idx: number) {
-    const res = await gql<{ adminDayshiftGroupIds: number[] }>(
-      `query($cid:Int!){ adminDayshiftGroupIds(cycle_id:$cid) }`,
-      { cid: Number(cid) }
-    );
-    const order = res.adminDayshiftGroupIds || [];
+    const order = await loadGroupIds(Number(cid));
     const globalIndex = (groupPage - 1) * pageSize + idx;
     if (globalIndex < 0 || globalIndex >= order.length - 1) return;
     [order[globalIndex + 1], order[globalIndex]] = [
@@ -355,12 +304,9 @@ export default function AdminDayShift() {
     const q = userQuery.trim();
     const h = setTimeout(async () => {
       try {
-        const res = await gql<{ adminUsers: AdminUser[] }>(
-          `query($q:String){ adminUsers(q:$q){ id email display_name } }`,
-          { q: q || undefined }
-        );
+        const users = await searchAdminUsers(q);
         if (!active) return;
-        setUserOptions(res.adminUsers || []);
+        setUserOptions(users);
       } catch (e: any) {
         if (!active) return;
         setUserOptions([]);
@@ -664,10 +610,7 @@ export default function AdminDayShift() {
             onClick={async () => {
               try {
                 setSavingIndex(true);
-                await gql<{ adminUpdateDayShiftIndex: boolean }>(
-                  `mutation($v:Int!){ adminUpdateDayShiftIndex(index:$v) }`,
-                  { v: currentIndex }
-                );
+                await updateDayShiftIndex(currentIndex);
               } finally {
                 setSavingIndex(false);
               }
@@ -694,10 +637,7 @@ export default function AdminDayShift() {
             onClick={async () => {
               try {
                 setSavingCycleId(true);
-                await gql<{ adminSetDayShiftCurrentCycle: boolean }>(
-                  `mutation($cid:Int!){ adminSetDayShiftCurrentCycle(cycle_id:$cid) }`,
-                  { cid: parseInt(currentCycleId || "0", 10) }
-                );
+                await setCurrentCycle(parseInt(currentCycleId || "0", 10));
                 // reflect in autoCid for predictions
                 if (!cid) setAutoCid(currentCycleId);
               } finally {
@@ -1089,9 +1029,9 @@ export default function AdminDayShift() {
                 onClick={async () => {
                   if (!editGroup) return;
                   try {
-                    await gql<{ adminDayshiftUpdateGroupMembers: boolean }>(
-                      `mutation($gid:Int!,$ids:[Int!]!){ adminDayshiftUpdateGroupMembers(group_id:$gid,user_ids:$ids) }`,
-                      { gid: editGroup.id, ids: editSelected.map((u) => u.id) }
+                    await updateGroupMembers(
+                      editGroup.id,
+                      editSelected.map((u) => u.id),
                     );
                     setEditOpen(false);
                     loadGroups();
@@ -1161,10 +1101,7 @@ export default function AdminDayShift() {
                         continue;
                       }
                       try {
-                        await gql<{ adminDayshiftCreateGroup: { id: number } }>(
-                          `mutation($cid:Int!,$ids:[Int!]!){ adminDayshiftCreateGroup(cycle_id:$cid, user_ids:$ids){ id } }`,
-                          { cid: Number(cid), ids: uniq }
-                        );
+                        await createGroupRequest(Number(cid), uniq);
                         created++;
                       } catch (e: any) {
                         errors.push(
@@ -1206,59 +1143,5 @@ export default function AdminDayShift() {
         </Dialog>
       </div>
     </div>
-  );
-}
-
-// Inline simple DatePicker built with Popover + Calendar (shadcn pattern)
-function DatePicker({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value?: string;
-  onChange?: (v: string) => void;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const date = React.useMemo(() => {
-    if (!value) return undefined as Date | undefined;
-    const [y, m, d] = value.split("-").map((v) => parseInt(v, 10));
-    if (!y || !m || !d) return undefined;
-    return new Date(y, m - 1, d);
-  }, [value]);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          data-empty={!date}
-          className="data-[empty=true]:text-muted-foreground w-[220px] justify-start text-left font-normal"
-          type="button"
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? (
-            date.toLocaleDateString()
-          ) : (
-            <span>{placeholder || "日付を選択"}</span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={(d: Date | undefined) => {
-            const s = d
-              ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-                  2,
-                  "0"
-                )}-${String(d.getDate()).padStart(2, "0")}`
-              : "";
-            onChange && onChange(s);
-            setOpen(false);
-          }}
-        />
-      </PopoverContent>
-    </Popover>
   );
 }

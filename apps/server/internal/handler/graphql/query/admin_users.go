@@ -7,7 +7,6 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
-	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
 
@@ -26,14 +25,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, true); err != nil {
+						return nil, err
 					}
 					uid := uint(p.Args["user_id"].(int))
 					// Defaults
@@ -72,13 +65,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					if !isAdmin {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, false); err != nil {
+						return nil, err
 					}
 					var reports []domain.UserReport
 					q := h.db.Model(&domain.UserReport{})
@@ -124,13 +112,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					if !isAdmin {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, false); err != nil {
+						return nil, err
 					}
 					var report domain.UserReport
 					if err := h.db.First(&report, p.Args["id"].(int)).Error; err != nil {
@@ -160,14 +143,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, true); err != nil {
+						return nil, err
 					}
 					uid := uint(p.Args["user_id"].(int))
 					// defaults
@@ -192,14 +169,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, true); err != nil {
+						return nil, err
 					}
 					uid := uint(p.Args["user_id"].(int))
 					var devs []domain.NotificationDevice
@@ -233,14 +204,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, true); err != nil {
+						return nil, err
 					}
 					raw, _ := p.Args["ids"].([]any)
 					if len(raw) == 0 {
@@ -302,14 +267,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, true); err != nil {
+						return nil, err
 					}
 					qstr, _ := p.Args["q"].(string)
 					qstr = strings.TrimSpace(qstr)
@@ -377,14 +336,8 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					if _, err := h.requireAdminActor(c, true); err != nil {
+						return nil, err
 					}
 					qstr, _ := p.Args["q"].(string)
 					qstr = strings.TrimSpace(qstr)

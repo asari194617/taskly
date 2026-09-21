@@ -21,5 +21,6 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run build
+      - run: npm run test:unit
       - run: npm run test:canonical
       - run: npm run test:security-headers
