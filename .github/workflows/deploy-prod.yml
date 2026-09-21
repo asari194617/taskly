@@ -299,6 +299,7 @@ jobs:
             test -x /opt/airflow/bin/notifications-que-manager
             test -x /opt/airflow/bin/backup-mysql
             test -x /opt/airflow/bin/moderation
+            mysqldump --version | grep -q "MySQL Community Server"
           ' </dev/null
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'

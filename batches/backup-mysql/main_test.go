@@ -69,6 +69,14 @@ func TestIntegrationRestore(t *testing.T) {
 	t.Setenv("MYSQL_PASSWORD", "restore_test_password")
 	t.Setenv("DB_HOST", "127.0.0.1")
 	t.Setenv("DB_PORT", "33379")
+	// A MariaDB dump client writes values for MySQL generated columns, producing
+	// an archive that decrypts cleanly but fails during restore.
+	setup := exec.Command("mysql", "-h", "127.0.0.1", "-P", "33379", "-u", "root", "backup_source", "-e",
+		"DROP TABLE IF EXISTS generated_column_restore_test; CREATE TABLE generated_column_restore_test (id INT PRIMARY KEY, deadline DATE, effective_deadline DATE GENERATED ALWAYS AS (deadline) STORED); INSERT INTO generated_column_restore_test (id, deadline) VALUES (1, '2026-09-21')")
+	setup.Env = append(os.Environ(), "MYSQL_PWD=restore_test_password")
+	if output, err := setup.CombinedOutput(); err != nil {
+		t.Fatalf("setup generated column: %v: %s", err, output)
+	}
 	identity, err := age.GenerateX25519Identity()
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +109,13 @@ func TestIntegrationRestore(t *testing.T) {
 	output, err := check.CombinedOutput()
 	if err != nil || strings.TrimSpace(string(output)) != "restored" {
 		t.Fatalf("restored row: %v: %s", err, output)
+	}
+	checkGenerated := exec.Command("mysql", "-h", "127.0.0.1", "-P", "33379", "-u", "root", "-N", "-e",
+		"SELECT effective_deadline FROM restore_target.generated_column_restore_test WHERE id=1")
+	checkGenerated.Env = append(os.Environ(), "MYSQL_PWD=restore_test_password")
+	output, err = checkGenerated.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "2026-09-21" {
+		t.Fatalf("restored generated column: %v: %s", err, output)
 	}
 }
 
