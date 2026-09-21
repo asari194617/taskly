@@ -8,10 +8,10 @@ import (
 	"log"
 	"net"
 	"net/smtp"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-	"os"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
@@ -103,7 +103,7 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		msg := []byte(
 			"From: " + from + "\r\n" +
 				"To: " + body.Email + "\r\n" +
-				"Subject: " + "[" + code + "]" + subject + "\r\n" +
+				"Subject: " + formatLoginCodeSubject(subject, code) + "\r\n" +
 				"Date: " + nowRFC + "\r\n" +
 				"MIME-Version: 1.0\r\n" +
 				"Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n" +
@@ -426,6 +426,10 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		}
 		return c.SendStatus(fiber.StatusNoContent)
 	})
+}
+
+func formatLoginCodeSubject(subject, code string) string {
+	return strings.TrimSpace(subject) + ": " + code
 }
 
 // composeLoginCodeGRPC calls emailcompose.EmailComposer.ComposeLoginCode via gRPC reflection dynamically.

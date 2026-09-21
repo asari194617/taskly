@@ -17,6 +17,14 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 )
 
+func TestFormatLoginCodeSubject(t *testing.T) {
+	got := formatLoginCodeSubject("ログインコード", "123456")
+	want := "ログインコード: 123456"
+	if got != want {
+		t.Fatalf("formatLoginCodeSubject() = %q, want %q", got, want)
+	}
+}
+
 func doJSONRequest(app *fiber.App, method, path string, body any, headers map[string]string) (*httptest.ResponseRecorder, []byte, error) {
 	var buf bytes.Buffer
 	if body != nil {
