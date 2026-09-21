@@ -1,6 +1,8 @@
 package gqlH
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -9,6 +11,52 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 )
+
+func TestGraphQLRejectsExpensiveRequests(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app := fiber.New()
+	NewHandler(nil, rdb, nil).RegisterGraphQL(app.Group("/graphql"))
+
+	aliases := make([]string, 101)
+	for i := range aliases {
+		aliases[i] = fmt.Sprintf("a%d: dayShiftIndex", i)
+	}
+	spreads := strings.Repeat("...F ", 101)
+	tests := []struct {
+		name   string
+		query  string
+		vars   map[string]any
+		status int
+	}{
+		{"aliases", "query { " + strings.Join(aliases, " ") + " }", nil, 400},
+		{"fragments", "query { " + spreads + " } fragment F on Query { dayShiftIndex }", nil, 400},
+		{"nested list", "query { a: subjects { id } b: subjects { id } c: subjects { id } }", nil, 400},
+		{"variable page size", "query($n: Int) { tasks(limit: $n) { items { id } } }", map[string]any{"n": 500}, 400},
+		{"query size", "query { dayShiftIndex } #" + strings.Repeat("x", maxGraphQLQueryBytes), nil, 413},
+		{"variables size", "query($s: String) { dayShiftIndex }", map[string]any{"s": strings.Repeat("x", maxGraphQLVariablesBytes)}, 413},
+		{"body size", "query { dayShiftIndex } #" + strings.Repeat("x", maxGraphQLBodyBytes), nil, 413},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"query": tt.query, "variables": tt.vars})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest("POST", "/graphql/", strings.NewReader(string(body)))
+			req.Header.Set("Content-Type", "application/json")
+			res, err := app.Test(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			if res.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", res.StatusCode, tt.status)
+			}
+		})
+	}
+}
 
 func TestMissingSessionReturnsUnauthorized(t *testing.T) {
 	redisServer := miniredis.RunT(t)
