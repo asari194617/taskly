@@ -11,6 +11,8 @@ on:
       - ".dockerignore"
       - ".github/scripts/image-matrix.sh"
       - ".github/scripts/test-image-matrix.sh"
+      - ".github/scripts/require-prod-env.sh"
+      - ".github/scripts/test-prod-env-deploy.sh"
       - ".github/workflows/compose-build.yml"
       - ".github/workflows/deploy-prod.yml"
 
@@ -40,6 +42,8 @@ jobs:
           fetch-depth: 0
       - name: Test image path mapping
         run: .github/scripts/test-image-matrix.sh
+      - name: Test production environment deployment
+        run: .github/scripts/test-prod-env-deploy.sh
       - name: Test disk maintenance safeguards
         run: infra/ops/test-disk-maintenance.sh
       - name: Validate Compose configuration

@@ -35,7 +35,7 @@
 - `PROD_SSH_PASSPHRASE`: 鍵にパスフレーズがある場合のみ
 - `PROD_SSH_PORT`: 省略時は `22`
 - `PROD_WORKDIR`: サーバー上の絶対パス
-- `PROD_ENV`: 本番 `.env` の内容。現行の rsync は `--delete` を使うため、本番デプロイでは設定必須
+- `PROD_ENV`: 本番 `.env` の内容。空値では本番ホストへの接続前にデプロイを中止する
 - `PROD_COMPOSE_PROFILES`: 将来 Compose profile を追加する場合の予約値（現行構成には profile なし）
 
 `main` への push では次のパスが変更された場合に起動します。
@@ -56,11 +56,12 @@
 1. 変更パスから `api`, `email-compose`, `mcp`, `airflow` のビルド対象を選択する。
 2. 対象イメージを `linux/amd64` でビルドし、commit SHA タグで GHCR に push する。
 3. 変更のないサービスにも同じリリース SHA タグを付け、4サービスすべてを同一 SHA で固定する。
-4. リポジトリを `PROD_WORKDIR` へ rsync し、指定されていれば `.env` を更新する。
-5. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
-6. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull し、DB と Redis を起動する。
-7. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
-8. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+4. `PROD_ENV` を確認し、`.env` と `infra/.env` を保護してリポジトリを rsync する。
+5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
+6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
+7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull し、DB と Redis を起動する。
+8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
+9. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
