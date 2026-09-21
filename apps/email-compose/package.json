@@ -16,7 +16,7 @@
     "@grpc/grpc-js": "^1.14.4",
     "@grpc/proto-loader": "^0.8.1",
     "@react-email/render": "^2.1.0",
-    "@react-email/ui": "^6.9.2",
+    "@react-email/ui": "^6.9.5",
     "@sentry/node": "^10.64.0",
     "@sentry/profiling-node": "^10.70.0",
     "dd-trace": "^6.11.0",
