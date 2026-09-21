@@ -310,7 +310,10 @@ paths:
                 title: { type: string }
                 description: { type: string }
                 subject_id: { type: integer }
-                status_callback: { type: string }
+                status_callback:
+                  type: string
+                  format: uri
+                  description: HTTPS URL whose origin must be listed in TEAMS_CALLBACK_ALLOWED_ORIGINS.
               required: [email, title, subject_id]
       responses:
         "202": { description: Enqueued }

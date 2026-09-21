@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -25,6 +26,11 @@ func (h *Handler) registerTeamsIntegrationRoutes(router fiber.Router) {
 		}
 		if err := c.BodyParser(&body); err != nil || body.Email == "" || body.Title == "" || body.SubjectID == 0 {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		if body.StatusCallback != nil && *body.StatusCallback != "" {
+			if err := validateTeamsCallbackURL(*body.StatusCallback, os.Getenv("TEAMS_CALLBACK_ALLOWED_ORIGINS")); err != nil {
+				return c.Status(400).JSON(fiber.Map{"error": "invalid status_callback"})
+			}
 		}
 		// Resolve user by email
 		var u domain.User

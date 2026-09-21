@@ -9,12 +9,14 @@ describe("MCP auth preHandler", () => {
 
   function mockPool(validToken?: string): DBPool {
     return {
-      async query(sql: any, params?: any[]) {
-        const hashed = params?.[0];
-        if (validToken && hashed === sha(validToken)) {
-          return [[{ user_id: 123 }]] as any;
+      async query(sql: string, params?: any[]) {
+        if (sql.includes("FROM mcps m")) {
+          if (validToken && params?.[0] === sha(validToken)) {
+            return [[{ user_id: 123 }]];
+          }
+          return [[]];
         }
-        return [[]] as any;
+        return [[]];
       },
       async execute() {
         return [{} as any];
@@ -55,8 +57,11 @@ describe("MCP auth preHandler", () => {
     const executions: Array<{ sql: string; params?: any[] }> = [];
     const pool: DBPool = {
       async query(sql: string, params?: any[]) {
-        if (sql.startsWith("SELECT user_id FROM mcps")) {
+        if (sql.includes("FROM mcps m")) {
           return [[{ user_id: 123 }]];
+        }
+        if (sql.includes("FROM permissions") && params?.[1] === "delete") {
+          return [[{ value: "own" }]];
         }
         queries.push({ sql, params });
         return [[]];
@@ -82,19 +87,98 @@ describe("MCP auth preHandler", () => {
     });
     await app.inject({ method: "DELETE", url: "/tasks/46", headers });
 
-    assert.match(queries[0].sql, /WHERE added_user_id = \?/);
+    const taskQuery = queries.find((query) => query.sql.includes("FROM tasks"));
+    assert.ok(taskQuery);
+    assert.match(taskQuery.sql, /WHERE added_user_id = \? AND is_hidden = 0/);
     assert.match(
-      queries[0].sql,
+      taskQuery.sql,
       /AND \(title LIKE \? OR description LIKE \?\)/,
     );
-    assert.deepEqual(queries[0].params, [123, "%owner%", "%owner%", 200, 0]);
-    assert.match(executions[0].sql, /WHERE id = \? AND added_user_id = \?$/);
+    assert.deepEqual(taskQuery.params, [123, "%owner%", "%owner%", 200, 0]);
+    assert.match(executions[0].sql, /WHERE id = \? AND added_user_id = \? AND is_hidden = 0$/);
     assert.deepEqual(executions[0].params, ["updated", 45, 123]);
     assert.equal(
       executions[1].sql,
-      "DELETE FROM tasks WHERE id = ? AND added_user_id = ?",
+      "DELETE FROM tasks WHERE id = ? AND added_user_id = ? AND is_hidden = 0",
     );
     assert.deepEqual(executions[1].params, [46, 123]);
+  });
+
+  test("denies task deletion by default, even for the owner", async () => {
+    const executions: string[] = [];
+    const pool: DBPool = {
+      async query(sql: string) {
+        if (sql.includes("FROM mcps m")) return [[{ user_id: 123 }]];
+        return [[]];
+      },
+      async execute(sql: string) {
+        executions.push(sql);
+        return [{}];
+      },
+    };
+    const app = await createApp(pool);
+    const res = await app.inject({
+      method: "DELETE", url: "/tasks/42", headers: { "x-mcp-token": "good" },
+    });
+    assert.equal(res.statusCode, 403);
+    assert.deepEqual(executions, []);
+  });
+
+  test("allows task deletion for an admin role", async () => {
+    const executions: Array<{ sql: string; params?: any[] }> = [];
+    const pool: DBPool = {
+      async query(sql: string) {
+        if (sql.includes("FROM mcps m")) return [[{ user_id: 123 }]];
+        if (sql.includes("FROM role_users")) return [[{ role: "admin" }]];
+        return [[]];
+      },
+      async execute(sql: string, params?: any[]) {
+        executions.push({ sql, params });
+        return [{ affectedRows: 1 }];
+      },
+    };
+    const app = await createApp(pool);
+    const res = await app.inject({
+      method: "DELETE", url: "/tasks/42", headers: { "x-mcp-token": "good" },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(executions.length, 1);
+    assert.deepEqual(executions[0].params, [42, 123]);
+  });
+
+  test("honors explicit task permission denials", async () => {
+    const pool: DBPool = {
+      async query(sql: string) {
+        if (sql.includes("FROM mcps m")) return [[{ user_id: 123 }]];
+        if (sql.includes("FROM permissions")) return [[{ value: "deny" }]];
+        return [[]];
+      },
+      async execute() { throw new Error("must not mutate"); },
+    };
+    const app = await createApp(pool);
+    for (const [method, url, payload] of [
+      ["GET", "/tasks", undefined],
+      ["POST", "/tasks", { title: "test", subject_id: 1, deadline: "2026-09-21" }],
+      ["PATCH", "/tasks/42", { title: "changed" }],
+      ["DELETE", "/tasks/42", undefined],
+    ] as const) {
+      const res = await app.inject({ method, url, payload, headers: { "x-mcp-token": "good" } });
+      assert.equal(res.statusCode, 403, `${method} ${url}`);
+    }
+  });
+
+  test("authenticates only active, unblocked users", async () => {
+    const pool: DBPool = {
+      async query(sql: string) {
+        assert.match(sql, /u\.is_deleted = 0/);
+        assert.match(sql, /NOT EXISTS \(SELECT 1 FROM blocks/);
+        return [[]];
+      },
+      async execute() { throw new Error("must not mutate"); },
+    };
+    const app = await createApp(pool);
+    const res = await app.inject({ method: "GET", url: "/tasks", headers: { "x-mcp-token": "good" } });
+    assert.equal(res.statusCode, 401);
   });
 
   test("forbids reading another user", async () => {

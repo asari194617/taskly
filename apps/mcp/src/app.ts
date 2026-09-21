@@ -10,6 +10,32 @@ function sha256Hex(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
+// Keep these defaults aligned with apps/server/internal/utils/support_permissions.go.
+// MCP remains owner-scoped even when the main API grants broader roles.
+async function canUseTasks(
+  pool: DBPool,
+  userId: number,
+  action: "read" | "create" | "update" | "delete",
+  ownerId?: number,
+): Promise<boolean> {
+  const [roles] = await pool.query(
+    "SELECT role FROM role_users WHERE user_id = ? AND role IN ('admin', 'manager') LIMIT 1",
+    [userId],
+  );
+  if (roles.length > 0) return true;
+
+  const [permissions] = await pool.query(
+    "SELECT value FROM permissions WHERE user_id = ? AND target = 'tasks' AND method = ? ORDER BY id DESC LIMIT 1",
+    [userId, action],
+  );
+  if (permissions.length > 0) {
+    const value = permissions[0].value?.toLowerCase();
+    if (!value || value === "all") return true;
+    return value === "own" && ownerId === userId;
+  }
+  return action === "read" || action === "create" || (action === "update" && ownerId === userId);
+}
+
 export async function createApp(pool: DBPool) {
   const app = Fastify({ logger: false });
 
@@ -26,7 +52,11 @@ export async function createApp(pool: DBPool) {
         }
         const hashed = sha256Hex(token);
         const [rows] = await pool.query(
-          "SELECT user_id FROM mcps WHERE hashed_token = ? AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1",
+          `SELECT m.user_id FROM mcps m
+           JOIN users u ON u.id = m.user_id AND u.is_deleted = 0
+           WHERE m.hashed_token = ? AND (m.expires_at IS NULL OR m.expires_at > NOW())
+           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.user_id = u.id
+             AND (b.expires_at IS NULL OR b.expires_at > NOW())) LIMIT 1`,
           [hashed],
         );
         if (!rows || rows.length === 0) {
@@ -43,6 +73,9 @@ export async function createApp(pool: DBPool) {
   // Tasks CRUD (subset)
   app.get("/tasks", async (req, reply) => {
     const userId = (req as any).userId as number;
+    if (!(await canUseTasks(pool, userId, "read"))) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
     const q = (req.query as any)?.q as string | undefined;
     const limit = Math.min(
       Math.max(Number((req.query as any)?.limit ?? 200), 1),
@@ -50,7 +83,7 @@ export async function createApp(pool: DBPool) {
     );
     const offset = Math.max(Number((req.query as any)?.offset ?? 0), 0);
     let sql =
-      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks WHERE added_user_id = ?";
+      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks WHERE added_user_id = ? AND is_hidden = 0";
     const params: any[] = [userId];
     if (q) {
       sql += " AND (title LIKE ? OR description LIKE ?)";
@@ -65,6 +98,14 @@ export async function createApp(pool: DBPool) {
   app.post("/tasks", async (req, reply) => {
     const body = req.body as any;
     const userId = (req as any).userId as number;
+    if (!(await canUseTasks(pool, userId, "create"))) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    if (!body || typeof body.title !== "string" || !body.title.trim() ||
+        !Number.isSafeInteger(body.subject_id) || body.subject_id <= 0 ||
+        typeof body.deadline !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.deadline)) {
+      return reply.code(400).send({ error: "invalid body" });
+    }
     const [res] = await pool.execute(
       `INSERT INTO tasks (added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -87,6 +128,10 @@ export async function createApp(pool: DBPool) {
   app.patch("/tasks/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
     const userId = (req as any).userId as number;
+    if (!Number.isSafeInteger(id) || id <= 0) return reply.code(400).send({ error: "invalid id" });
+    if (!(await canUseTasks(pool, userId, "update", userId))) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
     const body = req.body as any;
     const fields: string[] = [];
     const values: any[] = [];
@@ -109,7 +154,7 @@ export async function createApp(pool: DBPool) {
     maybe("deadline_since");
     maybe("deadline_until");
     if (fields.length === 0) return reply.send({ ok: true });
-    const sql = `UPDATE tasks SET ${fields.join(", ")} WHERE id = ? AND added_user_id = ?`;
+    const sql = `UPDATE tasks SET ${fields.join(", ")} WHERE id = ? AND added_user_id = ? AND is_hidden = 0`;
     values.push(id, userId);
     await pool.execute(sql, values);
     reply.send({ ok: true });
@@ -118,7 +163,11 @@ export async function createApp(pool: DBPool) {
   app.delete("/tasks/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
     const userId = (req as any).userId as number;
-    await pool.execute("DELETE FROM tasks WHERE id = ? AND added_user_id = ?", [
+    if (!Number.isSafeInteger(id) || id <= 0) return reply.code(400).send({ error: "invalid id" });
+    if (!(await canUseTasks(pool, userId, "delete", userId))) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
+    await pool.execute("DELETE FROM tasks WHERE id = ? AND added_user_id = ? AND is_hidden = 0", [
       id,
       userId,
     ]);

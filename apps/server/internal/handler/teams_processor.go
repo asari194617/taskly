@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -47,7 +48,7 @@ func newTeamsProcessor(db *gorm.DB) *teamsProcessor {
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
 		started: make(chan struct{}),
-		client:  &http.Client{Timeout: 10 * time.Second},
+		client:  newTeamsCallbackClient(net.DefaultResolver.LookupIPAddr),
 		sleep:   time.Sleep,
 		secret:  func() string { return os.Getenv("TEAMS_INTEGRATION_SECRET") },
 	}
@@ -132,6 +133,13 @@ func (p *teamsProcessor) process(job teamsJob) {
 }
 
 func (p *teamsProcessor) sendCallback(taskID uint, succeeded bool, callbackURL string) {
+	if err := validateTeamsCallbackURL(callbackURL, os.Getenv("TEAMS_CALLBACK_ALLOWED_ORIGINS")); err != nil {
+		_ = p.db.Table("tasks_teams_logs").Where("task_id = ?", taskID).Updates(map[string]any{
+			"last_status": "callback_rejected",
+			"last_error":  err.Error(),
+		}).Error
+		return
+	}
 	payload := fmt.Sprintf(`{"is_success":%t,"task_id":%d}`, succeeded, taskID)
 	signature := ""
 	if secret := p.secret(); secret != "" {
@@ -152,7 +160,7 @@ func (p *teamsProcessor) sendCallback(taskID uint, succeeded bool, callbackURL s
 			if err == nil {
 				body := []byte{}
 				if resp.Body != nil {
-					body, _ = io.ReadAll(resp.Body)
+					body, _ = io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 					_ = resp.Body.Close()
 				}
 				_ = p.db.Table("tasks_teams_logs").Where("task_id = ?", taskID).Updates(map[string]any{
