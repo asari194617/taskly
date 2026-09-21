@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { ChevronDownIcon, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
@@ -17,7 +17,8 @@ type Props = {
   autoFocus?: boolean;
 };
 
-// Minimal date-time picker built with native inputs inside a popover.
+// Keep the calendar and time input in one popover so selecting either does not
+// dismiss the picker through a nested portal.
 export function DateTimePicker({
   value,
   onChange,
@@ -25,6 +26,7 @@ export function DateTimePicker({
   autoFocus,
 }: Props) {
   const [open, setOpen] = React.useState(false);
+  const timeInputId = React.useId();
   const date = value ? value.split("T")[0] : "";
   const time = value ? value.split("T")[1] || "" : "";
   const label = React.useMemo(() => {
@@ -82,58 +84,33 @@ export function DateTimePicker({
           <ChevronDownIcon className="ml-2 size-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-3" align="start">
+      <PopoverContent className="w-[320px] max-w-[calc(100vw-2rem)] p-2" align="start">
         <div className="flex flex-col gap-3">
-          {/* Nested popover for selecting date */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full justify-start">
-                <CalendarIcon className="mr-2 size-4 opacity-70" />
-                <span>
-                  {date
-                    ? (() => {
-                        const [y, m, d] = date.split("-");
-                        return y && m && d
-                          ? `${y}/${m}/${d}`
-                          : date.split("-").join("/");
-                      })()
-                    : "日付を選択"}
-                </span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="p-3" align="start">
-              <Calendar
-                mode="single"
-                selected={parseLocalDate(date)}
-                captionLayout="dropdown"
-                startMonth={new Date(1970, 0)}
-                endMonth={new Date(2100, 11)}
-                onSelect={(d) => commit(formatLocalDate(d), time)}
-              />
-            </PopoverContent>
-          </Popover>
-
-          {/* Nested popover for selecting time */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full justify-start">
-                <Clock className="mr-2 size-4 opacity-70" />
-                <span>{time ? time : "時刻を選択"}</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="p-3" align="start">
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">時刻</div>
-                <Input
-                  type="time"
-                  step="1"
-                  value={time}
-                  onChange={(e) => commit(date, e.target.value)}
-                  className="bg-background"
-                />
-              </div>
-            </PopoverContent>
-          </Popover>
+          <Calendar
+            mode="single"
+            selected={parseLocalDate(date)}
+            captionLayout="dropdown"
+            startMonth={new Date(1970, 0)}
+            endMonth={new Date(2100, 11)}
+            onSelect={(d) => commit(formatLocalDate(d), time)}
+          />
+          <div>
+            <label
+              className="mb-1 block text-xs text-muted-foreground"
+              htmlFor={timeInputId}
+            >
+              時刻
+            </label>
+            <Input
+              id={timeInputId}
+              type="time"
+              step="1"
+              value={time}
+              disabled={!date}
+              onChange={(e) => commit(date, e.target.value)}
+              className="bg-background"
+            />
+          </div>
 
           <div className="flex justify-between">
             <Button

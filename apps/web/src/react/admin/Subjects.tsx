@@ -21,6 +21,18 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
@@ -172,7 +184,7 @@ export default function AdminSubjects() {
           id: editItem.id,
           ja: editNameJa.trim() || undefined,
           en: editNameEn.trim() || undefined,
-          e: toRFC3339(editExpires),
+          e: editExpires ? toRFC3339(editExpires) : "",
         }
       );
       setItems((prev) =>
@@ -320,10 +332,7 @@ export default function AdminSubjects() {
           </TableHeader>
           <TableBody>
             {items.map((it) => (
-              <TableRow
-                key={it.id}
-                className={it.expires_at ? "opacity-60" : ""}
-              >
+              <TableRow key={it.id}>
                 <TableCell>{it.id}</TableCell>
                 <TableCell className="max-w-[280px] truncate">
                   {it.name_ja}
@@ -333,19 +342,42 @@ export default function AdminSubjects() {
                 </TableCell>
                 <TableCell>{formatYmdHm(it.created_at)}</TableCell>
                 <TableCell>
-                  {it.expires_at ? formatYmdHm(it.expires_at) : "-"}
+                  {it.expires_at ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{formatYmdHm(it.expires_at)}</span>
+                      {new Date(it.expires_at).getTime() <= Date.now() && (
+                        <Badge variant="secondary">期限切れ</Badge>
+                      )}
+                    </div>
+                  ) : "-"}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" onClick={() => openEdit(it)}>
                       編集
                     </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => softDelete(it.id)}
-                    >
-                      削除
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive">削除</Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>教科を削除</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            「{it.name_ja}」を削除しますか？この教科は期限切れとして扱われます。
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => softDelete(it.id)}
+                          >
+                            削除
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>
