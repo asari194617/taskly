@@ -6,6 +6,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "test:canonical": "node --test scripts/canonical-url.test.mjs && node scripts/check-canonical-urls.mjs",
     "test:security-headers": "node scripts/check-security-headers.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
