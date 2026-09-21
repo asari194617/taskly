@@ -128,14 +128,18 @@ func (h *Handler) RegisterSettingsRoutes(router fiber.Router) {
 	router.Get("/notification-methods", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var emailCnt int64
+		var emailTotal int64
 		var webCnt int64
+		if err := h.db.Model(&domain.NotificationDevice{}).Where("user_id = ? AND platform = 'EMAIL'", u.ID).Count(&emailTotal).Error; err != nil {
+			return settingsDBError(c)
+		}
 		if err := h.db.Model(&domain.NotificationDevice{}).Where("user_id = ? AND platform = 'EMAIL' AND is_enabled = 1", u.ID).Count(&emailCnt).Error; err != nil {
 			return settingsDBError(c)
 		}
 		if err := h.db.Model(&domain.NotificationDevice{}).Where("user_id = ? AND platform = 'WEBPUSH' AND is_enabled = 1", u.ID).Count(&webCnt).Error; err != nil {
 			return settingsDBError(c)
 		}
-		return c.JSON(fiber.Map{"email": emailCnt > 0, "webpush": webCnt > 0})
+		return c.JSON(fiber.Map{"email": emailTotal == 0 || emailCnt > 0, "webpush": webCnt > 0})
 	})
 	router.Post("/notification-methods", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
@@ -152,7 +156,11 @@ func (h *Handler) RegisterSettingsRoutes(router fiber.Router) {
 				var dev domain.NotificationDevice
 				if err := tx.Where("user_id = ? AND platform = 'EMAIL'", u.ID).First(&dev).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 					nm := "email"
-					if err := tx.Create(&domain.NotificationDevice{UserID: u.ID, Name: &nm, Platform: "EMAIL", IsEnabled: *body.Email}).Error; err != nil {
+					dev = domain.NotificationDevice{UserID: u.ID, Name: &nm, Platform: "EMAIL"}
+					if err := tx.Create(&dev).Error; err != nil {
+						return err
+					}
+					if err := tx.Model(&dev).Update("is_enabled", *body.Email).Error; err != nil {
 						return err
 					}
 				} else if err != nil {
@@ -213,6 +221,9 @@ func (h *Handler) RegisterSettingsRoutes(router fiber.Router) {
 				} else if errors.Is(err, gorm.ErrRecordNotFound) {
 					rec = domain.NotificationTypePref{UserID: u.ID, NotificationType: t, IsEnabled: v}
 					if err := tx.Create(&rec).Error; err != nil {
+						return err
+					}
+					if err := tx.Model(&rec).Update("is_enabled", v).Error; err != nil {
 						return err
 					}
 				} else {

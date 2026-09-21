@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,70 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestNotificationMethodDefaultMatchesDelivery(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&domain.NotificationDevice{}, &domain.NotificationTypePref{}); err != nil {
+		t.Fatal(err)
+	}
+	u := domain.User{ID: 7}
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error { c.Locals("user", &u); return c.Next() })
+	NewHandler(db, nil, nil).RegisterSettingsRoutes(app.Group("/settings"))
+	check := func(wantEmail bool) {
+		t.Helper()
+		resp, err := app.Test(httptest.NewRequest("GET", "/settings/notification-methods", nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("status=%d", resp.StatusCode)
+		}
+		var methods struct {
+			Email   bool `json:"email"`
+			WebPush bool `json:"webpush"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&methods); err != nil {
+			t.Fatal(err)
+		}
+		if methods.Email != wantEmail || methods.WebPush {
+			t.Fatalf("methods=%+v", methods)
+		}
+	}
+	check(true)
+	post := func(path, body string) {
+		t.Helper()
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 204 {
+			t.Fatalf("POST %s status=%d", path, resp.StatusCode)
+		}
+	}
+	post("/settings/notification-methods", `{"email":false}`)
+	check(false)
+	post("/settings/notification-types", `{"TASK_MORNING":false,"DAYSHIFT":false}`)
+	resp, err := app.Test(httptest.NewRequest("GET", "/settings/notification-types", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var types map[string]bool
+	if err := json.NewDecoder(resp.Body).Decode(&types); err != nil {
+		t.Fatal(err)
+	}
+	if types["TASK_MORNING"] || types["DAYSHIFT"] || !types["TASK"] {
+		t.Fatalf("notification types=%v", types)
+	}
+}
 
 func TestSettingsDoNotReportDatabaseFailureAsSuccess(t *testing.T) {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
