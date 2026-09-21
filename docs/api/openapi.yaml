@@ -295,10 +295,14 @@ paths:
       tags: [integrations]
       parameters:
         - in: header
-          name: X-Teams-Secret
+          name: X-Teams-Integration-Secret
           required: true
           schema: { type: string }
           description: Shared secret to authenticate inbound requests from Power Automate.
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, maxLength: 200 }
       requestBody:
         required: true
         content:
@@ -310,13 +314,19 @@ paths:
                 title: { type: string }
                 description: { type: string }
                 subject_id: { type: integer }
+                deadline:
+                  type: string
+                  format: date
+                  description: Defaults to the reception date when omitted.
                 status_callback:
                   type: string
                   format: uri
                   description: HTTPS URL whose origin must be listed in TEAMS_CALLBACK_ALLOWED_ORIGINS.
               required: [email, title, subject_id]
       responses:
-        "202": { description: Enqueued }
+        "202": { description: Job committed, with job_id and status in the response }
+        "409": { description: Idempotency key was used with another request }
+        "503": { description: Database unavailable; request was not accepted }
   /integrations/dayshift/inbound:
     post:
       summary: Inbound webhook to mark Day Shift unfulfilled when an email about 日直 is detected

@@ -14,45 +14,45 @@ import (
 
 // Posts one or more embeds to the Discord webhook. Logs basic diagnostics.
 func SendDiscordEmbeds(embeds []map[string]any) {
+	if err := SendDiscordEmbedsResult(embeds); err != nil {
+		log.Printf("discord: %v", err)
+	}
+}
+
+func SendDiscordEmbedsResult(embeds []map[string]any) error {
 	hook := Env("DISCORD_WEBHOOK_URL", "")
 	if strings.TrimSpace(hook) == "" {
-		log.Printf("discord: skipped (no DISCORD_WEBHOOK_URL)")
-		return
+		return fmt.Errorf("DISCORD_WEBHOOK_URL is not configured")
 	}
 	if len(embeds) == 0 {
-		log.Printf("discord: skipped (no embeds)")
-		return
+		return nil
 	}
 	payloadObj := map[string]any{"embeds": embeds}
 	b, err := json.Marshal(payloadObj)
 	if err != nil {
-		log.Printf("discord: marshal error: %v", err)
-		return
+		return err
 	}
 	req, err := http.NewRequest("POST", hook, bytes.NewReader(b))
 	if err != nil {
-		log.Printf("discord: build request error: %v", err)
-		return
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "taskly-server/1.0")
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("discord: post error: %v", err)
-		return
+		return err
 	}
 	_, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("discord: non-2xx status: %d", resp.StatusCode)
-		return
+		return fmt.Errorf("webhook http %d", resp.StatusCode)
 	}
-	log.Printf("discord: embeds sent ok")
+	return nil
 }
 
-// SendDiscordTaskEmbed builds and sends an embed for task events (created/updated/deleted)
-func SendDiscordTaskEmbed(action string, t domain.Task, actor string) {
+// SendDiscordTaskEmbedResult builds and sends an embed for a task event.
+func SendDiscordTaskEmbedResult(action string, t domain.Task, actor string) error {
 	// Prepare fields
 	webURL := strings.TrimSpace(Env("WEB_URL", ""))
 	title := "Task"
@@ -90,5 +90,5 @@ func SendDiscordTaskEmbed(action string, t domain.Task, actor string) {
 	if webURL != "" {
 		embed["url"] = strings.TrimRight(webURL, "/") + "/home"
 	}
-	SendDiscordEmbeds([]map[string]any{embed})
+	return SendDiscordEmbedsResult([]map[string]any{embed})
 }
