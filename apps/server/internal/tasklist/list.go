@@ -1,12 +1,14 @@
 package tasklist
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/tasksearch"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"gorm.io/gorm"
 )
@@ -90,7 +92,16 @@ func List(db *gorm.DB, userID uint, options Options) ([]domain.Task, *Cursor, er
 	} else {
 		query = query.Where("effective_deadline >= ?", today)
 	}
-	if search := strings.TrimSpace(options.Search); search != "" {
+	search := strings.TrimSpace(options.Search)
+	if client := tasksearch.Current(); search != "" && !options.MCP && !strings.ContainsAny(search, "%_") && client.Ready() && (cursorID == 0 || cursorDeadline != nil) {
+		items, next, err := searchIndex(client, query, search, options, today, !isAdmin && !isManager, cursorDeadline, cursorID, limit)
+		if err == nil {
+			return items, next, nil
+		}
+		// Keep search available while the index is unavailable or being repaired.
+		client.MarkUnavailable()
+	}
+	if search != "" {
 		like := "%" + search + "%"
 		query = query.Where("(title LIKE ? OR description LIKE ?)", like, like)
 	}
@@ -128,6 +139,56 @@ func List(db *gorm.DB, userID uint, options Options) ([]domain.Task, *Cursor, er
 			items = items[:limit]
 		}
 		return items, nil, nil
+	}
+	if len(items) <= limit {
+		return items, nil, nil
+	}
+	items = items[:limit]
+	last := items[len(items)-1]
+	return items, &Cursor{CursorDeadline: last.Deadline.Format("2006-01-02"), CursorID: strconv.FormatUint(uint64(last.ID), 10)}, nil
+}
+
+func searchIndex(client *tasksearch.Client, query *gorm.DB, search string, options Options, today string, visibleOnly bool, cursorDeadline *time.Time, cursorID uint64, limit int) ([]domain.Task, *Cursor, error) {
+	like := "%" + search + "%"
+	request := tasksearch.SearchOptions{Query: search, Overdue: options.Overdue, Today: today,
+		VisibleOnly: visibleOnly, Size: limit*2 + 1}
+	if cursorDeadline != nil {
+		request.CursorDeadline = cursorDeadline.Format("2006-01-02")
+		request.CursorID = cursorID
+	}
+	items := make([]domain.Task, 0, limit+1)
+	for len(items) <= limit {
+		hits, err := client.Search(context.Background(), request)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(hits) == 0 {
+			break
+		}
+		ids := make([]uint, 0, len(hits))
+		for _, hit := range hits {
+			ids = append(ids, hit.ID)
+		}
+		var matched []domain.Task
+		if err := query.Where("id IN ? AND (title LIKE ? OR description LIKE ?)", ids, like, like).Find(&matched).Error; err != nil {
+			return nil, nil, err
+		}
+		byID := make(map[uint]domain.Task, len(matched))
+		for _, task := range matched {
+			byID[task.ID] = task
+		}
+		for _, hit := range hits {
+			if task, ok := byID[hit.ID]; ok {
+				items = append(items, task)
+			}
+			if len(items) > limit {
+				break
+			}
+		}
+		if len(items) > limit || len(hits) < request.Size {
+			break
+		}
+		request.After = hits[len(hits)-1].Sort
 	}
 	if len(items) <= limit {
 		return items, nil, nil

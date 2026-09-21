@@ -81,6 +81,7 @@ Useful entry points include:
 - [`docs/schema.md`](docs/schema.md): database schema
 - [`docs/mcp-docs.md`](docs/mcp-docs.md): MCP client and server guide
 - [`docs/initial-settings.md`](docs/initial-settings.md): CI/CD and production operations
+- [`docs/operations/task-search.md`](docs/operations/task-search.md): optional OpenSearch task search
 - [`apps/docs/openapi/openapi.yaml`](apps/docs/openapi/openapi.yaml): OpenAPI definition
 
 ## Production deployment
