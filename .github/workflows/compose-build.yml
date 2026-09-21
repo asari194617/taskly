@@ -27,6 +27,8 @@ jobs:
           fetch-depth: 0
       - name: Test image path mapping
         run: .github/scripts/test-image-matrix.sh
+      - name: Test disk maintenance safeguards
+        run: infra/ops/test-disk-maintenance.sh
       - name: Validate Compose configuration
         run: |
           touch .env

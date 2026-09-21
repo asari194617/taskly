@@ -229,6 +229,8 @@ jobs:
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
           export TASKLY_IMAGE_TAG="$RELEASE_SHA"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          ./ops/disk-maintenance.sh cleanup
+          ./ops/disk-maintenance.sh pre-deploy
           docker compose down --remove-orphans || true
           docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
@@ -239,6 +241,7 @@ jobs:
           '
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+          ./ops/install-user-cron.sh "$PROD_WORKDIR"
           EOS
       - name: Deploy summary
         if: always()
