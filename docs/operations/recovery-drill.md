@@ -39,11 +39,13 @@
 本番 DB へ直接投入する前に、同じバックアップを**隔離した検証環境**で復元し、下記の操作と migration の互換性を確認する。本番から取得した dump は機密データとして扱い、検証環境でのアクセスと削除を記録する。バックアップは `airflow-backups` volume の `/opt/airflow/backups/backup-YYYYMMDD-HHMMSS.sql.gz` にあり、FTP 側にも保管される。まず `gzip -t` で破損を確認し、ファイル名の時刻と Airflow の `backup_mysql` 成功時刻を照合する。最新の正常バックアップが不明なら復元を止める。
 
 1. 検証環境の MySQL 8.4 を**新しい空の volume**で起動する。既存の本番/検証 DB に上書きしない。アプリの外部送信（SMTP、Web Push、Discord、Teams）を無効にする。検証用の `.env` は本番の秘密値をそのまま流用しない。
-2. 次のコマンドを検証環境の `infra` で実行する。`BACKUP_FILE` は検証環境内の dump の絶対パスに置き換える。`docker compose config` で接続先が検証環境であることを確認する。
+2. 次のコマンドを検証環境の `infra` で実行する。`BACKUP_FILE` は検証環境内の dump の絶対パスに置き換える。固有の Compose project 名を使い、`docker compose config --volumes` で本番の `db-data` と異なる volume が作られることを確認する。検証用 `.env` は別途用意する。
 
    ```bash
    export COMPOSE_FILE=docker-compose.yml
+   export COMPOSE_PROJECT_NAME=taskly-recovery-YYYYMMDD
    docker compose config --services
+   docker compose config --volumes
    docker compose up -d --wait db
    gzip -t "$BACKUP_FILE"
    gunzip -c "$BACKUP_FILE" | docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE"'
