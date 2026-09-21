@@ -1,5 +1,7 @@
 # Taskly 改善案（セキュリティ重視）
 
+> **履歴資料:** これは特定時点のレビュー結果であり、現行構成の説明や未対応項目の一覧ではありません。現在の状態はコード、`SECURITY.md`、`docs/README.md`、および Issue/PR を確認してください。この文書に記載された Postfix、Traefik、ファイルパスなどには、その後削除・変更されたものがあります。
+
 このドキュメントは、リポジトリ全体のレビューから特定された推奨改善点をまとめたものです。優先度ごと、領域ごとにグループ化されています。対象範囲は：apps/server（Go/Fiber）、apps/web（Astro/React）、apps/mcp（Fastify/Node）、infra（Docker Compose、Postfix、Traefik、Airflow）、batches です。
 
 ※注意：本レポートは変更案のみを提案しており、実際のコードには手を加えていません。

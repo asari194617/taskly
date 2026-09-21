@@ -1,51 +1,90 @@
-# 初期設定メモ（CI/配信）
+# CI・配信・本番運用
 
-## Cloudflare R2 / CDN 配信に必要な GitHub Secrets
+この文書は `.github/workflows/` と `infra/ops/` の現行実装を説明します。
 
-- R2_BUCKET: R2 バケット名（例: taskly-cdn）
-- R2_ACCOUNT_ID: Cloudflare アカウント ID
-- R2_ACCESS_KEY_ID: R2 用 Access Key ID
-- R2_SECRET_ACCESS_KEY: R2 用 Secret Access Key
+## MCP クライアントの配信
 
 ワークフロー: `.github/workflows/release-mcp-client.yml`
 
-- タグ（v1.2.3 等）を push すると、各プラットフォームのバイナリを生成し、
-  `docs/mcp/clients/<tag>/` 配下へアップロード、ルートに `latest.json` / `install.*` を更新します。
+必要な GitHub Secrets:
 
-## CDN 側パス
+- `R2_BUCKET`: R2 バケット名
+- `R2_ACCOUNT_ID`: Cloudflare アカウント ID
+- `R2_ACCESS_KEY_ID`: R2 Access Key ID
+- `R2_SECRET_ACCESS_KEY`: R2 Secret Access Key
+
+`v*` タグの push または手動実行で macOS、Linux、Windows 用バイナリを
+生成し、次のパスへアップロードします。
 
 - ベース: `https://cdn.taskly.iy0306.com/docs/mcp/clients`
-- 最新: `.../latest.json`, `.../install.sh`, `.../install.ps1`
-- バージョン別: `.../<tag>/taskly-mcp-<os>-<arch>`, `.../<tag>/checksums.txt`
+- 最新タグ: `latest.json`
+- インストーラー: `install.sh`, `install.ps1`
+- バージョン別: `<tag>/taskly-mcp-<os>-<arch>`, `<tag>/checksums.txt`
 
-## Agent モード運用（方針）
+利用方法は `apps/mcp-client-files/README.md` と `docs/mcp-docs.md` を参照してください。
 
-- 本リポジトリは Gemini の Agent モード利用を前提（推奨）とします。
-- リポジトリ直下の `GEMINI.md` に、エージェントの基本方針（Taskly MCP ツール優先・破壊的操作は確認）を記載済み。
-- ユーザー案内は `mcp-docs.md` を参照（Agent モードの有効化手順を含む）。
-- CI/配信側に Agent モード固有の設定は不要です（クライアント側の設定のみ）。
-
-## 本番デプロイ（SSH / Docker Compose）用 GitHub Secrets
+## 本番デプロイ
 
 ワークフロー: `.github/workflows/deploy-prod.yml`
 
-- PROD_HOST: 本番サーバーのホスト名 or IP（Ubuntu。Docker は事前導入済み）
-- PROD_USER: SSH ユーザー名（sudo 不要で Docker を操作できるユーザー推奨）
-- PROD_SSH_KEY: 秘密鍵（OpenSSH 形式、改行含む文字列）
-- PROD_SSH_PASSPHRASE: 秘密鍵のパスフレーズ（パスフレーズ付き鍵を使う場合のみ）
-- PROD_SSH_PORT: SSH ポート（省略可。デフォルト 22）
-- PROD_WORKDIR: サーバー側の設置先ディレクトリ（例: /opt/taskly）
-- PROD_ENV: `.env` の中身（オプション。未設定ならアップロードしない）
-- PROD_COMPOSE_PROFILES: Docker Compose のプロファイル（例: `edge` で Traefik/TLS を有効化。オプション）
+必要な GitHub Secrets:
 
-動作概要:
+- `PROD_HOST`: 本番ホスト名または IP
+- `PROD_USER`: Docker とユーザー crontab を操作できる SSH ユーザー
+- `PROD_SSH_KEY`: OpenSSH 形式の秘密鍵
+- `PROD_SSH_PASSPHRASE`: 鍵にパスフレーズがある場合のみ
+- `PROD_SSH_PORT`: 省略時は `22`
+- `PROD_WORKDIR`: サーバー上の絶対パス
+- `PROD_ENV`: 本番 `.env` の内容。現行の rsync は `--delete` を使うため、本番デプロイでは設定必須
+- `PROD_COMPOSE_PROFILES`: 将来 Compose profile を追加する場合の予約値（現行構成には profile なし）
 
-- main への push（apps/server, apps/mcp, batches/_, infra/_ 変更時）または手動実行で起動
-- リポジトリを rsync でサーバーへ同期（.git は除外）。必要なら `.env` をアップロード
-- `infra/docker-compose.yml`（必要に応じて追加 compose ファイル）で `docker compose up -d --build --force-recreate --remove-orphans` を実行
-- 既存コンテナは置き換える形で再起動されます
+`main` への push では次のパスが変更された場合に起動します。
 
-補足:
+- `apps/server/**`
+- `apps/mcp/**`
+- `apps/email-compose/**`
+- `batches/**`
+- `infra/**`
+- `.dockerignore`
+- `.github/scripts/image-matrix.sh`
+- `.github/workflows/deploy-prod.yml`
 
-- パスフレーズ付き鍵は `ssh-agent` + `SSH_ASKPASS` を用いて非対話的に `ssh-add` します（`PROD_SSH_PASSPHRASE` が必要）。
-- Prometheus本番運用とDatadog Agentを忘れずに設定する
+手動実行も可能で、`full_build=true` が既定です。
+
+### デプロイの流れ
+
+1. 変更パスから `api`, `email-compose`, `mcp`, `airflow` のビルド対象を選択する。
+2. 対象イメージを `linux/amd64` でビルドし、commit SHA タグで GHCR に push する。
+3. 変更のないサービスにも同じリリース SHA タグを付け、4サービスすべてを同一 SHA で固定する。
+4. リポジトリを `PROD_WORKDIR` へ rsync し、指定されていれば `.env` を更新する。
+5. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
+6. `TASKLY_IMAGE_TAG=<commit SHA>` を指定して Compose を停止、pull、再作成する。
+7. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+
+本番ホストではイメージをビルドしません。`docker compose up --build` や
+`latest` の直接指定ではなく、ワークフローが配布する commit SHA タグを使用します。
+
+## ディスク監視と清掃
+
+`infra/ops/disk-maintenance.sh` は Docker volume を削除しません。既定では、
+古い未使用イメージ/ビルドキャッシュ、Airflow ログ、バックアップを保持期間に
+従って清掃します。デプロイ前は使用率と空き容量を検査し、基準を満たさない場合は
+デプロイを中止します。
+
+`infra/ops/install-user-cron.sh` が次をユーザー crontab に登録します。
+
+- 5分ごとのディスク状態確認
+- 毎日 03:25 の清掃
+
+通知先は `DISK_ALERT_WEBHOOK_URL`、未設定時は `DISCORD_WEBHOOK_URL` です。
+しきい値と保持期間は `.env.example` に記載された `DISK_*`,
+`DOCKER_RETENTION_HOURS`, `AIRFLOW_LOG_RETENTION_DAYS`,
+`BACKUP_RETENTION_DAYS`, `BACKUP_MIN_COPIES` で上書きできます。
+
+## 運用上の注意
+
+- 本番 `.env` の秘密値をリポジトリへ commit しないでください。
+- Compose は API、MySQL、Redis、Airflow、MCP のポートをホストへ公開します。
+  ファイアウォールや外部リバースプロキシで公開範囲と TLS を管理してください。
+- `infra/docker-compose.yml` 内に Traefik や TLS 終端サービスはありません。
+- デプロイ後は `docker compose ps` と各 health endpoint を確認してください。

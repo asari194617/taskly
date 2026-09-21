@@ -1,94 +1,64 @@
-Taskly MCP server (Node + TypeScript)
+# Taskly MCP service
 
-Overview
+This package contains two processes:
 
-- Provides a minimal HTTP MCP-style API to integrate with AI clients or automations.
-- Auth via X-MCP-Token header matched against the `mcps.hashed_token` in the DB.
-- Endpoints
-  - GET /healthz
-  - GET /tasks
-  - POST /tasks
-  - PATCH /tasks/:id
-  - DELETE /tasks/:id
-  - GET /users/:id
-  - PATCH /users/:id
+- a Fastify HTTP API backed by the Taskly MySQL database
+- an MCP stdio bridge that exposes the HTTP operations as MCP tools
 
-Build & Run (Docker)
+## HTTP API
 
-- Compose service name: mcp
-- Port: 3066 (exposed)
-- Environment (in compose)
-  - MCP_HOST=0.0.0.0, MCP_PORT=3066
-  - DB_HOST, DB_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+The Compose service is named `mcp` and is exposed at
+`http://localhost:3066` for local development.
 
-Local development
+| Method | Path | Authentication |
+| --- | --- | --- |
+| GET | `/healthz` | none |
+| GET, POST | `/tasks` | `X-MCP-Token` |
+| PATCH, DELETE | `/tasks/:id` | `X-MCP-Token` |
+| GET, PATCH | `/users/:id` | `X-MCP-Token` |
 
-1. Install deps
-   npm i
-2. Build
-   npm run build
-3. Run
-   npm start
+The server SHA-256 hashes the supplied token and compares it with
+`mcps.hashed_token`. Tokens are issued from **Settings > MCP** in the web UI.
 
-Stdio bridge (for Gemini CLI or other stdio MCP clients)
+```bash
+curl -fsS http://localhost:3066/healthz
+curl -fsS -H "X-MCP-Token: $TASKLY_MCP_TOKEN" \
+  http://localhost:3066/tasks
+```
 
-- This package also ships a stdio MCP bridge that proxies tools to the HTTP API.
-- Build first (npm run build), then run:
-  npm run start:stdio
+## Local development
 
-Environment variables:
+```bash
+npm ci --legacy-peer-deps --no-audit --no-fund
+npm run build
+npm test
+npm start
+```
 
-- TASKLY_MCP_BASE_URL: Base URL of the HTTP MCP (default http://localhost:3066)
-- TASKLY_MCP_TOKEN or MCP_TOKEN: Plain token to pass via X-MCP-Token
+`npm run dev` watches the compiled `dist/index.js`; run the build first and
+rebuild after TypeScript changes.
 
-Gemini CLI settings.json example:
-{
-"mcpServers": {
-"taskly": {
-"command": "/usr/bin/env",
-"args": [
-"node",
-"/absolute/path/to/apps/mcp/dist/stdio.js"
-],
-"env": {
-"TASKLY_MCP_BASE_URL": "http://localhost:3066",
-"TASKLY_MCP_TOKEN": "<plain-token>"
-}
-}
-}
-}
+HTTP server environment variables:
 
-Auth
+- `MCP_HOST` (default `0.0.0.0`)
+- `MCP_PORT` (default `3066`)
+- `DB_HOST`, `DB_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
 
-- Header: X-MCP-Token: <plain_token>
-- Server hashes the token with SHA-256 and checks `SELECT user_id FROM mcps WHERE hashed_token = ?`.
-- Tokens are issued via the Web UI: Settings > MCP.
+When running on the host against the repository's Compose database, use
+`DB_HOST=127.0.0.1` and `DB_PORT=3060`. Inside Compose, use `db:3306`.
 
-Examples
+## stdio bridge
 
-1. Health:
-   curl http://localhost:3066/healthz
-2. List tasks:
-   curl -H "X-MCP-Token: $TOKEN" http://localhost:3066/tasks
-3. Create task:
-   curl -X POST -H "Content-Type: application/json" -H "X-MCP-Token: $TOKEN" \
-    -d '{"title":"New Task","subject_id":1,"deadline":"2025-10-31","type":"OTHER"}' \
-    http://localhost:3066/tasks
-4. Update user display name:
-   curl -X PATCH -H "Content-Type: application/json" -H "X-MCP-Token: $TOKEN" \
-    -d '{"display_name":"New Name"}' \
-    http://localhost:3066/users/1
+```bash
+npm run build
+npm run start:stdio
+```
 
-Client configuration hints
+Bridge environment variables:
 
-- Claude Desktop (macOS) config JSON `claude_desktop_config.json` example:
-  {
-  "mcpServers": {
-  "taskly": {
-  "command": "/usr/bin/curl",
-  "args": ["http://localhost:3066/healthz"],
-  "env": { "TASKLY_MCP_URL": "http://localhost:3066", "TASKLY_MCP_TOKEN": "<token>" }
-  }
-  }
-  }
-- Most MCP clients can call HTTP endpoints with bearer-like tokens; adapt as needed.
+- `TASKLY_MCP_BASE_URL` (default `http://localhost:3066`)
+- `TASKLY_MCP_TOKEN` (preferred) or `MCP_TOKEN`
+
+Example client configuration is available in `gemini.settings.example.json`.
+For prebuilt client installation and production URL guidance, see
+`../../docs/mcp-docs.md`.
