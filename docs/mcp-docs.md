@@ -66,12 +66,12 @@ Windows の手順、特定バージョン、インストール先の変更方法
 
 ## 本番公開
 
-`infra/docker-compose.yml` は MCP をホストの TCP `3066` に公開しますが、
+`infra/docker-compose.yml` は MCP をホストの loopback TCP `3066` に公開しますが、
 TLS 終端やインターネット向けリバースプロキシは含みません。本番では次を別途構成します。
 
 1. DNS を本番入口へ向ける。
 2. 外部リバースプロキシまたはロードバランサーで HTTPS を終端する。
-3. MCP の `3066` は信頼できる入口からのみ到達可能にする。
+3. MCP の `3066` は `127.0.0.1` に限定し、Nginx 経由でのみ到達可能にする。
 4. 公開 URL の `GET /healthz` が `{"ok":true}` を返すことを確認する。
 
 クライアント側の `TASKLY_MCP_BASE_URL` には、その HTTPS URL を設定します。
@@ -80,7 +80,7 @@ TLS 終端やインターネット向けリバースプロキシは含みませ�
 
 `getaddrinfo ENOTFOUND db`:
 
-- MCP をホスト上で直接実行する場合は `DB_HOST=127.0.0.1` と `DB_PORT=3060` を使用します。
+- MCP をホスト上で直接実行する場合も、MySQL をホストへ公開せず Compose 内で実行するか、必要な期間だけ SSH port forwarding を使用します。
 - Compose 内では `DB_HOST=db` と `DB_PORT=3306` を使用します。
 - `mcp` と `db` が同じ Compose project の `default` network にあることを確認します。
 

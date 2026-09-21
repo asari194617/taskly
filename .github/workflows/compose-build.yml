@@ -33,6 +33,8 @@ jobs:
         run: |
           touch .env
           docker compose --file infra/docker-compose.yml config --quiet
+      - name: Test Compose port exposure policy
+        run: infra/ops/test-port-exposure.sh
       - id: matrix
         name: Select changed images
         env:

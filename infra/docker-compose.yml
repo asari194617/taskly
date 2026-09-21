@@ -11,14 +11,12 @@ services:
     logging: *default-logging
     env_file:
       - ../.env
-    environment: # DB接続情報は、コンテナ内でのポートとコンテナ外のポートが異なるため、共通化せずに指定
+    environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: Asia/Tokyo
-    ports:
-      - "3060:3306" # MySQL
     command:
       [
         "--sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
@@ -34,8 +32,6 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     logging: *default-logging
-    ports:
-      - "3061:6379" # Redis
     volumes:
       - redis-data:/data
   server:
@@ -53,8 +49,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - "3063:8080" # API
-      - "3064:9464" # Metrics
+      - "127.0.0.1:3063:8080" # Host Nginx -> API
+      - "127.0.0.1:3064:9464" # Host-only metrics scraping
     environment:
       # コンテナ間通信では localhost:3061 ではなく、サービス名:ポート を利用する
       REDIS_ADDR: redis:6379
@@ -76,7 +72,7 @@ services:
       - default
       - proxy
     ports:
-      - "3066:3066"
+      - "127.0.0.1:3066:3066" # Host Nginx -> MCP
   airflow-webserver:
     image: ghcr.io/asari194617/taskly/airflow:${TASKLY_IMAGE_TAG:-latest}
     build:
@@ -126,7 +122,7 @@ services:
       WEB_URL: http://localhost:3063
       TZ: Asia/Tokyo
     ports:
-      - "3065:3065"
+      - "127.0.0.1:3065:3065" # Host Nginx -> Airflow
     volumes:
       - airflow-logs:/opt/airflow/logs
       - ./airflow/dags:/opt/airflow/dags
@@ -157,9 +153,6 @@ services:
       DD_AGENT_HOST: ${DD_AGENT_HOST:-host.docker.internal}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-development}
-    ports:
-      - "3067:50051"
-      - "3068:50052"
     healthcheck:
       test:
         [

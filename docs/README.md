@@ -11,6 +11,7 @@ ones are retained as historical design material.
 - [`notifications.md`](notifications.md): notification settings and delivery
 - [`mcp-docs.md`](mcp-docs.md): MCP usage and client configuration
 - [`initial-settings.md`](initial-settings.md): CI/CD and production deployment
+- [`operations/network-ports.md`](operations/network-ports.md): production port exposure and verification
 - [`../apps/docs/openapi/openapi.yaml`](../apps/docs/openapi/openapi.yaml): OpenAPI definition used by the documentation app
 - [`batches/notifications/README.md`](batches/notifications/README.md): notification batch behavior
 - [`../batches/README.md`](../batches/README.md): batch inventory and scheduling
