@@ -48,6 +48,7 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     protobuf \
     pymysql \
     icalendar \
+    python-dateutil \
     python-dotenv
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
