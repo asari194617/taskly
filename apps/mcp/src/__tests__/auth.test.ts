@@ -1,6 +1,7 @@
-import { createApp, type DBPool } from "../app";
+import { createApp, type DBPool } from "../app.js";
+import assert from "node:assert/strict";
 import crypto from "crypto";
-import Fastify from "fastify";
+import { describe, test } from "node:test";
 
 describe("MCP auth preHandler", () => {
   const sha = (s: string) =>
@@ -24,7 +25,7 @@ describe("MCP auth preHandler", () => {
   test("rejects missing token", async () => {
     const app = await createApp(mockPool());
     const res = await app.inject({ method: "GET", url: "/tasks" });
-    expect(res.statusCode).toBe(401);
+    assert.equal(res.statusCode, 401);
   });
 
   test("rejects invalid token", async () => {
@@ -34,7 +35,7 @@ describe("MCP auth preHandler", () => {
       url: "/tasks",
       headers: { "x-mcp-token": "bad" },
     });
-    expect(res.statusCode).toBe(401);
+    assert.equal(res.statusCode, 401);
   });
 
   test("accepts valid token and returns tasks", async () => {
@@ -44,8 +45,65 @@ describe("MCP auth preHandler", () => {
       url: "/tasks",
       headers: { "x-mcp-token": "good" },
     });
-    expect(res.statusCode).toBe(200);
+    assert.equal(res.statusCode, 200);
     // Should return an array (empty mocked)
-    expect(JSON.parse(res.body)).toEqual([]);
+    assert.deepEqual(JSON.parse(res.body), []);
+  });
+
+  test("scopes task reads and mutations to the token owner", async () => {
+    const queries: Array<{ sql: string; params?: any[] }> = [];
+    const executions: Array<{ sql: string; params?: any[] }> = [];
+    const pool: DBPool = {
+      async query(sql: string, params?: any[]) {
+        if (sql.startsWith("SELECT user_id FROM mcps")) {
+          return [[{ user_id: 123 }]];
+        }
+        queries.push({ sql, params });
+        return [[]];
+      },
+      async execute(sql: string, params?: any[]) {
+        executions.push({ sql, params });
+        return [{}];
+      },
+    };
+    const app = await createApp(pool);
+    const headers = { "x-mcp-token": "good" };
+
+    await app.inject({
+      method: "GET",
+      url: "/tasks?q=owner",
+      headers,
+    });
+    await app.inject({
+      method: "PATCH",
+      url: "/tasks/45",
+      headers,
+      payload: { title: "updated" },
+    });
+    await app.inject({ method: "DELETE", url: "/tasks/46", headers });
+
+    assert.match(queries[0].sql, /WHERE added_user_id = \?/);
+    assert.match(
+      queries[0].sql,
+      /AND \(title LIKE \? OR description LIKE \?\)/,
+    );
+    assert.deepEqual(queries[0].params, [123, "%owner%", "%owner%", 200, 0]);
+    assert.match(executions[0].sql, /WHERE id = \? AND added_user_id = \?$/);
+    assert.deepEqual(executions[0].params, ["updated", 45, 123]);
+    assert.equal(
+      executions[1].sql,
+      "DELETE FROM tasks WHERE id = ? AND added_user_id = ?",
+    );
+    assert.deepEqual(executions[1].params, [46, 123]);
+  });
+
+  test("forbids reading another user", async () => {
+    const app = await createApp(mockPool("good"));
+    const res = await app.inject({
+      method: "GET",
+      url: "/users/456",
+      headers: { "x-mcp-token": "good" },
+    });
+    assert.equal(res.statusCode, 403);
   });
 });

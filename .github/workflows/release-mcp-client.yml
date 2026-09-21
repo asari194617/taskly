@@ -42,14 +42,18 @@ jobs:
           set -eux
           npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
-          npm i -g pkg@5.8.1
+          npm i -g esbuild@0.25.10 @yao-pkg/pkg@6.22.0
           pkg --version
           mkdir -p artifacts
-          test -f apps/mcp/dist/stdio.js
-          PKG_PUBLIC="@modelcontextprotocol/sdk,undici"
-          pkg apps/mcp/dist/stdio.js --targets node18-linux-x64   --public-packages "$PKG_PUBLIC" --output artifacts/taskly-mcp-linux-amd64
-          pkg apps/mcp/dist/stdio.js --targets node18-linux-arm64 --public-packages "$PKG_PUBLIC" --output artifacts/taskly-mcp-linux-arm64
-          pkg apps/mcp/dist/stdio.js --targets node18-win-x64     --public-packages "$PKG_PUBLIC" --output artifacts/taskly-mcp-windows-amd64.exe
+          mkdir -p .tmp/mcp-release
+          esbuild apps/mcp/src/stdio.ts --bundle --platform=node --format=cjs --target=node22 --outfile=.tmp/mcp-release/taskly-mcp.cjs
+          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-linux-x64   --output artifacts/taskly-mcp-linux-amd64
+          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-linux-arm64 --output artifacts/taskly-mcp-linux-arm64
+          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-win-x64     --output artifacts/taskly-mcp-windows-amd64.exe
+          case "$(uname -m)" in
+            x86_64|amd64) node apps/mcp/tests/verify-binary.mjs "$(pwd)/artifacts/taskly-mcp-linux-amd64" ;;
+            arm64|aarch64) node apps/mcp/tests/verify-binary.mjs "$(pwd)/artifacts/taskly-mcp-linux-arm64" ;;
+          esac
           ls -la artifacts
 
       - name: Upload build artifacts (linux/windows)
@@ -75,13 +79,17 @@ jobs:
           set -eux
           npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
-          npm i -g pkg@5.8.1
+          npm i -g esbuild@0.25.10 @yao-pkg/pkg@6.22.0
           pkg --version
           mkdir -p artifacts
-          test -f apps/mcp/dist/stdio.js
-          PKG_PUBLIC="@modelcontextprotocol/sdk,undici"
-          pkg apps/mcp/dist/stdio.js --targets node18-macos-x64   --public-packages "$PKG_PUBLIC" --output artifacts/taskly-mcp-darwin-amd64
-          pkg apps/mcp/dist/stdio.js --targets node18-macos-arm64 --public-packages "$PKG_PUBLIC" --output artifacts/taskly-mcp-darwin-arm64
+          mkdir -p .tmp/mcp-release
+          esbuild apps/mcp/src/stdio.ts --bundle --platform=node --format=cjs --target=node22 --outfile=.tmp/mcp-release/taskly-mcp.cjs
+          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-macos-x64   --output artifacts/taskly-mcp-darwin-amd64
+          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-macos-arm64 --output artifacts/taskly-mcp-darwin-arm64
+          case "$(uname -m)" in
+            x86_64|amd64) node apps/mcp/tests/verify-binary.mjs "$(pwd)/artifacts/taskly-mcp-darwin-amd64" ;;
+            arm64|aarch64) node apps/mcp/tests/verify-binary.mjs "$(pwd)/artifacts/taskly-mcp-darwin-arm64" ;;
+          esac
           ls -la artifacts
 
       - name: Upload build artifacts (macos)
