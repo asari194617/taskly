@@ -11,6 +11,7 @@ on:
       - "infra/**"
       - ".dockerignore"
       - ".github/scripts/image-matrix.sh"
+      - ".github/scripts/require-prod-env.sh"
       - ".github/workflows/deploy-prod.yml"
   workflow_dispatch:
     inputs:
@@ -173,6 +174,8 @@ jobs:
       REDIS_ACL_CHANGED: ${{ needs.plan.outputs.redis_acl_changed }}
     steps:
       - uses: actions/checkout@v7
+      - name: Require production environment
+        run: .github/scripts/require-prod-env.sh
       - name: Record deploy start
         run: echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - name: Prepare SSH (agent + askpass)
@@ -206,6 +209,8 @@ jobs:
           rsync -az --delete \
             --exclude ".git" \
             --exclude ".github" \
+            --exclude "/.env" \
+            --exclude "/infra/.env" \
             --exclude ".DS_Store" \
             --exclude "**/node_modules" \
             --exclude "**/.next" \
@@ -220,16 +225,22 @@ jobs:
             --exclude "**/*.swp" \
             --exclude "**/artifacts" \
             -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
-      - name: Upload .env if provided
-        if: env.PROD_ENV != ''
+      - name: Install production environment
         run: |
           set -eu
           tmpenv=$(mktemp)
+          trap 'rm -f "$tmpenv"' EXIT
+          chmod 600 "$tmpenv"
           printf "%s" "$PROD_ENV" > "$tmpenv"
-          scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/.env"
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" "mkdir -p '$PROD_WORKDIR/infra'"
-          scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/infra/.env"
-          rm -f "$tmpenv"
+          printf -v quoted_workdir '%q' "$PROD_WORKDIR"
+          remote_tmp=$(ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" "mktemp $quoted_workdir/.env.upload.XXXXXXXX")
+          printf -v quoted_tmp '%q' "$remote_tmp"
+          trap 'rm -f "$tmpenv"; ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" "rm -f $quoted_tmp"' EXIT
+          scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$quoted_tmp"
+          printf -v quoted_sha '%q' "$RELEASE_SHA"
+          printf -v quoted_profiles '%q' "${PROD_COMPOSE_PROFILES:-}"
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
+            "bash $quoted_workdir/infra/ops/install-prod-env.sh $quoted_workdir $quoted_tmp $quoted_sha $quoted_profiles"
       - name: Remote deploy
         run: |
           set -eux
