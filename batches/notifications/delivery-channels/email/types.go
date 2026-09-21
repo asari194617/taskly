@@ -17,6 +17,5 @@ type EmailMessage struct {
 }
 
 type DeliverOptions struct {
-	Locale  string
 	AppName string
 }

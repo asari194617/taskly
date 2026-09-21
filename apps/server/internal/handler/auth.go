@@ -82,13 +82,23 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		}
 		// Compose email via email-compose service (gRPC)
 		var subject, html, text string
-		if s, h, t, err := composeLoginCodeGRPC(c.Context(), utils.Env("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051"), "ja", email, code, "Taskly"); err == nil {
+		locale := "ja"
+		var recipient domain.User
+		if err := h.db.Select("notification_lang").Where("email = ? AND is_deleted = 0", email).First(&recipient).Error; err == nil && recipient.NotificationLang == "en" {
+			locale = "en"
+		}
+		if s, h, t, err := composeLoginCodeGRPC(c.Context(), utils.Env("EMAIL_COMPOSE_GRPC_ADDR", "email-compose:50051"), locale, email, code, "Taskly"); err == nil {
 			subject, html, text = s, h, t
 		}
 		// Fallback subject/body if composer failed
 		if subject == "" {
-			subject = "Taskly Login Code"
-			text = fmt.Sprintf("ログインコード: %s\n5分以内に入力してください。\n", code)
+			if locale == "en" {
+				subject = "Taskly Login Code"
+				text = fmt.Sprintf("Login code: %s\nEnter it within 5 minutes.\n", code)
+			} else {
+				subject = "Taskly ログインコード"
+				text = fmt.Sprintf("ログインコード: %s\n5分以内に入力してください。\n", code)
+			}
 			html = text
 		}
 		smtpHost := utils.Env("SMTP_HOST", "localhost")
