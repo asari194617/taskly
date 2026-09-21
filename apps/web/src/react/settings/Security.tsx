@@ -69,6 +69,12 @@ export default function SettingsSecurity() {
   } | null>(null);
 
   React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("change-password")) {
+      setPwOpen(true);
+    }
+  }, []);
+
+  React.useEffect(() => {
     loadSecuritySettings()
       .then((d) => {
         setAuth(d.authSettings);
