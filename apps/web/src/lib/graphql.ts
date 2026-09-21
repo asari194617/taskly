@@ -17,10 +17,16 @@ export async function gql<T>(
   });
   const json = await res.json();
   if (!res.ok || json.errors?.length) {
-    // Treat an HTTP 401 as session expiry and return to login.
+    // GraphQL resolvers report missing sessions as a 400 with an
+    // "unauthorized" error; REST endpoints normally use HTTP 401.
+    const unauthorized =
+      res.status === 401 ||
+      json.errors?.some(
+        (error: GQLError) => error.message?.toLowerCase() === "unauthorized"
+      );
     if (
       typeof window !== "undefined" &&
-      res.status === 401 &&
+      unauthorized &&
       opts?.redirectOnUnauthorized !== false
     ) {
       // Redirect to login page

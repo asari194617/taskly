@@ -60,12 +60,8 @@ export default function UserMenu() {
       })
       .catch(() => {
         setAuthed(false);
-        toast({
-          variant: "destructive",
-          title: dict.toast.userInfoFetchError,
-        });
       });
-  }, [dict.toast.userInfoFetchError]);
+  }, []);
 
   const logout = async () => {
     try {
@@ -74,7 +70,10 @@ export default function UserMenu() {
       toast({ title: dict.toast.loggedOut });
       window.location.href = "/login";
     } catch {
-      toast({ variant: "destructive", title: dict.toast.userInfoFetchError });
+      toast({
+        variant: "destructive",
+        title: lang === "ja" ? "ログアウトに失敗しました" : "Logout failed",
+      });
     }
   };
 
