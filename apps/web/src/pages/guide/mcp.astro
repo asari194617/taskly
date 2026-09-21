@@ -1,0 +1,26 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+---
+
+<Layout title="MCP サーバー | Taskly ガイド" description="Taskly MCP サーバーの接続案内">
+  <div class="mx-auto max-w-3xl space-y-8 py-6">
+    <a href="/guide" class="text-sm text-muted-foreground underline-offset-4 hover:underline">← ガイドに戻る</a>
+    <header class="space-y-3">
+      <h1 class="text-3xl font-bold tracking-tight">MCP サーバー</h1>
+      <p class="text-muted-foreground">対応する MCP クライアントから、Taskly の課題を確認・操作できます。</p>
+    </header>
+    <section class="space-y-4" aria-labelledby="mcp-steps">
+      <h2 id="mcp-steps" class="text-xl font-semibold">接続までの流れ</h2>
+      <ol class="list-decimal space-y-3 pl-6 text-sm leading-7">
+        <li><a href="/settings/mcp" class="font-medium text-primary underline-offset-4 hover:underline">設定 → MCP</a> を開きます。ログインが必要です。</li>
+        <li>MCP トークンを発行して、安全な場所に保存します。発行時に表示されたトークンを控えてください。</li>
+        <li>利用するクライアントに Taskly の MCP サーバー URL とトークンを設定し、接続を確認します。</li>
+      </ol>
+    </section>
+    <div class="rounded-lg border bg-card p-5 text-sm leading-7">
+      <h2 class="font-semibold">トークンの取り扱い</h2>
+      <p class="mt-2 text-muted-foreground">トークンは第三者に共有しないでください。不要になった場合は MCP 設定画面から無効にできます。</p>
+    </div>
+    <a href="https://ritzy-lift-e38.notion.site/MCP-290a3874f8c880a08c31f53116cb2ead?source=copy_link" target="_blank" rel="noopener noreferrer" class="inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">クライアントごとの詳しい接続手順を見る ↗</a>
+  </div>
+</Layout>
