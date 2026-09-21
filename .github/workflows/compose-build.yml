@@ -36,3 +36,12 @@ jobs:
       - name: Build compose services
         working-directory: infra
         run: docker compose build --parallel
+      - name: Verify Airflow batch binaries with runtime volumes
+        working-directory: infra
+        run: |
+          touch ../.env
+          docker compose run --rm --no-deps --entrypoint sh airflow-scheduler -ec '
+            test -x /opt/airflow/bin/notifications-que-manager
+            test -x /opt/airflow/bin/backup-mysql
+            test -x /opt/airflow/bin/moderation
+          '

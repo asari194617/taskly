@@ -22,7 +22,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git ca-certificates default-mysql-client gzip curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /opt/airflow/bin && chown -R airflow:root /opt/airflow/bin
+RUN mkdir -p /opt/airflow/bin /opt/airflow/backups /opt/airflow/logs && \
+    chown -R airflow:root /opt/airflow/bin /opt/airflow/backups /opt/airflow/logs
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
 
 USER airflow

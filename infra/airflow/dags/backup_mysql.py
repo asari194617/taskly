@@ -25,7 +25,7 @@ with DAG(
             "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
             "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
             "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
-            # Persist backups under airflow-data volume
+            # Persist backups in the dedicated airflow-backups volume.
             "BACKUP_DIR": "/opt/airflow/backups",
             # FTP credentials (forward from container env)
             "FTP_HOST": os.environ.get("FTP_HOST", ""),
