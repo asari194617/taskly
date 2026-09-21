@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,15 +45,39 @@ func mustInitDB() *gorm.DB {
 
 // mustInitRedis connects to Redis and verifies availability.
 func mustInitRedis() *redis.Client {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     utils.Env("REDIS_ADDR", "127.0.0.1:6379"),
-		Password: utils.Env("REDIS_PASSWORD", ""),
-		DB:       0,
-	})
+	options, err := redisOptionsFromEnv()
+	if err != nil {
+		log.Fatalf("redis: %v", err)
+	}
+	rdb := redis.NewClient(options)
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		_ = rdb.Close()
 		log.Fatalf("redis: %v", err)
 	}
 	return rdb
+}
+
+func redisOptionsFromEnv() (*redis.Options, error) {
+	db, err := strconv.Atoi(utils.Env("REDIS_DB", "0"))
+	if err != nil || db < 0 {
+		return nil, fmt.Errorf("REDIS_DB must be a non-negative integer")
+	}
+	username := os.Getenv("REDIS_USERNAME")
+	if username == "" {
+		return nil, fmt.Errorf("required environment variable REDIS_USERNAME is not set")
+	}
+	password := os.Getenv("REDIS_PASSWORD")
+	if password == "" {
+		return nil, fmt.Errorf("required environment variable REDIS_PASSWORD is not set")
+	}
+	return &redis.Options{
+		Addr:            utils.Env("REDIS_ADDR", "127.0.0.1:6379"),
+		Username:        username,
+		Password:        password,
+		DB:              db,
+		Protocol:        2,
+		DisableIdentity: true,
+	}, nil
 }
 
 // mustInitSentry initializes Sentry when configured. If SENTRY_DSN is missing,

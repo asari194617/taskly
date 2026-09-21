@@ -35,6 +35,8 @@ jobs:
           docker compose --file infra/docker-compose.yml config --quiet
       - name: Test Compose port exposure policy
         run: infra/ops/test-port-exposure.sh
+      - name: Test Redis ACL policy
+        run: infra/redis/test-acl.sh
       - id: matrix
         name: Select changed images
         env:

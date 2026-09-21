@@ -32,8 +32,21 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     logging: *default-logging
+    entrypoint: ["/usr/local/bin/taskly-redis-entrypoint"]
+    env_file:
+      - ../.env
     volumes:
       - redis-data:/data
+      - ./redis/entrypoint.sh:/usr/local/bin/taskly-redis-entrypoint:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli --user "$${REDIS_USERNAME}" ping | grep -qx PONG',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
   server:
     image: ghcr.io/asari194617/taskly/api:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/server
@@ -43,7 +56,7 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       email-compose:
         condition: service_healthy
     restart: unless-stopped
