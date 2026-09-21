@@ -18,7 +18,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN --mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \
 	CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-	go build -buildvcs=false -trimpath -ldflags "-s -w" -tags timetzdata -o /out/api ./cmd/server
+	go build -buildvcs=false -trimpath -ldflags "-s -w" -tags timetzdata -o /out/api ./cmd/server && \
+	CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+	go build -buildvcs=false -trimpath -ldflags "-s -w" -o /out/migrate ./cmd/migrate
 
 # Extract CA certificates (for outbound HTTPS if needed)
 FROM --platform=$BUILDPLATFORM alpine:3.24 AS certs
@@ -28,6 +30,7 @@ FROM --platform=$TARGETPLATFORM alpine:3.24
 WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata bash curl grep sed findutils mariadb-client
 COPY --from=build /out/api /app/api
+COPY --from=build /out/migrate /app/migrate
 COPY ./migrations /app/migrations
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV API_PORT=8080
