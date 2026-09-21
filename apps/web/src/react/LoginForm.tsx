@@ -28,6 +28,7 @@ export default function LoginForm() {
   const [code, setCode] = React.useState("");
   const [totp, setTotp] = React.useState("");
   const [recovery, setRecovery] = React.useState("");
+  const [authTransaction, setAuthTransaction] = React.useState("");
   const [hasPassword, setHasPassword] = React.useState<boolean | null>(null);
   const [totpAvailable, setTotpAvailable] = React.useState<boolean>(false);
   const [passkeyAvailable, setPasskeyAvailable] =
@@ -149,7 +150,48 @@ export default function LoginForm() {
     }
   };
 
-  // Perform final login call with gathered factors
+  const submitPassword = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${apiBase}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+      if (data?.token) {
+        localStorage.setItem("api_token", data.token);
+        await postLoginRedirect();
+        return;
+      }
+      if (!data?.mfa_required || !data?.auth_transaction) {
+        throw new Error("予期せぬレスポンスです");
+      }
+      const methods: string[] = Array.isArray(data.methods) ? data.methods : [];
+      setAuthTransaction(data.auth_transaction);
+      setPassword("");
+      setAvailableMethods(methods);
+      setEmailCodeAvailable(methods.includes("email_code"));
+      setTotpAvailable(methods.includes("totp"));
+      setPasskeyAvailable(false);
+      if (methods.length > 1) setStep("select_mfa");
+      else if (methods.includes("totp") || methods.includes("recovery"))
+        setStep("totp");
+      else if (methods.includes("email_code")) setStep("mail_code");
+      else throw new Error("利用できる認証方法がありません");
+    } catch (e: any) {
+      setMessage(e.message || "エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Perform final login call with the short-lived transaction, never the password.
   const login = async () => {
     setLoading(true);
     setMessage(null);
@@ -161,8 +203,8 @@ export default function LoginForm() {
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({
-          email,
-          password: password || undefined,
+          email: authTransaction ? undefined : email,
+          auth_transaction: authTransaction || undefined,
           code: code || undefined,
           totp: totp || undefined,
           recovery_code: recovery || undefined,
@@ -179,6 +221,7 @@ export default function LoginForm() {
         throw new Error(data?.error || JSON.stringify(data));
       }
       if (data?.token) {
+        setAuthTransaction("");
         localStorage.setItem("api_token", data.token);
         setMessage("ログインしました");
         // Redirect immediately to consent if not agreed; else to target/home
@@ -321,19 +364,7 @@ export default function LoginForm() {
               <div className="flex gap-2">
                 <Button
                   type="button"
-                  onClick={() => {
-                    // After password, if 2FA (TOTP) is enabled, go to selection or directly to TOTP
-                    if (totpAvailable) {
-                      if (passkeyAvailable) {
-                        setStep("select_mfa");
-                      } else {
-                        setStep("totp");
-                      }
-                    } else {
-                      // No MFA → perform password-only login
-                      login();
-                    }
-                  }}
+                  onClick={submitPassword}
                   disabled={loading || !email || !password}
                 >
                   次へ
@@ -355,8 +386,8 @@ export default function LoginForm() {
               <div className="space-y-1">
                 <Label>認証方法を選択</Label>
                 <div className="flex flex-wrap gap-2">
-                  {/* Email code option (only when password is not set) */}
-                  {!hasPassword && emailCodeAvailable && (
+                  {/* Email code option */}
+                  {emailCodeAvailable && (
                     <Button
                       type="button"
                       variant="secondary"
@@ -430,7 +461,7 @@ export default function LoginForm() {
                   type="button"
                   onClick={() => login()}
                   disabled={
-                    loading || !email || (hasPassword ? !password : false)
+                    loading || !email
                   }
                 >
                   続行
@@ -475,8 +506,7 @@ export default function LoginForm() {
                   disabled={
                     loading ||
                     !email ||
-                    code.length !== 6 ||
-                    (hasPassword ? !password : false)
+                    code.length !== 6
                   }
                 >
                   続行

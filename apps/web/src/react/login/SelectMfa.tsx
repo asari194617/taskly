@@ -7,7 +7,12 @@ import {
 } from "../../components/ui/card";
 import { Label } from "../../components/ui/label";
 import { Button } from "../../components/ui/button";
-import { apiBase, getEmailFromQuery, withNext } from "./helpers";
+import {
+  apiBase,
+  getEmailFromQuery,
+  readAuthTransaction,
+  withNext,
+} from "./helpers";
 import { requestMailCode } from "./flow";
 
 export default function SelectMfa() {
@@ -26,6 +31,16 @@ export default function SelectMfa() {
     (async () => {
       setLoading(true);
       try {
+        const transaction = readAuthTransaction(email);
+        if (transaction) {
+          setOptions({
+            passkey: false,
+            emailCode: transaction.methods.includes("email_code"),
+            totp: transaction.methods.includes("totp"),
+            recovery: transaction.methods.includes("recovery"),
+          });
+          return;
+        }
         const res = await fetch(`${apiBase}/auth/options`, {
           method: "POST",
           headers: {
@@ -47,6 +62,15 @@ export default function SelectMfa() {
           throw new Error(text || "エラーが発生しました");
         }
         const data = text ? JSON.parse(text) : {};
+        if (data?.has_password) {
+          setMessage(
+            "認証の有効期限が切れました。パスワードからやり直してください",
+          );
+          window.location.replace(
+            withNext(`/login/password?email=${encodeURIComponent(email)}`),
+          );
+          return;
+        }
         const passkey =
           !!data?.passkey_enabled ||
           (Array.isArray(data?.methods) && data.methods.includes("passkey"));

@@ -13,7 +13,7 @@ state DispRecoveryCodeInput as "多要素認証入力画面(リカバリーコ�
 state DispLoginSuccess as "ログイン成功(ホーム画面)"
 
 DispLoginBegin --> DispPasswordInput : ユーザー名入力後(パスワードが有効化されている場合)
-DispPasswordInput --> DispSelectMfaMethod : パスワード入力後(多要素認証が有効化されている場合)
+DispPasswordInput --> DispSelectMfaMethod : パスワード検証後(短命・単回使用の認証トランザクションを発行)
 DispLoginBegin --> DispSelectMfaMethod : ユーザー名入力後(パスワードが無効化されている場合で、複数の多要素認証方法が有効化されている場合)
 DispSelectMfaMethod --> DispPasskeyInput : パスキー選択時
 DispSelectMfaMethod --> DispTotpInput : TOTP選択時
@@ -27,5 +27,11 @@ DispTotpInput --> DispLoginSuccess : 多要素認証成功時
 DispMailCodeInput --> DispLoginSuccess : 多要素認証成功時
 DispRecoveryCodeInput --> DispLoginSuccess : 多要素認証成功時
 DispPasswordInput --> DispLoginSuccess : パスワード認証成功時(多要素認証が全て無効化されており、パスワードが有効化されている場合)
+
+note right of DispSelectMfaMethod
+  MFA画面間では平文パスワードを保持・再送せず、
+  5分で失効するopaque認証トランザクションのみを使用する。
+  MFA成功、5回失敗、期限切れ後は再利用できない。
+end note
 
 @enduml

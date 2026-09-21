@@ -13,6 +13,7 @@ import {
   b64urlToArray,
   postLoginRedirect,
   withNext,
+  clearAuthTransaction,
 } from "./helpers";
 
 export default function Passkey() {
@@ -103,6 +104,7 @@ export default function Passkey() {
         throw new Error(data?.error || "passkey login failed");
       }
       if (data?.token) {
+        clearAuthTransaction();
         localStorage.setItem("api_token", data.token);
         await postLoginRedirect();
       } else {

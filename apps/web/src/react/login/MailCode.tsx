@@ -13,6 +13,9 @@ import {
   getEmailFromQuery,
   postLoginRedirect,
   withNext,
+  clearAuthTransaction,
+  isAuthTransactionError,
+  readAuthTransaction,
 } from "./helpers";
 import {
   readMailCodeStatus,
@@ -85,23 +88,33 @@ export default function MailCode() {
     setLoading(true);
     setMessage(null);
     try {
-      const password = sessionStorage.getItem("login_pw") || undefined;
+      const transaction = readAuthTransaction(email);
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Client-Platform": "web",
         },
-        body: JSON.stringify({ email, password, code }),
+        body: JSON.stringify({
+          email: transaction ? undefined : email,
+          auth_transaction: transaction?.id,
+          code,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         if (data?.error === "user_not_found") {
           throw new Error("このメールアドレスのユーザーは存在しません");
         }
+        if (isAuthTransactionError(data?.error)) {
+          clearAuthTransaction();
+          throw new Error(
+            "認証の有効期限が切れました。パスワードからやり直してください"
+          );
+        }
         throw new Error(data?.error || JSON.stringify(data));
       }
-      sessionStorage.removeItem("login_pw");
+      clearAuthTransaction();
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         // Keep loading=true so the button stays disabled until the redirect
