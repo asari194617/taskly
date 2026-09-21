@@ -36,6 +36,9 @@ func TestDeadlineLabel(t *testing.T) {
 		{mk("P3", "P5"), "10/16 3〜5限まで"},
 		{mk("", "MORNING"), "10/16 朝まで"},
 		{mk("", ""), "10/16 まで"},
+		{mk("P3", "P3"), "10/16 3限まで"},
+		{mk("", "LUNCH"), "10/16 昼休みまで"},
+		{mk("", "AFTER_SCHOOL"), "10/16 放課後まで"},
 	}
 	for _, c := range cases {
 		got := deadlineLabel(c.task, baseDate)

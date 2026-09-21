@@ -15,6 +15,19 @@ on:
       - ".github/workflows/deploy-prod.yml"
 
 jobs:
+  test-batches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.5"
+          cache: true
+          cache-dependency-path: batches/go.sum
+      - name: Test batches
+        working-directory: batches
+        run: go test ./...
+
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -105,7 +118,7 @@ jobs:
 
   build:
     name: build
-    needs: [plan, build-images]
+    needs: [plan, build-images, test-batches]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -113,11 +126,13 @@ jobs:
         env:
           PLAN_RESULT: ${{ needs.plan.result }}
           BUILD_RESULT: ${{ needs.build-images.result }}
+          BATCH_TEST_RESULT: ${{ needs.test-batches.result }}
           IMAGE_COUNT: ${{ needs.plan.outputs.count }}
         run: |
           echo "Selected image count: $IMAGE_COUNT" >> "$GITHUB_STEP_SUMMARY"
           echo "Image build result: $BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
           test "$PLAN_RESULT" = success
+          test "$BATCH_TEST_RESULT" = success
           if [[ "$IMAGE_COUNT" != 0 ]]; then
             test "$BUILD_RESULT" = success
           fi
