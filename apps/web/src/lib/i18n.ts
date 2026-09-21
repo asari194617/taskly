@@ -20,10 +20,17 @@ export const t = (lang: Lang) => ({
         : "Service Continuity Statement",
     language: lang === "ja" ? "表示言語" : "Language",
     japanese: lang === "ja" ? "日本語" : "Japanese",
+    creatorIconAlt: lang === "ja" ? "asari194617のアイコン" : "asari194617's icon",
     english: lang === "ja" ? "英語" : "English",
     products: lang === "ja" ? "製品" : "Products",
     documentation: lang === "ja" ? "ドキュメント" : "Documentation",
     platform: lang === "ja" ? "プラットフォーム" : "Platform",
+    appleComingSoon:
+      lang === "ja" ? "iPhone,iPad,Mac(近日公開)" : "iPhone, iPad, Mac (coming soon)",
+    androidComingSoon:
+      lang === "ja" ? "Android(近日公開)" : "Android (coming soon)",
+    windowsComingSoon:
+      lang === "ja" ? "Windows(近日公開)" : "Windows (coming soon)",
     other: lang === "ja" ? "その他" : "Other",
     calendar: lang === "ja" ? "カレンダー" : "Calendar",
     mcpServer: lang === "ja" ? "MCPサーバー" : "MCP Server",
@@ -60,6 +67,15 @@ export const t = (lang: Lang) => ({
     title: lang === "ja" ? "課題一覧" : "Task List",
     description:
       lang === "ja" ? "期限が近い順に表示します。" : "Sorted by deadline.",
+  },
+  consent: {
+    heading: lang === "ja" ? "ご利用にあたって" : "Before you continue",
+    description:
+      lang === "ja"
+        ? "以下のポリシーに同意の上、進んでください。"
+        : "Please agree to the following policies to continue.",
+    agree: lang === "ja" ? "に同意します" : "I agree to the",
+    continue: lang === "ja" ? "同意して進む" : "Agree and continue",
   },
   landing: {
     hero: {
@@ -335,6 +351,28 @@ export const t = (lang: Lang) => ({
     dayShift: lang === "ja" ? "日直のお知らせ" : "Day shift notifications",
     deviceSettings: lang === "ja" ? "通知端末の設定" : "Notification device settings",
     defaultDevice: "Web Push",
+    devicesDescription:
+      lang === "ja"
+        ? "Web Push通知設定をしている各端末で、通知を受け取るかどうかを設定できます。"
+        : "Choose which devices with web push enabled receive notifications.",
+    noDevices:
+      lang === "ja"
+        ? "この端末で一度Webプッシュ通知を有効化すると表示されます。"
+        : "Devices will appear here after you enable web push on this device.",
+    requirements:
+      lang === "ja"
+        ? "通知を受け取るには、通知方法と通知の種類の両方が有効である必要があります。"
+        : "To receive notifications, enable both a notification method and a notification type.",
+    requirementsDescription:
+      lang === "ja"
+        ? "いずれかが無効の場合、配信されません。また、Webプッシュ通知を有効にするには、ブラウザの通知許可設定で「許可」にする必要があります。"
+        : "Notifications are not delivered if either is disabled. To enable web push, allow notifications in your browser's site settings.",
+    other: lang === "ja" ? "その他の設定" : "Other settings",
+    testLabel: lang === "ja" ? "テスト通知" : "Test notification",
+    errorVapidFetch:
+      lang === "ja" ? "VAPIDキーの取得に失敗しました" : "Failed to fetch the VAPID key",
+    errorVapidEmpty:
+      lang === "ja" ? "VAPIDキーが空です" : "The VAPID key is empty",
     emailDesc:
       lang === "ja"
         ? "タスクや日直の更新をメールで受け取ります。"

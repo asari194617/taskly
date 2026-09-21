@@ -2,11 +2,21 @@
 import * as React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { gql } from "@/lib/graphql";
+import { useLang } from "@/react/LanguageProvider";
+
+function PolicyLink({ href, label, lang, agree }: { href: string; label: string; lang: "ja" | "en"; agree: string }) {
+  const link = (
+    <a href={href} target="_blank" className="underline">
+      {label}
+    </a>
+  );
+  return lang === "ja" ? <>{link}{agree}</> : <>{agree} {link}</>;
+}
 
 export default function ConsentPage() {
+  const { dict, lang } = useLang();
   const [tos, setTos] = React.useState(false);
   const [pp, setPp] = React.useState(false);
   const [sp, setSp] = React.useState(false);
@@ -29,9 +39,9 @@ export default function ConsentPage() {
 
   return (
     <Card className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">ご利用にあたって</h1>
+      <h1 className="text-2xl font-semibold">{dict.consent.heading}</h1>
       <p className="text-sm text-muted-foreground">
-        以下のポリシーに同意の上、進んでください。
+        {dict.consent.description}
       </p>
       <div className="space-y-3">
         <label
@@ -45,10 +55,12 @@ export default function ConsentPage() {
         >
           <Checkbox checked={tos} />
           <span>
-            <a href="https://ritzy-lift-e38.notion.site/28ba3874f8c880a783ddf9d39aea1242?source=copy_link" target="_blank" className="underline">
-              利用規約
-            </a>
-            に同意します
+            <PolicyLink
+              href="https://ritzy-lift-e38.notion.site/28ba3874f8c880a783ddf9d39aea1242?source=copy_link"
+              label={dict.common.terms}
+              lang={lang}
+              agree={dict.consent.agree}
+            />
           </span>
         </label>
         <label
@@ -61,10 +73,12 @@ export default function ConsentPage() {
         >
           <Checkbox checked={pp} />
           <span>
-            <a href="https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03?source=copy_link" target="_blank" className="underline">
-              プライバシーポリシー
-            </a>
-            に同意します
+            <PolicyLink
+              href="https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03?source=copy_link"
+              label={dict.common.privacyPolicy}
+              lang={lang}
+              agree={dict.consent.agree}
+            />
           </span>
         </label>
         <label
@@ -77,16 +91,18 @@ export default function ConsentPage() {
         >
           <Checkbox checked={sp} />
           <span>
-            <a href="https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f?source=copy_link" target="_blank" className="underline">
-              セキュリティポリシー
-            </a>
-            に同意します
+            <PolicyLink
+              href="https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f?source=copy_link"
+              label={dict.common.securityPolicy}
+              lang={lang}
+              agree={dict.consent.agree}
+            />
           </span>
         </label>
       </div>
       <div className="pt-2">
         <Button onClick={submit} disabled={!canSubmit || loading}>
-          同意して進む
+          {dict.consent.continue}
         </Button>
       </div>
     </Card>
