@@ -461,7 +461,7 @@ def notify_day_shift(**context):
         ids_csv = ",".join(str(uid) for uid in target_users)
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT id, email, display_name FROM users WHERE id IN ({ids_csv}) AND is_deleted = 0"
+                f"SELECT id, email, display_name, notification_lang FROM users WHERE id IN ({ids_csv}) AND is_deleted = 0"
             )
             all_users = cur.fetchall() or []
         # Filter by NotificationTypePref and EMAIL device overrides (batch queries to avoid N+1)
@@ -559,30 +559,27 @@ def notify_day_shift(**context):
             for u in users
             if (u.get("display_name") or u.get("email") or "").strip()
         ]
-        locale = "ja"
         app_name = "Taskly"
         events = list_events_for_date(today)
-
-        names = ", ".join(members)
-        subject = "[Taskly] 本日の日直のお知らせ"
-        text_body = f"本日({today.strftime('%Y/%m/%d')})の日直: {names}"
-        html_body = ""
-
-        try:
-            subject, html_body, text_body = compose_day_shift_email_via_grpc(
-                members=members,
-                events=events,
-                locale=locale,
-                app_name=app_name,
-            )
-        except Exception as e:
-            print(f"[DayShift] email-compose gRPC failed: {e}")
-            return
-
-        print(text_body)
-
-        # Actually send email to all target users via SMTP.
-        send_day_shift_emails(users, subject, text_body, html_body)
+        # Compose once per language and send only to users with that preference.
+        for locale in ("ja", "en"):
+            recipients = [
+                u for u in users
+                if ("en" if u.get("notification_lang") == "en" else "ja") == locale
+            ]
+            if not recipients:
+                continue
+            try:
+                subject, html_body, text_body = compose_day_shift_email_via_grpc(
+                    members=members,
+                    events=events,
+                    locale=locale,
+                    app_name=app_name,
+                )
+            except Exception as e:
+                print(f"[DayShift] email-compose gRPC failed ({locale}): {e}")
+                continue
+            send_day_shift_emails(recipients, subject, text_body, html_body)
         # Discord embeds: report notified users (including blocked ones in Users)
         blocked_names = [
             (u.get("display_name") or u.get("email") or "").strip()

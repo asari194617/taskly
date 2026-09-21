@@ -59,19 +59,20 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]dcCommon.QueueItem, error)
 	return groups, nil
 }
 
-func resolveRecipientEmail(db *sql.DB, userID sql.NullInt64) (string, error) {
+func resolveRecipientEmail(db *sql.DB, userID sql.NullInt64) (string, string, error) {
 	if !userID.Valid || userID.Int64 == 0 {
-		return "", nil
+		return "", "", nil
 	}
-	row := db.QueryRow(`SELECT email FROM users WHERE id = ? AND is_deleted = 0`, userID.Int64)
+	row := db.QueryRow(`SELECT email, notification_lang FROM users WHERE id = ? AND is_deleted = 0`, userID.Int64)
 	var email sql.NullString
-	if err := row.Scan(&email); err != nil {
-		return "", err
+	var lang sql.NullString
+	if err := row.Scan(&email, &lang); err != nil {
+		return "", "", err
 	}
 	if !email.Valid {
-		return "", nil
+		return "", "", nil
 	}
-	return email.String, nil
+	return email.String, lang.String, nil
 }
 
 func markQueueProcessed(db *sql.DB, id int64) error {

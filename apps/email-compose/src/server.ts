@@ -65,7 +65,7 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
       callback: grpc.sendUnaryData<any>,
     ) => {
       try {
-        const locale = (call.request?.locale as string) || "en";
+        const locale = (call.request?.locale as string) || "ja";
         const email = call.request?.email as string;
         const code = call.request?.code as string;
 

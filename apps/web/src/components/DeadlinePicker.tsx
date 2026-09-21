@@ -96,7 +96,13 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setDateOpen(false);
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -110,21 +116,19 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
         <div className="space-y-3">
           <div>
             <Label htmlFor="dp-date">日付</Label>
-            <Popover open={dateOpen} onOpenChange={setDateOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  id="dp-date"
-                  variant="outline"
-                  className="mt-2 w-48 justify-between font-normal"
-                >
-                  {tmpDate || "日付を選択"}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-auto overflow-hidden p-0"
-                align="start"
-              >
+            <Button
+              id="dp-date"
+              type="button"
+              variant="outline"
+              aria-expanded={dateOpen}
+              className="mt-2 w-48 justify-between font-normal"
+              onClick={() => setDateOpen((current) => !current)}
+            >
+              {tmpDate || "日付を選択"}
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            {dateOpen && (
+              <div className="mt-2 w-fit rounded-md border bg-popover shadow-md">
                 <Calendar
                   mode="single"
                   selected={tmpDate ? new Date(tmpDate) : undefined}
@@ -142,8 +146,8 @@ export function DeadlinePicker({ date, meta, onChange }: Props) {
                     setDateOpen(false);
                   }}
                 />
-              </PopoverContent>
-            </Popover>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 text-sm">
             <button

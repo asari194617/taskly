@@ -15,7 +15,7 @@ export function startHttpServer(port: number) {
         const chunks: Buffer[] = [];
         for await (const ch of req) chunks.push(ch as Buffer);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        const locale = (body.locale as string) || "en";
+        const locale = (body.locale as string) || "ja";
         const email = (body.email as string) || "";
         const code = (body.code as string) || "";
         const { t } = await getT("login-code", locale);
@@ -32,7 +32,7 @@ export function startHttpServer(port: number) {
         const chunks: Buffer[] = [];
         for await (const ch of req) chunks.push(ch as Buffer);
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        const locale = (body.locale as string) || "en";
+        const locale = (body.locale as string) || "ja";
         const appName = (body.app_name as string) || "Taskly";
         const totalFlagged = Number(body.total_flagged || 0);
         const autoHidden = Number(body.auto_hidden || 0);

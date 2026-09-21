@@ -264,6 +264,8 @@ jobs:
             # requires container recreation before the new policy takes effect.
             docker compose up -d --no-build --force-recreate redis
           fi
+          docker compose up -d --no-build --wait db redis
+          docker compose run --rm --no-deps --entrypoint /app/migrate server </dev/null
           docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose exec -T server curl --fail --silent --show-error \
             --unix-socket /var/run/datadog/apm.socket http://localhost/info </dev/null >/dev/null

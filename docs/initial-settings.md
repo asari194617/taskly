@@ -59,8 +59,9 @@
 4. `PROD_ENV` を確認し、`.env` と `infra/.env` を保護してリポジトリを rsync する。
 5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
-7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定して Compose を pull、再作成する。
-8. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull し、DB と Redis を起動する。
+8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
+9. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
@@ -70,6 +71,20 @@ mountします。通常のローカルCompose起動ではこのoverrideを使い
 
 本番ホストではイメージをビルドしません。`docker compose up --build` や
 `latest` の直接指定ではなく、ワークフローが配布する commit SHA タグを使用します。
+
+### DB マイグレーション
+
+本番の既存スキーマと `migrations` 表は `0025_integration_jobs.sql` まで照合済みです。
+`0023`〜`0025` はスキーマ変更が先に存在したため、2026-09-21 に適用履歴を補正しました。
+自動実行の対象は `apps/server/migrations/0026_*.sql` 以降です。古い SQL は
+重複した変更を含むため、新規DBをこの仕組みだけで作成することはできません。
+
+新しいマイグレーションは連番の `NNNN_name.sql` を追加し、一度適用したファイルは
+変更しないでください。デプロイ中に MySQL の名前付きロックを取得し、未適用の
+ファイルを名前順に実行して `migrations` 表へ記録します。失敗した場合は
+アプリの更新を止めます。MySQL の DDL はファイル全体をロールバックできないため、
+失敗後は本番の変更状態を調べてから再実行してください。破壊的な変更はアプリとの
+互換期間を設け、別リリースで適用してください。
 
 Teams連携の `status_callback` を使用する場合は、デプロイ前に `PROD_ENV` の
 `TEAMS_CALLBACK_ALLOWED_ORIGINS` に送信先の正規HTTPSオリジンをカンマ区切りで設定します
