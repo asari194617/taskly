@@ -119,7 +119,7 @@ export function TaskCard({
             toggleWithPending(t);
           }
         }}
-        className="absolute left-4 top-1/2 -translate-y-1/2"
+        className="absolute left-4 top-1/2 w-auto -translate-y-1/2"
       >
         <RadioGroupItem
           value="undone"
