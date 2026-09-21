@@ -17,15 +17,19 @@ afterEach(() => {
 describe("task search and update", () => {
   it("passes search terms and cancellation to the API", async () => {
     const signal = new AbortController().signal;
-    query.mockResolvedValueOnce({ tasks: { items: [{ id: 1, title: "report" }] } });
-    expect(await searchTasks("report", signal)).toEqual([{ id: 1, title: "report" }]);
-    expect(query).toHaveBeenCalledWith(expect.stringContaining("tasks(limit:200, q:$q)"), { q: "report" }, { signal });
+    const cursor = { cursor_deadline: "2026-09-22T00:00:00Z", cursor_id: "50" };
+    query.mockResolvedValueOnce({ tasks: { items: [{ id: 1, title: "report" }], next_cursor: cursor } });
+    expect(await searchTasks("report", signal)).toEqual({ items: [{ id: 1, title: "report" }], nextCursor: cursor });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("next_cursor{ cursor_deadline cursor_id }"), { q: "report" }, { signal });
+    query.mockResolvedValueOnce({ tasks: { items: [{ id: 2, title: "later" }], next_cursor: null } });
+    expect(await searchTasks("report", signal, cursor)).toEqual({ items: [{ id: 2, title: "later" }], nextCursor: null });
+    expect(query).toHaveBeenLastCalledWith(expect.stringContaining("cursor_deadline:$cursor_deadline"), { q: "report", ...cursor }, { signal });
   });
 
   it("falls back only for the older completion schema and propagates other errors", async () => {
     query.mockRejectedValueOnce(new Error('Cannot query field "is_completed"'));
     query.mockResolvedValueOnce({ tasks: { items: [{ id: 2, title: "old" }] } });
-    expect(await searchTasks("")).toEqual([{ id: 2, title: "old", is_completed: false }]);
+    expect(await searchTasks("")).toEqual({ items: [{ id: 2, title: "old", is_completed: false }], nextCursor: null });
     expect(query).toHaveBeenLastCalledWith(expect.not.stringContaining("is_completed is_hidden"), { q: undefined }, { signal: undefined });
     query.mockRejectedValueOnce(new Error("API unavailable"));
     await expect(searchTasks("test")).rejects.toThrow("API unavailable");

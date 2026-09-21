@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import {
   Empty,
   EmptyContent,
@@ -92,6 +93,7 @@ import {
   updateTask as updateTaskRequest,
   type Subject,
   type Task,
+  type TaskCursor,
 } from "@/features/tasks/api";
 import {
   normalizeTaskSearch,
@@ -158,6 +160,11 @@ export default function TasksList() {
   );
 
   const [items, setItems] = React.useState<Task[] | null>(null);
+  const [nextCursor, setNextCursor] = React.useState<TaskCursor | null>(null);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const [loadMoreError, setLoadMoreError] = React.useState(false);
+  const requestController = React.useRef<AbortController | null>(null);
+  const loadingMoreRef = React.useRef(false);
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [isManager, setIsManager] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -214,19 +221,53 @@ export default function TasksList() {
       });
   }, [dict.tasks.loadFailed]);
 
-  // Search tasks with cancellation; only refetch when q changes
+  // Search tasks with cancellation; cursor pages belong to one search only.
   React.useEffect(() => {
     const ac = new AbortController();
+    requestController.current = ac;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    setItems(null);
+    setNextCursor(null);
+    setError(null);
+    setLoadMoreError(false);
     (async () => {
       try {
-        setItems(await searchTasks(q, ac.signal));
+        const page = await searchTasks(q, ac.signal);
+        if (ac.signal.aborted) return;
+        setItems(page.items);
+        setNextCursor(page.nextCursor);
       } catch (e: any) {
-        if (e?.name === "AbortError") return;
+        if (ac.signal.aborted || e?.name === "AbortError") return;
         setError(e?.message || dict.tasks.loadFailed);
       }
     })();
     return () => ac.abort();
   }, [q, dict.tasks.loadFailed]);
+
+  const loadMore = React.useCallback(async () => {
+    const ac = requestController.current;
+    if (!ac || ac.signal.aborted || !nextCursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    try {
+      const page = await searchTasks(q, ac.signal, nextCursor);
+      if (ac.signal.aborted || requestController.current !== ac) return;
+      setItems((current) => {
+        const seen = new Set(current?.map((item) => item.id));
+        return [...(current ?? []), ...page.items.filter((item) => !seen.has(item.id))];
+      });
+      setNextCursor(page.nextCursor);
+    } catch (e: any) {
+      if (!ac.signal.aborted && e?.name !== "AbortError") setLoadMoreError(true);
+    } finally {
+      if (requestController.current === ac) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [nextCursor, q]);
 
   // debounce search input changes
   const [qInput, setQInput] = React.useState("");
@@ -256,6 +297,56 @@ export default function TasksList() {
       return sod >= todayStart;
     });
   }, [items, q, completedFilter]);
+
+  const rows = React.useMemo(() => {
+    const groups = new Map<string, { heading: string; sortKey: number; items: Task[] }>();
+    for (const task of shownItems) {
+      const date = task.deadline ? new Date(task.deadline) : null;
+      const sortKey = date ? startOfDay(date).getTime() : Number.MAX_SAFE_INTEGER;
+      const key = String(sortKey);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          heading: date ? formatHeadingForDate(date) : dict.tasks.noDeadline,
+          sortKey,
+          items: [],
+        });
+      }
+      groups.get(key)!.items.push(task);
+    }
+    return [...groups.values()]
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .flatMap((group) => group.items.map((task, index) => ({
+        task,
+        heading: index === 0 ? group.heading : null,
+      })));
+  }, [shownItems, formatHeadingForDate, dict.tasks.noDeadline]);
+
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const update = () => {
+      if (listRef.current) {
+        const top = listRef.current.getBoundingClientRect().top + window.scrollY;
+        setScrollMargin((current) => current === top ? current : top);
+      }
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  });
+  const virtualizer = useWindowVirtualizer({
+    count: rows.length + (nextCursor ? 1 : 0),
+    estimateSize: (index) => index === rows.length ? 64 : rows[index]?.heading ? 158 : 122,
+    getItemKey: (index) => rows[index]?.task.id ?? "load-more",
+    overscan: 5,
+    scrollMargin,
+    useFlushSync: false,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+  React.useEffect(() => {
+    if (nextCursor && !loadingMore && !loadMoreError &&
+      virtualItems.some((item) => item.index === rows.length)) void loadMore();
+  }, [nextCursor, loadingMore, loadMoreError, virtualItems, rows.length, loadMore]);
 
   // Keyboard shortcuts: g then n to create; '?' to show help
   React.useEffect(() => {
@@ -864,7 +955,7 @@ export default function TasksList() {
         </DrawerContent>
       </Drawer>
       {/* Empty states below toolbar */}
-      {shownItems.length === 0 &&
+      {shownItems.length === 0 && !nextCursor &&
         (q ? (
           <Empty className="border">
             <EmptyHeader>
@@ -999,78 +1090,43 @@ export default function TasksList() {
           </Empty>
         ))}
 
-      {/* Grouped List by date headings */}
-      {(() => {
-        const groups: {
-          key: string;
-          sortKey: number;
-          items: Task[];
-          heading: string;
-        }[] = [];
-        const byKey = new Map<
-          string,
-          { key: string; sortKey: number; items: Task[]; heading: string }
-        >();
-        const todayStart = startOfDay(new Date()).getTime();
-        for (const t of shownItems) {
-          if (!t.deadline) {
-            const key = dict.tasks.noDeadline;
-            if (!byKey.has(key)) {
-              byKey.set(key, {
-                key,
-                sortKey: Number.MAX_SAFE_INTEGER,
-                items: [],
-                heading: key,
-              });
-            }
-            byKey.get(key)!.items.push(t);
-            continue;
+      {/* Only visible task rows stay mounted while the window scrolls. */}
+      <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualItems.map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          const t = row?.task;
+          if (!t) {
+            return (
+              <div key="load-more" data-index={virtualRow.index} ref={virtualizer.measureElement}
+                className="absolute left-0 top-0 w-full py-3 text-center"
+                style={{ transform: `translateY(${virtualRow.start - scrollMargin}px)` }}>
+                {loadMoreError ? (
+                  <Button variant="outline" onClick={() => void loadMore()}>{dict.common.reload}</Button>
+                ) : <Skeleton className="mx-auto h-8 w-40" />}
+              </div>
+            );
           }
-          const d = new Date(t.deadline);
-          const sod = startOfDay(d).getTime();
-          const heading = formatHeadingForDate(d);
-          const key = String(sod);
-          if (!byKey.has(key)) {
-            byKey.set(key, { key, sortKey: sod, items: [], heading });
-          }
-          byKey.get(key)!.items.push(t);
-        }
-        for (const g of byKey.values()) groups.push(g);
-        groups.sort((a, b) => a.sortKey - b.sortKey);
-        return (
-          <div className="space-y-6">
-            {groups.map((g) => (
-              <div key={g.key}>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                  {g.heading}
-                </h3>
-                <ul className="space-y-3">
-                  {g.items
-                    .slice()
-                    .sort((a, b) => {
-                      const ta = a.deadline
-                        ? new Date(a.deadline).getTime()
-                        : Number.MAX_SAFE_INTEGER;
-                      const tb = b.deadline
-                        ? new Date(b.deadline).getTime()
-                        : Number.MAX_SAFE_INTEGER;
-                      return ta - tb;
-                    })
-                    .map((t) => {
-                      const deadline = (() => {
-                        if (!t.deadline) return dict.tasks.noDeadline;
-                        const dateStr = formatDateYMDSlash(t.deadline);
-                        const label = deriveLabelFromEnums(
-                          t.deadline,
-                          t.deadline_since,
-                          t.deadline_until,
-                          lang
-                        );
-                        return label ? `${dateStr} ${label}` : dateStr;
-                      })();
-                      const isEditing = editingId === t.id;
-                      const pendingInfo = pending[t.id];
-                      return (
+          const deadline = (() => {
+            if (!t.deadline) return dict.tasks.noDeadline;
+            const dateStr = formatDateYMDSlash(t.deadline);
+            const label = deriveLabelFromEnums(
+              t.deadline,
+              t.deadline_since,
+              t.deadline_until,
+              lang
+            );
+            return label ? `${dateStr} ${label}` : dateStr;
+          })();
+          const isEditing = editingId === t.id;
+          const pendingInfo = pending[t.id];
+          return (
+            <div key={t.id} data-index={virtualRow.index} ref={virtualizer.measureElement}
+              className="absolute left-0 top-0 w-full pb-3"
+              style={{ transform: `translateY(${virtualRow.start - scrollMargin}px)` }}>
+              {row.heading && (
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">{row.heading}</h3>
+              )}
+              <ul>
                         <li
                           key={t.id}
                           onClick={(e) => {
@@ -1340,14 +1396,11 @@ export default function TasksList() {
                             </div>
                           )}
                         </li>
-                      );
-                    })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
       {/* Delete confirm dialog */}
       <TasksListDeleteDialog
         open={deleteOpen}
