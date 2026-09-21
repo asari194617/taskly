@@ -31,7 +31,7 @@ services:
     volumes:
       - redis-data:/data
   server:
-    image: ghcr.io/asari194617/taskly/api:latest
+    image: ghcr.io/asari194617/taskly/api:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/server
     env_file:
       - ../.env
@@ -52,7 +52,7 @@ services:
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       TZ: Asia/Tokyo
   mcp:
-    image: ghcr.io/asari194617/taskly/mcp:latest
+    image: ghcr.io/asari194617/taskly/mcp:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/mcp
     container_name: taskly-mcp
     env_file:
@@ -68,7 +68,7 @@ services:
     ports:
       - "3066:3066"
   airflow-webserver:
-    image: ghcr.io/asari194617/taskly/airflow:latest
+    image: ghcr.io/asari194617/taskly/airflow:${TASKLY_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/airflow/Dockerfile
@@ -129,7 +129,7 @@ services:
         "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; exec airflow api-server -p 3065",
       ]
   email-compose:
-    image: ghcr.io/asari194617/taskly/email-compose:latest
+    image: ghcr.io/asari194617/taskly/email-compose:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/email-compose
     container_name: taskly-email-compose
     env_file:
@@ -161,7 +161,7 @@ services:
       retries: 5
       start_period: 10s
   airflow-scheduler:
-    image: ghcr.io/asari194617/taskly/airflow:latest
+    image: ghcr.io/asari194617/taskly/airflow:${TASKLY_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/airflow/Dockerfile
@@ -234,7 +234,7 @@ services:
         "rm -f /opt/airflow/airflow-scheduler.pid; airflow db migrate; exec airflow scheduler",
       ]
   airflow-dag-processor:
-    image: ghcr.io/asari194617/taskly/airflow:latest
+    image: ghcr.io/asari194617/taskly/airflow:${TASKLY_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: infra/airflow/Dockerfile

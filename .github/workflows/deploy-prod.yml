@@ -9,18 +9,58 @@ on:
       - "apps/email-compose/**"
       - "batches/**"
       - "infra/**"
+      - ".dockerignore"
+      - ".github/scripts/image-matrix.sh"
       - ".github/workflows/deploy-prod.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      full_build:
+        description: Rebuild all production images
+        type: boolean
+        default: true
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+env:
+  # The production host was verified as x86_64 on 2026-09-21.
+  PRODUCTION_PLATFORM: linux/amd64
 
 jobs:
-  select-runner:
+  plan:
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.pick.outputs.runner }}
+      count: ${{ steps.matrix.outputs.count }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      runner: ${{ steps.pick.outputs.runner }}
     steps:
-      - id: def
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: matrix
+        name: Select changed images
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          FULL_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.full_build }}
+        run: |
+          if [[ "$FULL_BUILD" == true ]]; then
+            matrix=$(.github/scripts/image-matrix.sh --all)
+          else
+            base="$BEFORE_SHA"
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              base="HEAD^"
+            fi
+            mapfile -t files < <(git diff --name-only "$base...HEAD")
+            matrix=$(.github/scripts/image-matrix.sh -- "${files[@]}")
+            echo "Changed files: ${files[*]}"
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$(jq '.include | length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
+          echo "Image matrix: $matrix"
+      - id: default-runner
         run: echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-      - id: fbk
+      - id: fallback
         name: Select self-hosted with fallback
         uses: dodi-smart/runner-fallback-action@v2
         continue-on-error: true
@@ -29,48 +69,28 @@ jobs:
           primary-runner: self-hosted
           fallback-runner: ubuntu-latest
       - id: pick
-        run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
+        run: echo "runner=${{ steps.fallback.outputs.runner || steps.default-runner.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   publish-images:
-    needs: select-runner
-    runs-on: ${{ needs.select-runner.outputs.label }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ${{ needs.plan.outputs.runner }}
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - service: api
-            context: ./apps/server
-            file: ./apps/server/Dockerfile
-            cache_scope: api
-          - service: email-compose
-            context: ./apps/email-compose
-            file: ./apps/email-compose/Dockerfile
-            cache_scope: email-compose
-          - service: mcp
-            context: ./apps/mcp
-            file: ./apps/mcp/Dockerfile
-            cache_scope: mcp
-          - service: airflow
-            context: .
-            file: ./infra/airflow/Dockerfile
-            cache_scope: airflow
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4.6.0
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
+      - uses: docker/setup-buildx-action@v4
+      - name: Record build start
+        run: echo "BUILD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - name: Build and push ${{ matrix.service }} image
         uses: docker/build-push-action@v7
         with:
@@ -78,14 +98,49 @@ jobs:
           file: ${{ matrix.file }}
           push: true
           provenance: false
-          platforms: ${{ startsWith(needs.select-runner.outputs.label, 'self-hosted') && runner.arch == 'ARM64' && 'linux/arm64' || startsWith(needs.select-runner.outputs.label, 'self-hosted') && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
+          platforms: ${{ env.PRODUCTION_PLATFORM }}
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
           cache-from: type=gha,scope=${{ matrix.cache_scope }}
-          cache-to: type=gha,scope=${{ matrix.cache_scope }},mode=max
+          cache-to: type=gha,scope=${{ matrix.cache_scope }},mode=min,ignore-error=true
+      - name: Build timing
+        if: always()
+        run: |
+          elapsed=$(($(date +%s) - BUILD_STARTED_AT))
+          echo "### ${{ matrix.service }} image" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build, push, and cache: ${elapsed}s" >> "$GITHUB_STEP_SUMMARY"
+
+  release-images:
+    needs: [plan, publish-images]
+    if: ${{ always() && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
+    runs-on: ${{ needs.plan.outputs.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - name: Give every service the release SHA tag
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for service in api email-compose mcp airflow; do
+            docker buildx imagetools create \
+              --tag "ghcr.io/$REPOSITORY/$service:$RELEASE_SHA" \
+              "ghcr.io/$REPOSITORY/$service:latest"
+          done
+          echo "All production images are available at tag $RELEASE_SHA" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
-    needs: [select-runner, publish-images]
-    runs-on: ${{ needs.select-runner.outputs.label }}
+    needs: [plan, release-images]
+    runs-on: ${{ needs.plan.outputs.runner }}
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
@@ -97,10 +152,11 @@ jobs:
       PROD_COMPOSE_PROFILES: ${{ secrets.PROD_COMPOSE_PROFILES }}
       GHCR_USERNAME: ${{ github.repository_owner }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
+      - uses: actions/checkout@v7
+      - name: Record deploy start
+        run: echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - name: Prepare SSH (agent + askpass)
         run: |
           set -eux
@@ -123,12 +179,8 @@ jobs:
           fi
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
-
       - name: Verify SSH connectivity
-        run: |
-          set -eux
-          ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" true
-
+        run: ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" true
       - name: Rsync repository to server
         run: |
           set -eux
@@ -150,20 +202,16 @@ jobs:
             --exclude "**/*.swp" \
             --exclude "**/artifacts" \
             -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
-
       - name: Upload .env if provided
         if: env.PROD_ENV != ''
         run: |
           set -eu
           tmpenv=$(mktemp)
           printf "%s" "$PROD_ENV" > "$tmpenv"
-          # Upload to project root
           scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/.env"
-          # Also upload a copy to infra/ for docker-compose context differences
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" "mkdir -p '$PROD_WORKDIR/infra'"
           scp -P "$PROD_SSH_PORT" "$tmpenv" "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/infra/.env"
           rm -f "$tmpenv"
-
       - name: Remote deploy
         run: |
           set -eux
@@ -171,6 +219,7 @@ jobs:
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
+          export TASKLY_IMAGE_TAG="$RELEASE_SHA"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
           docker compose down --remove-orphans || true
           docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
@@ -183,8 +232,8 @@ jobs:
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
           EOS
-        working-directory: infra
-
-      - name: Summary
+      - name: Deploy summary
+        if: always()
         run: |
-          echo "Deployed to $PROD_HOST:$PROD_WORKDIR"
+          elapsed=$(($(date +%s) - DEPLOY_STARTED_AT))
+          echo "Deployed $RELEASE_SHA to $PROD_HOST:$PROD_WORKDIR in ${elapsed}s" >> "$GITHUB_STEP_SUMMARY"

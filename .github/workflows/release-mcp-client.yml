@@ -40,7 +40,7 @@ jobs:
       - name: Build stdio and package (linux/windows)
         run: |
           set -eux
-          npm -C apps/mcp ci || npm -C apps/mcp install
+          npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
           npm i -g pkg@5.8.1
           pkg --version
@@ -73,7 +73,7 @@ jobs:
       - name: Build stdio and package (macos)
         run: |
           set -eux
-          npm -C apps/mcp ci || npm -C apps/mcp install
+          npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
           npm i -g pkg@5.8.1
           pkg --version
