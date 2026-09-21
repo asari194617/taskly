@@ -15,7 +15,7 @@ export default function SettingsShell({
 }) {
   const { dict } = useLang();
   return (
-    <SidebarProvider>
+    <SidebarProvider className="relative">
       <AppSidebar />
       <SidebarInset>
         <div className="flex h-12 items-center gap-2 border-b px-3">
