@@ -142,7 +142,7 @@ export default function SettingsMcp() {
   async function revokeToken() {
     try {
       await gql<{ mcpRevoke: boolean }>(`mutation{ mcpRevoke }`);
-      toast({ title: dict.settingsNotifications.disabledMsg });
+      toast({ title: dict.settingsMcp.revokedMsg });
       setCreatedToken(null);
       await loadInfo();
       await loadLogs();
@@ -186,12 +186,12 @@ export default function SettingsMcp() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <a href={HELP_URL} target="_blank" rel="noreferrer">
-                    <Button variant="ghost" size="icon" aria-label="ヘルプ">
+                    <Button variant="ghost" size="icon" aria-label={dict.settingsDetail.help}>
                       <CircleQuestionMark />
                     </Button>
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>ヘルプ</TooltipContent>
+                <TooltipContent>{dict.settingsDetail.help}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -213,11 +213,11 @@ export default function SettingsMcp() {
               <div className="space-y-2">
                 {info?.has_token && (
                   <div className="text-sm text-muted-foreground">
-                    期限: {info.expires_at ? formatYmdHm(info.expires_at) : "-"}
+                    {dict.settingsDetail.expiry}: {info.expires_at ? formatYmdHm(info.expires_at) : "-"}
                     {info.expires_at &&
                       new Date(info.expires_at) <= new Date() && (
                         <span className="ml-2">
-                          <Badge variant="destructive">期限切れ</Badge>
+                          <Badge variant="destructive">{dict.settingsDetail.expired}</Badge>
                         </span>
                       )}
                   </div>
@@ -238,24 +238,24 @@ export default function SettingsMcp() {
                         }}
                       >
                         <DialogTrigger asChild>
-                          <Button variant="outline">期限を更新</Button>
+                          <Button variant="outline">{dict.settingsDetail.updateExpiry}</Button>
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle>有効期限を設定/更新</DialogTitle>
+                            <DialogTitle>{dict.settingsDetail.expiryDialog}</DialogTitle>
                           </DialogHeader>
                           <div className="space-y-3">
                             <div>
-                              <div className="text-sm mb-1">有効期限(任意)</div>
+                              <div className="text-sm mb-1">{dict.settingsDetail.expiryOptional}</div>
                               <DateTimePicker
                                 value={editExpires}
                                 onChange={setEditExpires}
-                                placeholder="日時を選択"
+                                placeholder={dict.settingsDetail.selectDateTime}
                               />
                             </div>
                             <DialogFooter>
                               <Button onClick={updateExpiry}>
-                                {dict.common.save || "保存"}
+                                {dict.common.save}
                               </Button>
                             </DialogFooter>
                           </div>
@@ -349,11 +349,11 @@ export default function SettingsMcp() {
                         ) : (
                           <div className="space-y-3">
                             <div>
-                              <div className="text-sm mb-1">有効期限(任意)</div>
+                              <div className="text-sm mb-1">{dict.settingsDetail.expiryOptional}</div>
                               <DateTimePicker
                                 value={expires}
                                 onChange={setExpires}
-                                placeholder="日時を選択"
+                                placeholder={dict.settingsDetail.selectDateTime}
                                 autoFocus
                               />
                             </div>

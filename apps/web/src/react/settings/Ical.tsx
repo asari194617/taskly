@@ -81,7 +81,7 @@ export default function SettingsIcal() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "読み込みに失敗しました",
+        title: dict.settingsDetail.loadFailed,
         description: e?.message,
       });
     }
@@ -102,7 +102,7 @@ export default function SettingsIcal() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "作成に失敗しました",
+        title: dict.settingsIcal.createFailed,
         description: e?.message,
       });
     }
@@ -117,7 +117,7 @@ export default function SettingsIcal() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "削除に失敗しました",
+        title: dict.settingsDetail.deleteFailed,
         description: e?.message,
       });
     }
@@ -136,7 +136,7 @@ export default function SettingsIcal() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "更新に失敗しました",
+        title: dict.settingsDetail.updateFailed,
         description: e?.message,
       });
     }
@@ -153,12 +153,12 @@ export default function SettingsIcal() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <a href={HELP_URL} target="_blank" rel="noreferrer">
-                    <Button variant="ghost" size="icon" aria-label="ヘルプ">
+                    <Button variant="ghost" size="icon" aria-label={dict.settingsDetail.help}>
                       <CircleQuestionMark />
                     </Button>
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>ヘルプ</TooltipContent>
+                <TooltipContent>{dict.settingsDetail.help}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -176,15 +176,15 @@ export default function SettingsIcal() {
               <Input
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
-                placeholder="例: 個人用"
+                placeholder={dict.settingsIcal.exampleDescription}
               />
             </div>
             <div className="min-w-60">
-              <div className="text-sm mb-1">有効期限(任意)</div>
+              <div className="text-sm mb-1">{dict.settingsDetail.expiryOptional}</div>
               <DateTimePicker
                 value={expires}
                 onChange={setExpires}
-                placeholder="日時を選択"
+                placeholder={dict.settingsDetail.selectDateTime}
               />
             </div>
             <Button className="w-full sm:w-auto" onClick={create}>
@@ -200,7 +200,7 @@ export default function SettingsIcal() {
                 <TableHead>{dict.settingsIcal.table.description}</TableHead>
                 <TableHead>{dict.settingsIcal.table.url}</TableHead>
                 <TableHead>{dict.settingsIcal.table.createdAt}</TableHead>
-                <TableHead>期限</TableHead>
+                <TableHead>{dict.settingsDetail.expiry}</TableHead>
                 <TableHead className="text-right">
                   {dict.settingsIcal.table.actions}
                 </TableHead>
@@ -222,7 +222,7 @@ export default function SettingsIcal() {
                       <>
                         <span>{formatYmdHm(it.expires_at)}</span>
                         {new Date(it.expires_at) <= new Date() && (
-                          <Badge variant="destructive">期限切れ</Badge>
+                          <Badge variant="destructive">{dict.settingsDetail.expired}</Badge>
                         )}
                       </>
                     ) : (
@@ -239,7 +239,7 @@ export default function SettingsIcal() {
                         } catch (e) {
                           toast({
                             variant: "destructive",
-                            title: "コピーに失敗しました",
+                            title: dict.settingsDetail.copyFailed,
                           });
                         }
                       }}
@@ -260,25 +260,25 @@ export default function SettingsIcal() {
                       }}
                     >
                       <DialogTrigger asChild>
-                        <Button variant="outline">期限を更新</Button>
+                        <Button variant="outline">{dict.settingsDetail.updateExpiry}</Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>有効期限を設定/更新</DialogTitle>
+                          <DialogTitle>{dict.settingsDetail.expiryDialog}</DialogTitle>
                           <DialogDescription>
-                            空欄で保存すると期限を解除します。
+                            {dict.settingsDetail.clearExpiryHint}
                           </DialogDescription>
                         </DialogHeader>
                         <DateTimePicker
                           value={editExpires}
                           onChange={setEditExpires}
-                          placeholder="日時を選択"
+                          placeholder={dict.settingsDetail.selectDateTime}
                         />
                         <DialogFooter>
                           <Button
                             onClick={() => updateExpiry(editId!, editExpires)}
                           >
-                            保存
+                            {dict.common.save}
                           </Button>
                         </DialogFooter>
                       </DialogContent>
@@ -302,14 +302,14 @@ export default function SettingsIcal() {
         <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>削除の確認</DialogTitle>
+              <DialogTitle>{dict.settingsDetail.deleteConfirm}</DialogTitle>
               <DialogDescription>
-                このiCal URLを削除します。よろしいですか？
+                {dict.settingsIcal.deleteUrlConfirm}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-                キャンセル
+                {dict.common.cancel}
               </Button>
               <Button
                 variant="destructive"
@@ -319,7 +319,7 @@ export default function SettingsIcal() {
                   setDeleteId(null);
                 }}
               >
-                削除する
+                {dict.settingsIcal.deleteUrl}
               </Button>
             </DialogFooter>
           </DialogContent>

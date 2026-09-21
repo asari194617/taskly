@@ -87,12 +87,12 @@ export default function SettingsBasic() {
         },
         body: JSON.stringify({ notification_lang: notificationLang }),
       });
-      if (!res.ok) throw new Error("メールの言語設定を保存できませんでした");
-      toast({ title: "保存しました" });
+      if (!res.ok) throw new Error(dict.settingsBasic.emailLanguageSaveFailed);
+      toast({ title: dict.settingsBasic.saved });
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "保存に失敗しました",
+        title: dict.settingsBasic.saveFailed,
         description: e?.message,
       });
     } finally {
@@ -107,7 +107,7 @@ export default function SettingsBasic() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "削除に失敗しました",
+        title: dict.settingsBasic.deleteFailed,
         description: e?.message || undefined,
       });
     }

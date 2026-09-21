@@ -81,7 +81,7 @@ export default function SettingsApiKeys() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "読み込みに失敗しました",
+        title: dict.settingsDetail.loadFailed,
         description: e?.message,
       });
     }
@@ -105,7 +105,7 @@ export default function SettingsApiKeys() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "発行に失敗しました",
+        title: dict.settingsApiKeys.issueFailed,
         description: e?.message,
       });
     } finally {
@@ -121,7 +121,7 @@ export default function SettingsApiKeys() {
       load();
     } catch (e: any) {
       toast({
-        title: "更新に失敗しました",
+        title: dict.settingsDetail.updateFailed,
         description: e?.message,
       });
     }
@@ -137,7 +137,7 @@ export default function SettingsApiKeys() {
     } catch (e: any) {
       toast({
         variant: "destructive",
-        title: "更新に失敗しました",
+        title: dict.settingsDetail.updateFailed,
         description: e?.message,
       });
     }
@@ -171,12 +171,12 @@ export default function SettingsApiKeys() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <a href={HELP_URL} target="_blank" rel="noreferrer">
-                    <Button variant="ghost" size="icon" aria-label="ヘルプ">
+                    <Button variant="ghost" size="icon" aria-label={dict.settingsDetail.help}>
                       <CircleQuestionMark />
                     </Button>
                   </a>
                 </TooltipTrigger>
-                <TooltipContent>ヘルプ</TooltipContent>
+                <TooltipContent>{dict.settingsDetail.help}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -196,15 +196,15 @@ export default function SettingsApiKeys() {
               <Input
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
-                placeholder="例: CI/CD"
+                placeholder={dict.settingsApiKeys.exampleDescription}
               />
             </div>
             <div className="min-w-60">
-              <div className="text-sm mb-1">有効期限(任意)</div>
+              <div className="text-sm mb-1">{dict.settingsDetail.expiryOptional}</div>
               <DateTimePicker
                 value={expires}
                 onChange={setExpires}
-                placeholder="日時を選択"
+                placeholder={dict.settingsDetail.selectDateTime}
               />
             </div>
             <Dialog
@@ -276,7 +276,7 @@ export default function SettingsApiKeys() {
                 <TableHead>{dict.settingsApiKeys.table.description}</TableHead>
                 <TableHead>{dict.settingsApiKeys.table.status}</TableHead>
                 <TableHead>{dict.settingsApiKeys.table.createdAt}</TableHead>
-                <TableHead>期限</TableHead>
+                <TableHead>{dict.settingsDetail.expiry}</TableHead>
                 <TableHead className="text-right">
                   {dict.settingsApiKeys.table.actions}
                 </TableHead>
@@ -291,7 +291,7 @@ export default function SettingsApiKeys() {
                   </TableCell>
                   <TableCell>
                     {it.expires_at && new Date(it.expires_at) <= new Date() ? (
-                      <Badge variant="destructive">期限切れ</Badge>
+                      <Badge variant="destructive">{dict.settingsDetail.expired}</Badge>
                     ) : it.is_valid ? (
                       dict.common.enabled
                     ) : (
@@ -322,25 +322,25 @@ export default function SettingsApiKeys() {
                         }}
                       >
                         <DialogTrigger asChild>
-                          <Button variant="outline">期限を更新</Button>
+                          <Button variant="outline">{dict.settingsDetail.updateExpiry}</Button>
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle>有効期限を設定/更新</DialogTitle>
+                            <DialogTitle>{dict.settingsDetail.expiryDialog}</DialogTitle>
                             <DialogDescription>
-                              空欄で保存すると期限を解除します。
+                              {dict.settingsDetail.clearExpiryHint}
                             </DialogDescription>
                           </DialogHeader>
                           <DateTimePicker
                             value={editExpires}
                             onChange={setEditExpires}
-                            placeholder="日時を選択"
+                            placeholder={dict.settingsDetail.selectDateTime}
                           />
                           <DialogFooter>
                             <Button
                               onClick={() => updateExpiry(editId!, editExpires)}
                             >
-                              保存
+                              {dict.common.save}
                             </Button>
                           </DialogFooter>
                         </DialogContent>

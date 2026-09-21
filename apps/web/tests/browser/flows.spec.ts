@@ -8,11 +8,11 @@ type Task = {
   is_completed: boolean;
 };
 
-async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean } = {}) {
+async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean; authenticated?: boolean } = {}) {
   await page.addInitScript(() => {
     if (!localStorage.getItem("display_lang")) localStorage.setItem("display_lang", "ja");
   });
-  let authenticated = false;
+  let authenticated = !!options.authenticated;
   let nextId = 2;
   let searchFailures = options.failFirstSearch ? 1 : 0;
   const tasks: Task[] = [];
@@ -199,4 +199,52 @@ test("通知設定と同意画面が表示言語の切替に追従する", async
   await page.getByRole("combobox", { name: "Language" }).click();
   await page.getByRole("option", { name: "Japanese" }).click();
   await expect(page.getByRole("heading", { name: "ご利用にあたって" })).toBeVisible();
+});
+
+test("設定詳細画面と日時選択の文言が英語・日本語に切り替わる", async ({ page }) => {
+  test.setTimeout(60_000);
+  await mockApi(page, { authenticated: true });
+  await page.route("http://localhost:3063/graphql", async (route) => {
+    const query = route.request().postDataJSON()?.query || "";
+    const respond = (data: unknown) => route.fulfill({ json: { data } });
+    if (query.includes("apiKeys{")) return respond({ apiKeys: [
+      { id: 1, description: "CI", is_valid: true, created_at: "2026-01-01T00:00:00Z", expires_at: "2027-01-01T00:00:00Z" },
+    ] });
+    if (query.includes("icalTokens{")) return respond({ icalTokens: [
+      { id: 2, description: "Personal", url: "https://example.test/calendar", created_at: "2026-01-01T00:00:00Z", expires_at: "2027-01-01T00:00:00Z" },
+    ] });
+    if (query.includes("mcpInfo{")) return respond({ mcpInfo: { enabled: true, has_token: true, expires_at: "2027-01-01T00:00:00Z" } });
+    if (query.includes("myLogs(")) return respond({ myLogs: [] });
+    return route.fallback();
+  });
+  await page.goto("/settings/basic");
+  await expect(page.locator('astro-island[component-url*="AppShell"]')).not.toHaveAttribute("ssr", "");
+  await page.getByRole("combobox", { name: "表示言語" }).click();
+  await page.getByRole("option", { name: "English" }).click();
+  await expect(page.getByRole("heading", { name: "Basic Settings" }).first()).toBeVisible();
+  await expect(page.getByText("Email language")).toBeVisible();
+
+  await page.goto("/settings/api-keys");
+  await expect(page.getByRole("heading", { name: "API Keys" }).first()).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Expiration" })).toBeVisible();
+  await page.getByRole("button", { name: "Update expiration" }).click();
+  await expect(page.getByRole("dialog").getByText("Set or update expiration")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: /2027\/01\/01/ }).click();
+  await expect(page.getByText("Time", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
+
+  await page.goto("/settings/ical");
+  await expect(page.getByRole("button", { name: "Update expiration" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete" }).last().click();
+  await expect(page.getByRole("dialog").getByText("Delete this iCal URL?")).toBeVisible();
+
+  await page.goto("/settings/mcp");
+  await expect(page.getByRole("heading", { name: "MCP Settings" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Update expiration" }).click();
+  await expect(page.getByRole("dialog").getByText("Expiration (optional)")).toBeVisible();
+  await page.evaluate(() => {
+    localStorage.setItem("display_lang", "ja");
+    window.dispatchEvent(new Event("languagechange"));
+  });
+  await expect(page.getByRole("dialog").getByText("有効期限(任意)")).toBeVisible();
 });
