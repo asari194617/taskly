@@ -1,9 +1,50 @@
 package server
 
 import (
+	"log"
 	"strings"
 	"testing"
 )
+
+func TestDatadogAgentStartOptionAcceptsUnixSocket(t *testing.T) {
+	path, ok := datadogUnixSocketPath("unix:///var/run/datadog/apm.socket")
+	if !ok || path != "/var/run/datadog/apm.socket" {
+		t.Fatalf("unexpected Datadog socket path: path=%q ok=%t", path, ok)
+	}
+}
+
+func TestDatadogAgentStartOptionFallsBackToTCP(t *testing.T) {
+	t.Setenv("DD_TRACE_AGENT_URL", "")
+	t.Setenv("DD_AGENT_HOST", "agent.internal")
+	t.Setenv("DD_TRACE_AGENT_PORT", "18126")
+
+	if option := datadogAgentStartOption(); option == nil {
+		t.Fatal("expected a Datadog TCP start option")
+	}
+}
+
+func TestDatadogAgentStartOptionDoesNotLeakInvalidURL(t *testing.T) {
+	const secret = "must-not-appear"
+	t.Setenv("DD_TRACE_AGENT_URL", "://"+secret)
+
+	previous := log.Writer()
+	var output strings.Builder
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previous) })
+
+	if option := datadogAgentStartOption(); option == nil {
+		t.Fatal("expected fallback Datadog start option")
+	}
+	if strings.Contains(output.String(), secret) {
+		t.Fatal("Datadog configuration warning leaked the invalid URL")
+	}
+}
+
+func TestDatadogUnixSocketPathRejectsNonUnixURL(t *testing.T) {
+	if path, ok := datadogUnixSocketPath("http://agent.internal:8126"); ok || path != "" {
+		t.Fatalf("expected non-Unix URL to be rejected: path=%q ok=%t", path, ok)
+	}
+}
 
 func TestRedisOptionsFromEnv(t *testing.T) {
 	t.Setenv("REDIS_ADDR", "redis.internal:6379")

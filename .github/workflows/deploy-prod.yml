@@ -231,11 +231,22 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
           ./ops/disk-maintenance.sh cleanup
           ./ops/disk-maintenance.sh pre-deploy
+          test -S /var/run/datadog/apm.socket
+          test -S /var/run/datadog/dsd.socket
           # Keep unchanged services (especially MySQL and Redis) running while
           # Compose pulls and replaces only application containers whose image or
           # configuration changed. Database image updates should be explicit.
           docker compose pull server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+          docker compose exec -T server curl --fail --silent --show-error \
+            --unix-socket /var/run/datadog/apm.socket http://localhost/info >/dev/null
+          docker compose exec -T email-compose node -e '
+            const socket = require("node:net").connect("/var/run/datadog/apm.socket");
+            const timeout = setTimeout(() => process.exit(1), 2000);
+            socket.on("connect", () => { clearTimeout(timeout); socket.end(); });
+            socket.on("close", () => process.exit(0));
+            socket.on("error", () => process.exit(1));
+          '
           # Do not let compose consume the remaining SSH heredoc from stdin.
           docker compose exec -T airflow-scheduler sh -ec '
             test -x /opt/airflow/bin/notifications-que-manager

@@ -2,6 +2,7 @@ package server
 
 import (
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,18 +20,16 @@ func Run() {
 		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
 	}
 
-	// Start Datadog tracer (reads most settings from env; override agent addr explicitly if provided)
+	// Start Datadog tracer (reads most settings from env; select the transport explicitly below).
 	serviceName := utils.Env("DD_SERVICE", "taskly-server")
 	envName := utils.Env("DD_ENV", utils.Env("SENTRY_ENVIRONMENT", utils.Env("NODE_ENV", "development")))
 	version := utils.Env("DD_VERSION", utils.Env("SENTRY_RELEASE", ""))
-	agentHost := utils.Env("DD_AGENT_HOST", "127.0.0.1")
-	agentPort := utils.Env("DD_TRACE_AGENT_PORT", "8126")
 	// Configure Datadog tracer options (including optional sampling rate)
 	tOpts := []tracer.StartOption{
 		tracer.WithService(serviceName),
 		tracer.WithEnv(envName),
 		tracer.WithServiceVersion(version),
-		tracer.WithAgentAddr(agentHost + ":" + agentPort),
+		datadogAgentStartOption(),
 		tracer.WithRuntimeMetrics(),
 	}
 	if sr := strings.TrimSpace(utils.Env("DD_TRACE_SAMPLE_RATE", "")); sr != "" {
@@ -66,4 +65,25 @@ func Run() {
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func datadogAgentStartOption() tracer.StartOption {
+	if rawURL := strings.TrimSpace(os.Getenv("DD_TRACE_AGENT_URL")); rawURL != "" {
+		if socketPath, ok := datadogUnixSocketPath(rawURL); ok {
+			return tracer.WithUDS(socketPath)
+		}
+		log.Printf("WARN: DD_TRACE_AGENT_URL must be a valid unix:// URL; falling back to DD_AGENT_HOST")
+	}
+
+	agentHost := utils.Env("DD_AGENT_HOST", "127.0.0.1")
+	agentPort := utils.Env("DD_TRACE_AGENT_PORT", "8126")
+	return tracer.WithAgentAddr(agentHost + ":" + agentPort)
+}
+
+func datadogUnixSocketPath(rawURL string) (string, bool) {
+	agentURL, err := url.Parse(rawURL)
+	if err != nil || agentURL.Scheme != "unix" || agentURL.Host != "" || agentURL.Path == "" {
+		return "", false
+	}
+	return agentURL.Path, true
 }
