@@ -68,7 +68,8 @@ export default function UserMenu() {
       const result = await gql<{ logout: boolean }>(`mutation{ logout }`);
       if (!result.logout) throw new Error("logout failed");
       toast({ title: dict.toast.loggedOut });
-      window.location.href = "/login";
+      const authLogout = import.meta.env.PUBLIC_AUTH_LOGOUT_URL;
+      window.location.href = authLogout || "/login";
     } catch {
       toast({
         variant: "destructive",

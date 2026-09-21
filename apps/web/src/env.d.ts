@@ -4,6 +4,7 @@
 
 interface ImportMetaEnv {
   readonly PUBLIC_API_URL?: string;
+  readonly PUBLIC_AUTH_LOGOUT_URL?: string;
 }
 
 interface ImportMeta {
