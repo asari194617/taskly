@@ -13,7 +13,10 @@ function flatten(value: unknown): string[] {
 
 describe("translated web screens", () => {
   it("keeps translated sections available in both languages", () => {
-    for (const section of ["common", "settingsNotifications", "consent"] as const) {
+    for (const section of [
+      "common", "settingsNotifications", "consent", "settingsBasic",
+      "settingsDetail", "settingsApiKeys", "settingsIcal", "settingsMcp", "dateTimePicker",
+    ] as const) {
       expect(Object.keys(t("en")[section])).toEqual(Object.keys(t("ja")[section]));
       expect(flatten(t("en")[section])).not.toEqual([]);
       expect(flatten(t("en")[section]).every((text) => !japanese.test(text))).toBe(true);
@@ -21,7 +24,12 @@ describe("translated web screens", () => {
   });
 
   it("keeps fixed Japanese text out of translated screen components", () => {
-    for (const path of ["../react/settings/Notifications.tsx", "../react/pages/ConsentPage.tsx", "../react/Footer.tsx"]) {
+    for (const path of [
+      "../react/settings/Notifications.tsx", "../react/pages/ConsentPage.tsx", "../react/Footer.tsx",
+      "../react/settings/Basic.tsx", "../react/settings/ApiKeys.tsx",
+      "../react/settings/Ical.tsx", "../react/settings/Mcp.tsx",
+      "../components/ui/date-time-picker.tsx",
+    ]) {
       const source = readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
       expect(source.match(japanese), path).toBeNull();
     }

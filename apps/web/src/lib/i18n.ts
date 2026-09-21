@@ -273,10 +273,39 @@ export const t = (lang: Lang) => ({
         : "This action cannot be undone.",
     deleteConfirmTitle:
       lang === "ja" ? "本当に削除しますか？" : "Are you sure to delete?",
+    emailLanguageSaveFailed:
+      lang === "ja" ? "メールの言語設定を保存できませんでした" : "Could not save the email language setting",
+    saved: lang === "ja" ? "保存しました" : "Saved",
+    saveFailed: lang === "ja" ? "保存に失敗しました" : "Failed to save",
+    deleteFailed: lang === "ja" ? "削除に失敗しました" : "Failed to delete",
+  },
+  settingsDetail: {
+    help: lang === "ja" ? "ヘルプ" : "Help",
+    expiryOptional: lang === "ja" ? "有効期限(任意)" : "Expiration (optional)",
+    selectDateTime: lang === "ja" ? "日時を選択" : "Select date and time",
+    expiry: lang === "ja" ? "期限" : "Expiration",
+    expired: lang === "ja" ? "期限切れ" : "Expired",
+    updateExpiry: lang === "ja" ? "期限を更新" : "Update expiration",
+    expiryDialog: lang === "ja" ? "有効期限を設定/更新" : "Set or update expiration",
+    clearExpiryHint:
+      lang === "ja" ? "空欄で保存すると期限を解除します。" : "Save an empty value to remove the expiration date.",
+    loadFailed: lang === "ja" ? "読み込みに失敗しました" : "Failed to load",
+    updateFailed: lang === "ja" ? "更新に失敗しました" : "Failed to update",
+    copyFailed: lang === "ja" ? "コピーに失敗しました" : "Failed to copy",
+    deleteFailed: lang === "ja" ? "削除に失敗しました" : "Failed to delete",
+    deleteConfirm: lang === "ja" ? "削除の確認" : "Confirm deletion",
+  },
+  dateTimePicker: {
+    select: lang === "ja" ? "選択してください" : "Select date and time",
+    time: lang === "ja" ? "時刻" : "Time",
+    clear: lang === "ja" ? "クリア" : "Clear",
+    done: lang === "ja" ? "決定" : "Done",
   },
   settingsApiKeys: {
     heading: lang === "ja" ? "APIキー" : "API Keys",
     descOptional: lang === "ja" ? "説明（任意）" : "Description (optional)",
+    exampleDescription: lang === "ja" ? "例: CI/CD" : "e.g. CI/CD",
+    issueFailed: lang === "ja" ? "発行に失敗しました" : "Failed to issue API key",
     issueNew: lang === "ja" ? "新しいAPIキーを発行" : "Issue new API key",
     dialogTitle: lang === "ja" ? "APIキーを発行" : "Issue API key",
     tokenWarn:
@@ -298,6 +327,11 @@ export const t = (lang: Lang) => ({
   settingsIcal: {
     heading: "iCal",
     descOptional: lang === "ja" ? "説明（任意）" : "Description (optional)",
+    exampleDescription: lang === "ja" ? "例: 個人用" : "e.g. Personal",
+    createFailed: lang === "ja" ? "作成に失敗しました" : "Failed to create iCal URL",
+    deleteUrlConfirm:
+      lang === "ja" ? "このiCal URLを削除します。よろしいですか？" : "Delete this iCal URL?",
+    deleteUrl: lang === "ja" ? "削除する" : "Delete URL",
     issueUrl: lang === "ja" ? "URLを発行" : "Issue URL",
     shareWarning:
       lang === "ja"
@@ -323,6 +357,7 @@ export const t = (lang: Lang) => ({
         : "You can issue/revoke MCP tokens for integrations. Token is shown only once.",
     issueToken: lang === "ja" ? "トークンを発行" : "Issue token",
     revokeToken: lang === "ja" ? "トークンを無効化" : "Revoke token",
+    revokedMsg: lang === "ja" ? "MCPトークンを無効化しました" : "MCP token revoked",
     dialogTitle: lang === "ja" ? "MCPトークン" : "MCP Token",
     tokenWarn:
       lang === "ja"

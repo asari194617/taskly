@@ -4,6 +4,8 @@ import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
+import { enUS, ja } from "date-fns/locale";
+import { useLang } from "@/react/LanguageProvider";
 import {
   Popover,
   PopoverContent,
@@ -25,14 +27,15 @@ export function DateTimePicker({
   placeholder,
   autoFocus,
 }: Props) {
+  const { dict, lang } = useLang();
   const [open, setOpen] = React.useState(false);
   const timeInputId = React.useId();
   const date = value ? value.split("T")[0] : "";
   const time = value ? value.split("T")[1] || "" : "";
   const label = React.useMemo(() => {
-    if (!value) return placeholder || "選択してください";
+    if (!value) return placeholder || dict.dateTimePicker.select;
     const [d, t] = value.split("T");
-    if (!d) return placeholder || "選択してください";
+    if (!d) return placeholder || dict.dateTimePicker.select;
     const [yy, mm, dd] = d.split("-");
     const dateStr =
       yy && mm && dd ? `${yy}/${mm}/${dd}` : d.split("-").join("/");
@@ -43,7 +46,7 @@ export function DateTimePicker({
     const ss = (hhmmss[2] || "").slice(0, 2);
     const timeStr = ss ? `${hh}:${mi}:${ss}` : `${hh}:${mi}`;
     return `${dateStr} ${timeStr}`;
-  }, [value, placeholder]);
+  }, [value, placeholder, dict.dateTimePicker.select]);
 
   function parseLocalDate(d: string): Date | undefined {
     if (!d) return undefined;
@@ -91,6 +94,7 @@ export function DateTimePicker({
       >
         <div className="flex flex-col gap-3">
           <Calendar
+            locale={lang === "ja" ? ja : enUS}
             className="mx-auto p-0"
             classNames={{ week: "mt-1 flex w-full" }}
             mode="single"
@@ -105,7 +109,7 @@ export function DateTimePicker({
               className="mb-1 block text-xs text-muted-foreground"
               htmlFor={timeInputId}
             >
-              時刻
+              {dict.dateTimePicker.time}
             </label>
             <Input
               id={timeInputId}
@@ -127,10 +131,10 @@ export function DateTimePicker({
                 setOpen(false);
               }}
             >
-              クリア
+              {dict.dateTimePicker.clear}
             </Button>
             <Button type="button" onClick={() => setOpen(false)}>
-              決定
+              {dict.dateTimePicker.done}
             </Button>
           </div>
         </div>
