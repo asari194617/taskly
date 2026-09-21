@@ -91,8 +91,10 @@ func fetchPendingWebPushQueue(db *sql.DB) ([]dcCommon.QueueItem, error) {
 	// - notification_devices で WEBPUSH デバイスが is_enabled=1 のユーザーに限定
 	//   (レコードがないユーザーには配信しない)
 	// - web_push_subscriptions に有効な購読があるユーザーに限定
+	// DISTINCT prevents multiple devices/subscriptions from duplicating a queue item;
+	// fetchUserSubscriptions fans that item out to each subscription exactly once.
 	rows, err := db.Query(`
-		SELECT q.id, q.when_label, q.subject, q.title, q.body, q.user_id
+		SELECT DISTINCT q.id, q.when_label, q.subject, q.title, q.body, q.user_id
 		FROM notifications_queue q
 		JOIN users u ON u.id = q.user_id
 		LEFT JOIN blocks b
