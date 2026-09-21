@@ -84,9 +84,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      server:
+        condition: service_healthy
     restart: unless-stopped
     logging: *default-logging
-    environment: {}
+    environment:
+      TASKLY_API_BASE_URL: http://server:8080
     networks:
       - default
       - proxy

@@ -17,13 +17,7 @@ export async function gql<T>(
   });
   const json = await res.json();
   if (!res.ok || json.errors?.length) {
-    // GraphQL resolvers report missing sessions as a 400 with an
-    // "unauthorized" error; REST endpoints normally use HTTP 401.
-    const unauthorized =
-      res.status === 401 ||
-      json.errors?.some(
-        (error: GQLError) => error.message?.toLowerCase() === "unauthorized"
-      );
+    const unauthorized = res.status === 401;
     if (
       typeof window !== "undefined" &&
       unauthorized &&

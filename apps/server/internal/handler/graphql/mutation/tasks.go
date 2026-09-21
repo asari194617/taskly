@@ -8,6 +8,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
+	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -44,6 +45,9 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				title, _ := p.Args["title"].(string)
 				subjectID, _ := p.Args["subject_id"].(int)
+				if strings.TrimSpace(title) == "" || subjectID <= 0 {
+					return nil, fmt.Errorf("invalid task")
+				}
 				desc, _ := p.Args["description"].(string)
 				var descPtr *string
 				if strings.TrimSpace(desc) != "" {
@@ -64,30 +68,9 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				dlSinceStr, _ := p.Args["deadline_since"].(string)
 				dlUntilStr, _ := p.Args["deadline_until"].(string)
-				since := strings.ToUpper(strings.TrimSpace(dlSinceStr))
-				until := strings.ToUpper(strings.TrimSpace(dlUntilStr))
-				// defaults
-				if since == "" {
-					since = "NONE"
-				}
-				if until == "" {
-					until = "NONE"
-				}
-				// validate enums
-				validPeriods := map[string]bool{"NONE": true, "P1": true, "P2": true, "P3": true, "P4": true, "P5": true, "P6": true, "P7": true, "P8": true, "P9": true, "P10": true}
-				validTimeLabels := map[string]bool{"MORNING": true, "LUNCH": true, "AFTER_SCHOOL": true}
-				if !validPeriods[since] {
-					return nil, fmt.Errorf("invalid deadline_since")
-				}
-				validUntil := make(map[string]bool)
-				for k, v := range validPeriods {
-					validUntil[k] = v
-				}
-				for k, v := range validTimeLabels {
-					validUntil[k] = v
-				}
-				if !validUntil[until] {
-					return nil, fmt.Errorf("invalid deadline_until")
+				since, until, err := tasklist.NormalizeDeadlineWindow(dlSinceStr, dlUntilStr)
+				if err != nil {
+					return nil, err
 				}
 				recCreated, err := jobs.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}, u.Email)
 				if err != nil {
@@ -134,12 +117,29 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
+				var target domain.Task
+				if err := h.db.First(&target, id).Error; err != nil {
+					return nil, fmt.Errorf("not found")
+				}
+				allowed, err := tasklist.CanAccessTask(h.db, u.ID, "update", target)
+				if err != nil {
+					return nil, err
+				}
+				if !allowed {
+					return nil, fmt.Errorf("forbidden")
+				}
 				// perform update via domain service
 				_, after, err := jobs.UpdateTask(h.db, uint(id), func(r *domain.Task) error {
 					if v, ok := p.Args["title"].(string); ok {
+						if strings.TrimSpace(v) == "" {
+							return fmt.Errorf("invalid title")
+						}
 						r.Title = v
 					}
 					if v, ok := p.Args["subject_id"].(int); ok {
+						if v <= 0 {
+							return fmt.Errorf("invalid subject_id")
+						}
 						r.SubjectID = uint(v)
 					}
 					if v, ok := p.Args["description"].(string); ok {
@@ -160,35 +160,26 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					}
 					if v, ok := p.Args["deadline"].(string); ok {
 						vv := strings.TrimSpace(v)
-						if vv != "" {
-							if t, err := time.Parse("2006-01-02", vv); err == nil {
-								r.Deadline = utils.DateOnly(t)
-							} else {
-								return fmt.Errorf("invalid deadline")
-							}
+						if vv == "" {
+							return fmt.Errorf("deadline required")
+						}
+						if t, err := time.Parse("2006-01-02", vv); err == nil {
+							r.Deadline = utils.DateOnly(t)
+						} else {
+							return fmt.Errorf("invalid deadline")
 						}
 					}
 					if v, ok := p.Args["deadline_since"].(string); ok {
-						vv := strings.ToUpper(strings.TrimSpace(v))
-						if vv == "" {
-							vv = "NONE"
-						}
-						if vv != "NONE" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
-							return fmt.Errorf("invalid deadline_since")
-						}
-						r.DeadlineSince = vv
+						r.DeadlineSince = v
 					}
 					if v, ok := p.Args["deadline_until"].(string); ok {
-						vv := strings.ToUpper(strings.TrimSpace(v))
-						if vv == "" {
-							vv = "NONE"
-						}
-						// Allow MORNING, LUNCH, AFTER_SCHOOL, or period enums
-						if vv != "NONE" && vv != "MORNING" && vv != "LUNCH" && vv != "AFTER_SCHOOL" && vv != "P1" && vv != "P2" && vv != "P3" && vv != "P4" && vv != "P5" && vv != "P6" && vv != "P7" && vv != "P8" && vv != "P9" && vv != "P10" {
-							return fmt.Errorf("invalid deadline_until")
-						}
-						r.DeadlineUntil = vv
+						r.DeadlineUntil = v
 					}
+					since, until, err := tasklist.NormalizeDeadlineWindow(r.DeadlineSince, r.DeadlineUntil)
+					if err != nil {
+						return err
+					}
+					r.DeadlineSince, r.DeadlineUntil = since, until
 					return nil
 				}, u.Email)
 				if err != nil {
@@ -230,15 +221,9 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err := h.db.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				allowed := isAdmin || isManager
-				if !allowed {
-					if okp, err := utils.CheckPermission(u.ID, "tasks", "delete", &rec.AddedUserID, h.db); err != nil {
-						return false, err
-					} else {
-						allowed = okp
-					}
+				allowed, err := tasklist.CanAccessTask(h.db, u.ID, "delete", rec)
+				if err != nil {
+					return false, err
 				}
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
@@ -271,6 +256,13 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err := h.db.First(&rec, id).Error; err != nil {
 					return false, fmt.Errorf("not found")
 				}
+				allowed, err := tasklist.CanAccessTask(h.db, u.ID, "read", rec)
+				if err != nil {
+					return false, err
+				}
+				if !allowed {
+					return false, fmt.Errorf("forbidden")
+				}
 				// Upsert completion via domain service
 				if err := domain.CompleteTask(h.db, u.ID, rec.ID); err != nil {
 					return false, fmt.Errorf("db")
@@ -294,6 +286,17 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				id, _ := p.Args["id"].(int)
+				var rec domain.Task
+				if err := h.db.First(&rec, id).Error; err != nil {
+					return false, fmt.Errorf("not found")
+				}
+				allowed, err := tasklist.CanAccessTask(h.db, u.ID, "read", rec)
+				if err != nil {
+					return false, err
+				}
+				if !allowed {
+					return false, fmt.Errorf("forbidden")
+				}
 				if err := domain.UncompleteTask(h.db, u.ID, uint(id)); err != nil {
 					return false, fmt.Errorf("db")
 				}

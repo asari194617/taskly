@@ -2,12 +2,11 @@ package gqlQuery
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
@@ -49,68 +48,16 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 						return nil, fmt.Errorf("forbidden")
 					}
 					overdue, _ := p.Args["overdue"].(bool)
-					qstr, _ := p.Args["q"].(string)
-					limit := 20
-					if v, ok := p.Args["limit"].(int); ok && v > 0 && v <= 200 {
-						limit = v
-					}
-					var cursorDeadline *time.Time
-					if s, _ := p.Args["cursor_deadline"].(string); s != "" {
-						if t, err := time.Parse(time.RFC3339, s); err == nil {
-							// Normalize to date-only to match DATE type column
-							day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-							cursorDeadline = &day
-						}
-					}
-					var cursorID uint
-					if s, _ := p.Args["cursor_id"].(string); s != "" {
-						if v, err := strconv.Atoi(s); err == nil && v > 0 {
-							cursorID = uint(v)
-						}
-					}
-					dbq := h.db.Model(&domain.Task{})
-					// Use date-only for comparison because deadline is DATE type
-					today := time.Now()
-					today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
-					eff := "effective_deadline"
-					if overdue {
-						dbq = dbq.Where(eff+" < ?", today)
-					} else {
-						dbq = dbq.Where(eff+" >= ?", today)
-					}
-					if strings.TrimSpace(qstr) != "" {
-						like := "%" + strings.TrimSpace(qstr) + "%"
-						dbq = dbq.Where("title LIKE ? OR description LIKE ?", like, like)
-					}
-					if cursorDeadline != nil {
-						if overdue {
-							dbq = dbq.Where("("+eff+" < ?) OR ("+eff+" = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
-						} else {
-							dbq = dbq.Where("("+eff+" > ?) OR ("+eff+" = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
-						}
-					} else if cursorID != 0 {
-						if overdue {
-							dbq = dbq.Where("id < ?", cursorID)
-						} else {
-							dbq = dbq.Where("id > ?", cursorID)
-						}
-					}
-					if overdue {
-						dbq = dbq.Order(eff + " DESC").Order("id DESC")
-					} else {
-						dbq = dbq.Order(eff + " ASC").Order("id ASC")
-					}
-					var items []domain.Task
-					if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
+					search, _ := p.Args["q"].(string)
+					limit, _ := p.Args["limit"].(int)
+					cursorDeadline, _ := p.Args["cursor_deadline"].(string)
+					cursorID, _ := p.Args["cursor_id"].(string)
+					items, nextCursor, err := tasklist.List(h.db, u.ID, tasklist.Options{
+						Limit: limit, Overdue: overdue, Search: search,
+						CursorDeadline: cursorDeadline, CursorID: cursorID,
+					})
+					if err != nil {
 						return nil, err
-					}
-					var nextCursor map[string]string
-					if len(items) > limit {
-						last := items[limit-1]
-						items = items[:limit]
-						// Use date-only deadline for cursor because column is DATE type
-						ed := time.Date(last.Deadline.Year(), last.Deadline.Month(), last.Deadline.Day(), 0, 0, 0, 0, last.Deadline.Location())
-						nextCursor = map[string]string{"cursor_deadline": ed.Format(time.RFC3339), "cursor_id": fmt.Sprintf("%d", last.ID)}
 					}
 					// serialize
 					// Preload user's completion map for fetched items

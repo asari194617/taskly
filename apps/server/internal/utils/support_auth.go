@@ -297,6 +297,30 @@ func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
 	return true
 }
 
+// UserFromMCPToken authenticates the dedicated MCP task bridge. MCP tokens
+// never grant access to the public API key or GraphQL surfaces.
+func UserFromMCPToken(c *fiber.Ctx, DB *gorm.DB) bool {
+	token := c.Get("X-MCP-Token")
+	if token == "" {
+		return false
+	}
+	var credential domain.MCP
+	if err := DB.Where("hashed_token = ? AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), time.Now()).First(&credential).Error; err != nil {
+		return false
+	}
+	var user domain.User
+	if err := DB.Where("id = ? AND is_deleted = 0", credential.UserID).First(&user).Error; err != nil {
+		return false
+	}
+	var blocks int64
+	if err := DB.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", user.ID, time.Now()).Count(&blocks).Error; err != nil || blocks > 0 {
+		return false
+	}
+	c.Locals("user", &user)
+	c.Locals("mcpToken", true)
+	return true
+}
+
 // 2FA helpers
 func UrlEncode(s string) string { return url.QueryEscape(s) }
 

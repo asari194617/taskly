@@ -28,7 +28,7 @@ func NewMiddleware(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn) *Mi
 
 // AuthRequired ensures the request is authenticated via session or API key
 func (mw *Middleware) AuthRequired(c *fiber.Ctx) error {
-	if utils.UserFromSession(c, mw.db, mw.rdb) || utils.UserFromAPIKey(c, mw.db) {
+	if utils.UserFromSession(c, mw.db, mw.rdb) || utils.UserFromAPIKey(c, mw.db) || utils.UserFromMCPToken(c, mw.db) {
 		return c.Next()
 	}
 	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
@@ -81,6 +81,17 @@ func (mw *Middleware) AdminOnly(c *fiber.Ctx) error {
 // - GET /users/me
 // - PATCH /users/me
 func (mw *Middleware) ApiKeyRouteScope(c *fiber.Ctx) error {
+	if c.Get("X-MCP-Token") != "" {
+		if c.Get("X-API-Key") != "" {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "ambiguous credentials"})
+		}
+		method, path := c.Method(), strings.TrimRight(c.Path(), "/")
+		if ((method == fiber.MethodGet || method == fiber.MethodPost) && path == "/tasks") ||
+			((method == fiber.MethodPatch || method == fiber.MethodDelete) && strings.HasPrefix(path, "/tasks/") && validTaskID(strings.TrimPrefix(path, "/tasks/"))) {
+			return c.Next()
+		}
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "mcp token not allowed for this endpoint"})
+	}
 	if c.Get("X-API-Key") == "" {
 		return c.Next()
 	}
@@ -107,4 +118,9 @@ func (mw *Middleware) ApiKeyRouteScope(c *fiber.Ctx) error {
 		}
 	}
 	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "api key not allowed for this endpoint"})
+}
+
+func validTaskID(id string) bool {
+	parsed, err := strconv.ParseUint(id, 10, 64)
+	return err == nil && parsed > 0
 }

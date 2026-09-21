@@ -99,6 +99,8 @@ A simple, fast class management service.
 - (APIとiCalとMCPとTeamsを除く)各プラットフォームとアプリケーションサーバーのやりとり: GraphQL✅
 - APIプラットフォーム: REST API✅
 
+現在の API 用途と例外は [api-boundaries.md](./api-boundaries.md) を参照。
+
 ## Schemas
 
 [schema.md](./schema.md)

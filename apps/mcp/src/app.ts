@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import fp from "fastify-plugin";
 import crypto from "crypto";
+import { httpTaskGateway, type TaskGateway } from "./task_gateway.js";
 export type DBPool = {
   query: (...args: any[]) => Promise<any>;
   execute: (...args: any[]) => Promise<any>;
@@ -10,33 +11,19 @@ function sha256Hex(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
-// Keep these defaults aligned with apps/server/internal/utils/support_permissions.go.
-// MCP remains owner-scoped even when the main API grants broader roles.
-async function canUseTasks(
-  pool: DBPool,
-  userId: number,
-  action: "read" | "create" | "update" | "delete",
-  ownerId?: number,
-): Promise<boolean> {
-  const [roles] = await pool.query(
-    "SELECT role FROM role_users WHERE user_id = ? AND role IN ('admin', 'manager') LIMIT 1",
-    [userId],
-  );
-  if (roles.length > 0) return true;
-
-  const [permissions] = await pool.query(
-    "SELECT value FROM permissions WHERE user_id = ? AND target = 'tasks' AND method = ? ORDER BY id DESC LIMIT 1",
-    [userId, action],
-  );
-  if (permissions.length > 0) {
-    const value = permissions[0].value?.toLowerCase();
-    if (!value || value === "all") return true;
-    return value === "own" && ownerId === userId;
-  }
-  return action === "read" || action === "create" || (action === "update" && ownerId === userId);
+function taskForMCP(row: any) {
+  const fields: Record<string, string> = {
+    ID: "id", AddedUserID: "added_user_id", Title: "title", SubjectID: "subject_id",
+    Description: "description", Type: "type", IsRequireHandIn: "is_require_hand_in",
+    IsSelfCheckRequired: "is_self_check_required", Deadline: "deadline",
+    DeadlineSince: "deadline_since", DeadlineUntil: "deadline_until",
+    CreatedAt: "created_at", UpdatedAt: "updated_at",
+  };
+  if (!row || typeof row !== "object") return row;
+  return Object.fromEntries(Object.entries(fields).map(([from, to]) => [to, row[from] !== undefined ? row[from] : row[to]]));
 }
 
-export async function createApp(pool: DBPool) {
+export async function createApp(pool: DBPool, taskGateway: TaskGateway = httpTaskGateway()) {
   const app = Fastify({ logger: false });
 
   // Auth plugin: X-MCP-Token -> mcps.hashed_token match (with expiry)
@@ -70,108 +57,59 @@ export async function createApp(pool: DBPool) {
 
   app.get("/healthz", async () => ({ ok: true }));
 
-  // Tasks CRUD (subset)
+  // The MCP facade preserves its response shape while the Go API performs
+  // task authorization, validation, persistence and notifications.
+  const tokenFrom = (req: any) => String(req.headers["x-mcp-token"] || req.headers["x-mcp-api-token"] || "");
   app.get("/tasks", async (req, reply) => {
-    const userId = (req as any).userId as number;
-    if (!(await canUseTasks(pool, userId, "read"))) {
-      return reply.code(403).send({ error: "forbidden" });
+    const input = req.query as any;
+    const limit = Math.min(Math.max(Number(input?.limit ?? 200), 1), 500);
+    const offset = Math.max(Number(input?.offset ?? 0), 0);
+    if (!Number.isSafeInteger(limit) || !Number.isSafeInteger(offset)) {
+      return reply.code(400).send({ error: "invalid pagination" });
     }
-    const q = (req.query as any)?.q as string | undefined;
-    const limit = Math.min(
-      Math.max(Number((req.query as any)?.limit ?? 200), 1),
-      500,
-    );
-    const offset = Math.max(Number((req.query as any)?.offset ?? 0), 0);
-    let sql =
-      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks WHERE added_user_id = ? AND is_hidden = 0";
-    const params: any[] = [userId];
-    if (q) {
-      sql += " AND (title LIKE ? OR description LIKE ?)";
-      params.push(`%${q}%`, `%${q}%`);
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (input?.q) params.set("q", String(input.q));
+    try {
+      const result = await taskGateway(tokenFrom(req), "GET", `/tasks?${params}`);
+      if (result.status !== 200) return reply.code(result.status).send(result.body);
+      return reply.send((result.body?.items ?? []).map(taskForMCP));
+    } catch {
+      return reply.code(502).send({ error: "task API unavailable" });
     }
-    sql += " ORDER BY id DESC LIMIT ? OFFSET ?";
-    params.push(limit, offset);
-    const [rows] = await pool.query(sql, params);
-    reply.send(rows);
   });
 
   app.post("/tasks", async (req, reply) => {
-    const body = req.body as any;
-    const userId = (req as any).userId as number;
-    if (!(await canUseTasks(pool, userId, "create"))) {
-      return reply.code(403).send({ error: "forbidden" });
+    try {
+      const result = await taskGateway(tokenFrom(req), "POST", "/tasks", req.body);
+      if (result.status !== 201) return reply.code(result.status).send(result.body);
+      return reply.code(201).send({ id: result.body?.id ?? result.body?.ID });
+    } catch {
+      return reply.code(502).send({ error: "task API unavailable" });
     }
-    if (!body || typeof body.title !== "string" || !body.title.trim() ||
-        !Number.isSafeInteger(body.subject_id) || body.subject_id <= 0 ||
-        typeof body.deadline !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.deadline)) {
-      return reply.code(400).send({ error: "invalid body" });
-    }
-    const [res] = await pool.execute(
-      `INSERT INTO tasks (added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        body.title,
-        body.subject_id,
-        body.description ?? null,
-        body.type ?? "OTHER",
-        body.is_require_hand_in ? 1 : 0,
-        body.is_self_check_required ? 1 : 0,
-        body.deadline,
-        body.deadline_since ?? "NONE",
-        body.deadline_until ?? "NONE",
-      ],
-    );
-    reply.code(201).send({ id: (res as any).insertId });
   });
 
   app.patch("/tasks/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
-    const userId = (req as any).userId as number;
     if (!Number.isSafeInteger(id) || id <= 0) return reply.code(400).send({ error: "invalid id" });
-    if (!(await canUseTasks(pool, userId, "update", userId))) {
-      return reply.code(403).send({ error: "forbidden" });
+    try {
+      const result = await taskGateway(tokenFrom(req), "PATCH", `/tasks/${id}`, req.body);
+      if (result.status !== 200) return reply.code(result.status).send(result.body);
+      return reply.send({ ok: true });
+    } catch {
+      return reply.code(502).send({ error: "task API unavailable" });
     }
-    const body = req.body as any;
-    const fields: string[] = [];
-    const values: any[] = [];
-    const up = (k: string, v: any) => {
-      fields.push(`${k} = ?`);
-      values.push(v);
-    };
-    const maybe = (k: string) => {
-      if (body[k] !== undefined) up(k, body[k]);
-    };
-    maybe("title");
-    maybe("subject_id");
-    maybe("description");
-    maybe("type");
-    if (body.is_require_hand_in !== undefined)
-      up("is_require_hand_in", body.is_require_hand_in ? 1 : 0);
-    if (body.is_self_check_required !== undefined)
-      up("is_self_check_required", body.is_self_check_required ? 1 : 0);
-    maybe("deadline");
-    maybe("deadline_since");
-    maybe("deadline_until");
-    if (fields.length === 0) return reply.send({ ok: true });
-    const sql = `UPDATE tasks SET ${fields.join(", ")} WHERE id = ? AND added_user_id = ? AND is_hidden = 0`;
-    values.push(id, userId);
-    await pool.execute(sql, values);
-    reply.send({ ok: true });
   });
 
   app.delete("/tasks/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
-    const userId = (req as any).userId as number;
     if (!Number.isSafeInteger(id) || id <= 0) return reply.code(400).send({ error: "invalid id" });
-    if (!(await canUseTasks(pool, userId, "delete", userId))) {
-      return reply.code(403).send({ error: "forbidden" });
+    try {
+      const result = await taskGateway(tokenFrom(req), "DELETE", `/tasks/${id}`);
+      if (result.status !== 204) return reply.code(result.status).send(result.body);
+      return reply.send({ ok: true });
+    } catch {
+      return reply.code(502).send({ error: "task API unavailable" });
     }
-    await pool.execute("DELETE FROM tasks WHERE id = ? AND added_user_id = ? AND is_hidden = 0", [
-      id,
-      userId,
-    ]);
-    reply.send({ ok: true });
   });
 
   // Users read/update (subset)
