@@ -14,6 +14,8 @@ It can access only Taskly authentication, rate-limit, WebAuthn, TOTP, and sessio
 key prefixes, including `auth_transaction:*` for short-lived MFA transactions.
 Scripts remain subject to Redis ACL command and key checks. Administrative
 commands, Pub/Sub, arbitrary keys, and all other command categories remain denied.
+When the ACL entrypoint changes, production deployment recreates Redis so the
+new policy takes effect; the `redis-data` volume remains mounted.
 
 ## Initial rollout
 
