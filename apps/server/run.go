@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"log"
 	"net/url"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
-	"github.com/asari194617/taskly/apps/server/internal/tasksearch"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
@@ -62,9 +60,6 @@ func Run() {
 		log.Fatalf("integration jobs schema: %v", err)
 	}
 	rdb := mustInitRedis()
-	searchCtx, stopSearch := context.WithCancel(context.Background())
-	defer stopSearch()
-	tasksearch.Start(searchCtx, db)
 	wAuth := initWebAuthn()
 	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
 	app := newServerApp(db, rdb, wAuth, serviceName)

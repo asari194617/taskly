@@ -277,9 +277,6 @@ jobs:
             docker compose up -d --no-build --force-recreate redis
           fi
           docker compose up -d --no-build --wait db redis
-          if [[ ",${PROD_COMPOSE_PROFILES:-}," == *,search,* ]]; then
-            docker compose up -d --no-build --wait opensearch
-          fi
           docker compose run --rm --no-deps --entrypoint /app/migrate server </dev/null
           # --wait fails on unhealthy containers and bounds startup time.
           if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor; then
