@@ -172,6 +172,9 @@ jobs:
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RELEASE_SHA: ${{ github.sha }}
       REDIS_ACL_CHANGED: ${{ needs.plan.outputs.redis_acl_changed }}
+      PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
+      PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
+      PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
     steps:
       - uses: actions/checkout@v7
       - name: Require production environment
@@ -244,12 +247,21 @@ jobs:
       - name: Remote deploy
         run: |
           set -eux
+          set +x
+          api_health_b64=$(printf '%s' "$PROD_PUBLIC_API_HEALTH_URL" | base64 | tr -d '\n')
+          mcp_health_b64=$(printf '%s' "$PROD_PUBLIC_MCP_HEALTH_URL" | base64 | tr -d '\n')
+          airflow_health_b64=$(printf '%s' "$PROD_PUBLIC_AIRFLOW_HEALTH_URL" | base64 | tr -d '\n')
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" <<EOS
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
           export TASKLY_IMAGE_TAG="$RELEASE_SHA"
+          set +x
+          export PROD_PUBLIC_API_HEALTH_URL=\$(printf '%s' '$api_health_b64' | base64 -d)
+          export PROD_PUBLIC_MCP_HEALTH_URL=\$(printf '%s' '$mcp_health_b64' | base64 -d)
+          export PROD_PUBLIC_AIRFLOW_HEALTH_URL=\$(printf '%s' '$airflow_health_b64' | base64 -d)
+          set -x
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
           ./ops/disk-maintenance.sh cleanup
           ./ops/disk-maintenance.sh pre-deploy
@@ -266,7 +278,13 @@ jobs:
           fi
           docker compose up -d --no-build --wait db redis
           docker compose run --rm --no-deps --entrypoint /app/migrate server </dev/null
-          docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+          # --wait fails on unhealthy containers and bounds startup time.
+          if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor; then
+            docker compose ps
+            docker compose logs --tail=50 --no-color db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+            exit 1
+          fi
+          ./ops/verify-deploy-health.sh
           docker compose exec -T server curl --fail --silent --show-error \
             --unix-socket /var/run/datadog/apm.socket http://localhost/info </dev/null >/dev/null
           docker compose exec -T email-compose node -e '

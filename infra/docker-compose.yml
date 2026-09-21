@@ -69,6 +69,12 @@ services:
       REDIS_ADDR: redis:6379
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       TZ: Asia/Tokyo
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   mcp:
     image: ghcr.io/asari194617/taskly/mcp:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/mcp
@@ -86,6 +92,12 @@ services:
       - proxy
     ports:
       - "127.0.0.1:3066:3066" # Host Nginx -> MCP
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3066/healthz',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
   airflow-webserver:
     image: ghcr.io/asari194617/taskly/airflow:${TASKLY_IMAGE_TAG:-latest}
     build:
@@ -148,6 +160,12 @@ services:
         "-lc",
         "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; exec airflow api-server -p 3065",
       ]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:3065/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 7s
+      retries: 5
+      start_period: 90s
   email-compose:
     image: ghcr.io/asari194617/taskly/email-compose:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/email-compose
@@ -239,12 +257,12 @@ services:
       test:
         [
           "CMD-SHELL",
-          "test -x /opt/airflow/bin/notifications-que-manager && test -x /opt/airflow/bin/backup-mysql && test -x /opt/airflow/bin/moderation",
+          "test -x /opt/airflow/bin/notifications-que-manager && test -x /opt/airflow/bin/backup-mysql && test -x /opt/airflow/bin/moderation && airflow jobs check --job-type SchedulerJob --local",
         ]
       interval: 30s
-      timeout: 5s
+      timeout: 20s
       retries: 3
-      start_period: 30s
+      start_period: 90s
     # Clean stale PID, initialize/upgrade DB once, then start scheduler
     command:
       [
@@ -301,6 +319,12 @@ services:
       - ../.env:/opt/airflow/.env:ro
       - ..:/workspace
     command: ["bash", "-lc", "exec airflow dag-processor"]
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "DagProcessorJob", "--local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 90s
 volumes:
   db-data:
   redis-data:

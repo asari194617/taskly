@@ -37,6 +37,7 @@
 - `PROD_WORKDIR`: サーバー上の絶対パス
 - `PROD_ENV`: 本番 `.env` の内容。空値では本番ホストへの接続前にデプロイを中止する
 - `PROD_COMPOSE_PROFILES`: 将来 Compose profile を追加する場合の予約値（現行構成には profile なし）
+- `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。設定された経路だけ追加検証します。
 
 `main` への push では次のパスが変更された場合に起動します。
 
@@ -61,7 +62,9 @@
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
 7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull し、DB と Redis を起動する。
 8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
-9. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+9. アプリコンテナの再作成後、最大10分間 healthcheck を待つ。
+10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
+11. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
@@ -116,4 +119,10 @@ Teams連携の `status_callback` を使用する場合は、デプロイ前に `
   MySQL、Redis、email-compose は Docker 内部ネットワークだけで通信します。
   公開ポート一覧と確認方法は `operations/network-ports.md` を参照してください。
 - `infra/docker-compose.yml` 内に Traefik や TLS 終端サービスはありません。
-- デプロイ後は `docker compose ps` と各 health endpoint を確認してください。
+- healthcheck または HTTP 応答が失敗するとデプロイジョブは失敗します。ログにはサービスの状態、healthcheck の直近の出力、コンテナログが出ます。
+
+### デプロイ失敗時の切り戻し
+
+1. Actions の失敗ログで対象サービスと healthcheck の理由を確認し、`docker compose ps` と `docker compose logs --tail=100 <service>` で再確認します。
+2. アプリの新イメージが原因なら、直前に成功したデプロイの commit SHA を `TASKLY_IMAGE_TAG` に設定し、`cd "$PROD_WORKDIR/infra"` で `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml docker compose up -d --wait --wait-timeout 600 --no-build server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor` を実行します。MySQL・Redis の volume は削除しません。
+3. `./ops/verify-deploy-health.sh` を実行します。DB スキーマ変更が含まれる場合は、イメージだけ戻す前にマイグレーションの互換性を確認します。
