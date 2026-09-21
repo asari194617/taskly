@@ -36,7 +36,7 @@
 
 ## DB 復元
 
-本番 DB へ直接投入する前に、同じバックアップを**隔離した検証環境**で復元し、下記の操作と migration の互換性を確認する。本番から取得した dump は機密データとして扱い、検証環境でのアクセスと削除を記録する。現行バックアップは `airflow-backups` volume と FTPS 上の `backup-YYYYMMDD-HHMMSS.sql.gz.age`（ファイル名は UTC）で、age 秘密鍵は本番ホスト以外の安全な場所に保管する。取得・復号と整合性確認は [`mysql-backup.md`](mysql-backup.md) に従う。旧 `airflow-data` volume と FTP にある `.sql.gz` は暗号化導入前の形式であり、別途保護して扱う。ファイル名の時刻と Airflow の `backup_mysql` 成功時刻を照合し、最新の正常バックアップが不明なら復元を止める。
+本番 DB へ直接投入する前に、同じバックアップを**隔離した検証環境**で復元し、下記の操作と migration の互換性を確認する。本番から取得した dump は機密データとして扱い、検証環境でのアクセスと削除を記録する。現行バックアップは `airflow-backups` volume と FTPS 上の `backup-YYYYMMDD-HHMMSS.sql.gz.age`（ファイル名は UTC）で、age 秘密鍵は本番ホスト以外の安全な場所に保管する。取得・復号と整合性確認は [`mysql-backup.md`](mysql-backup.md) に従う。旧 `airflow-data` volume と FTP にある `.sql.gz` は暗号化導入前の形式であり、別途保護して扱う。ファイル名の時刻と Airflow の `backup_mysql` 成功時刻を照合し、最新の正常バックアップが不明なら復元を止める。**復号と gzip 検査だけでは復元可能と判定しない。** 2026-09-21 の訓練では MariaDB 版 `mysqldump` の生成列処理により、整合性検査に通った backup の SQL 投入が失敗した。Airflow イメージの `mysqldump --version` が MySQL 8.4 であること、実際に SQL 投入とアプリ操作まで成功することを確認する。
 
 1. 検証環境の MySQL 8.4 を**新しい空の volume**で起動する。既存の本番/検証 DB に上書きしない。アプリの外部送信（SMTP、Web Push、Discord、Teams）を無効にする。検証用の `.env` は本番の秘密値をそのまま流用しない。
 2. 次のコマンドを検証環境の `infra` で実行する。`BACKUP_FILE` は検証環境内の暗号化 backup の絶対パス、`BACKUP_AGE_IDENTITY` は別途保管した秘密鍵のパスに置き換える。固有の Compose project 名を使い、`docker compose config --volumes` で本番の `db-data` と異なる volume が作られることを確認する。検証用 `.env` は別途用意する。

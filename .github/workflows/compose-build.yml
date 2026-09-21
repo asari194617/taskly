@@ -112,6 +112,7 @@ jobs:
             test -x /opt/airflow/bin/notifications-que-manager
             test -x /opt/airflow/bin/backup-mysql
             test -x /opt/airflow/bin/moderation
+            mysqldump --version | grep -q "MySQL Community Server"
           '
       - name: Build timing
         if: always()

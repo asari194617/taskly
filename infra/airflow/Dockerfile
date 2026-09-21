@@ -24,6 +24,10 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     (cd notifications/delivery-channels/discord && go build -trimpath -o /out/bin/notifications-delivery-channels-discord .); \
     (cd notifications/delivery-channels/web-push && go build -trimpath -o /out/bin/notifications-delivery-channels-web-push .)
 
+# MariaDB's dump client includes MySQL generated columns in INSERT statements.
+# Use the client matching the production MySQL server so the dump can be restored.
+FROM mysql:8.4 AS mysql-client
+
 FROM apache/airflow:3.3.0-python3.14
 
 USER root
@@ -53,3 +57,4 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
+COPY --from=mysql-client /usr/bin/mysqldump /usr/local/bin/mysqldump
