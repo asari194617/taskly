@@ -12,6 +12,9 @@ import {
   apiBase,
   getEmailFromQuery,
   postLoginRedirect,
+  clearAuthTransaction,
+  isAuthTransactionError,
+  readAuthTransaction,
   withNext,
 } from "./helpers";
 
@@ -25,7 +28,7 @@ export default function Recovery() {
     setMessage(null);
     setLoading(true);
     try {
-      const password = sessionStorage.getItem("login_pw") || undefined;
+      const transaction = readAuthTransaction(email);
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
@@ -33,8 +36,8 @@ export default function Recovery() {
           "X-Client-Platform": "web",
         },
         body: JSON.stringify({
-          email,
-          password,
+          email: transaction ? undefined : email,
+          auth_transaction: transaction?.id,
           recovery_code: recovery || undefined,
         }),
       });
@@ -43,9 +46,15 @@ export default function Recovery() {
         if (data?.error === "user_not_found") {
           throw new Error("このメールアドレスのユーザーは存在しません");
         }
+        if (isAuthTransactionError(data?.error)) {
+          clearAuthTransaction();
+          throw new Error(
+            "認証の有効期限が切れました。パスワードからやり直してください"
+          );
+        }
         throw new Error(data?.error || JSON.stringify(data));
       }
-      sessionStorage.removeItem("login_pw");
+      clearAuthTransaction();
       if (data?.token) {
         localStorage.setItem("api_token", data.token);
         await postLoginRedirect();

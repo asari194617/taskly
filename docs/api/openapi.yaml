@@ -44,7 +44,13 @@ paths:
           description: Code sent
   /auth/login:
     post:
-      summary: Login with code or password + 2FA
+      summary: Start password login or complete MFA authentication
+      description: |
+        Password login is a two-call flow when MFA is enabled. Submit `email`
+        and `password` first; the API returns a short-lived opaque
+        `auth_transaction`. Submit that value with exactly one MFA factor in a
+        second request. Never resend the password with an auth transaction.
+        Passwordless accounts may continue to submit `email` with one factor.
       tags: [auth]
       requestBody:
         required: true
@@ -57,16 +63,47 @@ paths:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                auth_transaction:
+                  type: string
+                  description: Opaque, single-use MFA transaction returned by the password step
                 code:
                   type: string
                 totp:
                   type: string
                 recovery_code:
                   type: string
-              required: [email]
+              anyOf:
+                - required: [email, password]
+                - required: [auth_transaction]
+                - required: [email]
       responses:
         "200":
           description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, jwt]
+                properties:
+                  token: { type: string }
+                  jwt: { type: string }
+        "202":
+          description: Password accepted; MFA is required
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mfa_required, auth_transaction, expires_in, methods]
+                properties:
+                  mfa_required: { type: boolean, enum: [true] }
+                  auth_transaction: { type: string }
+                  expires_in: { type: integer, example: 300 }
+                  methods:
+                    type: array
+                    items: { type: string, enum: [email_code, totp, recovery] }
+        "401":
+          description: Invalid credentials, MFA, or expired/consumed transaction
   /auth/logout:
     post:
       summary: Logout current session

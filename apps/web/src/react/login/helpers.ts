@@ -3,6 +3,66 @@ import { gql } from "../../lib/graphql";
 export const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
 
+const AUTH_TRANSACTION_KEY = "login_auth_transaction";
+
+export type AuthTransactionState = {
+  id: string;
+  email: string;
+  expiresAt: number;
+  methods: string[];
+};
+
+export function saveAuthTransaction(
+  id: string,
+  email: string,
+  expiresInSeconds: number,
+  methods: string[]
+) {
+  const state: AuthTransactionState = {
+    id,
+    email: email.trim().toLowerCase(),
+    expiresAt: Date.now() + expiresInSeconds * 1000,
+    methods,
+  };
+  sessionStorage.setItem(AUTH_TRANSACTION_KEY, JSON.stringify(state));
+}
+
+export function readAuthTransaction(
+  email: string
+): AuthTransactionState | null {
+  try {
+    const raw = sessionStorage.getItem(AUTH_TRANSACTION_KEY);
+    if (!raw) return null;
+    const state = JSON.parse(raw) as AuthTransactionState;
+    if (
+      !state?.id ||
+      state.email !== email.trim().toLowerCase() ||
+      !Number.isFinite(state.expiresAt) ||
+      state.expiresAt <= Date.now()
+    ) {
+      clearAuthTransaction();
+      return null;
+    }
+    return state;
+  } catch {
+    clearAuthTransaction();
+    return null;
+  }
+}
+
+export function clearAuthTransaction() {
+  sessionStorage.removeItem(AUTH_TRANSACTION_KEY);
+}
+
+export function isAuthTransactionError(error: unknown): boolean {
+  return (
+    typeof error === "string" &&
+    (error.startsWith("auth transaction") ||
+      error === "password required" ||
+      error === "submit password before mfa")
+  );
+}
+
 export function getNextParam(): string {
   try {
     const params = new URLSearchParams(location.search);

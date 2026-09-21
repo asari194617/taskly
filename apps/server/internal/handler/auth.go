@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -272,125 +273,233 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 
 	// login
 	router.Post("/login", func(c *fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "no-store")
 		now := time.Now().In(jst)
 		var body struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
-			Code     string `json:"code"`
-			Totp     string `json:"totp"`
-			Recovery string `json:"recovery_code"`
+			Email             string `json:"email"`
+			Password          string `json:"password"`
+			AuthTransactionID string `json:"auth_transaction"`
+			Code              string `json:"code"`
+			Totp              string `json:"totp"`
+			Recovery          string `json:"recovery_code"`
 		}
 		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
 		}
-		email := strings.ToLower(strings.TrimSpace(body.Email))
-		if !utils.IsEmail(email) {
-			return utils.ValidationError(c, map[string]string{"email": "invalid email"})
+		platform := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
+		if platform == "" {
+			platform = "web"
 		}
-		// Lookup user; do not auto-create for non-existing accounts
+		if !utils.IsAllowedPlatform(platform) {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
+		}
+
+		email := strings.ToLower(strings.TrimSpace(body.Email))
 		var u domain.User
-		if err := h.db.Where("email = ?", email).First(&u).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
+		usingTransaction := strings.TrimSpace(body.AuthTransactionID) != ""
+		var transaction *authTransaction
+		var releaseTransaction func()
+
+		if usingTransaction {
+			if body.Password != "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "password is not accepted with an auth transaction"})
+			}
+			var err error
+			transaction, releaseTransaction, err = h.lockAuthTransaction(c.Context(), body.AuthTransactionID)
+			if errors.Is(err, errAuthTransactionNotFound) {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "auth transaction invalid or expired"})
+			}
+			if errors.Is(err, errAuthTransactionBusy) {
+				return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "auth transaction is already in use"})
+			}
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "auth transaction"})
+			}
+			defer releaseTransaction()
+
+			failTransaction := func(message string) error {
+				exhausted, err := h.recordAuthTransactionFailure(c.Context(), body.AuthTransactionID, transaction)
+				if err != nil {
+					return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "auth transaction"})
+				}
+				if exhausted {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "auth transaction attempts exceeded"})
+				}
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": message})
+			}
+
+			if transaction.ClientContext != authTransactionContext(c, platform) {
+				return failTransaction("auth transaction client mismatch")
+			}
+			if email != "" && email != transaction.Email {
+				return failTransaction("auth transaction user mismatch")
+			}
+			if err := h.db.First(&u, transaction.UserID).Error; err != nil || u.IsDeleted {
+				_ = h.consumeAuthTransaction(c.Context(), body.AuthTransactionID)
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
 			}
-			return c.Status(500).JSON(fiber.Map{"error": "db"})
-		}
-		// Treat logically deleted users as non-existent for login
-		if u.IsDeleted {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
-		}
-		ip := c.IP()
-		// IP rate limit (max 20 req/10min)
-		ipKey := "login_attempt_ip:" + ip
-		ipCount, _ := h.rdb.Incr(c.Context(), ipKey).Result()
-		if ipCount == 1 {
-			_ = h.rdb.Expire(c.Context(), ipKey, 10*time.Minute)
-		}
-		if ipCount > 20 {
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "ip rate limit"})
-		}
-		// Email rate limit (max 10 req/10min)
-		emailKey := "login_attempt_email:" + u.Email
-		emailCount, _ := h.rdb.Incr(c.Context(), emailKey).Result()
-		if emailCount == 1 {
-			_ = h.rdb.Expire(c.Context(), emailKey, 10*time.Minute)
-		}
-		if emailCount > 10 {
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "email rate limit"})
-		}
-		// Blocklist enforcement
-		var cnt int64
-		if err := h.db.Model(&domain.Block{}).
-			Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", u.ID, now).
-			Count(&cnt).Error; err == nil && cnt > 0 {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
-		}
-		// Step 1: password (only if user has password enabled)
-		hasPassword := u.HashedPassword != nil && *u.HashedPassword != ""
-		if hasPassword {
-			if body.Password == "" {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "password required"})
+			email = u.Email
+			if allowed, err := h.enforceLoginGuards(c, u, now); !allowed {
+				return err
 			}
-			if err := bcrypt.CompareHashAndPassword([]byte(*u.HashedPassword), []byte(body.Password)); err != nil {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password"})
+
+			method := ""
+			providedMethods := 0
+			if body.Code != "" {
+				method = "email_code"
+				providedMethods++
 			}
-		}
-		// Step 2: MFA (mail_code / TOTP / recovery code)
-		// Required when the user has no password, or when any MFA method is enabled.
-		// Per spec, a password-only user (no MFA configured) skips this step.
-		totpActive, totpSecret, _ := utils.GetActiveTOTP(u.ID, h.db)
-		mailCodeEnabled := u.EmailCodeAllowed
-		anyMfaEnabled := totpActive || mailCodeEnabled
-		if !hasPassword && !anyMfaEnabled {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "no auth method"})
-		}
-		if !hasPassword || anyMfaEnabled {
-			ok := false
-			// mail code
-			if !ok && mailCodeEnabled && body.Code != "" {
-				var lc domain.LoginCode
-				if err := h.db.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err == nil {
-					if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
-						return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
-					}
-					if lc.HashedCode == utils.Sha256Hex([]byte(body.Code)) {
-						_ = h.db.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
-						ok = true
-					} else {
-						failCount := lc.FailedAttempts + 1
-						update := map[string]interface{}{"FailedAttempts": failCount}
-						if failCount >= 5 {
-							update["LockedUntil"] = lc.ExpiresAt
+			if body.Totp != "" {
+				method = "totp"
+				providedMethods++
+			}
+			if body.Recovery != "" {
+				method = "recovery"
+				providedMethods++
+			}
+			if providedMethods != 1 || !containsAuthMethod(transaction.AllowedMethods, method) {
+				return failTransaction("mfa method not allowed")
+			}
+
+			valid := false
+			switch method {
+			case "email_code":
+				if u.EmailCodeAllowed {
+					var lc domain.LoginCode
+					if err := h.db.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err == nil {
+						if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
+							return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
 						}
-						_ = h.db.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
+						if lc.HashedCode == utils.Sha256Hex([]byte(body.Code)) {
+							_ = h.db.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+							valid = true
+						} else {
+							failCount := lc.FailedAttempts + 1
+							updates := map[string]interface{}{"FailedAttempts": failCount}
+							if failCount >= 5 {
+								updates["LockedUntil"] = lc.ExpiresAt
+							}
+							_ = h.db.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Updates(updates).Error
+						}
 					}
 				}
-			}
-			// TOTP
-			if !ok && totpActive && body.Totp != "" {
-				if utils.ValidateTOTP(totpSecret, body.Totp) {
-					ok = true
+			case "totp":
+				if active, secret, _ := utils.GetActiveTOTP(u.ID, h.db); active {
+					valid = utils.ValidateTOTP(secret, body.Totp)
 				}
+			case "recovery":
+				valid = utils.ConsumeRecoveryCode(u.ID, body.Recovery, h.db)
 			}
-			// recovery code
-			if !ok && body.Recovery != "" {
-				if utils.ConsumeRecoveryCode(u.ID, body.Recovery, h.db) {
-					ok = true
+			if !valid {
+				return failTransaction("invalid mfa")
+			}
+			if err := h.consumeAuthTransaction(c.Context(), body.AuthTransactionID); err != nil {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "auth transaction invalid or expired"})
+			}
+		} else {
+			if !utils.IsEmail(email) {
+				return utils.ValidationError(c, map[string]string{"email": "invalid email"})
+			}
+			// Lookup user; do not auto-create for non-existing accounts.
+			if err := h.db.Where("email = ?", email).First(&u).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
 				}
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
 			}
-			if !ok {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "mfa required"})
+			if u.IsDeleted {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user_not_found"})
+			}
+			if allowed, err := h.enforceLoginGuards(c, u, now); !allowed {
+				return err
+			}
+		}
+		if !usingTransaction {
+			hasPassword := u.HashedPassword != nil && *u.HashedPassword != ""
+			totpActive, totpSecret, _ := utils.GetActiveTOTP(u.ID, h.db)
+			var recoveryCount int64
+			_ = h.db.Model(&domain.RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&recoveryCount).Error
+			allowedMFA := make([]string, 0, 3)
+			if u.EmailCodeAllowed {
+				allowedMFA = append(allowedMFA, "email_code")
+			}
+			if totpActive {
+				allowedMFA = append(allowedMFA, "totp")
+			}
+			if recoveryCount > 0 {
+				allowedMFA = append(allowedMFA, "recovery")
+			}
+
+			if hasPassword {
+				if body.Password == "" {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "password required"})
+				}
+				if body.Code != "" || body.Totp != "" || body.Recovery != "" {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "submit password before mfa"})
+				}
+				if err := bcrypt.CompareHashAndPassword([]byte(*u.HashedPassword), []byte(body.Password)); err != nil {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid password"})
+				}
+				if len(allowedMFA) > 0 {
+					rawID, err := h.createAuthTransaction(c.Context(), authTransaction{
+						UserID:         u.ID,
+						Email:          u.Email,
+						AllowedMethods: allowedMFA,
+						ClientContext:  authTransactionContext(c, platform),
+					})
+					if err != nil {
+						return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "auth transaction"})
+					}
+					return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+						"mfa_required":     true,
+						"auth_transaction": rawID,
+						"expires_in":       int(authTransactionTTL.Seconds()),
+						"methods":          allowedMFA,
+					})
+				}
+			} else {
+				if len(allowedMFA) == 0 {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "no auth method"})
+				}
+				ok := false
+				// Passwordless accounts continue to authenticate directly with one factor.
+				if u.EmailCodeAllowed && body.Code != "" {
+					var lc domain.LoginCode
+					if err := h.db.Where("email = ? AND consumed_at IS NULL AND expires_at > ?", email, now).Order("id DESC").First(&lc).Error; err == nil {
+						if lc.LockedUntil != nil && lc.LockedUntil.After(now) {
+							return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "locked due to failed attempts"})
+						}
+						if lc.HashedCode == utils.Sha256Hex([]byte(body.Code)) {
+							_ = h.db.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Update("consumed_at", now).Error
+							ok = true
+						} else {
+							failCount := lc.FailedAttempts + 1
+							update := map[string]interface{}{"FailedAttempts": failCount}
+							if failCount >= 5 {
+								update["LockedUntil"] = lc.ExpiresAt
+							}
+							_ = h.db.Model(&domain.LoginCode{}).Where("id = ?", lc.ID).Updates(update).Error
+						}
+					}
+				}
+				// TOTP
+				if !ok && totpActive && body.Totp != "" {
+					if utils.ValidateTOTP(totpSecret, body.Totp) {
+						ok = true
+					}
+				}
+				if !ok && recoveryCount > 0 && body.Recovery != "" {
+					if utils.ConsumeRecoveryCode(u.ID, body.Recovery, h.db) {
+						ok = true
+					}
+				}
+				if !ok {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "mfa required"})
+				}
 			}
 		}
 		// Create session token (opaque, strong randomness) and store in Redis
-		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
-		if plat == "" {
-			plat = "web"
-		}
-		if !utils.IsAllowedPlatform(plat) {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
-		}
-		token := utils.GenerateSessionToken(u.ID, plat)
+		token := utils.GenerateSessionToken(u.ID, platform)
 		ttl := time.Hour * 24 * 30
 		if err := h.rdb.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", u.ID), ttl).Err(); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "session"})
@@ -403,7 +512,7 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 			_ = h.db.Model(&domain.User{}).Where("id = ? AND is_registered = 0", u.ID).Update("is_registered", true).Error
 		}
 		// Store hash of token and associated user id for DB-fallback validation
-		h.db.Create(&domain.Session{UserID: u.ID, ClientPlatform: plat, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(now.Add(ttl))})
+		h.db.Create(&domain.Session{UserID: u.ID, ClientPlatform: platform, HashedToken: utils.Sha256Hex([]byte(token)), ExpiresAt: utils.PtrTime(now.Add(ttl))})
 
 		// Also provide a JWT if needed (optional)
 		claims := jwt.MapClaims{"sub": u.ID, "exp": now.Add(ttl).Unix()}

@@ -13,6 +13,7 @@ import {
   getEmailFromQuery,
   withNext,
   postLoginRedirect,
+  saveAuthTransaction,
 } from "./helpers";
 
 export default function Password() {
@@ -37,6 +38,38 @@ export default function Password() {
         body: JSON.stringify({ email, password }),
       });
       const loginData = await loginRes.json().catch(() => ({}));
+      if (loginRes.ok && loginData?.mfa_required) {
+        const transactionID = loginData?.auth_transaction;
+        const methods: string[] = Array.isArray(loginData?.methods)
+          ? loginData.methods
+          : [];
+        if (!transactionID || methods.length === 0) {
+          throw new Error("認証を開始できませんでした");
+        }
+        saveAuthTransaction(
+          transactionID,
+          email,
+          Number(loginData?.expires_in) || 300,
+          methods
+        );
+        setPassword("");
+        const emailCode = methods.includes("email_code");
+        const totp = methods.includes("totp");
+        const recovery = methods.includes("recovery");
+        const qs = `?email=${encodeURIComponent(email)}`;
+        if (methods.length > 1) {
+          window.location.assign(withNext(`/login/select${qs}`));
+        } else if (totp) {
+          window.location.assign(withNext(`/login/totp${qs}`));
+        } else if (emailCode) {
+          window.location.assign(withNext(`/login/mail-code${qs}`));
+        } else if (recovery) {
+          window.location.assign(withNext(`/login/recovery${qs}`));
+        } else {
+          setMessage("利用できる認証方法がありません");
+        }
+        return;
+      }
       if (loginRes.ok) {
         // Password-only account: logged in without an MFA step
         if (loginData?.token) {
@@ -53,62 +86,7 @@ export default function Password() {
       if (loginData?.error === "invalid password") {
         throw new Error("パスワードが正しくありません");
       }
-      if (loginData?.error !== "mfa required") {
-        throw new Error(loginData?.error || "エラーが発生しました");
-      }
-      // Password verified; find available MFA methods for the next step
-      const res = await fetch(`${apiBase}/auth/options`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Platform": "web",
-        },
-        body: JSON.stringify({ email }),
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        try {
-          const err = JSON.parse(text);
-          if (err?.error === "user_not_found") {
-            throw new Error("このメールアドレスのユーザーは存在しません");
-          }
-        } catch {
-          // ignore json parse error
-        }
-        throw new Error(text || "エラーが発生しました");
-      }
-      const data = text ? JSON.parse(text) : {};
-      const methods: string[] = Array.isArray(data?.methods)
-        ? data.methods
-        : [];
-      const passkey = !!data?.passkey_enabled || methods.includes("passkey");
-      const emailCode = methods.includes("email_code");
-      const totp = !!data?.totp_enabled;
-      const recovery = methods.includes("recovery");
-      const enabled = [
-        passkey ? "passkey" : null,
-        emailCode ? "mail" : null,
-        totp ? "totp" : null,
-        recovery ? "recovery" : null,
-      ].filter(Boolean) as string[];
-      // Persist password temporarily for the MFA step
-      sessionStorage.setItem("login_pw", password);
-      const qs = `?email=${encodeURIComponent(email)}`;
-      if (enabled.length > 1) {
-        window.location.assign(withNext(`/login/select${qs}`));
-        return;
-      }
-      if (passkey) {
-        window.location.assign(withNext(`/login/passkey${qs}`));
-      } else if (totp) {
-        window.location.assign(withNext(`/login/totp${qs}`));
-      } else if (emailCode) {
-        window.location.assign(withNext(`/login/mail-code${qs}`));
-      } else if (recovery) {
-        window.location.assign(withNext(`/login/recovery${qs}`));
-      } else {
-        setMessage("利用できる認証方法がありません");
-      }
+      throw new Error(loginData?.error || "エラーが発生しました");
     } catch (e: any) {
       setMessage(e.message || "エラーが発生しました");
     } finally {
