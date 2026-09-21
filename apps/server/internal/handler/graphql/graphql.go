@@ -2,6 +2,7 @@ package gqlH
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/parser"
 )
 
 // RegisterGraphQL builds the schema via modular builders and mounts the /graphql endpoint.
@@ -30,6 +32,9 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 
 	// GraphQL POST-only endpoint with security features
 	router.Post("/", func(c *fiber.Ctx) error {
+		if len(c.Body()) > maxGraphQLBodyBytes {
+			return c.Status(413).JSON(fiber.Map{"error": "request too large"})
+		}
 		// Rate limit: max 150 req/min per IP
 		ipKey := "graphql_rate:" + c.IP()
 		ipCount, _ := h.rdb.Incr(c.Context(), ipKey).Result()
@@ -50,14 +55,25 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 		if strings.TrimSpace(body.Query) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "missing query"})
 		}
-
-		// Query depth/complexity limit (simple check)
-		maxDepth := 6
-		maxComplexity := 100
-		if depth := estimateGraphQLDepth(body.Query); depth > maxDepth {
+		if len(body.Query) > maxGraphQLQueryBytes {
+			return c.Status(413).JSON(fiber.Map{"error": "query too large"})
+		}
+		variablesJSON, err := json.Marshal(body.Variables)
+		if err != nil || len(variablesJSON) > maxGraphQLVariablesBytes {
+			return c.Status(413).JSON(fiber.Map{"error": "variables too large"})
+		}
+		document, err := parser.Parse(parser.ParseParams{Source: body.Query})
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid query"})
+		}
+		cost, err := estimateGraphQLCost(document, schema, body.Variables)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid query"})
+		}
+		if cost.depth > maxGraphQLDepth {
 			return c.Status(400).JSON(fiber.Map{"error": "query too deep"})
 		}
-		if complexity := estimateGraphQLComplexity(body.Query); complexity > maxComplexity {
+		if cost.fields > maxGraphQLFields || cost.complexity > maxGraphQLComplexity {
 			return c.Status(400).JSON(fiber.Map{"error": "query too complex"})
 		}
 
@@ -98,35 +114,6 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 		}
 		return c.Next()
 	})
-}
-
-// Estimate query depth (very simple, not a full parser)
-func estimateGraphQLDepth(query string) int {
-	depth := 0
-	max := 0
-	for _, c := range query {
-		if c == '{' {
-			depth++
-			if depth > max {
-				max = depth
-			}
-		}
-		if c == '}' {
-			depth--
-		}
-	}
-	return max
-}
-
-// Estimate query complexity (count fields)
-func estimateGraphQLComplexity(query string) int {
-	cnt := 0
-	for _, c := range query {
-		if c == '{' || c == '}' {
-			cnt++
-		}
-	}
-	return cnt
 }
 
 // Detect introspection query
