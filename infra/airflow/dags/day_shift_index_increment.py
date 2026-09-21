@@ -7,6 +7,7 @@ from typing import Optional, List, Dict
 from airflow.sdk import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 import pymysql  # type: ignore
+from holiday_calendar import is_calendar_holiday
 
 # Database connection (read/write directly, no API calls)
 DB_HOST = os.environ.get("DB_HOST", "mysql")
@@ -15,7 +16,7 @@ DB_USER = os.environ.get("DB_USER", "taskly")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "taskly")
 DB_NAME = os.environ.get("DB_NAME", "taskly")
 SCHOOL_CAL_URL = os.environ.get("SCHOOL_CAL_URL", "")
-JAPAN_HOLIDAY_URL = "https://one.webcal.jp/JapanHolidays/"  # This page lists sources; assume env provides ICS URL if needed
+JAPAN_HOLIDAY_URL = os.environ.get("JAPAN_HOLIDAYS_ICS_URL", "https://one.webcal.jp/JapanHolidays/")
 SCHOOL_CAL_TIMEOUT = 10
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
@@ -32,30 +33,16 @@ def fetch_ics(url: str) -> icalendar.Component:
 
 
 def is_holiday(d: datetime) -> bool:
-    # Weekend
     if is_weekend(d):
         return True
-    # Holidays via JapanHolidays (optional; if not configured, skip)
-    # 優先: 環境変数 JAPAN_HOLIDAYS_ICS_URL（明示的に ICS を指定）
-    # フォールバック: 定数 JAPAN_HOLIDAY_URL（祝日カレンダー）
-    # holiday_ics_url = os.environ.get("JAPAN_HOLIDAYS_ICS_URL", "") or JAPAN_HOLIDAY_URL
-    holiday_ics_url = JAPAN_HOLIDAY_URL
-    if holiday_ics_url:
-        try:
-            cal = fetch_ics(holiday_ics_url)
-            for comp in cal.walk("vevent"):
-                dtstart = comp.get("dtstart").dt
-                dt = datetime(dtstart.year, dtstart.month, dtstart.day)
-                if dt.date() == d.date():
-                    return True
-        except Exception as e:
-            # On network failure, treat as non-holiday per spec
-            if DISCORD_WEBHOOK_URL:
-                try:
-                    requests.post(DISCORD_WEBHOOK_URL, json={"content": f"Holiday ICS fetch failed: {e}"}, timeout=5)
-                except Exception:
-                    pass
-            # Sentry optional
+    try:
+        return is_calendar_holiday(fetch_ics(JAPAN_HOLIDAY_URL), d.date())
+    except Exception as e:
+        if DISCORD_WEBHOOK_URL:
+            try:
+                requests.post(DISCORD_WEBHOOK_URL, json={"content": f"Holiday ICS fetch failed: {e}"}, timeout=5)
+            except Exception:
+                pass
     return False
 
 
@@ -451,4 +438,3 @@ with DAG(
     tags=["day_shift"],
 ) as dag:
     inc = PythonOperator(task_id="increment_index", python_callable=increment_if_needed)
-
