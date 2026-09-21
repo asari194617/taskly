@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -43,7 +44,11 @@ func main() {
 		AppName: os.Getenv("APP_NAME"),
 	}
 
-	groups, err := computeLiveDigestGroups(db)
+	now := time.Now()
+	if loc, err := time.LoadLocation("Asia/Tokyo"); err == nil {
+		now = now.In(loc)
+	}
+	groups, err := computeLiveDigestGroupsAt(db, now)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,12 +58,44 @@ func main() {
 	}
 
 	totalSent := 0
+	failed := 0
+	slot := "morning"
+	if now.Hour() >= 12 {
+		slot = "evening"
+	}
 	for uid, group := range groups {
+		key := fmt.Sprintf("task:%s:%s:email:%d", now.Format("2006-01-02"), slot, uid)
+		claimed, err := claimDelivery(db, key, "email", uid)
+		if err != nil {
+			log.Printf("claim delivery failed uid=%d: %v", uid, err)
+			failed++
+			continue
+		}
+		if !claimed {
+			var status string
+			if err := db.QueryRow(`SELECT status FROM notification_deliveries WHERE delivery_key=?`, key).Scan(&status); err != nil || status != "sent" {
+				log.Printf("delivery unresolved uid=%d key=%s: %s %v", uid, key, status, err)
+				failed++
+			}
+			continue
+		}
 		if err := deliverGroupEmail(db, mailer, uid, group, deliverOpts); err != nil {
 			log.Printf("deliver group failed uid=%d: %v\n", uid, err)
+			if recordErr := finishDelivery(db, key, err); recordErr != nil {
+				log.Printf("record delivery failure uid=%d: %v", uid, recordErr)
+			}
+			failed++
+			continue
+		}
+		if err := finishDelivery(db, key, nil); err != nil {
+			log.Printf("record delivery success uid=%d: %v", uid, err)
+			failed++
 			continue
 		}
 		totalSent++
 	}
 	log.Printf("email notifications sent (groups): %d\n", totalSent)
+	if failed > 0 {
+		log.Fatalf("email notifications failed: %d", failed)
+	}
 }

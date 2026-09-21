@@ -3,6 +3,7 @@ module github.com/asari194617/taskly/batches/notifications/delivery-channels/ema
 go 1.25.4
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/asari194617/taskly/batches/notifications/delivery-channels/common v0.0.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/jhump/protoreflect v1.18.0

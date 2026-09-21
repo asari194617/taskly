@@ -42,6 +42,7 @@ type DayShift struct {
 // userID: 宛先ユーザー
 
 type NotifyItem struct {
+	TaskID    uint
 	Kind      string
 	WhenLabel string
 	Subject   string
@@ -85,13 +86,13 @@ func main() {
 		startDate, endDate,
 	)
 	if err != nil {
-		log.Println("query tasks (effective window):", err)
+		log.Fatal("query tasks (effective window): ", err)
 	} else {
 		for rows.Next() {
 			var t Task
 			var desc sql.NullString
 			if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.IsSelfCheckRequired); err != nil {
-				continue
+				log.Fatal("scan task: ", err)
 			}
 			if desc.Valid {
 				t.Description = &desc.String
@@ -108,6 +109,7 @@ func main() {
 			// バッジJSON
 			badges := buildBadgesJSON(t)
 			items = append(items, NotifyItem{
+				TaskID:    t.ID,
 				Kind:      "task",
 				WhenLabel: label,
 				Subject:   subj,
@@ -118,26 +120,17 @@ func main() {
 				Badges:    badges,
 			})
 		}
+		if err := rows.Err(); err != nil {
+			log.Fatal("read tasks: ", err)
+		}
 		rows.Close()
 	}
 
-	// 日直（前日/当日）
-	for _, d := range []time.Time{businessPrev(now), now} {
-		// 旧仕様では day_shift_assignments の存在チェックを行っていたが、
-		// 現在はインデックスとグループで担当を決定するため、
-		// 前営業日/当日の2件を常にキューに入れる。
-		items = append(items, NotifyItem{
-			Kind:      "dayshift",
-			WhenLabel: whenLabel(now, d),
-			Subject:   "日直",
-			Title:     "日直の担当日です",
-			Body:      "本日は日直の担当日です。よろしくお願いします。",
-			UserID:    0, // 配信チャネル側で担当者に展開する
-		})
-	}
-
 	// Resolve eligible users and preferences
-	userIDs, devicePrefs, typePrefs := loadEligibleUsersAndPrefs(db)
+	userIDs, devicePrefs, typePrefs, err := loadEligibleUsersAndPrefs(db)
+	if err != nil {
+		log.Fatal("load notification preferences: ", err)
+	}
 	// Determine delivery slot (morning vs evening) to respect per-time preferences
 	isMorning := now.Hour() < 12
 	// キューに投入（共通テーブル）: 各チャネルごとに投入（email, webpush）
@@ -164,8 +157,8 @@ func main() {
 				pf := devicePrefs[uid]
 				// Do not enqueue email digests; they will be built live at delivery time
 				if pf.WebPush {
-					if err := enqueueNotification(db, queueSchema, it, uid); err != nil {
-						log.Println("enqueue webpush:", err)
+					if err := enqueueNotification(db, queueSchema, it, uid, now); err != nil {
+						log.Fatal("enqueue webpush: ", err)
 					}
 				}
 			}
@@ -186,8 +179,8 @@ func main() {
 			pf := devicePrefs[it.UserID]
 			// Do not enqueue email digests; they will be built live at delivery time
 			if pf.WebPush {
-				if err := enqueueNotification(db, queueSchema, it, it.UserID); err != nil {
-					log.Println("enqueue webpush:", err)
+				if err := enqueueNotification(db, queueSchema, it, it.UserID, now); err != nil {
+					log.Fatal("enqueue webpush: ", err)
 				}
 			}
 		}
@@ -224,7 +217,7 @@ func tableColumnExists(db *sql.DB, tableName, columnName string) (bool, error) {
 	return count > 0, nil
 }
 
-func enqueueNotification(db *sql.DB, schema notificationsQueueSchema, item NotifyItem, userID uint) error {
+func enqueueNotification(db *sql.DB, schema notificationsQueueSchema, item NotifyItem, userID uint, now time.Time) error {
 	columns := []string{"kind", "when_label", "subject", "title", "body"}
 	values := []any{item.Kind, item.WhenLabel, item.Subject, item.Title, item.Body}
 
@@ -237,12 +230,17 @@ func enqueueNotification(db *sql.DB, schema notificationsQueueSchema, item Notif
 		values = append(values, item.Badges)
 	}
 
-	columns = append(columns, "user_id", "channel", "created_at")
-	values = append(values, userID, "webpush", time.Now())
+	slot := "evening"
+	if now.Hour() < 12 {
+		slot = "morning"
+	}
+	key := fmt.Sprintf("task:%s:%s:%d:webpush:%d", now.Format("2006-01-02"), slot, item.TaskID, userID)
+	columns = append(columns, "user_id", "channel", "event_key", "slot", "created_at")
+	values = append(values, userID, "webpush", key, slot, now)
 
 	placeholders := strings.Repeat("?,", len(columns))
 	placeholders = strings.TrimSuffix(placeholders, ",")
-	query := fmt.Sprintf("INSERT INTO notifications_queue (%s) VALUES (%s)", strings.Join(columns, ", "), placeholders)
+	query := fmt.Sprintf("INSERT INTO notifications_queue (%s) VALUES (%s) ON DUPLICATE KEY UPDATE id=id", strings.Join(columns, ", "), placeholders)
 	_, err := db.Exec(query, values...)
 	return err
 }
@@ -342,40 +340,43 @@ func periodIndex(s string) int {
 	return 0
 }
 
-func isUserBlocked(db *sql.DB, uid uint) bool {
+func isUserBlocked(db *sql.DB, uid uint) (bool, error) {
 	row := db.QueryRow(`SELECT COUNT(1) FROM blocks WHERE user_id = ? AND (expires_at IS NULL OR expires_at > NOW())`, uid)
 	var cnt int
 	if err := row.Scan(&cnt); err != nil {
-		return false
+		return false, err
 	}
-	return cnt > 0
+	return cnt > 0, nil
 }
 
 type userDevicePrefs struct{ Email, WebPush bool }
 
 // loadEligibleUsersAndPrefs returns non-deleted/non-blocked users and their notification prefs.
 // Defaults: email=true, webpush=false when no settings row exists.
-func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, map[uint]map[string]bool) {
+func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, map[uint]map[string]bool, error) {
 	ids := make([]uint, 0, 1024)
 	device := make(map[uint]userDevicePrefs, 1024)
 	typePrefs := make(map[uint]map[string]bool, 1024)
 	// load users
 	rows, err := db.Query(`SELECT id, is_deleted FROM users`)
 	if err != nil {
-		log.Println("load users:", err)
-		return ids, device, typePrefs
+		return nil, nil, nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id uint
 		var del bool
 		if err := rows.Scan(&id, &del); err != nil {
-			continue
+			return nil, nil, nil, err
 		}
 		if del {
 			continue
 		}
-		if isUserBlocked(db, id) {
+		blocked, err := isUserBlocked(db, id)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if blocked {
 			continue
 		}
 		ids = append(ids, id)
@@ -384,10 +385,13 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		// default type prefs: all enabled
 		typePrefs[id] = map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, nil, err
+	}
 	// overlay per-user device settings
 	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
 	if err != nil {
-		return ids, device, typePrefs
+		return nil, nil, nil, err
 	}
 	defer rows2.Close()
 	for rows2.Next() {
@@ -395,6 +399,9 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		var platform string
 		var enabled bool
 		if err := rows2.Scan(&uid, &platform, &enabled); err != nil {
+			return nil, nil, nil, err
+		}
+		if _, ok := device[uid]; !ok {
 			continue
 		}
 		p := device[uid]
@@ -406,23 +413,33 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		}
 		device[uid] = p
 	}
+	if err := rows2.Err(); err != nil {
+		return nil, nil, nil, err
+	}
 	// overlay per-user type settings
 	rows3, err := db.Query(`SELECT user_id, notification_type, is_enabled FROM notification_type_prefs`)
-	if err == nil {
-		defer rows3.Close()
-		for rows3.Next() {
-			var uid uint
-			var t string
-			var en bool
-			if err := rows3.Scan(&uid, &t, &en); err != nil {
-				continue
-			}
-			m := typePrefs[uid]
-			m[strings.ToUpper(strings.TrimSpace(t))] = en
-			typePrefs[uid] = m
-		}
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	return ids, device, typePrefs
+	defer rows3.Close()
+	for rows3.Next() {
+		var uid uint
+		var t string
+		var en bool
+		if err := rows3.Scan(&uid, &t, &en); err != nil {
+			return nil, nil, nil, err
+		}
+		m := typePrefs[uid]
+		if m == nil {
+			continue
+		}
+		m[strings.ToUpper(strings.TrimSpace(t))] = en
+		typePrefs[uid] = m
+	}
+	if err := rows3.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+	return ids, device, typePrefs, nil
 }
 
 // buildBadgesJSON builds badges JSON based on task attributes

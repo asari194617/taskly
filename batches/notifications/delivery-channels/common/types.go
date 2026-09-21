@@ -8,6 +8,9 @@ import (
 // QueueItem represents a digest entry for a recipient.
 type QueueItem struct {
 	ID        int64
+	Kind      string
+	EventKey  sql.NullString
+	Slot      sql.NullString
 	WhenLabel string
 	Subject   string
 	Title     string
