@@ -123,7 +123,7 @@ export function TaskCard({
       >
         <RadioGroupItem
           value="undone"
-          className="sr-only"
+          className="sr-only absolute!"
           aria-label="未完了"
         />
         <RadioGroupItem value="done" aria-label="完了" />
