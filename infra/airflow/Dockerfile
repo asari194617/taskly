@@ -20,9 +20,9 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go build -trimpath -o /out/bin/moderation ./moderation; \
     go build -trimpath -o /out/bin/day-shift-rotations ./day-shift-rotations; \
     go build -trimpath -o /out/bin/notifications-que-manager ./notifications/que-manager; \
-    go build -trimpath -o /out/bin/notifications-delivery-channels-email ./notifications/delivery-channels/email; \
-    go build -trimpath -o /out/bin/notifications-delivery-channels-discord ./notifications/delivery-channels/discord; \
-    go build -trimpath -o /out/bin/notifications-delivery-channels-web-push ./notifications/delivery-channels/web-push
+    (cd notifications/delivery-channels/email && go build -trimpath -o /out/bin/notifications-delivery-channels-email .); \
+    (cd notifications/delivery-channels/discord && go build -trimpath -o /out/bin/notifications-delivery-channels-discord .); \
+    (cd notifications/delivery-channels/web-push && go build -trimpath -o /out/bin/notifications-delivery-channels-web-push .)
 
 FROM apache/airflow:3.3.0-python3.14
 
