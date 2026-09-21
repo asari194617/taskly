@@ -25,3 +25,11 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:canonical
       - run: npm run test:security-headers
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-browser-results
+          path: apps/web/test-results/
+          retention-days: 7
