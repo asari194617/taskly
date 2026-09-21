@@ -47,23 +47,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-  opensearch:
-    image: opensearchproject/opensearch:3.8.0
-    profiles: ["search"]
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      discovery.type: single-node
-      DISABLE_SECURITY_PLUGIN: "true"
-      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
-      start_period: 90s
   server:
     image: ghcr.io/asari194617/taskly/api:${TASKLY_IMAGE_TAG:-latest}
     build: ../apps/server
@@ -84,7 +67,6 @@ services:
     environment:
       # コンテナ間通信では localhost:3061 ではなく、サービス名:ポート を利用する
       REDIS_ADDR: redis:6379
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       TZ: Asia/Tokyo
     healthcheck:
@@ -349,7 +331,6 @@ services:
 volumes:
   db-data:
   redis-data:
-  opensearch-data:
   airflow-logs:
   airflow-backups:
 

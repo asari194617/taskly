@@ -30,13 +30,6 @@ func run(ctx context.Context) error {
 	config := mysql.NewConfig()
 	config.User = os.Getenv("MYSQL_USER")
 	config.Passwd = os.Getenv("MYSQL_PASSWORD")
-	// Schema migrations create triggers. With binary logging enabled, MySQL
-	// requires privileges the application user intentionally does not have.
-	// The API continues to connect with the less privileged MYSQL_USER account.
-	if rootPassword := os.Getenv("MYSQL_ROOT_PASSWORD"); rootPassword != "" {
-		config.User = "root"
-		config.Passwd = rootPassword
-	}
 	config.Net = "tcp"
 	config.Addr = os.Getenv("DB_HOST") + ":" + os.Getenv("DB_PORT")
 	config.DBName = os.Getenv("MYSQL_DATABASE")
