@@ -63,6 +63,7 @@ func (c *sequenceHTTPClient) Do(*http.Request) (*http.Response, error) {
 }
 
 func TestTeamsProcessorCallbackRetriesWithInjectedBackoff(t *testing.T) {
+	t.Setenv("TEAMS_CALLBACK_ALLOWED_ORIGINS", "https://example.test")
 	db, err := gorm.Open(sqlite.Open("file:teams-callback?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)

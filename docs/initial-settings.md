@@ -70,6 +70,12 @@ mountします。通常のローカルCompose起動ではこのoverrideを使い
 本番ホストではイメージをビルドしません。`docker compose up --build` や
 `latest` の直接指定ではなく、ワークフローが配布する commit SHA タグを使用します。
 
+Teams連携の `status_callback` を使用する場合は、デプロイ前に `PROD_ENV` の
+`TEAMS_CALLBACK_ALLOWED_ORIGINS` に送信先の正規HTTPSオリジンをカンマ区切りで設定します
+（例: `https://flow.example.com`）。未設定の場合、コールバック付き受信リクエストは
+400で拒否されます。許可されたオリジンでも、内部IPへの名前解決とリダイレクトは拒否します。
+設定後は実際のPower Automateフローでコールバック到達を確認してください。
+
 ## ディスク監視と清掃
 
 `infra/ops/disk-maintenance.sh` は Docker volume を削除しません。既定では、

@@ -19,6 +19,10 @@ The Compose service is named `mcp` and is exposed at
 
 The server SHA-256 hashes the supplied token and compares it with
 `mcps.hashed_token`. Tokens are issued from **Settings > MCP** in the web UI.
+Task operations remain scoped to the token owner and follow the main API's
+task permission rules. In particular, task deletion is denied unless the
+user has an explicit delete permission or an admin/manager role. Hidden tasks
+are not exposed through this API.
 
 ```bash
 curl -fsS http://localhost:3066/healthz
