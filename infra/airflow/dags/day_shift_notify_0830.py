@@ -555,19 +555,18 @@ def notify_day_shift(**context):
             # Fetch latest device records for both delivery channels.
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT user_id, platform, is_enabled FROM notification_devices WHERE platform IN ('EMAIL','WEBPUSH') AND user_id IN ({ids_csv}) ORDER BY user_id ASC, id DESC"
+                    f"SELECT user_id, platform, MAX(is_enabled) AS is_enabled FROM notification_devices WHERE platform IN ('EMAIL','WEBPUSH') AND user_id IN ({ids_csv}) GROUP BY user_id, platform"
                 )
                 dev_rows = cur.fetchall() or []
             dev_map = {}
             for r in dev_rows:
                 uid = int(r["user_id"])
                 platform = r["platform"]
-                if (uid, platform) not in dev_map:
-                    dev_map[(uid, platform)] = int(r.get("is_enabled", 1))
+                dev_map[(uid, platform)] = int(r.get("is_enabled", 1))
 
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT DISTINCT user_id FROM web_push_subscriptions WHERE user_id IN ({ids_csv})"
+                    f"SELECT DISTINCT wps.user_id FROM web_push_subscriptions wps JOIN notification_devices d ON d.user_id=wps.user_id AND d.platform='WEBPUSH' AND d.is_enabled=1 AND JSON_UNQUOTE(d.payload)=wps.endpoint WHERE wps.user_id IN ({ids_csv})"
                 )
                 subscribed_ids = {int(r["user_id"]) for r in (cur.fetchall() or [])}
 

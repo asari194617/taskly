@@ -32,7 +32,7 @@ func TestDigestRecipientsRespectSettingsAndBlocks(t *testing.T) {
 			for _, blocked := range []int{0, 0, 0, 1} {
 				mock.ExpectQuery("SELECT COUNT\\(1\\) FROM blocks").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(blocked))
 			}
-			mock.ExpectQuery("SELECT user_id, platform, is_enabled FROM notification_devices").WillReturnRows(
+			mock.ExpectQuery("SELECT user_id, platform, MAX\\(is_enabled\\) FROM notification_devices").WillReturnRows(
 				sqlmock.NewRows([]string{"user_id", "platform", "is_enabled"}).AddRow(3, "EMAIL", false))
 			mock.ExpectQuery("SELECT user_id, notification_type, is_enabled FROM notification_type_prefs").WillReturnRows(
 				sqlmock.NewRows([]string{"user_id", "notification_type", "is_enabled"}).AddRow(2, tc.disabled, false))

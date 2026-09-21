@@ -389,7 +389,7 @@ func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, ma
 		return nil, nil, nil, err
 	}
 	// overlay per-user device settings
-	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
+	rows2, err := db.Query(`SELECT user_id, platform, MAX(is_enabled) FROM notification_devices GROUP BY user_id, platform`)
 	if err != nil {
 		return nil, nil, nil, err
 	}

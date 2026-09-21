@@ -117,7 +117,7 @@ mutation UpdatePrefs($id: Int!) {
 | 日直 Email | 当日の担当グループ | Email、`DAYSHIFT` | 除外 | 同日・ユーザーごとに送信済みを除外 |
 | 日直 Web Push | 当日の担当グループ | Web Push デバイス、購読、`DAYSHIFT` | 除外 | 同日・ユーザーごとに重複投入を防ぎ、購読ごとに送信済みを除外 |
 
-未設定時は Email と通知種類が ON、Web Push が OFF。朝夕の設定は課題のみに適用し、日直には適用しない。配信直前にもユーザー・ブロック・種類・Web Push デバイスを再確認する。
+未設定時は Email と通知種類が ON、Web Push が OFF。朝夕の設定は課題のみに適用し、日直には適用しない。配信直前にもユーザー・ブロック・種類・Web Push デバイスを再確認する。Web Push は購読の endpoint に対応する有効な端末にだけ送る。
 
 ## 既知の注意点
 

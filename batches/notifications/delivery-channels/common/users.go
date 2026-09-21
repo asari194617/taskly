@@ -45,7 +45,7 @@ func LoadEligibleUsersAndPrefs(db *sql.DB, defaultDevice UserDevicePrefs, defaul
 	if err := rows.Err(); err != nil {
 		return nil, nil, nil, err
 	}
-	rows2, err := db.Query(`SELECT user_id, platform, is_enabled FROM notification_devices`)
+	rows2, err := db.Query(`SELECT user_id, platform, MAX(is_enabled) FROM notification_devices GROUP BY user_id, platform`)
 	if err != nil {
 		return nil, nil, nil, err
 	}
