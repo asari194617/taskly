@@ -257,6 +257,37 @@ func BenchmarkBuildICSForUser(b *testing.B) {
 	}
 }
 
+func TestAuthMigrationPauseBlocksSessionCreatingGetAndMutations(t *testing.T) {
+	t.Setenv("AUTH_WRITES_PAUSED", "1")
+	app := fiber.New()
+	app.Use(pauseForAuthMigration)
+	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
+	app.Get("/auth/oauth/callback", func(c *fiber.Ctx) error { return c.SendStatus(http.StatusOK) })
+	app.Post("/graphql", func(c *fiber.Ctx) error { return c.SendStatus(http.StatusOK) })
+
+	for _, test := range []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{http.MethodGet, "/healthz", http.StatusOK},
+		{http.MethodGet, "/auth/oauth/callback", http.StatusServiceUnavailable},
+		{http.MethodPost, "/graphql", http.StatusServiceUnavailable},
+	} {
+		response, err := app.Test(httptest.NewRequest(test.method, test.path, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != test.want {
+			t.Errorf("%s %s: got %d, want %d", test.method, test.path, response.StatusCode, test.want)
+		}
+		if test.want == http.StatusServiceUnavailable && response.Header.Get("Retry-After") != "60" {
+			t.Errorf("%s %s: missing Retry-After", test.method, test.path)
+		}
+	}
+}
+
 func newTestIcalDB(t testing.TB) *gorm.DB {
 	t.Helper()
 

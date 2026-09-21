@@ -98,6 +98,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		MaxAge:           86400,
 	}))
+	app.Use(pauseForAuthMigration)
 
 	app.Use(utils.RequireCookieCSRF)
 
