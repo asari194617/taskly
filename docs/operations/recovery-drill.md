@@ -36,10 +36,10 @@
 
 ## DB 復元
 
-本番 DB へ直接投入する前に、同じバックアップを**隔離した検証環境**で復元し、下記の操作と migration の互換性を確認する。本番から取得した dump は機密データとして扱い、検証環境でのアクセスと削除を記録する。バックアップは `airflow-backups` volume の `/opt/airflow/backups/backup-YYYYMMDD-HHMMSS.sql.gz` にあり、FTP 側にも保管される。まず `gzip -t` で破損を確認し、ファイル名の時刻と Airflow の `backup_mysql` 成功時刻を照合する。最新の正常バックアップが不明なら復元を止める。
+本番 DB へ直接投入する前に、同じバックアップを**隔離した検証環境**で復元し、下記の操作と migration の互換性を確認する。本番から取得した dump は機密データとして扱い、検証環境でのアクセスと削除を記録する。現行バックアップは `airflow-backups` volume と FTPS 上の `backup-YYYYMMDD-HHMMSS.sql.gz.age`（ファイル名は UTC）で、age 秘密鍵は本番ホスト以外の安全な場所に保管する。取得・復号と整合性確認は [`mysql-backup.md`](mysql-backup.md) に従う。旧 `airflow-data` volume と FTP にある `.sql.gz` は暗号化導入前の形式であり、別途保護して扱う。ファイル名の時刻と Airflow の `backup_mysql` 成功時刻を照合し、最新の正常バックアップが不明なら復元を止める。
 
 1. 検証環境の MySQL 8.4 を**新しい空の volume**で起動する。既存の本番/検証 DB に上書きしない。アプリの外部送信（SMTP、Web Push、Discord、Teams）を無効にする。検証用の `.env` は本番の秘密値をそのまま流用しない。
-2. 次のコマンドを検証環境の `infra` で実行する。`BACKUP_FILE` は検証環境内の dump の絶対パスに置き換える。固有の Compose project 名を使い、`docker compose config --volumes` で本番の `db-data` と異なる volume が作られることを確認する。検証用 `.env` は別途用意する。
+2. 次のコマンドを検証環境の `infra` で実行する。`BACKUP_FILE` は検証環境内の暗号化 backup の絶対パス、`BACKUP_AGE_IDENTITY` は別途保管した秘密鍵のパスに置き換える。固有の Compose project 名を使い、`docker compose config --volumes` で本番の `db-data` と異なる volume が作られることを確認する。検証用 `.env` は別途用意する。
 
    ```bash
    export COMPOSE_FILE=docker-compose.yml
@@ -47,9 +47,17 @@
    docker compose config --services
    docker compose config --volumes
    docker compose up -d --wait db
-   gzip -t "$BACKUP_FILE"
-   gunzip -c "$BACKUP_FILE" | docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE"'
+   set -o pipefail
+   age -d -i "$BACKUP_AGE_IDENTITY" "$BACKUP_FILE" | gzip -t
+   age -d -i "$BACKUP_AGE_IDENTITY" "$BACKUP_FILE" | gzip -dc | docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE"'
    docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE" -e "SELECT name, applied_at FROM migrations ORDER BY name DESC LIMIT 5"'
+   ```
+
+   旧 `.sql.gz` を使う場合は age の復号を除き、次のコマンドに置き換える。どちらも展開後の平文をファイルに保存しない。検証環境には `age` と `gzip` を用意する。
+
+   ```bash
+   gzip -t "$BACKUP_FILE"
+   gzip -dc "$BACKUP_FILE" | docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$MYSQL_DATABASE"'
    ```
 
 3. dump 時点に対応する API イメージを起動する。`/app/migrate` を無条件に実行せず、dump の `migrations` と対象イメージの SQL を照合する。新しい migration を試す場合は復元 DB をもう一つ複製し、適用前後のスキーマとデータ件数、旧イメージへの切り戻し可否を確認する。
@@ -58,7 +66,7 @@
 
 ## 訓練の実施と記録
 
-- **四半期に 1 回**、リリース担当者が直近の成功バックアップを隔離環境へ復元する。代行者が文書だけを使って手順を再現し、担当者は観察と記録を行う。担当者不在なら代行者が実施し、別の運用担当者が結果を確認する。
+- **四半期に 1 回**、リリース担当者が直近の成功バックアップを隔離環境へ復元し、アプリ操作まで確認する。代行者が文書だけを使って手順を再現し、担当者は観察と記録を行う。担当者不在なら代行者が実施し、別の運用担当者が結果を確認する。バックアップ単体の月次復元確認と鍵変更時の確認は [`mysql-backup.md`](mysql-backup.md) に従う。
 - スキーマ変更を含む**各リリースの前**に、migration と旧 API の互換性判定、切り戻し手順を PR に記録する。破壊的変更や復元手順の変更があればリリース前にも訓練する。
 - 記録は `docs/operations/recovery-drill-record-template.md` を複製した非公開の運用記録またはアクセス制限付き Issue に残す。dump、秘密値、個人データは記録しない。RTO/RPO の実測値、操作結果、担当、証跡の参照、未達の改善 Issue を含める。
 - RTO は検知から主要操作成功までの経過時間、RPO は最後の正常更新から復元点までの差を計算する。訓練では障害検知・更新時刻を模擬して明記し、バックアップ取得から利用再開までの実作業時間も別に測る。目標未達や再現不能な手順は改善 Issue に担当と期限を付け、次回訓練で再確認する。
