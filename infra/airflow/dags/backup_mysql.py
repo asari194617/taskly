@@ -20,6 +20,9 @@ with DAG(
         task_id="run_backup",
         bash_command="/opt/airflow/bin/backup-mysql",
         env={
+            # BashOperator replaces the process environment when env is set.
+            # Keep the path to the mysqldump binary installed in the image.
+            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
             # DB connection for mysqldump (explicit constants to avoid localhost fallback)
             "DB_HOST": os.environ.get("DB_HOST", "db"),
             "DB_PORT": os.environ.get("DB_PORT", "3306"),
