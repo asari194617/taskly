@@ -124,6 +124,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	/* 認証 */
 	appHandler.RegisterAuthRoutes(app.Group("/auth"))
+	appHandler.RegisterOAuthRoutes(app.Group("/auth/oauth"))
 
 	/* 認証 */
 	appHandler.RegisterPushRoutes(app.Group("/push"), middleware)

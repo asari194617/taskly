@@ -11,6 +11,9 @@ import { Button } from "../../components/ui/button";
 import { apiBase, clearAuthTransaction, webFetch, withNext } from "./helpers";
 
 export default function Begin() {
+  const oauthStart = (import.meta as any).env.PUBLIC_AUTH_OAUTH_START_URL as
+    | string
+    | undefined;
   const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -108,6 +111,11 @@ export default function Begin() {
           </div>
         </div>
         {message && <p className="text-sm text-muted-foreground">{message}</p>}
+        {oauthStart && (
+          <a className="text-sm underline" href={oauthStart}>
+            新しい認証サービスでログイン
+          </a>
+        )}
       </CardContent>
     </Card>
   );
