@@ -12,6 +12,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	mw "github.com/asari194617/taskly/apps/server/internal/middleware"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
+	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
 )
@@ -58,16 +59,10 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "finish failed"})
 		}
-		// store credential
-		pub := base64.RawStdEncoding.EncodeToString(cred.PublicKey)
-		cid := base64.RawStdEncoding.EncodeToString(cred.ID)
 		devName := "Passkey"
-		rec := domain.Passkey{
-			UserID:       u.ID,
-			CredentialID: cid,
-			PublicKey:    pub,
-			SignCount:    int64(cred.Authenticator.SignCount),
-			DeviceName:   &devName,
+		rec, err := utils.NewPasskeyRecord(u.ID, devName, cred)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "credential storage"})
 		}
 		if err := h.db.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
@@ -121,7 +116,15 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 		var sd webauthn.SessionData
 		_ = json.Unmarshal([]byte(raw), &sd)
 		req := fiberToHTTPRequest(c)
-		cred, err := h.wAuth.FinishLogin(utils.NewWebauthnUserWrapper(&u, h.db), sd, req)
+		parsedResponse, err := protocol.ParseCredentialRequestResponse(req)
+		if err != nil {
+			return c.Status(401).JSON(fiber.Map{"error": "invalid passkey"})
+		}
+		// Legacy rows did not persist credential flags. The value is safe to use
+		// as a migration hint because ValidateLogin verifies the authenticator
+		// data signature with the stored public key before authentication succeeds.
+		backupEligible := parsedResponse.Response.AuthenticatorData.Flags.HasBackupEligible()
+		cred, err := h.wAuth.ValidateLogin(utils.NewWebauthnUserWrapperForAssertion(&u, h.db, backupEligible), sd, parsedResponse)
 		if err != nil {
 			return c.Status(401).JSON(fiber.Map{"error": "invalid passkey"})
 		}
@@ -133,9 +136,18 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 		if blkCnt > 0 {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "blocked"})
 		}
-		_ = h.db.Model(&domain.Passkey{}).
+		storedCredential, err := utils.EncodeWebauthnCredential(cred)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "credential storage"})
+		}
+		if err := h.db.Model(&domain.Passkey{}).
 			Where("user_id = ? AND credential_id = ?", u.ID, base64.RawStdEncoding.EncodeToString(cred.ID)).
-			Update("sign_count", cred.Authenticator.SignCount).Error
+			Updates(map[string]any{
+				"public_key": storedCredential,
+				"sign_count": cred.Authenticator.SignCount,
+			}).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "credential storage"})
+		}
 		// Create session
 		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
 		if plat == "" {

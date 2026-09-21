@@ -1,7 +1,6 @@
 package gqlMutation
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,31 +13,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
-
-// webauthnUserWrapper wraps *domain.User and provides h.db access for loading credentials
-type webauthnUserWrapper struct {
-	*domain.User
-	db *gorm.DB
-}
-
-func (w *webauthnUserWrapper) WebAuthnCredentials() []webauthn.Credential {
-	var passkeys []domain.Passkey
-	if err := w.db.Where("user_id = ?", w.ID).Find(&passkeys).Error; err != nil {
-		return nil
-	}
-
-	creds := make([]webauthn.Credential, 0, len(passkeys))
-	for _, passkey := range passkeys {
-		id, err := base64.RawStdEncoding.DecodeString(passkey.CredentialID)
-		if err != nil {
-			continue
-		}
-		creds = append(creds, webauthn.Credential{ID: id})
-	}
-	return creds
-}
 
 // mutationFieldsAuth groups user/profile/authentication related mutations.
 func (h *Handler) mutationFieldsAuth() graphql.Fields {
@@ -279,7 +254,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				// wrap the domain.User so we can provide h.db access for credential loading
-				wUser := &webauthnUserWrapper{User: u, db: h.db}
+				wUser := utils.NewWebauthnUserWrapper(u, h.db)
 				creation, sd, err := h.wAuth.BeginRegistration(wUser)
 				if err != nil {
 					return "", fmt.Errorf("begin failed")
@@ -317,16 +292,17 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				req, _ := http.NewRequestWithContext(c.Context(), "POST", "", strings.NewReader(payload))
 				req.Header.Set("Content-Type", "application/json")
 				// wrap so FinishRegistration can read credentials via h.db if needed
-				wUser := &webauthnUserWrapper{User: u, db: h.db}
+				wUser := utils.NewWebauthnUserWrapper(u, h.db)
 				cred, err := h.wAuth.FinishRegistration(wUser, sd, req)
 
 				if err != nil {
 					return false, fmt.Errorf("finish failed")
 				}
-				pub := base64.RawStdEncoding.EncodeToString(cred.PublicKey)
-				cid := base64.RawStdEncoding.EncodeToString(cred.ID)
 				devName := "Passkey"
-				rec := domain.Passkey{UserID: u.ID, CredentialID: cid, PublicKey: pub, SignCount: int64(cred.Authenticator.SignCount), DeviceName: &devName}
+				rec, err := utils.NewPasskeyRecord(u.ID, devName, cred)
+				if err != nil {
+					return false, fmt.Errorf("credential storage: %w", err)
+				}
 				if err := h.db.Create(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}

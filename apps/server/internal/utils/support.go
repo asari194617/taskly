@@ -26,7 +26,6 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/getsentry/sentry-go"
-	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
@@ -1304,21 +1303,4 @@ func CaptureError(err error) {
 		return
 	}
 	sentry.CaptureException(err)
-}
-
-func (w *WebauthnUserWrapper) WebAuthnCredentials() []webauthn.Credential {
-	var passkeys []domain.Passkey
-	if err := w.db.Where("user_id = ?", w.ID).Find(&passkeys).Error; err != nil {
-		return nil
-	}
-
-	creds := make([]webauthn.Credential, 0, len(passkeys))
-	for _, passkey := range passkeys {
-		id, err := base64.RawStdEncoding.DecodeString(passkey.CredentialID)
-		if err != nil {
-			continue
-		}
-		creds = append(creds, webauthn.Credential{ID: id})
-	}
-	return creds
 }

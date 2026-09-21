@@ -2,6 +2,7 @@ package utils
 
 import (
 	"time"
+
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"gorm.io/gorm"
 )
@@ -24,9 +25,18 @@ type Migration struct {
 
 type WebauthnUserWrapper struct {
 	*domain.User
-	db *gorm.DB
+	db                   *gorm.DB
+	legacyBackupEligible *bool
 }
 
 func NewWebauthnUserWrapper(u *domain.User, db *gorm.DB) *WebauthnUserWrapper {
-  return &WebauthnUserWrapper{User: u, db: db}
+	return &WebauthnUserWrapper{User: u, db: db}
+}
+
+// NewWebauthnUserWrapperForAssertion supplies the backup-eligibility flag from
+// the signed assertion for legacy rows that predate complete credential
+// persistence. Credentials stored in the current format always use their
+// registration-time value instead.
+func NewWebauthnUserWrapperForAssertion(u *domain.User, db *gorm.DB, backupEligible bool) *WebauthnUserWrapper {
+	return &WebauthnUserWrapper{User: u, db: db, legacyBackupEligible: &backupEligible}
 }
