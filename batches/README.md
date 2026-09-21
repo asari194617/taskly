@@ -62,17 +62,16 @@ Web Pushに通知を送信するバッチです。
 
 ### `batches/backup-mysql`
 
-MySQLのバックアップを取得し、FTPサーバーにアップロードします。
+MySQLのバックアップを圧縮して age で暗号化し、明示的 FTPS でアップロードします。設定と復元手順は [バックアップ運用手順](../docs/operations/mysql-backup.md) を参照してください。
 
 #### 処理
 
-1. `dump`を実行
-2. FTP経由でXServer Staticに接続
-3. XServer Staticに `dump`したデータをアップロード
-4. XServer Staticのデータのうち7日以上経過したデータを削除
-5. 結果をDiscordに通知
+1. `mysqldump` の出力をストリーミングで gzip 圧縮、age 暗号化
+2. XServer Static に FTPS で一時名にアップロードし、再取得して SHA-256 を照合
+3. 照合成功後に正式名へ変更し、14日を超える古いファイルを削除（最低3世代は保持）
+4. Airflow の結果を Discord に通知
 
-FTPサーバーの接続情報は、`.env`の以下の変数で設定します。
+接続情報は `.env` の `BACKUP_AGE_RECIPIENT` と以下の変数で設定します。
 
 - `FTP_HOST`
 - `FTP_PORT`
@@ -80,8 +79,6 @@ FTPサーバーの接続情報は、`.env`の以下の変数で設定します�
 - `FTP_PASSWORD`
 - `FTP_DIR` (オプション、デフォルトは`/backups`)
 
-- 毎日1回、深夜3時に取得します。
-- 権限は600に設定します。
-- ファイル名は`backup-YYYYMMDD-HHMMSS.sql.gz`のように命名されます。
-- バックアップは mysqldump で取得します。
-- バックアップは圧縮してからアップロードします。
+- 毎日1回、深夜3時に取得します。失敗時は Airflow が10分間隔で2回再試行します。
+- ローカルファイルの権限は600です。
+- ファイル名は UTC の `backup-YYYYMMDD-HHMMSS.sql.gz.age` です。
