@@ -202,8 +202,10 @@ func TestPasswordMFAUsesHashedSingleUseTransaction(t *testing.T) {
 	if err := db.Create(&domain.LoginCode{
 		Email:      "mfa@example.com",
 		HashedCode: "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
-		ExpiresAt:  now.Add(10 * time.Minute),
-		CreatedAt:  now,
+		// Keep this valid across runners whose local timezone differs from the
+		// application's Asia/Tokyo login clock.
+		ExpiresAt: now.Add(24 * time.Hour),
+		CreatedAt: now,
 	}).Error; err != nil {
 		t.Fatalf("create login code: %v", err)
 	}
