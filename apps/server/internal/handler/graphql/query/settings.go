@@ -1,6 +1,7 @@
 package gqlQuery
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
+	"gorm.io/gorm"
 )
 
 // queryFieldsSettings returns GraphQL fields for settings: API keys, iCal tokens, MCP, logs.
@@ -139,7 +141,9 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 					u := c.Locals("user").(*domain.User)
 					enabled := strings.ToLower(utils.Env("MCP_ENABLED", "true")) == "true"
 					var rec domain.MCP
-					_ = h.db.Where("user_id = ?", u.ID).Order("id DESC").First(&rec).Error
+					if err := h.db.Where("user_id = ?", u.ID).Order("id DESC").First(&rec).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+						return nil, err
+					}
 					var expires any
 					if rec.ID != 0 && rec.ExpiresAt != nil {
 						expires = rec.ExpiresAt.Format(time.RFC3339)

@@ -2,6 +2,7 @@ package gqlMutation
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // mutationFieldsAuth groups user/profile/authentication related mutations.
@@ -78,9 +80,14 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, err
 				}
 				hasPassword := fresh.HashedPassword != nil && *fresh.HashedPassword != ""
-				totpEnabled, _, _ := utils.GetActiveTOTP(fresh.ID, h.db)
+				totpEnabled, _, err := utils.GetActiveTOTP(fresh.ID, h.db)
+				if err != nil {
+					return false, err
+				}
 				var pkCount int64
-				_ = h.db.Model(&domain.Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error
+				if err := h.db.Model(&domain.Passkey{}).Where("user_id = ?", fresh.ID).Count(&pkCount).Error; err != nil {
+					return false, err
+				}
 				if !val && !(hasPassword || totpEnabled || pkCount > 0) {
 					return false, fmt.Errorf("cannot disable without another auth factor")
 				}
@@ -188,11 +195,21 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; err == nil {
 					ts.Secret = enc
 					ts.IsActive = true
-					_ = h.db.Save(&ts).Error
+					if err := h.db.Save(&ts).Error; err != nil {
+						return false, fmt.Errorf("db: %w", err)
+					}
+				} else if errors.Is(err, gorm.ErrRecordNotFound) {
+					if err := h.db.Create(&domain.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error; err != nil {
+						return false, fmt.Errorf("db: %w", err)
+					}
 				} else {
-					_ = h.db.Create(&domain.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
+					return false, fmt.Errorf("db: %w", err)
 				}
-				_ = h.rdb.Del(c.Context(), key).Err()
+				// The temporary setup key can expire naturally if cleanup fails.
+				// Report cleanup failures to Sentry when configured.
+				if err := h.rdb.Del(c.Context(), key).Err(); err != nil {
+					utils.CaptureError(err)
+				}
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -208,8 +225,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				var ts domain.TOTPSecret
-				if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; err != nil {
+				if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 					return false, fmt.Errorf("not enabled")
+				} else if err != nil {
+					return false, fmt.Errorf("db: %w", err)
 				}
 				ts.IsActive = false
 				if err := h.db.Save(&ts).Error; err != nil {
@@ -229,13 +248,22 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return nil, fmt.Errorf("unauthorized")
 				}
 				u := c.Locals("user").(*domain.User)
-				_ = h.db.Where("user_id = ? AND is_used = 0", u.ID).Delete(&domain.RecoveryCode{}).Error
 				codes := make([]string, 0, 10)
-				for i := 0; i < 10; i++ {
-					plain := utils.GenerateRecoveryCode()
-					hashed := utils.Sha256Hex([]byte(plain))
-					_ = h.db.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
-					codes = append(codes, plain)
+				if err := h.db.Transaction(func(tx *gorm.DB) error {
+					if err := tx.Where("user_id = ? AND is_used = 0", u.ID).Delete(&domain.RecoveryCode{}).Error; err != nil {
+						return err
+					}
+					for i := 0; i < 10; i++ {
+						plain := utils.GenerateRecoveryCode()
+						hashed := utils.Sha256Hex([]byte(plain))
+						if err := tx.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error; err != nil {
+							return err
+						}
+						codes = append(codes, plain)
+					}
+					return nil
+				}); err != nil {
+					return nil, fmt.Errorf("db: %w", err)
 				}
 				return codes, nil
 			}

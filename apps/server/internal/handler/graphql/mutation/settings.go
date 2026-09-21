@@ -47,7 +47,7 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.settings.update_day_shift_index"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.settings.update_day_shift_index"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -85,7 +85,7 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.settings.set_config"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.settings.set_config"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -116,7 +116,7 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 				if err := utils.SetConfigString("day_shift_current_cycle", fmt.Sprintf("%d", cid), h.db); err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.settings.set_day_shift_current_cycle"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.settings.set_day_shift_current_cycle"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

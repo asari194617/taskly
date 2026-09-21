@@ -2,6 +2,7 @@ package adminHandler
 
 import (
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 type ModerationPolicy struct {
@@ -22,14 +24,19 @@ func defaultModerationPolicy() ModerationPolicy {
 	return ModerationPolicy{DefaultAutoHide: "high", AutoHideByCat: map[string]string{"threat": "medium"}}
 }
 
-func (h *Handler)loadModerationPolicy() ModerationPolicy {
+func (h *Handler) loadModerationPolicy() (ModerationPolicy, error) {
 	var row domain.SystemSetting
-	if err := h.db.Where("`key` = ?", "moderation_policy").First(&row).Error; err != nil || strings.TrimSpace(row.Value) == "" {
-		return defaultModerationPolicy()
+	if err := h.db.Where("`key` = ?", "moderation_policy").First(&row).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return defaultModerationPolicy(), nil
+	} else if err != nil {
+		return ModerationPolicy{}, err
+	}
+	if strings.TrimSpace(row.Value) == "" {
+		return defaultModerationPolicy(), nil
 	}
 	var p ModerationPolicy
 	if err := json.Unmarshal([]byte(row.Value), &p); err != nil {
-		return defaultModerationPolicy()
+		return defaultModerationPolicy(), nil
 	}
 	if p.AutoHideByCat == nil {
 		p.AutoHideByCat = map[string]string{}
@@ -37,17 +44,22 @@ func (h *Handler)loadModerationPolicy() ModerationPolicy {
 	if p.DefaultAutoHide == "" {
 		p.DefaultAutoHide = "high"
 	}
-	return p
+	return p, nil
 }
 
-func (h *Handler)saveModerationPolicy(p ModerationPolicy) error {
-	b, _ := json.Marshal(p)
+func (h *Handler) saveModerationPolicy(p ModerationPolicy) error {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
 	now := time.Now()
 	var existing domain.SystemSetting
 	if err := h.db.Where("`key` = ?", "moderation_policy").First(&existing).Error; err == nil {
 		existing.Value = string(b)
 		existing.UpdatedAt = now
 		return h.db.Save(&existing).Error
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
 	}
 	rec := domain.SystemSetting{Key: "moderation_policy", Value: string(b), CreatedAt: now, UpdatedAt: now}
 	return h.db.Create(&rec).Error
@@ -90,7 +102,10 @@ func (h *Handler) RegisterAdminModerationRoutes(router fiber.Router) {
 
 	// Policy get/set
 	router.Get("/settings", func(c *fiber.Ctx) error {
-		p := h.loadModerationPolicy()
+		p, err := h.loadModerationPolicy()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
 		return c.JSON(p)
 	})
 	router.Put("/settings", func(c *fiber.Ctx) error {

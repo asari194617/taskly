@@ -1,6 +1,7 @@
 package gqlMutation
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	graphql "github.com/graphql-go/graphql"
+	"gorm.io/gorm"
 )
 
 // mutationFieldsAdminUsers groups admin user management mutations.
@@ -49,7 +51,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Model(&domain.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.update:%d", id)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.update:%d", id)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -87,7 +89,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					}
 					return nil, fmt.Errorf("db: %s", msg)
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.create:%d", rec.ID)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.create:%d", rec.ID)})
 				return map[string]any{"id": rec.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -144,7 +146,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					}
 					created++
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.bulk_create:%d", created)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.bulk_create:%d", created)})
 				return map[string]any{"created": created, "errors": errs}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -172,14 +174,20 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				}
 				if enabled {
 					var cnt int64
-					_ = h.db.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
+					if err := h.db.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error; err != nil {
+						return false, fmt.Errorf("db: %w", err)
+					}
 					if cnt == 0 {
-						_ = h.db.Create(&domain.RoleUser{UserID: uid, Role: role}).Error
+						if err := h.db.Create(&domain.RoleUser{UserID: uid, Role: role}).Error; err != nil {
+							return false, fmt.Errorf("db: %w", err)
+						}
 					}
 				} else {
-					_ = h.db.Where("user_id = ? AND role = ?", uid, role).Delete(&domain.RoleUser{}).Error
+					if err := h.db.Where("user_id = ? AND role = ?", uid, role).Delete(&domain.RoleUser{}).Error; err != nil {
+						return false, fmt.Errorf("db: %w", err)
+					}
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.setcustom:%d:%s:%t", uid, role, enabled)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.setcustom:%d:%s:%t", uid, role, enabled)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -209,7 +217,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.delete:%d:%t", id, hard)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.delete:%d:%t", id, hard)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -231,11 +239,15 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					return false, fmt.Errorf("invalid role")
 				}
 				var cnt int64
-				_ = h.db.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
-				if cnt == 0 {
-					_ = h.db.Create(&domain.RoleUser{UserID: uid, Role: role}).Error
+				if err := h.db.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error; err != nil {
+					return false, fmt.Errorf("db: %w", err)
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.add:%d:%s", uid, role)}).Error
+				if cnt == 0 {
+					if err := h.db.Create(&domain.RoleUser{UserID: uid, Role: role}).Error; err != nil {
+						return false, fmt.Errorf("db: %w", err)
+					}
+				}
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.add:%d:%s", uid, role)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -256,7 +268,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Where("user_id = ? AND role = ?", uid, role).Delete(&domain.RoleUser{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.remove:%d:%s", uid, role)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.role.remove:%d:%s", uid, role)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -288,7 +300,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Create(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -309,7 +321,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uid, now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -337,17 +349,19 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				}
 				en := p.Args["enabled"].(bool)
 				var rec domain.NotificationTypePref
-				if err := h.db.Where("user_id = ? AND notification_type = ?", uid, tp).First(&rec).Error; err != nil {
+				if err := h.db.Where("user_id = ? AND notification_type = ?", uid, tp).First(&rec).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 					rec = domain.NotificationTypePref{UserID: uid, NotificationType: tp, IsEnabled: en}
 					if err := h.db.Create(&rec).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
+				} else if err != nil {
+					return false, fmt.Errorf("db: %w", err)
 				} else {
 					if err := h.db.Model(&domain.NotificationTypePref{}).Where("id = ?", rec.ID).Update("is_enabled", en).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_type_pref:%d:%s:%t", uid, tp, en)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_type_pref:%d:%s:%t", uid, tp, en)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -395,7 +409,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.create:%d:%s", uid, platform)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.create:%d:%s", uid, platform)})
 				return map[string]any{"id": int(rec.ID)}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -442,7 +456,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Model(&domain.NotificationDevice{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.update:%d", id)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.update:%d", id)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -465,7 +479,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if err := h.db.Delete(&domain.NotificationDevice{}, id).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.delete:%d", id)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.device.delete:%d", id)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -488,33 +502,42 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				uid := uint(p.Args["user_id"].(int))
 				em := p.Args["email_enabled"].(bool)
 				wp := p.Args["webpush_enabled"].(bool)
-				// Upsert EMAIL device
-				var emDev domain.NotificationDevice
-				if err := h.db.Where("user_id = ? AND platform = ?", uid, "EMAIL").First(&emDev).Error; err == nil {
-					if err := h.db.Model(&domain.NotificationDevice{}).Where("id = ?", emDev.ID).Update("is_enabled", em).Error; err != nil {
-						return false, fmt.Errorf("db")
+				if err := h.db.Transaction(func(tx *gorm.DB) error {
+					// Upsert EMAIL device
+					var emDev domain.NotificationDevice
+					if err := tx.Where("user_id = ? AND platform = ?", uid, "EMAIL").First(&emDev).Error; err == nil {
+						if err := tx.Model(&domain.NotificationDevice{}).Where("id = ?", emDev.ID).Update("is_enabled", em).Error; err != nil {
+							return err
+						}
+					} else if errors.Is(err, gorm.ErrRecordNotFound) && em {
+						// create record only when enabling
+						rec := domain.NotificationDevice{UserID: uid, Platform: "EMAIL", IsEnabled: true}
+						if err := tx.Create(&rec).Error; err != nil {
+							return err
+						}
+					} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+						return err
 					}
-				} else if em {
-					// create record only when enabling
-					rec := domain.NotificationDevice{UserID: uid, Platform: "EMAIL", IsEnabled: true}
-					if err := h.db.Create(&rec).Error; err != nil {
-						return false, fmt.Errorf("db")
+					// Upsert WEBPUSH device
+					var wpDev domain.NotificationDevice
+					if err := tx.Where("user_id = ? AND platform = ?", uid, "WEBPUSH").First(&wpDev).Error; err == nil {
+						if err := tx.Model(&domain.NotificationDevice{}).Where("id = ?", wpDev.ID).Update("is_enabled", wp).Error; err != nil {
+							return err
+						}
+					} else if errors.Is(err, gorm.ErrRecordNotFound) && wp {
+						// create record only when enabling
+						rec := domain.NotificationDevice{UserID: uid, Platform: "WEBPUSH", IsEnabled: true}
+						if err := tx.Create(&rec).Error; err != nil {
+							return err
+						}
+					} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+						return err
 					}
+					return nil
+				}); err != nil {
+					return false, fmt.Errorf("db: %w", err)
 				}
-				// Upsert WEBPUSH device
-				var wpDev domain.NotificationDevice
-				if err := h.db.Where("user_id = ? AND platform = ?", uid, "WEBPUSH").First(&wpDev).Error; err == nil {
-					if err := h.db.Model(&domain.NotificationDevice{}).Where("id = ?", wpDev.ID).Update("is_enabled", wp).Error; err != nil {
-						return false, fmt.Errorf("db")
-					}
-				} else if wp {
-					// create record only when enabling
-					rec := domain.NotificationDevice{UserID: uid, Platform: "WEBPUSH", IsEnabled: true}
-					if err := h.db.Create(&rec).Error; err != nil {
-						return false, fmt.Errorf("db")
-					}
-				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_notifications:%d:%t:%t", uid, em, wp)}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.set_notifications:%d:%t:%t", uid, em, wp)})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

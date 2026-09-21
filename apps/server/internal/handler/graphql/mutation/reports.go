@@ -93,7 +93,7 @@ func (h *Handler) mutationFieldsReports() graphql.Fields {
 				}
 			}(rec.ID, taskID, reason)
 
-			_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "reports.create"}).Error
+			h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "reports.create"})
 			return map[string]any{"id": int(rec.ID)}, nil
 		},
 	}

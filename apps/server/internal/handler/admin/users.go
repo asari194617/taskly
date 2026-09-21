@@ -34,7 +34,9 @@ func (h *Handler) RegisterAdminUsersRoutes(router fiber.Router) {
 		}
 		var roles []domain.RoleUser
 		if len(ids) > 0 {
-			_ = h.db.Where("user_id IN ?", ids).Find(&roles).Error
+			if err := h.db.Where("user_id IN ?", ids).Find(&roles).Error; err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
+			}
 		}
 		roleMap := map[uint][]string{}
 		for _, r := range roles {
@@ -44,7 +46,9 @@ func (h *Handler) RegisterAdminUsersRoutes(router fiber.Router) {
 		blocked := map[uint]bool{}
 		if len(ids) > 0 {
 			var blks []domain.Block
-			_ = h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
+			if err := h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error; err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
+			}
 			for _, b := range blks {
 				blocked[b.UserID] = true
 			}
@@ -70,9 +74,13 @@ func (h *Handler) RegisterAdminUsersRoutes(router fiber.Router) {
 		}
 		// check exists
 		var cnt int64
-		_ = h.db.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error
+		if err := h.db.Model(&domain.RoleUser{}).Where("user_id = ? AND role = ?", uid, role).Count(&cnt).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
 		if cnt == 0 {
-			_ = h.db.Create(&domain.RoleUser{UserID: utils.ToUint(uid), Role: role}).Error
+			if err := h.db.Create(&domain.RoleUser{UserID: utils.ToUint(uid), Role: role}).Error; err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
+			}
 		}
 		return c.SendStatus(201)
 	})
@@ -83,7 +91,7 @@ func (h *Handler) RegisterAdminUsersRoutes(router fiber.Router) {
 		}
 		return c.SendStatus(204)
 	})
-	
+
 	router.Post("/:id/block", func(c *fiber.Ctx) error {
 		var body struct {
 			Reason    *string `json:"reason"`

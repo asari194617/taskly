@@ -34,7 +34,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					webpushEnabled := false
 					var latest *time.Time
 					var devs []domain.NotificationDevice
-					_ = h.db.Where("user_id = ? AND platform IN ?", uid, []string{"EMAIL", "WEBPUSH"}).Find(&devs).Error
+					if err := h.db.Where("user_id = ? AND platform IN ?", uid, []string{"EMAIL", "WEBPUSH"}).Find(&devs).Error; err != nil {
+						return nil, err
+					}
 					for _, d := range devs {
 						switch strings.ToUpper(strings.TrimSpace(d.Platform)) {
 						case "EMAIL":
@@ -150,7 +152,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					// defaults
 					prefs := map[string]bool{"TASK": true, "DAYSHIFT": true}
 					var list []domain.NotificationTypePref
-					_ = h.db.Where("user_id = ?", uid).Find(&list).Error
+					if err := h.db.Where("user_id = ?", uid).Find(&list).Error; err != nil {
+						return nil, err
+					}
 					for _, it := range list {
 						k := strings.ToUpper(strings.TrimSpace(it.NotificationType))
 						prefs[k] = it.IsEnabled
@@ -229,7 +233,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					ridx := map[uint][]string{}
 					if len(users) > 0 {
 						var rls []domain.RoleUser
-						_ = h.db.Where("user_id IN ?", ids).Find(&rls).Error
+						if err := h.db.Where("user_id IN ?", ids).Find(&rls).Error; err != nil {
+							return nil, err
+						}
 						for _, r := range rls {
 							ridx[r.UserID] = append(ridx[r.UserID], r.Role)
 						}
@@ -237,7 +243,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					blocked := map[uint]bool{}
 					if len(users) > 0 {
 						var blks []domain.Block
-						_ = h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
+						if err := h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error; err != nil {
+							return nil, err
+						}
 						for _, b := range blks {
 							blocked[b.UserID] = true
 						}
@@ -288,7 +296,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					roleMap := map[uint][]string{}
 					if len(ids) > 0 {
 						var roles []domain.RoleUser
-						_ = h.db.Where("user_id IN ?", ids).Find(&roles).Error
+						if err := h.db.Where("user_id IN ?", ids).Find(&roles).Error; err != nil {
+							return nil, err
+						}
 						for _, r := range roles {
 							roleMap[r.UserID] = append(roleMap[r.UserID], r.Role)
 						}
@@ -296,7 +306,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					blocked := map[uint]bool{}
 					if len(ids) > 0 {
 						var blks []domain.Block
-						_ = h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
+						if err := h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error; err != nil {
+							return nil, err
+						}
 						for _, b := range blks {
 							blocked[b.UserID] = true
 						}
@@ -357,7 +369,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 						dbq = dbq.Where("email LIKE ? OR display_name LIKE ?", like, like)
 					}
 					var total int64
-					_ = dbq.Count(&total).Error
+					if err := dbq.Count(&total).Error; err != nil {
+						return nil, err
+					}
 					// Sorting mapping
 					sb := strings.ToLower(strings.TrimSpace(sortBy))
 					sd := strings.ToLower(strings.TrimSpace(sortDir))
@@ -393,7 +407,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					roleMap := map[uint][]string{}
 					if len(ids) > 0 {
 						var roles []domain.RoleUser
-						_ = h.db.Where("user_id IN ?", ids).Find(&roles).Error
+						if err := h.db.Where("user_id IN ?", ids).Find(&roles).Error; err != nil {
+							return nil, err
+						}
 						for _, r := range roles {
 							roleMap[r.UserID] = append(roleMap[r.UserID], r.Role)
 						}
@@ -401,7 +417,9 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 					blocked := map[uint]bool{}
 					if len(ids) > 0 {
 						var blks []domain.Block
-						_ = h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error
+						if err := h.db.Where("user_id IN ? AND (expires_at IS NULL OR expires_at > ?)", ids, time.Now()).Find(&blks).Error; err != nil {
+							return nil, err
+						}
 						for _, b := range blks {
 							blocked[b.UserID] = true
 						}

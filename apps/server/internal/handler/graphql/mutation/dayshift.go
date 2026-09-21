@@ -58,7 +58,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 				}); err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.update_members"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.update_members"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -110,7 +110,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 				if err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.groups.reorder"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.groups.reorder"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -141,7 +141,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 				if err := h.db.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.create"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.create"})
 				return map[string]any{"id": rec.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -167,7 +167,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 				if err := h.db.Delete(&domain.DayShiftCycle{}, p.Args["id"].(int)).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.delete"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.delete"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -221,7 +221,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 					}
 					_ = h.db.Create(&domain.DayShiftCycleGroupMember{GroupID: g.ID, UserID: uint(idInt), Position: i + 1}).Error
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.create"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.create"})
 				return map[string]any{"id": g.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -253,7 +253,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 				if err := h.db.Delete(&domain.DayShiftCycleGroup{}, "id = ? AND cycle_id = ?", gid, cid).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.delete"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.group.delete"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

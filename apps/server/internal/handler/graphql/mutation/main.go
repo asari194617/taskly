@@ -1,12 +1,22 @@
 package gqlMutation
 
 import (
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlShared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
+
+// Mutation results reflect the state change. Audit records are best effort and
+// failures are sent to Sentry when SENTRY_DSN is configured.
+func (h *Handler) recordAuditLog(log *domain.Log) {
+	if err := h.db.Create(log).Error; err != nil {
+		utils.CaptureError(err)
+	}
+}
 
 // buildRootMutation creates the GraphQL Mutation object using provided types.
 func (h *Handler) BuildRootMutation(t *gqlShared.GqlTypes) *graphql.Object {

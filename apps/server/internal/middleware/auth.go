@@ -6,8 +6,8 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
-	"github.com/gofiber/fiber/v2"
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -44,7 +44,11 @@ func (mw *Middleware) Audit(c *fiber.Ctx) error {
 		if u, ok := c.Locals("user").(*domain.User); ok {
 			uid = &u.ID
 		}
-		_ = mw.db.Create(&domain.ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error
+		// The requested action has already completed; audit logging is best effort.
+		// Report failures to Sentry without changing the action's response.
+		if logErr := mw.db.Create(&domain.ApiActionLog{UserID: uid, HashedToken: hashed, Action: c.Method() + " " + c.Path(), IP: c.IP()}).Error; logErr != nil {
+			utils.CaptureError(logErr)
+		}
 	}
 	if err != nil && utils.Env("SENTRY_DSN", "") != "" {
 		// best-effort capture
@@ -76,7 +80,7 @@ func (mw *Middleware) AdminOnly(c *fiber.Ctx) error {
 // - DELETE /tasks/:id (numeric)
 // - GET /users/me
 // - PATCH /users/me
-func (mw *Middleware)ApiKeyRouteScope(c *fiber.Ctx) error {
+func (mw *Middleware) ApiKeyRouteScope(c *fiber.Ctx) error {
 	if c.Get("X-API-Key") == "" {
 		return c.Next()
 	}

@@ -269,7 +269,7 @@ func (h *Handler) mutationFieldsKeys() graphql.Fields {
 				if err := h.db.Create(&rec).Error; err != nil {
 					return nil, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "mcp.create"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "mcp.create"})
 				return map[string]any{"ok": true, "token": plain}, nil
 			}
 			return nil, fmt.Errorf("context missing")
@@ -287,7 +287,7 @@ func (h *Handler) mutationFieldsKeys() graphql.Fields {
 				if err := h.db.Where("user_id = ?", u.ID).Delete(&domain.MCP{}).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "mcp.revoke"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "mcp.revoke"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -325,7 +325,7 @@ func (h *Handler) mutationFieldsKeys() graphql.Fields {
 				if err := h.db.Save(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.db.Create(&domain.Log{UserID: &u.ID, Action: "mcp.update"}).Error
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "mcp.update"})
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

@@ -1,14 +1,17 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
-	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	mw "github.com/asari194617/taskly/apps/server/internal/middleware"
+	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
@@ -36,7 +39,10 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		key := fmt.Sprintf("totp-setup:%d", u.ID)
-		secret, _ := h.rdb.Get(c.Context(), key).Result()
+		secret, err := h.rdb.Get(c.Context(), key).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return c.Status(500).JSON(fiber.Map{"error": "server"})
+		}
 		if secret == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "setup expired"})
 		}
@@ -52,18 +58,30 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 		if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; err == nil {
 			ts.Secret = enc
 			ts.IsActive = true
-			_ = h.db.Save(&ts).Error
+			if err := h.db.Save(&ts).Error; err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			if err := h.db.Create(&domain.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error; err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "db"})
+			}
 		} else {
-			_ = h.db.Create(&domain.TOTPSecret{UserID: u.ID, Secret: enc, IsActive: true}).Error
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		_ = h.rdb.Del(c.Context(), key).Err()
+		// Temporary setup cleanup is best effort: activation is already persisted.
+		// Observe cleanup failures in Sentry when configured.
+		if err := h.rdb.Del(c.Context(), key).Err(); err != nil {
+			utils.CaptureError(err)
+		}
 		return c.SendStatus(204)
 	})
 	router.Post("/totp/disable", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var ts domain.TOTPSecret
-		if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; err != nil {
+		if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.Status(404).JSON(fiber.Map{"error": "not enabled"})
+		} else if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		ts.IsActive = false
 		if err := h.db.Save(&ts).Error; err != nil {
@@ -75,15 +93,22 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 	// Recovery codes
 	router.Post("/recovery/generate", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
-		// delete existing unused codes
-		_ = h.db.Where("user_id = ? AND is_used = 0", u.ID).Delete(&domain.RecoveryCode{}).Error
-		// generate 10 codes
 		codes := make([]string, 0, 10)
-		for i := 0; i < 10; i++ {
-			plain := utils.GenerateRecoveryCode()
-			hashed := utils.Sha256Hex([]byte(plain))
-			_ = h.db.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error
-			codes = append(codes, plain)
+		if err := h.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Where("user_id = ? AND is_used = 0", u.ID).Delete(&domain.RecoveryCode{}).Error; err != nil {
+				return err
+			}
+			for i := 0; i < 10; i++ {
+				plain := utils.GenerateRecoveryCode()
+				hashed := utils.Sha256Hex([]byte(plain))
+				if err := tx.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: hashed}).Error; err != nil {
+					return err
+				}
+				codes = append(codes, plain)
+			}
+			return nil
+		}); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.JSON(fiber.Map{"codes": codes})
 	})
@@ -99,8 +124,10 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		var u domain.User
-		if err := h.db.Where("email = ?", body.Email).First(&u).Error; err != nil {
+		if err := h.db.Where("email = ?", body.Email).First(&u).Error; errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
+		} else if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		if utils.ConsumeRecoveryCode(u.ID, body.Code, h.db) {
 			return c.SendStatus(204)
