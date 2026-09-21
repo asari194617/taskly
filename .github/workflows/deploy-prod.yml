@@ -226,6 +226,7 @@ jobs:
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" <<EOS
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
+          export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
           export TASKLY_IMAGE_TAG="$RELEASE_SHA"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin

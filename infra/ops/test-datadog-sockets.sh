@@ -3,10 +3,11 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 COMPOSE_FILE="$PROJECT_ROOT/infra/docker-compose.yml"
+PROD_COMPOSE_FILE="$PROJECT_ROOT/infra/docker-compose.prod.yml"
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
-docker compose --file "$COMPOSE_FILE" config --format json >"$tmp"
+docker compose --file "$COMPOSE_FILE" --file "$PROD_COMPOSE_FILE" config --format json >"$tmp"
 
 jq -e '
   . as $config

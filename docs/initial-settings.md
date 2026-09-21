@@ -63,7 +63,8 @@
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
-確認してからComposeサービスを更新し、各アプリへread-onlyでmountします。APM用TCPポートを
+確認してから本番専用の `infra/docker-compose.prod.yml` を重ね、各アプリへread-onlyで
+mountします。通常のローカルCompose起動ではこのoverrideを使いません。APM用TCPポートを
 ホスト外部へ公開する必要はありません。
 
 本番ホストではイメージをビルドしません。`docker compose up --build` や

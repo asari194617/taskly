@@ -33,6 +33,6 @@ How to verify locally:
 Notes:
 
 - `DD_TRACE_AGENT_URL` takes precedence over `DD_AGENT_HOST` and `DD_TRACE_AGENT_PORT`.
-- Compose mounts only the Agent socket directory and does not publish APM or DogStatsD ports.
+- The production Compose override mounts only the Agent socket directory and does not publish APM or DogStatsD ports.
 - The tracer reads many settings automatically from env vars; no code change is needed per environment.
 - To filter noisy routes from traces, adjust the Fiber middleware options.
