@@ -8,13 +8,21 @@ export function currentPathWithQueryAndHash(): string {
   }
 }
 
+export function loginRedirect(authenticated: boolean, path: string): string | null {
+  return authenticated ? null : `/login?next=${encodeURIComponent(path)}`;
+}
+
+export function postLoginRedirect(authenticated: boolean, search: string, defaultTarget = "/home"): string | null {
+  if (!authenticated) return null;
+  const raw = new URLSearchParams(search).get("next") || "";
+  return /^\/(?![/\\])/.test(raw) ? raw : defaultTarget;
+}
+
 export function requireAuth(): void {
   try {
     checkSession().then((authenticated) => {
-      if (!authenticated) {
-        const next = encodeURIComponent(currentPathWithQueryAndHash());
-        location.replace(`/login?next=${next}`);
-      }
+      const target = loginRedirect(authenticated, currentPathWithQueryAndHash());
+      if (target) location.replace(target);
     });
   } catch {
     // no-op
@@ -25,11 +33,8 @@ export function redirectIfAuthed(defaultTarget: string = "/home"): void {
   try {
     checkSession()
       .then((authenticated) => {
-        if (!authenticated) return;
-        const params = new URLSearchParams(location.search);
-        const raw = params.get("next") || "";
-        const safe = raw.startsWith("/") && !raw.startsWith("//") ? raw : "";
-        location.replace(safe || defaultTarget);
+        const target = postLoginRedirect(authenticated, location.search, defaultTarget);
+        if (target) location.replace(target);
       })
       .catch(() => {});
   } catch {

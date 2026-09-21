@@ -76,7 +76,7 @@ import {
   saveNotificationChannels,
   saveNotificationType,
   setBuiltInRole,
-  setCustomRole,
+  setCustomRole as setCustomRoleRequest,
   unblockUser as unblockUserRequest,
   updateDeviceEnabled,
   updateUser,
@@ -564,7 +564,7 @@ export default function AdminUsers() {
     enabled: boolean
   ) {
     try {
-      await setCustomRole(userId, role, enabled);
+      await setCustomRoleRequest(userId, role, enabled);
       load();
     } catch (e: any) {
       toast({
