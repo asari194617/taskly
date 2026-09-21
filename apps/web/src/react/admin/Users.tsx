@@ -63,7 +63,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { getToken, requireAuth } from "@/lib/auth-guard";
 import {
   blockUser,
   bulkCreateUsers,
@@ -168,10 +167,6 @@ export default function AdminUsers() {
     }
   }
   React.useEffect(() => {
-    if (!getToken()) {
-      requireAuth();
-      return;
-    }
     load();
   }, []);
   React.useEffect(() => {

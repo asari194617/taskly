@@ -17,7 +17,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { getApiBase } from "@/lib/api";
+import { getApiBase, webFetch } from "@/lib/api";
 import { gql } from "@/lib/graphql";
 import { useLang } from "@/react/LanguageProvider";
 import {
@@ -37,8 +37,6 @@ export default function SettingsBasic() {
   const [loading, setLoading] = React.useState(false);
   const { toast } = useToast();
   const { dict } = useLang();
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
 
   React.useEffect(() => {
     async function fetchMe() {
@@ -52,11 +50,9 @@ export default function SettingsBasic() {
     }
     async function fetchLang() {
       try {
-        if (!token) return;
         const base = getApiBase();
-        const res = await fetch(`${base}/settings/lang`, {
+        const res = await webFetch(`${base}/settings/lang`, {
           headers: {
-            Authorization: `Bearer ${token}`,
             "X-Client-Platform": "web",
           },
         });
@@ -71,9 +67,9 @@ export default function SettingsBasic() {
         }
       } catch {}
     }
-    if (token) fetchMe();
-    if (token) fetchLang();
-  }, [token]);
+    fetchMe();
+    fetchLang();
+  }, []);
 
   async function save() {
     setLoading(true);
@@ -85,11 +81,10 @@ export default function SettingsBasic() {
       // Save notification language via REST
       try {
         const base = getApiBase();
-        await fetch(`${base}/settings/lang`, {
+        await webFetch(`${base}/settings/lang`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
             "X-Client-Platform": "web",
           },
           body: JSON.stringify({ notification_lang: notificationLang }),
@@ -110,7 +105,6 @@ export default function SettingsBasic() {
   async function deleteAccount() {
     try {
       await gql<{ deleteMe: boolean }>(`mutation{ deleteMe }`);
-      localStorage.removeItem("api_token");
       location.href = "/";
     } catch (e: any) {
       toast({

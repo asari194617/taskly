@@ -16,6 +16,7 @@ import {
   isAuthTransactionError,
   readAuthTransaction,
   withNext,
+  webFetch,
 } from "./helpers";
 
 export default function Recovery() {
@@ -29,7 +30,7 @@ export default function Recovery() {
     setLoading(true);
     try {
       const transaction = readAuthTransaction(email);
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await webFetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -55,8 +56,7 @@ export default function Recovery() {
         throw new Error(data?.error || JSON.stringify(data));
       }
       clearAuthTransaction();
-      if (data?.token) {
-        localStorage.setItem("api_token", data.token);
+      if (data?.authenticated) {
         await postLoginRedirect();
       } else {
         setMessage("予期せぬレスポンスです");

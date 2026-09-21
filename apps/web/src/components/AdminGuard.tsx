@@ -20,20 +20,6 @@ export default function AdminGuard() {
 
     async function checkAdmin() {
       try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("api_token") || ""
-            : "";
-        if (!token) {
-          const next = encodeURIComponent(
-            window.location.pathname +
-              window.location.search +
-              window.location.hash
-          );
-          window.location.href = `/login?next=${next}`;
-          return;
-        }
-
         const data = await gql<MeResult>(
           "query{ me{ id email is_admin is_manager } }"
         );

@@ -27,7 +27,6 @@ import {
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
 import { toast } from "@/hooks/use-toast";
 import { useLang } from "@/react/LanguageProvider";
-import { getToken, requireAuth } from "@/lib/auth-guard";
 import {
   activateTotpSetup,
   beginPasskeyRegistration,
@@ -50,7 +49,6 @@ import {
 
 export default function SettingsSecurity() {
   const { dict } = useLang();
-  const token = typeof window !== "undefined" ? getToken() : null;
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -71,10 +69,6 @@ export default function SettingsSecurity() {
   } | null>(null);
 
   React.useEffect(() => {
-    if (!token) {
-      requireAuth();
-      return;
-    }
     loadSecuritySettings()
       .then((d) => {
         setAuth(d.authSettings);
@@ -83,7 +77,7 @@ export default function SettingsSecurity() {
       .catch(() =>
         toast({ variant: "destructive", title: dict.toast.userInfoFetchError })
       );
-  }, [token]);
+  }, []);
 
   async function toggleEmailLogin(v: boolean) {
     const prev = auth;

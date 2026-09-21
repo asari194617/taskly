@@ -54,7 +54,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/features/admin-day-shift/DatePicker";
-import { getToken, requireAuth } from "@/lib/auth-guard";
 import {
   createCycle as createCycleRequest,
   createGroup as createGroupRequest,
@@ -176,19 +175,15 @@ export default function AdminDayShift() {
     }
   }
   React.useEffect(() => {
-    if (getToken()) {
-      loadCycles();
-      loadDayShiftIndex()
-        .then(setCurrentIndex)
-        .catch(() => setCurrentIndex(0));
-      loadCurrentCycleId()
-        .then((v) => {
-          setCurrentCycleId(v ? String(v) : "");
-        })
-        .catch(() => setCurrentCycleId(""));
-    } else {
-      requireAuth();
-    }
+    loadCycles();
+    loadDayShiftIndex()
+      .then(setCurrentIndex)
+      .catch(() => setCurrentIndex(0));
+    loadCurrentCycleId()
+      .then((v) => {
+        setCurrentCycleId(v ? String(v) : "");
+      })
+      .catch(() => setCurrentCycleId(""));
   }, [cyclePage]);
   React.useEffect(() => {
     setGroupPage(1);

@@ -16,6 +16,7 @@ import {
   clearAuthTransaction,
   isAuthTransactionError,
   readAuthTransaction,
+  webFetch,
 } from "./helpers";
 import {
   readMailCodeStatus,
@@ -89,7 +90,7 @@ export default function MailCode() {
     setMessage(null);
     try {
       const transaction = readAuthTransaction(email);
-      const res = await fetch(`${apiBase}/auth/login`, {
+      const res = await webFetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -115,8 +116,7 @@ export default function MailCode() {
         throw new Error(data?.error || JSON.stringify(data));
       }
       clearAuthTransaction();
-      if (data?.token) {
-        localStorage.setItem("api_token", data.token);
+      if (data?.authenticated) {
         // Keep loading=true so the button stays disabled until the redirect
         setMessage("認証しました。リダイレクトしています…");
         await postLoginRedirect();

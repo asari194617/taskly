@@ -47,8 +47,6 @@ type ApiKey = {
 
 export default function SettingsApiKeys() {
   const { dict } = useLang();
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<ApiKey[]>([]);
   const [desc, setDesc] = React.useState("");
   const [expires, setExpires] = React.useState<string>(""); // local input
@@ -89,8 +87,8 @@ export default function SettingsApiKeys() {
     }
   }
   React.useEffect(() => {
-    if (token) load();
-  }, [token]);
+    load();
+  }, []);
 
   async function create() {
     try {

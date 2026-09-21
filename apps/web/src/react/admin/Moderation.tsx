@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import { useToast } from "@/hooks/use-toast";
+import { getApiBase, webFetch } from "@/lib/api";
 
 type FlaggedRow = {
   id: number;
@@ -17,8 +18,7 @@ type Policy = {
 };
 
 async function api<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
-  const r = await fetch(path, {
-    credentials: "include",
+  const r = await webFetch(`${getApiBase()}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...opts,
   });
@@ -64,9 +64,8 @@ export default function Moderation() {
 
   const act = async (id: number, action: "hide" | "unhide") => {
     try {
-      await fetch(`/admin/moderation/tasks/${id}/${action}`, {
+      await webFetch(`${getApiBase()}/admin/moderation/tasks/${id}/${action}`, {
         method: "POST",
-        credentials: "include",
       });
       await load();
     } catch (e) {
@@ -80,9 +79,8 @@ export default function Moderation() {
 
   const savePolicy = async () => {
     try {
-      await fetch("/admin/moderation/settings", {
+      await webFetch(`${getApiBase()}/admin/moderation/settings`, {
         method: "PUT",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(policy),
       });

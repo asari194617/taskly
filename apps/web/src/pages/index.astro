@@ -43,11 +43,8 @@ import Layout from "../layouts/AppLayout.astro";
     </section>
   </div>
   <script>
-    // If already logged in, go to /home
-    (function(){
-      const tok = localStorage.getItem('api_token');
-      if(tok){ window.location.replace('/home'); }
-    })();
+    import { redirectIfAuthed } from "@/lib/auth-guard";
+    redirectIfAuthed("/home");
   </script>
   <script>
     import { updateI18nTexts, watchLanguageChange } from "@/lib/i18n-dom";

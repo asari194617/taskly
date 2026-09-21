@@ -63,8 +63,6 @@ function fromRFC3339(s?: string | null): string {
 }
 
 export default function AdminSubjects() {
-  const token =
-    (typeof window !== "undefined" && localStorage.getItem("api_token")) || "";
   const [items, setItems] = React.useState<Subject[]>([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -87,8 +85,8 @@ export default function AdminSubjects() {
     }
   }
   React.useEffect(() => {
-    if (token) load();
-  }, [token]);
+    load();
+  }, []);
 
   const isMobile = useIsMobile();
 
