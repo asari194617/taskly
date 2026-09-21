@@ -4,14 +4,15 @@
 
 ## ディレクトリ構成
 
-- `batches/notifications/que-manager`: 各種通知(課題/日直)を管理するバッチ
+- `batches/notifications/que-manager`: 課題の Web Push キューを管理するバッチ
   - `batches/notifications/delivery-channels/email`: メールで通知を送信するバッチ
   - `batches/notifications/delivery-channels/web-push`: Web Pushに通知を送信するバッチ
+  - `batches/notifications/delivery-channels/discord`: Discordに通知を送信するバッチ
 - `batches/day-shift-rotations`: 日直のローテーションを生成するバッチ
 - `batches/backup-mysql`: MySQLのバックアップを行うバッチ
+- `batches/moderation`: モデレーション通知を処理するバッチ
 
-各配信チャネルに渡す値は共通化します。
-ネイティブアプリを開発時に、ネイティブアプリ向けの配信チャネルを追加することを想定しています。
+通知バッチの現行動作は [`../docs/batches/notifications/README.md`](../docs/batches/notifications/README.md) を参照してください。
 
 ## バッチの実行管理
 
@@ -26,18 +27,11 @@
 
 ### `batches/notifications/que-manager`
 
-課題や日直の通知を管理するバッチです。
+課題の Web Push 通知キューを管理するバッチです。
 
-- 期限が近い課題の通知
-- 日直の通知
-  を管理します。
-  各種通知の条件に合致するものを抽出し、各配信チャネルに渡す形でキューイングします。
+- 期限が近い課題を抽出し、対象ユーザーの Web Push キューへ投入します。
 - 期限が近い課題の通知は、毎日7:00, 17:00に実行されます。
-- 対象の課題は、期限が
-  - 当日
-  - 翌営業日
-  - 翌々営業日
-    のものです。
+- 現行の抽出範囲は、JST の当日 00:00 から翌々日 00:00 まで（両端を含む）です。
 - 表記は
   - 今日
   - あす
@@ -46,15 +40,15 @@
   - XX月YY日 (月を跨ぐ場合)
   - YYYY年XX月YY日 (年を跨ぐ場合)
     のいずれかになります。
-- 日直の通知は、前日と当日に通知します。
+- Queue Manager の日直候補は宛先未確定のため、この DAG からは配信されません。日直通知は別の `day_shift_notify_0830` DAG で処理します。
 - ブロック対象のユーザーには通知しません。
-- 通知の内容は、課題のタイトルと期限、日直の担当者名などです。
+- 通知の内容は、課題のタイトルと期限です。
 
 ### `batches/notifications/delivery-channels/email`
 
 メールで通知を送信するバッチです。
 
-- `que-manager`からキューイングされた通知を取得し、メールで送信します。
+- 実行時に対象課題を取得し、ユーザーごとのダイジェストを生成してメールで送信します。
 
 ### `batches/notifications/delivery-channels/web-push`
 

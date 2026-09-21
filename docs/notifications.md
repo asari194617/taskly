@@ -1,6 +1,6 @@
-# 通知設定・配信（2025-12-04 更新）
+# 通知設定・配信
 
-通知機構は「通知種類（types）」と「デバイス（devices）」に分離されています。UI は `Notifications-copy.tsx` のモックに準拠し、種類は方法（メール/プッシュ）に共通です。
+通知機構は「通知種類（types）」と「デバイス（devices）」に分離されています。通知種類の設定は方法（メール/プッシュ）に共通です。
 
 ## 通知方法（Methods）
 
@@ -24,7 +24,7 @@
 - `notification_type_prefs`: `id`, `user_id`, `notification_type`, `is_enabled`, `created_at`, `updated_at`
 - `notification_devices`: `id`, `user_id`, `platform`（`EMAIL`/`WEBPUSH` など）, `name`, `payload`, `is_enabled`, `created_at`, `updated_at`
 - `web_push_subscriptions`: ブラウザ Push 購読（`is_revoked` で無効化管理）。
-- `notifications_queue`: 配信チャネル共有キュー（現状 Web Push が使用）。
+- `notifications_queue`: Web Push 配信用のキュー。
 
 ## サーバー API（REST）
 
@@ -45,7 +45,7 @@
 
 ## フロントエンド
 
-- `apps/web/src/react/settings/Notifications.tsx`: モック構成に準拠（通知方法/通知の種類/その他の設定、端末設定ダイアログ）。
+- `apps/web/src/react/settings/Notifications.tsx`: 通知方法、通知種類、端末設定を表示します。
 - 端末名は User-Agent から推定。
 
 サンプル:
@@ -83,13 +83,17 @@ mutation UpdatePrefs($id: Int!) {
 ## バッチ（Queue/Delivery）
 
 - Queue Manager（`batches/notifications/que-manager`）:
-  - タスク（今日〜あさって）を Web Push キューに投入。`TASK` を前提に、時間帯に応じて `TASK_MORNING`/`TASK_EVENING` を適用。
-  - 日直は存在時に `DAYSHIFT` を尊重して投入。
-  - Email はキュー投入せず、配信時合成。
+  - タスク（JST の今日 00:00〜あさって 00:00）を Web Push キューに投入。`TASK` と時間帯に応じた `TASK_MORNING`/`TASK_EVENING` を適用。
+  - 日直候補は宛先未確定のため、現状はキューに投入されない。
+  - Email はキュー投入せず、配信時に対象課題とユーザーを取得する。
 - Web Push Delivery（`batches/notifications/delivery-channels/web-push`）:
-  - `channel='webpush'` を購読に配信、処理済みクリーンアップ。
+  - `channel='webpush'` を購読に配信し、処理済み行をクリーンアップ。Airflow の `notifications` DAG から実行される。
 - Email Delivery（`batches/notifications/delivery-channels/email`）:
-  - 現状はノーオペのスタブ（配信系へ引き継ぎ予定）。
+  - `notifications` DAG から実行され、ユーザーごとの課題ダイジェストを email-compose の gRPC と SMTP で送信する。現行実装は `TASK_MORNING`/`TASK_EVENING` を参照しない。
+- Discord Delivery（`batches/notifications/delivery-channels/discord`）:
+  - `notifications` DAG から実行される。
+
+対象ユーザーと実行順序は [`batches/notifications/README.md`](batches/notifications/README.md) を参照してください。
 
 ## 既定値
 
@@ -100,7 +104,6 @@ mutation UpdatePrefs($id: Int!) {
 ## 運用
 
 - 互換 API や旧設定は段階的に devices/types へ集約。
-- 既存の Docker/CI はそのまま利用可能。
 
 ## 既知の注意点
 

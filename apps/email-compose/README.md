@@ -4,7 +4,8 @@ A small Node.js gRPC service that composes transactional emails using React Emai
 
 Features:
 
-- gRPC API (ComposeLoginCode) with locale (en/ja)
+- gRPC API for login codes, task digests, moderation alerts, day shift notices,
+  and day shift skips, with locale (en/ja)
 - React Email templates styled similar to shadcn/ui
 - i18n via i18next with filesystem backend
 - Sentry and Datadog instrumentation hooks

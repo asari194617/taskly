@@ -48,6 +48,7 @@
 - `infra/**`
 - `.dockerignore`
 - `.github/scripts/image-matrix.sh`
+- `.github/scripts/require-prod-env.sh`
 - `.github/workflows/deploy-prod.yml`
 
 手動実行も可能で、`full_build=true` が既定です。
@@ -60,11 +61,11 @@
 4. `PROD_ENV` を確認し、`.env` と `infra/.env` を保護してリポジトリを rsync する。
 5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
-7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull し、DB と Redis を起動する。
+7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull する。Redis ACL の entrypoint が変更された場合は Redis を再作成し、DB と Redis の起動を確認する。
 8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
 9. アプリコンテナの再作成後、最大10分間 healthcheck を待つ。
 10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
-11. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+11. Datadog APM socket への接続と Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
