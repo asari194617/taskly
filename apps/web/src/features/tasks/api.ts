@@ -53,29 +53,33 @@ export async function loadViewerRole() {
   };
 }
 
-export async function searchTasks(q: string, signal?: AbortSignal) {
+export type TaskCursor = { cursor_deadline: string; cursor_id: string };
+export type TaskPage = { items: Task[]; nextCursor: TaskCursor | null };
+
+export async function searchTasks(q: string, signal?: AbortSignal, cursor?: TaskCursor): Promise<TaskPage> {
+  const variables = { q: q || undefined, ...cursor };
   try {
-    const result = await gql<{ tasks: { items: Task[] } }>(
-      `query($q:String){ tasks(limit:200, q:$q){ items{ ${taskFields} } } }`,
-      { q: q || undefined },
+    const result = await gql<{ tasks: { items: Task[]; next_cursor: TaskCursor | null } }>(
+      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:50, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ ${taskFields} } next_cursor{ cursor_deadline cursor_id } } }`,
+      variables,
       { signal },
     );
-    return result.tasks.items ?? [];
+    return { items: result.tasks.items ?? [], nextCursor: result.tasks.next_cursor ?? null };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     // Keep compatibility during rolling deployments with an older API schema.
     if (!/Cannot query field "is_completed"/i.test(message)) throw error;
     const result = await gql<{
-      tasks: { items: Omit<Task, "is_completed">[] };
+      tasks: { items: Omit<Task, "is_completed">[]; next_cursor: TaskCursor | null };
     }>(
-      `query($q:String){ tasks(limit:200, q:$q){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_hidden } } }`,
-      { q: q || undefined },
+      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:50, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_hidden } next_cursor{ cursor_deadline cursor_id } } }`,
+      variables,
       { signal },
     );
-    return (result.tasks.items ?? []).map((task) => ({
-      ...task,
-      is_completed: false,
-    }));
+    return {
+      items: (result.tasks.items ?? []).map((task) => ({ ...task, is_completed: false })),
+      nextCursor: result.tasks.next_cursor ?? null,
+    };
   }
 }
 
