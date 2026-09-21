@@ -1,0 +1,26 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+---
+
+<Layout title="カレンダー連携 | Taskly ガイド" description="Taskly の iCal カレンダーを購読する方法">
+  <div class="mx-auto max-w-3xl space-y-8 py-6">
+    <a href="/guide" class="text-sm text-muted-foreground underline-offset-4 hover:underline">← ガイドに戻る</a>
+    <header class="space-y-3">
+      <h1 class="text-3xl font-bold tracking-tight">カレンダー連携</h1>
+      <p class="text-muted-foreground">iCal の購読 URL を使うと、対応する予定表アプリで Taskly の予定を確認できます。</p>
+    </header>
+    <section class="space-y-4" aria-labelledby="calendar-steps">
+      <h2 id="calendar-steps" class="text-xl font-semibold">設定方法</h2>
+      <ol class="list-decimal space-y-3 pl-6 text-sm leading-7">
+        <li><a href="/settings/ical" class="font-medium text-primary underline-offset-4 hover:underline">設定 → iCal</a> を開きます。ログインが必要です。</li>
+        <li>必要なら説明や有効期限を入力し、「URLを発行」を押します。</li>
+        <li>発行した URL をコピーし、利用する予定表アプリに購読カレンダーとして追加します。</li>
+      </ol>
+    </section>
+    <div class="rounded-lg border bg-card p-5 text-sm leading-7">
+      <h2 class="font-semibold">URL の取り扱い</h2>
+      <p class="mt-2 text-muted-foreground">URL を知っている人はカレンダーを閲覧できます。公開せず、安全な場所に保管してください。不要になった URL は iCal 設定画面から削除できます。</p>
+    </div>
+    <a href="https://ritzy-lift-e38.notion.site/290a3874f8c880a6b1f6e67cef05ae56?source=copy_link" target="_blank" rel="noopener noreferrer" class="inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">予定表アプリごとの詳しい手順を見る ↗</a>
+  </div>
+</Layout>
