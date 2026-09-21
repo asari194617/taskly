@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from airflow.sdk import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 import os
@@ -55,6 +55,7 @@ with DAG(
     schedule="0 22,8 * * *",  # 07:00,17:00 JST (UTC-9/UTC? adjust as needed)
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    default_args={"retries": 2, "retry_delay": timedelta(minutes=5)},
     tags=["taskly"],
     on_failure_callback=discord_failure_callback,
     on_success_callback=discord_success_callback,

@@ -46,7 +46,10 @@ func run() error {
 		return nil
 	}
 
-	uIds, devicePrefs, typePrefs := dcCommon.LoadEligibleUsersAndPrefs(db, dcCommon.UserDevicePrefs{Email: true, WebPush: false}, map[string]bool{"TASK": true, "DAYSHIFT": true})
+	uIds, devicePrefs, typePrefs, err := dcCommon.LoadEligibleUsersAndPrefs(db, dcCommon.UserDevicePrefs{Email: true, WebPush: false}, map[string]bool{"TASK": true, "DAYSHIFT": true})
+	if err != nil {
+		return err
+	}
 
 	items := make([]map[string]any, 0, len(tasks))
 	for _, tsk := range tasks {

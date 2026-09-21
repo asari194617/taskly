@@ -8,12 +8,8 @@ import (
 	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 )
 
-// computeLiveDigestGroups collects due tasks and expands them to per-user email digests
-func computeLiveDigestGroups(db *sql.DB) (map[int64][]dcCommon.QueueItem, error) {
-	now := time.Now()
-	if loc, err := time.LoadLocation("Asia/Tokyo"); err == nil {
-		now = now.In(loc)
-	}
+// computeLiveDigestGroupsAt collects due tasks for a single delivery slot.
+func computeLiveDigestGroupsAt(db *sql.DB, now time.Time) (map[int64][]dcCommon.QueueItem, error) {
 	tasks, err := dcCommon.FetchDueTasks(db, now)
 	if err != nil {
 		return nil, err
@@ -21,10 +17,21 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]dcCommon.QueueItem, error)
 	if len(tasks) == 0 {
 		return map[int64][]dcCommon.QueueItem{}, nil
 	}
-	ids, devicePrefs, typePrefs := dcCommon.LoadEligibleUsersAndPrefs(db, dcCommon.UserDevicePrefs{Email: true, WebPush: true}, map[string]bool{})
+	ids, devicePrefs, typePrefs, err := dcCommon.LoadEligibleUsersAndPrefs(db, dcCommon.UserDevicePrefs{Email: true, WebPush: true}, map[string]bool{})
+	if err != nil {
+		return nil, err
+	}
+	slot := "TASK_EVENING"
+	if now.Hour() < 12 {
+		slot = "TASK_MORNING"
+	}
 	groups := make(map[int64][]dcCommon.QueueItem, len(ids))
 	for _, uid := range ids {
-		if dcCommon.IsUserBlocked(db, uid) {
+		blocked, err := dcCommon.IsUserBlocked(db, uid)
+		if err != nil {
+			return nil, err
+		}
+		if blocked {
 			continue
 		}
 		dp := devicePrefs[uid]
@@ -37,6 +44,9 @@ func computeLiveDigestGroups(db *sql.DB) (map[int64][]dcCommon.QueueItem, error)
 			allowTask = v
 		}
 		if !allowTask {
+			continue
+		}
+		if enabled, ok := tp[slot]; ok && !enabled {
 			continue
 		}
 		items := make([]dcCommon.QueueItem, 0, len(tasks))

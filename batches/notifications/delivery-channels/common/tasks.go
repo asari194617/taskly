@@ -23,12 +23,12 @@ func FetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
 		var t Task
 		var desc sql.NullString
 		if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.IsSelfCheckRequired); err != nil {
-			continue
+			return nil, err
 		}
 		if desc.Valid {
 			t.Description = &desc.String
 		}
 		out = append(out, t)
 	}
-	return out, nil
+	return out, rows.Err()
 }

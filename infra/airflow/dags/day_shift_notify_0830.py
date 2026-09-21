@@ -23,7 +23,9 @@ except Exception:  # pragma: no cover - allow DAG to load without optional deps
     message_factory = None
 
 from airflow.sdk import DAG
+from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator
+from airflow.utils.trigger_rule import TriggerRule
 
 
 def mysql_connect():
@@ -256,7 +258,7 @@ def send_day_shift_emails(users, subject: str, text_body: str, html_body: str) -
     - Uses the same env vars as other components:
       SMTP_HOST, SMTP_PORT, SMTP_FROM, SMTP_USER, SMTP_PASSWORD,
       SMTP_TLS ("starttls" to enable), SMTP_TIMEOUT.
-    - Sends a single email with all recipients in the To header.
+    - Call with one recipient so failures and retries are tracked per user.
     """
 
     # Collect recipient addresses
@@ -287,33 +289,77 @@ def send_day_shift_emails(users, subject: str, text_body: str, html_body: str) -
     msg["From"] = from_addr
     msg["To"] = ", ".join(to_addrs)
 
-    try:
-        with smtplib.SMTP(host=smtp_host, port=smtp_port, timeout=timeout) as smtp:
+    with smtplib.SMTP(host=smtp_host, port=smtp_port, timeout=timeout) as smtp:
+        try:
+            smtp.ehlo()
+        except Exception:
+            pass
+
+        if smtp_tls == "starttls":
             try:
+                smtp.starttls()
                 smtp.ehlo()
-            except Exception:
-                pass
+            except Exception as e:
+                raise RuntimeError("SMTP STARTTLS failed") from e
 
-            if smtp_tls == "starttls":
-                try:
-                    smtp.starttls()
-                    smtp.ehlo()
-                except Exception:
-                    # If STARTTLS negotiation fails, abort sending to avoid plain-text fallthrough.
-                    print("[DayShift] SMTP STARTTLS failed; aborting send.")
-                    return
+        if smtp_pass.strip():
+            try:
+                smtp.login(smtp_user, smtp_pass)
+            except Exception as e:
+                raise RuntimeError("SMTP login failed") from e
 
-            if smtp_pass.strip():
-                try:
-                    smtp.login(smtp_user, smtp_pass)
-                except Exception as e:
-                    print(f"[DayShift] SMTP login failed: {e}")
-                    return
+        smtp.sendmail(from_addr, to_addrs, msg.as_string())
 
-            smtp.sendmail(from_addr, to_addrs, msg.as_string())
-    except Exception as e:
-        # Log but do not raise to avoid failing the DAG run entirely.
-        print(f"[DayShift] SMTP send failed: {e}")
+
+def claim_delivery(conn, key: str, channel: str, user_id: int) -> bool:
+    with conn.cursor() as cur:
+        cur.execute("""INSERT INTO notification_deliveries
+            (delivery_key, channel, user_id, status, attempts)
+            VALUES (%s, %s, %s, 'sending', 1)
+            ON DUPLICATE KEY UPDATE
+            attempts=IF(status='error', attempts+1, attempts),
+            error_message=IF(status='error', NULL, error_message),
+            status=IF(status='error', 'sending', status)""", (key, channel, user_id))
+        return cur.rowcount > 0
+
+
+def finish_delivery(conn, key: str, error: Exception | None) -> None:
+    with conn.cursor() as cur:
+        cur.execute("""UPDATE notification_deliveries
+            SET status=%s, error_message=%s,
+                sent_at=IF(%s='sent', NOW(), sent_at)
+            WHERE delivery_key=%s AND status='sending'""",
+            ("error" if error else "sent", str(error)[:2000] if error else None,
+             "error" if error else "sent", key))
+
+
+def enqueue_day_shift_push(conn, today: date, user_id: int) -> None:
+    key = f"dayshift:{today.isoformat()}:webpush:{user_id}"
+    with conn.cursor() as cur:
+        cur.execute("""INSERT INTO notifications_queue
+            (kind, when_label, subject, title, body, user_id, channel, event_key)
+            VALUES ('dayshift', '今日', '日直', '日直の担当日です',
+                    '本日は日直の担当日です。よろしくお願いします。', %s, 'webpush', %s)
+            ON DUPLICATE KEY UPDATE id=id""", (user_id, key))
+
+
+def select_day_shift_recipients(all_users, blocked_map, pref_map, dev_map, subscribed_ids):
+    enabled, blocked, email, push = [], [], [], []
+    for user in all_users:
+        if user.get("id") is None:
+            continue
+        uid = int(user["id"])
+        if blocked_map.get(uid, 0) > 0:
+            blocked.append(user)
+            continue
+        if pref_map.get(uid, 1) == 0:
+            continue
+        enabled.append(user)
+        if dev_map.get((uid, "EMAIL"), 1) == 1 and (user.get("email") or "").strip():
+            email.append(user)
+        if dev_map.get((uid, "WEBPUSH"), 0) == 1 and uid in subscribed_ids:
+            push.append(user)
+    return enabled, blocked, email, push
 
 
 def notify_day_shift(**context):
@@ -467,6 +513,8 @@ def notify_day_shift(**context):
         # Filter by NotificationTypePref and EMAIL device overrides (batch queries to avoid N+1)
         enabled_users = []
         blocked_users = []
+        users = []
+        push_users = []
 
         # all_users was selected earlier using ids_csv
         # Build ids with explicit None-check to satisfy static type checkers
@@ -480,9 +528,7 @@ def notify_day_shift(**context):
             except Exception:
                 # Skip any invalid id values
                 continue
-        if not ids:
-            users = []
-        else:
+        if ids:
             # Reuse ids_csv style used earlier
             ids_csv = ",".join(str(i) for i in ids)
 
@@ -504,37 +550,31 @@ def notify_day_shift(**context):
             for r in pref_rows:
                 uid = int(r["user_id"])
                 if uid not in pref_map:
-                    pref_map[uid] = int(r.get("is_enabled", 1) or 1)
+                    pref_map[uid] = int(r.get("is_enabled", 1))
 
-            # Fetch latest EMAIL device records for these users
+            # Fetch latest device records for both delivery channels.
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT user_id, is_enabled FROM notification_devices WHERE platform='EMAIL' AND user_id IN ({ids_csv}) ORDER BY user_id ASC, id DESC"
+                    f"SELECT user_id, platform, MAX(is_enabled) AS is_enabled FROM notification_devices WHERE platform IN ('EMAIL','WEBPUSH') AND user_id IN ({ids_csv}) GROUP BY user_id, platform"
                 )
                 dev_rows = cur.fetchall() or []
             dev_map = {}
             for r in dev_rows:
                 uid = int(r["user_id"])
-                if uid not in dev_map:
-                    dev_map[uid] = int(r.get("is_enabled", 1) or 1)
+                platform = r["platform"]
+                dev_map[(uid, platform)] = int(r.get("is_enabled", 1))
 
-            # Final filtering in Python using pre-fetched maps
-            for u in all_users:
-                uid_raw = u.get("id")
-                if uid_raw is None:
-                    continue
-                uid = int(uid_raw)
-                if blocked_map.get(uid, 0) > 0:
-                    blocked_users.append(u)
-                    continue
-                if pref_map.get(uid, 1) == 0:
-                    continue
-                if dev_map.get(uid, 1) == 0:
-                    continue
-                enabled_users.append(u)
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT DISTINCT wps.user_id FROM web_push_subscriptions wps JOIN notification_devices d ON d.user_id=wps.user_id AND d.platform='WEBPUSH' AND d.is_enabled=1 AND JSON_UNQUOTE(d.payload)=wps.endpoint WHERE wps.user_id IN ({ids_csv})"
+                )
+                subscribed_ids = {int(r["user_id"]) for r in (cur.fetchall() or [])}
 
-            users = enabled_users
-        if not users:
+            enabled_users, blocked_users, users, push_users = select_day_shift_recipients(
+                all_users, blocked_map, pref_map, dev_map, subscribed_ids)
+        for user in push_users:
+            enqueue_day_shift_push(conn, today, int(user["id"]))
+        if not users and not push_users:
             hook = os.getenv("DISCORD_WEBHOOK_URL", "")
             if hook:
                 requests.post(hook, json={
@@ -553,14 +593,15 @@ def notify_day_shift(**context):
             return
 
         # Compose HTML/text via email-compose gRPC (React Email)
-        # For production, consider queueing notifications in notifications_queue.
         members = [
             (u.get("display_name") or u.get("email") or "").strip()
-            for u in users
+            for u in enabled_users
             if (u.get("display_name") or u.get("email") or "").strip()
         ]
         app_name = "Taskly"
+        subject = "日直のお知らせ"
         events = list_events_for_date(today)
+        failures = []
         # Compose once per language and send only to users with that preference.
         for locale in ("ja", "en"):
             recipients = [
@@ -578,8 +619,25 @@ def notify_day_shift(**context):
                 )
             except Exception as e:
                 print(f"[DayShift] email-compose gRPC failed ({locale}): {e}")
+                failures.append(e)
                 continue
-            send_day_shift_emails(recipients, subject, text_body, html_body)
+            for recipient in recipients:
+                uid = int(recipient["id"])
+                key = f"dayshift:{today.isoformat()}:email:{uid}"
+                if not claim_delivery(conn, key, "email", uid):
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT status FROM notification_deliveries WHERE delivery_key=%s", (key,))
+                        row = cur.fetchone()
+                    if not row or row["status"] != "sent":
+                        failures.append(RuntimeError(f"unresolved delivery: {key}"))
+                    continue
+                try:
+                    send_day_shift_emails([recipient], subject, text_body, html_body)
+                except Exception as e:
+                    finish_delivery(conn, key, e)
+                    failures.append(e)
+                else:
+                    finish_delivery(conn, key, None)
         # Discord embeds: report notified users (including blocked ones in Users)
         blocked_names = [
             (u.get("display_name") or u.get("email") or "").strip()
@@ -594,7 +652,8 @@ def notify_day_shift(**context):
                 {"name": "Date", "value": today.strftime("%Y-%m-%d"), "inline": True},
                 {"name": "Cycle ID", "value": str(cur_cid), "inline": True},
                 {"name": "Users", "value": users_field_value, "inline": False},
-                {"name": "Count", "value": str(len(users)), "inline": True},
+                {"name": "Email", "value": str(len(users)), "inline": True},
+                {"name": "Web Push", "value": str(len(push_users)), "inline": True},
             ]
             if blocked_names:
                 fields.append({
@@ -605,7 +664,7 @@ def notify_day_shift(**context):
             try:
                 requests.post(hook, json={
                     "embeds": [{
-                        "title": "Day Shift Notified",
+                        "title": "Day Shift Delivery Attempted",
                         "description": subject,
                         "color": 0x3498DB,
                         "fields": fields,
@@ -614,7 +673,8 @@ def notify_day_shift(**context):
                 }, timeout=5)
             except Exception:
                 pass
-            # TODO: integrate with notifications_queue or direct SMTP/WebPush send
+        if failures:
+            raise RuntimeError(f"day shift email delivery failed for {len(failures)} recipient(s)")
     finally:
         try:
             conn.close()
@@ -626,7 +686,24 @@ with DAG(
     start_date=datetime(2025, 1, 1),
     schedule="30 23 * * *",
     catchup=False,
-    default_args={"owner": "taskly"},
+    default_args={"owner": "taskly", "retries": 2, "retry_delay": timedelta(minutes=5)},
     tags=["day_shift"],
 ) as dag:
-    PythonOperator(task_id="notify_day_shift", python_callable=notify_day_shift)
+    notify = PythonOperator(task_id="notify_day_shift", python_callable=notify_day_shift)
+    deliver_push = BashOperator(
+        task_id="deliver_day_shift_push",
+        bash_command="/opt/airflow/bin/notifications-delivery-channels-web-push",
+        env={
+            "DB_HOST": os.environ.get("DB_HOST", os.environ.get("MYSQL_HOST", "db")),
+            "DB_PORT": os.environ.get("DB_PORT", os.environ.get("MYSQL_PORT", "3306")),
+            "MYSQL_USER": os.environ.get("MYSQL_USER", "taskly"),
+            "MYSQL_PASSWORD": os.environ.get("MYSQL_PASSWORD", "taskly_password"),
+            "MYSQL_DATABASE": os.environ.get("MYSQL_DATABASE", "taskly"),
+            "WEB_URL": os.environ.get("WEB_URL", "https://app.taskly.local"),
+            "VAPID_PUBLIC_KEY": os.environ.get("VAPID_PUBLIC_KEY", ""),
+            "VAPID_PRIVATE_KEY": os.environ.get("VAPID_PRIVATE_KEY", ""),
+            "VAPID_SUBJECT": os.environ.get("VAPID_SUBJECT", "mailto:noreply@taskly.local"),
+        },
+        trigger_rule=TriggerRule.ALL_DONE,
+    )
+    notify >> deliver_push

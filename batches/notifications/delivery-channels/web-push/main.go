@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -27,7 +28,7 @@ func main() {
 	}
 	defer db.Close()
 
-	items, err := fetchPendingWebPushQueue(db)
+	items, err := fetchPendingWebPushQueue(db, 0)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -39,88 +40,115 @@ func main() {
 	// Prefer DB-stored VAPID keys when available, falling back to env.
 	vapidPublic, vapidPrivate, vapidSubject := loadVAPIDFromDB(db)
 	if strings.TrimSpace(vapidPrivate) == "" || strings.TrimSpace(vapidPublic) == "" {
-		log.Println("missing VAPID keys; skipping web push")
-		return
+		log.Fatal("missing VAPID keys")
 	}
 
 	opts := &webpush.Options{Subscriber: vapidSubject, VAPIDPublicKey: vapidPublic, VAPIDPrivateKey: vapidPrivate}
 	sent := 0
-	for _, it := range items {
-		subs, err := fetchUserSubscriptions(db, it.UserID)
-		if err != nil {
-			log.Printf("subs error id=%d: %v\n", it.ID, err)
-			_ = markQueueError(db, it.ID, err)
-			continue
-		}
-		if len(subs) == 0 {
-			log.Printf("no subs for id=%d\n", it.ID)
-			_ = markQueueSkipped(db, it.ID, "no subscription")
-			continue
-		}
-
-		payload, _ := json.Marshal(map[string]string{
-			"title": fmt.Sprintf("[%s] %s", it.WhenLabel, it.Subject),
-			"body":  it.Title + "\n" + it.Body,
-			"tag":   "taskly",
-			"url":   dcCommon.ValueOr(os.Getenv("WEB_URL"), "https://app.taskly.local"),
-		})
-
-		for _, s := range subs {
-			resp, err := webpush.SendNotification(payload, &webpush.Subscription{Endpoint: s.Endpoint, Keys: webpush.Keys{P256dh: s.P256dh, Auth: s.Auth}}, opts)
+	failed := 0
+	lastID := int64(0)
+	for len(items) > 0 {
+		for _, it := range items {
+			lastID = it.ID
+			eligible, err := webPushEligible(db, it)
 			if err != nil {
-				log.Printf("webpush send error id=%d: %v\n", it.ID, err)
+				log.Printf("eligibility error id=%d: %v", it.ID, err)
+				failed++
 				continue
 			}
-			_ = resp.Body.Close()
+			if !eligible {
+				if err := markQueueSkipped(db, it.ID, "notification setting disabled or user blocked"); err != nil {
+					failed++
+				}
+				continue
+			}
+			subs, err := fetchUserSubscriptions(db, it.UserID)
+			if err != nil {
+				log.Printf("subs error id=%d: %v\n", it.ID, err)
+				_ = markQueueError(db, it.ID, err)
+				failed++
+				continue
+			}
+			if len(subs) == 0 {
+				log.Printf("no subs for id=%d\n", it.ID)
+				_ = markQueueSkipped(db, it.ID, "no subscription")
+				continue
+			}
+
+			payload, err := json.Marshal(map[string]string{
+				"title": fmt.Sprintf("[%s] %s", it.WhenLabel, it.Subject),
+				"body":  it.Title + "\n" + it.Body,
+				"tag":   fmt.Sprintf("taskly-%d", it.ID),
+				"url":   dcCommon.ValueOr(os.Getenv("WEB_URL"), "https://app.taskly.local"),
+			})
+			if err != nil {
+				_ = markQueueError(db, it.ID, err)
+				failed++
+				continue
+			}
+
+			itemFailed := false
+			for _, s := range subs {
+				key := fmt.Sprintf("%s:sub:%x", notificationKey(it), sha256.Sum256([]byte(s.Endpoint)))
+				claimed, err := claimWebPushDelivery(db, key, it.UserID.Int64)
+				if err != nil {
+					log.Printf("claim error id=%d: %v", it.ID, err)
+					itemFailed = true
+					continue
+				}
+				if !claimed {
+					var status string
+					if err := db.QueryRow(`SELECT status FROM notification_deliveries WHERE delivery_key=?`, key).Scan(&status); err != nil || status != "sent" {
+						itemFailed = true
+					}
+					continue
+				}
+				resp, err := webpush.SendNotification(payload, &webpush.Subscription{Endpoint: s.Endpoint, Keys: webpush.Keys{P256dh: s.P256dh, Auth: s.Auth}}, opts)
+				if err == nil {
+					_ = resp.Body.Close()
+					if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+						err = fmt.Errorf("webpush HTTP %d", resp.StatusCode)
+					}
+				}
+				if recordErr := finishWebPushDelivery(db, key, err); recordErr != nil {
+					log.Printf("record delivery id=%d: %v", it.ID, recordErr)
+					itemFailed = true
+				}
+				if err != nil {
+					log.Printf("webpush send error id=%d: %v\n", it.ID, err)
+					itemFailed = true
+				}
+			}
+			if itemFailed {
+				failed++
+				_ = markQueueError(db, it.ID, fmt.Errorf("one or more subscriptions failed"))
+				continue
+			}
+			sent++
+			if err := markQueueProcessed(db, it.ID); err != nil {
+				failed++
+			}
 		}
-		sent++
-		_ = markQueueProcessed(db, it.ID)
+		items, err = fetchPendingWebPushQueue(db, lastID)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	log.Printf("webpush notifications sent: %d\n", sent)
-	// Cleanup: remove processed rows to keep queue temporary
-	if _, err := db.Exec(`DELETE FROM notifications_queue WHERE processed_at IS NOT NULL`); err != nil {
-		log.Println("cleanup processed queue:", err)
+	if failed > 0 {
+		log.Fatalf("webpush notifications failed: %d", failed)
 	}
 }
 
-func fetchPendingWebPushQueue(db *sql.DB) ([]dcCommon.QueueItem, error) {
-	// notifications_queue.user_id を起点に、以下の条件でフィルタ:
-	// - blocks によるブロック中ユーザーを除外
-	// - notification_type_prefs で該当 type が is_enabled=0 のユーザーを除外
-	//   (レコードがない場合は配信OK)
-	// - notification_devices で WEBPUSH デバイスが is_enabled=1 のユーザーに限定
-	//   (レコードがないユーザーには配信しない)
-	// - web_push_subscriptions に有効な購読があるユーザーに限定
-	// DISTINCT prevents multiple devices/subscriptions from duplicating a queue item;
-	// fetchUserSubscriptions fans that item out to each subscription exactly once.
+func fetchPendingWebPushQueue(db *sql.DB, afterID int64) ([]dcCommon.QueueItem, error) {
 	rows, err := db.Query(`
-		SELECT DISTINCT q.id, q.when_label, q.subject, q.title, q.body, q.user_id
+		SELECT q.id, q.kind, q.event_key, q.slot, q.when_label, q.subject, q.title, q.body, q.user_id
 		FROM notifications_queue q
-		JOIN users u ON u.id = q.user_id
-		LEFT JOIN blocks b
-		  ON b.user_id = u.id
-		 AND (b.expires_at IS NULL OR b.expires_at > NOW())
-		LEFT JOIN notification_type_prefs ntp
-		  ON ntp.user_id = u.id
-		 AND ntp.notification_type IN ('TASK','DAYSHIFT')
-		LEFT JOIN notification_devices nd
-		  ON nd.user_id = u.id
-		 AND nd.platform = 'WEBPUSH'
-		 AND nd.is_enabled = 1
-		JOIN web_push_subscriptions wps
-		  ON wps.user_id = u.id
 		WHERE q.processed_at IS NULL
 		  AND q.channel = 'webpush'
-		  AND COALESCE(u.is_deleted, 0) = 0
-		  AND b.id IS NULL
-		  AND (
-		    ntp.id IS NULL
-		    OR (ntp.notification_type = 'TASK' AND ntp.is_enabled = 1 AND q.kind = 'task')
-		    OR (ntp.notification_type = 'DAYSHIFT' AND ntp.is_enabled = 1 AND q.kind = 'dayshift')
-		  )
-		  AND nd.id IS NOT NULL
+		  AND q.id > ?
 		ORDER BY q.id ASC
-		LIMIT 200`)
+		LIMIT 200`, afterID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,12 +156,77 @@ func fetchPendingWebPushQueue(db *sql.DB) ([]dcCommon.QueueItem, error) {
 	var out []dcCommon.QueueItem
 	for rows.Next() {
 		var it dcCommon.QueueItem
-		if err := rows.Scan(&it.ID, &it.WhenLabel, &it.Subject, &it.Title, &it.Body, &it.UserID); err != nil {
-			continue
+		if err := rows.Scan(&it.ID, &it.Kind, &it.EventKey, &it.Slot, &it.WhenLabel, &it.Subject, &it.Title, &it.Body, &it.UserID); err != nil {
+			return nil, err
 		}
 		out = append(out, it)
 	}
-	return out, nil
+	return out, rows.Err()
+}
+
+func notificationKey(it dcCommon.QueueItem) string {
+	if it.EventKey.Valid && it.EventKey.String != "" {
+		return it.EventKey.String
+	}
+	return fmt.Sprintf("queue:%d", it.ID)
+}
+
+func webPushEligible(db *sql.DB, it dcCommon.QueueItem) (bool, error) {
+	if !it.UserID.Valid {
+		return false, nil
+	}
+	typeKey := "TASK"
+	slotKey := slotType(it.Slot)
+	if it.Kind == "dayshift" {
+		typeKey = "DAYSHIFT"
+		slotKey = "DAYSHIFT"
+	}
+	var count int
+	err := db.QueryRow(`SELECT COUNT(1) FROM users u
+		WHERE u.id = ? AND u.is_deleted = 0
+		AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.user_id=u.id AND (b.expires_at IS NULL OR b.expires_at > NOW()))
+		AND NOT EXISTS (SELECT 1 FROM notification_type_prefs p WHERE p.user_id=u.id AND p.notification_type=? AND p.is_enabled=0)
+		AND NOT EXISTS (SELECT 1 FROM notification_type_prefs p WHERE p.user_id=u.id AND p.notification_type=? AND p.is_enabled=0)
+		AND EXISTS (SELECT 1 FROM notification_devices d WHERE d.user_id=u.id AND d.platform='WEBPUSH' AND d.is_enabled=1)`,
+		it.UserID.Int64, typeKey, slotKey).Scan(&count)
+	return count > 0, err
+}
+
+func slotType(slot sql.NullString) string {
+	switch slot.String {
+	case "morning":
+		return "TASK_MORNING"
+	case "evening":
+		return "TASK_EVENING"
+	default:
+		return "TASK"
+	}
+}
+
+func claimWebPushDelivery(db *sql.DB, key string, userID int64) (bool, error) {
+	result, err := db.Exec(`INSERT INTO notification_deliveries (delivery_key, channel, user_id, status, attempts)
+		VALUES (?, 'webpush', ?, 'sending', 1)
+		ON DUPLICATE KEY UPDATE
+		attempts = IF(status='error', attempts+1, attempts),
+		error_message = IF(status='error', NULL, error_message),
+		status = IF(status='error', 'sending', status)`, key, userID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected > 0, err
+}
+
+func finishWebPushDelivery(db *sql.DB, key string, sendErr error) error {
+	status := "sent"
+	var message any
+	if sendErr != nil {
+		status = "error"
+		message = fmt.Sprintf("%.2000s", sendErr.Error())
+	}
+	_, err := db.Exec(`UPDATE notification_deliveries SET status=?, error_message=?, sent_at=IF(?='sent', NOW(), sent_at)
+		WHERE delivery_key=? AND status='sending'`, status, message, status, key)
+	return err
 }
 
 func fetchUserSubscriptions(db *sql.DB, userID sql.NullInt64) ([]WebPushSubscription, error) {
@@ -142,7 +235,12 @@ func fetchUserSubscriptions(db *sql.DB, userID sql.NullInt64) ([]WebPushSubscrip
 	}
 	// Unsubscribe deletes the subscription row, so there is no revocation flag
 	// in the canonical schema to filter on here.
-	rows, err := db.Query(`SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE user_id = ?`, userID.Int64)
+	rows, err := db.Query(`SELECT DISTINCT wps.endpoint, wps.p256dh, wps.auth
+		FROM web_push_subscriptions wps
+		JOIN notification_devices d ON d.user_id=wps.user_id
+		  AND d.platform='WEBPUSH' AND d.is_enabled=1
+		  AND JSON_UNQUOTE(d.payload)=wps.endpoint
+		WHERE wps.user_id = ?`, userID.Int64)
 	if err != nil {
 		return nil, err
 	}
@@ -151,11 +249,11 @@ func fetchUserSubscriptions(db *sql.DB, userID sql.NullInt64) ([]WebPushSubscrip
 	for rows.Next() {
 		var s WebPushSubscription
 		if err := rows.Scan(&s.Endpoint, &s.P256dh, &s.Auth); err != nil {
-			continue
+			return nil, err
 		}
 		out = append(out, s)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // loadVAPIDFromDB loads keys from the canonical table, then the legacy GORM
@@ -178,7 +276,7 @@ func loadVAPIDFromDB(db *sql.DB) (pub, priv, subj string) {
 }
 
 func markQueueProcessed(db *sql.DB, id int64) error {
-	_, err := db.Exec(`UPDATE notifications_queue SET processed_at = NOW(), status='sent' WHERE id = ?`, id)
+	_, err := db.Exec(`UPDATE notifications_queue SET processed_at = NOW(), status='sent', error_message=NULL WHERE id = ?`, id)
 	return err
 }
 
@@ -187,7 +285,7 @@ func markQueueError(db *sql.DB, id int64, e error) error {
 	if len(msg) > 2000 {
 		msg = msg[:2000]
 	}
-	_, err := db.Exec(`UPDATE notifications_queue SET processed_at = NOW(), status='error', error_message=? WHERE id = ?`, msg, id)
+	_, err := db.Exec(`UPDATE notifications_queue SET status='error', error_message=? WHERE id = ?`, msg, id)
 	return err
 }
 
