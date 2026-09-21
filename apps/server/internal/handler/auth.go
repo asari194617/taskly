@@ -2,11 +2,13 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/smtp"
 	"strconv"
@@ -75,9 +77,13 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 			}
 		}
 		// generate code
-		code := fmt.Sprintf("%06d", now.UnixNano()%1000000)
+		code, err := generateLoginCode(h.loginCodeRandom)
+		if err != nil {
+			log.Printf("login code random generation failed: %v", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "server"})
+		}
 		// In development, log the code for testing when email delivery is unreliable
-		if strings.ToLower(utils.Env("NODE_ENV", "development")) == "development" {
+		if shouldLogLoginCode(utils.Env("NODE_ENV", "")) {
 			log.Printf("[DEV] Login code for %s: %s", email, code)
 		}
 		// Compose email via email-compose service (gRPC)
@@ -132,7 +138,6 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
 		mode := strings.ToLower(strings.TrimSpace(utils.Env("SMTP_TLS", ""))) // "starttls" | "smtps" | ""
 		var conn net.Conn
-		var err error
 		if mode == "smtps" || smtpPort == "465" {
 			// Implicit TLS
 			conn, err = tls.DialWithDialer(dialer, "tcp", smtpHost+":"+smtpPort, &tls.Config{ServerName: smtpHost})
@@ -526,6 +531,18 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		utils.ClearSessionCookie(c)
 		return c.SendStatus(fiber.StatusNoContent)
 	})
+}
+
+func generateLoginCode(source io.Reader) (string, error) {
+	n, err := rand.Int(source, big.NewInt(1000000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
+}
+
+func shouldLogLoginCode(environment string) bool {
+	return strings.EqualFold(strings.TrimSpace(environment), "development")
 }
 
 func formatLoginCodeSubject(subject, code string) string {
