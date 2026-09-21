@@ -164,7 +164,7 @@ func safeOAuthNext(raw string) string {
 	return next
 }
 
-var oauthHTTPClient = &http.Client{Timeout: 5 * time.Second}
+var oauthHTTPClient = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 func oauthExchange(cfg oauthClientConfig, code, verifier string) (string, error) {
 	form := url.Values{}
