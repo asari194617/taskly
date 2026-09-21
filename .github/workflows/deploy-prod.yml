@@ -234,11 +234,12 @@ jobs:
           docker compose down --remove-orphans || true
           docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+          # Do not let compose consume the remaining SSH heredoc from stdin.
           docker compose exec -T airflow-scheduler sh -ec '
             test -x /opt/airflow/bin/notifications-que-manager
             test -x /opt/airflow/bin/backup-mysql
             test -x /opt/airflow/bin/moderation
-          '
+          ' </dev/null
           docker compose ps
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
           ./ops/install-user-cron.sh "$PROD_WORKDIR"
