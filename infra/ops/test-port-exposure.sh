@@ -15,6 +15,9 @@ jq -e '
   | all($internal[]; (($config.services[.].ports // []) | length) == 0)
 ' "$tmp" >/dev/null
 
+docker compose --profile search --file "$COMPOSE_FILE" config --format json >"$tmp"
+jq -e '(.services.opensearch.ports // []) | length == 0' "$tmp" >/dev/null
+
 # Host Nginx and host-local monitoring use these published ports. They must
 # never listen on every interface.
 jq -e '
