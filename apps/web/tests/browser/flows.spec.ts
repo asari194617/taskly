@@ -127,3 +127,52 @@ test("管理者が教科を作成できる", async ({ page }) => {
   await expect(page.getByRole("cell", { name: "理科" })).toBeVisible();
   expect(api.subjects.at(-1)?.name_ja).toBe("理科");
 });
+
+test("通知スイッチの名前・状態が日本語と英語で読み取れ、キーボードで操作できる", async ({ page }) => {
+  await mockApi(page);
+  await page.route("http://localhost:3063/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/settings/notification-methods") {
+      return route.fulfill({ json: { email: true, webpush: false } });
+    }
+    if (path === "/settings/notification-types") {
+      return route.fulfill({ json: { TASK: true, TASK_MORNING: true, TASK_EVENING: false, DAYSHIFT: true } });
+    }
+    if (path === "/push/devices") return route.fulfill({ json: [] });
+    if (path === "/push/vapidPublicKey") return route.fulfill({ json: { publicKey: "unused" } });
+    return route.fallback();
+  });
+  await login(page);
+  await page.goto("/settings/notifications");
+  await expect(page.locator('astro-island[component-url*="Notifications"]')).not.toHaveAttribute("ssr", "");
+  await page.getByRole("button", { name: "通知方法" }).click();
+  await page.getByRole("button", { name: "通知の種類" }).click();
+
+  for (const [name, checked] of [
+    ["メール", true], ["Webプッシュ通知", false], ["期限が近い課題", true],
+    ["朝の通知", true], ["夕方の通知", false], ["日直のお知らせ", true],
+  ] as const) {
+    await expect(page.getByRole("switch", { name, exact: true })).toHaveAttribute("aria-checked", String(checked));
+  }
+
+  const email = page.getByRole("switch", { name: "メール", exact: true });
+  await email.focus();
+  await page.keyboard.press("Space");
+  await expect(email).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Tab");
+  const push = page.getByRole("switch", { name: "Webプッシュ通知" });
+  if (await push.isEnabled()) {
+    await expect(push).toBeFocused();
+  } else {
+    await expect(page.getByRole("button", { name: "通知の種類" })).toBeFocused();
+  }
+
+  await page.evaluate(() => {
+    localStorage.setItem("display_lang", "en");
+    window.dispatchEvent(new Event("languagechange"));
+  });
+  for (const name of ["Email", "Web push notifications", "Tasks due soon", "Morning notifications", "Evening notifications", "Day shift notifications"]) {
+    await expect(page.getByRole("switch", { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("switch", { name: "Email", exact: true })).toHaveAttribute("aria-checked", "false");
+});

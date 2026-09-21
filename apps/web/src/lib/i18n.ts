@@ -325,6 +325,16 @@ export const t = (lang: Lang) => ({
   },
   settingsNotifications: {
     heading: lang === "ja" ? "通知設定" : "Notification Settings",
+    methods: lang === "ja" ? "通知方法" : "Notification methods",
+    email: lang === "ja" ? "メール" : "Email",
+    webPushLabel: lang === "ja" ? "Webプッシュ通知" : "Web push notifications",
+    types: lang === "ja" ? "通知の種類" : "Notification types",
+    taskDue: lang === "ja" ? "期限が近い課題" : "Tasks due soon",
+    morning: lang === "ja" ? "朝の通知" : "Morning notifications",
+    evening: lang === "ja" ? "夕方の通知" : "Evening notifications",
+    dayShift: lang === "ja" ? "日直のお知らせ" : "Day shift notifications",
+    deviceSettings: lang === "ja" ? "通知端末の設定" : "Notification device settings",
+    defaultDevice: "Web Push",
     emailDesc:
       lang === "ja"
         ? "タスクや日直の更新をメールで受け取ります。"
