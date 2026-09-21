@@ -30,6 +30,122 @@ func TestFormatLoginCodeSubject(t *testing.T) {
 	}
 }
 
+func TestGenerateLoginCode(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input []byte
+		want  string
+	}{
+		{"leading zeroes", []byte{0, 0, 1}, "000001"},
+		{"upper bound", []byte{0x0f, 0x42, 0x3f}, "999999"},
+		{"rejection sampling", []byte{0x0f, 0x42, 0x40, 0, 0, 2}, "000002"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := generateLoginCode(bytes.NewReader(tc.input))
+			if err != nil || got != tc.want {
+				t.Fatalf("generateLoginCode() = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+	if code, err := generateLoginCode(bytes.NewReader(nil)); err == nil || code != "" {
+		t.Fatalf("random source failure = %q, %v", code, err)
+	}
+}
+
+func TestRequestCodeStopsWhenRandomSourceFails(t *testing.T) {
+	app, mr, db, _ := newAuthTransactionTestApp(t)
+	// Set the reader on the registered handler through a fresh route fixture.
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	h := NewHandler(db, rdb, nil)
+	h.loginCodeRandom = bytes.NewReader(nil)
+	app = fiber.New()
+	h.RegisterAuthRoutes(app.Group("/auth"))
+	rw, _, err := doJSONRequest(app, fiber.MethodPost, "/auth/request-code", map[string]string{"email": "mfa@example.com"}, nil)
+	if err != nil || rw.Code != fiber.StatusInternalServerError {
+		t.Fatalf("request status=%d err=%v", rw.Code, err)
+	}
+	var count int64
+	if err := db.Model(&domain.LoginCode{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("issued codes=%d err=%v", count, err)
+	}
+}
+
+func TestLoginCodeDevelopmentLoggingGate(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		want bool
+	}{
+		{"development", true}, {"DEVELOPMENT", true}, {"production", false}, {"", false}, {"staging", false},
+	} {
+		if got := shouldLogLoginCode(tc.env); got != tc.want {
+			t.Errorf("shouldLogLoginCode(%q) = %v, want %v", tc.env, got, tc.want)
+		}
+	}
+}
+
+func TestLoginCodeExpiryAttemptsAndConsumption(t *testing.T) {
+	for _, scenario := range []string{"expired", "attempt limit", "single use"} {
+		t.Run(scenario, func(t *testing.T) {
+			app, _, db, user := newAuthTransactionTestApp(t)
+			if err := db.Model(&user).Update("hashed_password", nil).Error; err != nil {
+				t.Fatal(err)
+			}
+			code := "123456"
+			now := time.Now()
+			expiry := now.Add(10 * time.Minute)
+			if scenario == "expired" {
+				expiry = now.Add(-time.Second)
+			}
+			loginCode := domain.LoginCode{Email: user.Email, HashedCode: utils.Sha256Hex([]byte(code)), CreatedAt: now, ExpiresAt: expiry}
+			if err := db.Create(&loginCode).Error; err != nil {
+				t.Fatal(err)
+			}
+			login := func(value string) int {
+				rw, data, err := doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{"email": user.Email, "code": value}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if rw.Code != fiber.StatusOK && rw.Code != fiber.StatusUnauthorized && rw.Code != fiber.StatusTooManyRequests {
+					t.Fatalf("unexpected login status=%d body=%s", rw.Code, data)
+				}
+				return rw.Code
+			}
+			switch scenario {
+			case "expired":
+				if got := login(code); got != fiber.StatusUnauthorized {
+					t.Fatalf("expired code status=%d", got)
+				}
+			case "attempt limit":
+				for i := 0; i < 5; i++ {
+					if got := login("000000"); got != fiber.StatusUnauthorized {
+						t.Fatalf("attempt %d status=%d", i+1, got)
+					}
+				}
+				if got := login(code); got != fiber.StatusTooManyRequests {
+					t.Fatalf("locked code status=%d", got)
+				}
+			case "single use":
+				if got := login(code); got != fiber.StatusOK {
+					t.Fatalf("valid code status=%d", got)
+				}
+				if got := login(code); got != fiber.StatusUnauthorized {
+					t.Fatalf("reused code status=%d", got)
+				}
+			}
+			if err := db.First(&loginCode, loginCode.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "attempt limit" && (loginCode.FailedAttempts != 5 || loginCode.LockedUntil == nil) {
+				t.Fatalf("attempt limit state: %+v", loginCode)
+			}
+			if scenario == "single use" && loginCode.ConsumedAt == nil {
+				t.Fatal("successful code was not consumed")
+			}
+		})
+	}
+}
+
 func TestWebLoginUsesHttpOnlyCookieWithoutReturningToken(t *testing.T) {
 	app, _, db, user := newAuthTransactionTestApp(t)
 	// This fixture normally requires MFA; disable email-code login so the
