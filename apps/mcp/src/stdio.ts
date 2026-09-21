@@ -157,7 +157,10 @@ const tools: Record<
 };
 
 async function main() {
-  const server = new Server({ name: "taskly-mcp-stdio", version: "1.0.0" });
+  const server = new Server(
+    { name: "taskly-mcp-stdio", version: "1.0.0" },
+    { capabilities: { tools: {} } },
+  );
 
   // tools/list
   server.setRequestHandler(ListToolsRequestSchema, async (_req) => {

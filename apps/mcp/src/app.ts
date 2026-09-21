@@ -42,6 +42,7 @@ export async function createApp(pool: DBPool) {
 
   // Tasks CRUD (subset)
   app.get("/tasks", async (req, reply) => {
+    const userId = (req as any).userId as number;
     const q = (req.query as any)?.q as string | undefined;
     const limit = Math.min(
       Math.max(Number((req.query as any)?.limit ?? 200), 1),
@@ -49,10 +50,10 @@ export async function createApp(pool: DBPool) {
     );
     const offset = Math.max(Number((req.query as any)?.offset ?? 0), 0);
     let sql =
-      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks";
-    const params: any[] = [];
+      "SELECT id, added_user_id, title, subject_id, description, type, is_require_hand_in, is_self_check_required, deadline, deadline_since, deadline_until, created_at, updated_at FROM tasks WHERE added_user_id = ?";
+    const params: any[] = [userId];
     if (q) {
-      sql += " WHERE title LIKE ? OR description LIKE ?";
+      sql += " AND (title LIKE ? OR description LIKE ?)";
       params.push(`%${q}%`, `%${q}%`);
     }
     sql += " ORDER BY id DESC LIMIT ? OFFSET ?";
@@ -85,6 +86,7 @@ export async function createApp(pool: DBPool) {
 
   app.patch("/tasks/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
+    const userId = (req as any).userId as number;
     const body = req.body as any;
     const fields: string[] = [];
     const values: any[] = [];
@@ -107,21 +109,29 @@ export async function createApp(pool: DBPool) {
     maybe("deadline_since");
     maybe("deadline_until");
     if (fields.length === 0) return reply.send({ ok: true });
-    const sql = `UPDATE tasks SET ${fields.join(", ")} WHERE id = ?`;
-    values.push(id);
+    const sql = `UPDATE tasks SET ${fields.join(", ")} WHERE id = ? AND added_user_id = ?`;
+    values.push(id, userId);
     await pool.execute(sql, values);
     reply.send({ ok: true });
   });
 
   app.delete("/tasks/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
-    await pool.execute("DELETE FROM tasks WHERE id = ?", [id]);
+    const userId = (req as any).userId as number;
+    await pool.execute("DELETE FROM tasks WHERE id = ? AND added_user_id = ?", [
+      id,
+      userId,
+    ]);
     reply.send({ ok: true });
   });
 
   // Users read/update (subset)
   app.get("/users/:id", async (req, reply) => {
     const id = Number((req.params as any).id);
+    const userId = (req as any).userId as number;
+    if (id !== userId) {
+      return reply.code(403).send({ error: "forbidden" });
+    }
     const [rows] = await pool.query(
       "SELECT id, email, display_name, is_deleted, notification_lang, is_registered, is_agreed_policies, created_at FROM users WHERE id = ? LIMIT 1",
       [id],

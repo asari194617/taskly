@@ -41,3 +41,6 @@ jobs:
       - name: Build
         working-directory: apps/mcp
         run: npm run build
+      - name: Test
+        working-directory: apps/mcp
+        run: npm test
