@@ -172,8 +172,12 @@ func requestedListSize(args []*ast.Argument, variables map[string]any) int {
 		case *ast.IntValue:
 			value, _ = strconv.Atoi(typed.Value)
 		case *ast.Variable:
-			if n, ok := variables[typed.Name.Value].(float64); ok && n > 0 && n <= 1000000 {
-				value = int(n)
+			if n, ok := variables[typed.Name.Value].(float64); ok && n > 0 {
+				if n > float64(maxGraphQLComplexity) {
+					value = maxGraphQLComplexity + 1
+				} else {
+					value = int(n)
+				}
 			}
 		}
 		if value > size {
