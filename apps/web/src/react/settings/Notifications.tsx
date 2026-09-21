@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { webFetch } from "@/lib/api";
+import { applyNotificationSetting, saveNotificationSetting } from "@/features/notifications/settings";
 
 const apiBase =
   (import.meta as any).env.PUBLIC_API_URL || "http://localhost:3063";
@@ -59,6 +60,7 @@ export default function SettingsNotifications() {
   const [emailOn, setEmailOn] = React.useState(true);
   const [pushOn, setPushOn] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
   const [perm, setPerm] = React.useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
@@ -287,30 +289,32 @@ export default function SettingsNotifications() {
   };
 
   const toggleEmail = async (next: boolean) => {
-    setEmailOn(next);
+    setSaving(true);
     try {
-      await webFetch(`${apiBase}/settings/notification-methods`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Platform": "web",
-        },
-        body: JSON.stringify({ email: next }),
-      });
-    } catch {}
+      await applyNotificationSetting(emailOn, next, setEmailOn, () =>
+        saveNotificationSetting(apiBase, "notification-methods", { email: next }));
+    } catch (e: any) {
+      toast({ variant: "destructive", title: e?.message || dict.settingsNotifications.errorGeneric });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const toggleType = async (key: string, next: boolean) => {
+  const toggleType = async (
+    key: "TASK" | "TASK_MORNING" | "TASK_EVENING" | "DAYSHIFT",
+    previous: boolean,
+    next: boolean,
+    publish: (value: boolean) => void,
+  ) => {
+    setSaving(true);
     try {
-      await webFetch(`${apiBase}/settings/notification-types`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Platform": "web",
-        },
-        body: JSON.stringify({ [key]: next }),
-      });
-    } catch {}
+      await applyNotificationSetting(previous, next, publish, () =>
+        saveNotificationSetting(apiBase, "notification-types", { [key]: next }));
+    } catch (e: any) {
+      toast({ variant: "destructive", title: e?.message || dict.settingsNotifications.errorGeneric });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const toggleDevice = async (id: number, next: boolean) => {
@@ -374,7 +378,7 @@ export default function SettingsNotifications() {
               <Card className="p-4 space-y-3">
                 <div className="font-bold flex items-center justify-between">
                   <div>メール</div>
-                  <Switch checked={emailOn} onCheckedChange={toggleEmail} />
+                  <Switch checked={emailOn} onCheckedChange={toggleEmail} disabled={saving} />
                 </div>
               </Card>
               <Card className="p-4 space-y-3">
@@ -453,10 +457,8 @@ export default function SettingsNotifications() {
                   </p>
                   <Switch
                     checked={typeTask}
-                    onCheckedChange={(v) => {
-                      setTypeTask(v);
-                      toggleType("TASK", v);
-                    }}
+                    disabled={saving}
+                    onCheckedChange={(v) => toggleType("TASK", typeTask, v, setTypeTask)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -465,11 +467,8 @@ export default function SettingsNotifications() {
                   </p>
                   <Switch
                     checked={typeMorning}
-                    disabled={!typeTask}
-                    onCheckedChange={(v) => {
-                      setTypeMorning(v);
-                      toggleType("TASK_MORNING", v);
-                    }}
+                    disabled={saving || !typeTask}
+                    onCheckedChange={(v) => toggleType("TASK_MORNING", typeMorning, v, setTypeMorning)}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -478,11 +477,8 @@ export default function SettingsNotifications() {
                   </p>
                   <Switch
                     checked={typeEvening}
-                    disabled={!typeTask}
-                    onCheckedChange={(v) => {
-                      setTypeEvening(v);
-                      toggleType("TASK_EVENING", v);
-                    }}
+                    disabled={saving || !typeTask}
+                    onCheckedChange={(v) => toggleType("TASK_EVENING", typeEvening, v, setTypeEvening)}
                   />
                 </div>
               </Card>
@@ -493,10 +489,8 @@ export default function SettingsNotifications() {
                   </p>
                   <Switch
                     checked={typeDayShift}
-                    onCheckedChange={(v) => {
-                      setTypeDayShift(v);
-                      toggleType("DAYSHIFT", v);
-                    }}
+                    disabled={saving}
+                    onCheckedChange={(v) => toggleType("DAYSHIFT", typeDayShift, v, setTypeDayShift)}
                   />
                 </div>
               </Card>

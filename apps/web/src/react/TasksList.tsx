@@ -95,7 +95,8 @@ import {
 } from "@/features/tasks/api";
 import {
   normalizeTaskSearch,
-  updateTaskCompletion,
+  runOptimisticMutation,
+  scheduleTaskCompletion,
 } from "@/features/tasks/state.mjs";
 
 // Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
@@ -166,7 +167,7 @@ export default function TasksList() {
   >("all");
   // Pending completion/uncompletion operations with undo window
   const [pending, setPending] = React.useState<
-    Record<number, { target: boolean; timeout: ReturnType<typeof setTimeout> }>
+    Record<number, { target: boolean; timeout: ReturnType<typeof setTimeout>; cancel: () => void }>
   >({});
   const pendingTimers = React.useRef(new Set<ReturnType<typeof setTimeout>>());
   React.useEffect(
@@ -395,8 +396,7 @@ export default function TasksList() {
   async function saveEdit(id: number) {
     const prev = items?.slice() || [];
     // optimistic update
-    setItems((cur) =>
-      (cur || []).map((x) =>
+    const optimistic = prev.map((x) =>
         x.id === id
           ? {
               ...x,
@@ -410,10 +410,9 @@ export default function TasksList() {
               description: editDesc,
             }
           : x
-      )
-    );
+      );
     try {
-      await updateTaskRequest(id, {
+      await runOptimisticMutation(prev, optimistic, setItems, () => updateTaskRequest(id, {
           title: editTitle,
           subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
           is: editRequire,
@@ -422,12 +421,10 @@ export default function TasksList() {
           ...sinceUntilFromMeta(editDate, editMeta),
           description: editDesc,
           type: editType,
-        });
+        }));
       toast({ title: dict.toast.updated });
       cancelEdit();
     } catch (e: any) {
-      // revert
-      setItems(prev);
       toast({
         variant: "destructive",
         title: dict.toast.updateFailed,
@@ -438,12 +435,10 @@ export default function TasksList() {
   async function deleteTask(id: number) {
     const prev = items?.slice() || [];
     // optimistic remove
-    setItems((cur) => (cur || []).filter((x) => x.id !== id));
     try {
-      await deleteTaskRequest(id);
+      await runOptimisticMutation(prev, prev.filter((x) => x.id !== id), setItems, () => deleteTaskRequest(id));
       toast({ title: dict.toast.deleted });
     } catch (e: any) {
-      setItems(prev);
       toast({
         variant: "destructive",
         title: dict.toast.deleteFailed,
@@ -454,49 +449,40 @@ export default function TasksList() {
 
   // Toggle completion with pending undo window
   function toggleWithPending(task: Task) {
-    // optimistic flip state for visual feedback
-    setItems((cur) =>
-      updateTaskCompletion(cur || [], task.id, !task.is_completed)
-    );
     const existing = pending[task.id];
     if (existing) {
-      // Undo: cancel timer and revert state
-      clearTimeout(existing.timeout);
+      existing.cancel();
       pendingTimers.current.delete(existing.timeout);
       setPending((p) => {
         const cp = { ...p };
         delete cp[task.id];
         return cp;
       });
-      setItems((cur) =>
-        updateTaskCompletion(cur || [], task.id, !!task.is_completed)
-      );
       return;
     }
     const target = !task.is_completed;
-    const timeout = setTimeout(async () => {
-      pendingTimers.current.delete(timeout);
-      setPending((p) => {
-        const cp = { ...p };
-        delete cp[task.id];
-        return cp;
-      });
-      try {
-        await setTaskCompleted(task.id, target);
-      } catch (err: any) {
-        // revert on error
-        setItems((cur) =>
-          updateTaskCompletion(cur || [], task.id, !target)
-        );
+    const action = scheduleTaskCompletion({
+      task,
+      publish: (change: (items: Task[]) => Task[]) => setItems((cur) => change(cur || [])),
+      persist: setTaskCompleted,
+      onError: (err: any) => {
         toast({
           variant: "destructive",
           title: dict.toast.updateFailed,
           description: err?.message,
         });
-      }
-    }, 3000);
-    pendingTimers.current.add(timeout);
-    setPending((p) => ({ ...p, [task.id]: { target, timeout } }));
+      },
+      onSettled: () => {
+        pendingTimers.current.delete(action.timeout);
+        setPending((p) => {
+          const cp = { ...p };
+          delete cp[task.id];
+          return cp;
+        });
+      },
+    });
+    pendingTimers.current.add(action.timeout);
+    setPending((p) => ({ ...p, [task.id]: { target, ...action } }));
   }
 
   // Delete confirmation dialog state

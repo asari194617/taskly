@@ -8,7 +8,7 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "types": ["astro/client", "vite/client"],
+    "types": ["astro/client", "vite/client", "node"],
     "moduleResolution": "Bundler",
     "allowJs": true,
     "resolveJsonModule": true,

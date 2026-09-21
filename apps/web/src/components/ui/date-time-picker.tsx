@@ -106,8 +106,8 @@ export function DateTimePicker({
                 mode="single"
                 selected={parseLocalDate(date)}
                 captionLayout="dropdown"
-                fromYear={1970}
-                toYear={2100}
+                startMonth={new Date(1970, 0)}
+                endMonth={new Date(2100, 11)}
                 onSelect={(d) => commit(formatLocalDate(d), time)}
               />
             </PopoverContent>
