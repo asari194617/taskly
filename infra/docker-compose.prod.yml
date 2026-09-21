@@ -1,0 +1,40 @@
+x-datadog-environment: &datadog-environment
+  DD_TRACE_AGENT_URL: unix:///var/run/datadog/apm.socket
+  DD_DOGSTATSD_URL: unix:///var/run/datadog/dsd.socket
+
+x-datadog-socket-mount: &datadog-socket-mount
+  type: bind
+  source: /var/run/datadog
+  target: /var/run/datadog
+  read_only: true
+
+services:
+  server:
+    environment:
+      <<: *datadog-environment
+    volumes:
+      - *datadog-socket-mount
+
+  email-compose:
+    environment:
+      <<: *datadog-environment
+    volumes:
+      - *datadog-socket-mount
+
+  airflow-webserver:
+    environment:
+      <<: *datadog-environment
+    volumes:
+      - *datadog-socket-mount
+
+  airflow-scheduler:
+    environment:
+      <<: *datadog-environment
+    volumes:
+      - *datadog-socket-mount
+
+  airflow-dag-processor:
+    environment:
+      <<: *datadog-environment
+    volumes:
+      - *datadog-socket-mount

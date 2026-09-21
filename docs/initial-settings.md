@@ -61,6 +61,12 @@
 6. `TASKLY_IMAGE_TAG=<commit SHA>` を指定して Compose を停止、pull、再作成する。
 7. Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
 
+デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
+`/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
+確認してから本番専用の `infra/docker-compose.prod.yml` を重ね、各アプリへread-onlyで
+mountします。通常のローカルCompose起動ではこのoverrideを使いません。APM用TCPポートを
+ホスト外部へ公開する必要はありません。
+
 本番ホストではイメージをビルドしません。`docker compose up --build` や
 `latest` の直接指定ではなく、ワークフローが配布する commit SHA タグを使用します。
 
