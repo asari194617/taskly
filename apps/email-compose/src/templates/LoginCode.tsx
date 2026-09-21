@@ -20,6 +20,7 @@ export async function LoginCodeEmail({
         <Text>{t("greeting", { email })}</Text>
         <Text className="text-muted">{t("intro")}</Text>
         <Text>
+          {t("code_label")} {" "}
           <span className="text-lg font-bold">{code}</span>
         </Text>
         <Hr />

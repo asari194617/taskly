@@ -127,19 +127,25 @@ export default function MailCode() {
           <Label htmlFor="code">メールコード</Label>
           <Input
             id="code"
+            name="code"
             type="text"
             inputMode="numeric"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(e) =>
+              setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+            }
             placeholder="123456"
             autoComplete="one-time-code"
+            minLength={6}
+            maxLength={6}
+            pattern="[0-9]{6}"
           />
         </div>
         <div className="flex gap-2">
           <Button
             type="button"
             onClick={doLogin}
-            disabled={loading || !email || code.length === 0}
+            disabled={loading || !email || code.length !== 6}
           >
             {loading ? "認証中…" : "続行"}
           </Button>
