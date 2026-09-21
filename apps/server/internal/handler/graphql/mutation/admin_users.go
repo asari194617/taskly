@@ -8,6 +8,7 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 	"gorm.io/gorm"
 )
@@ -213,7 +214,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				} else {
-					if err := h.db.Model(&domain.User{}).Where("id = ?", id).Update("is_deleted", true).Error; err != nil {
+					if err := utils.SoftDeleteUser(c.Context(), uint(id), h.db, h.rdb); err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}

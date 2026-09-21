@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -37,9 +38,10 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 	// User account delete (soft delete)
 	router.Delete("/me", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
-		if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("is_deleted", true).Error; err != nil {
+		if err := utils.SoftDeleteUser(c.Context(), u.ID, h.db, h.rdb); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
+		utils.ClearSessionCookie(c)
 		return c.SendStatus(204)
 	})
 

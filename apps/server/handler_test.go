@@ -89,6 +89,27 @@ func TestIcalFeedRoute_NotFound(t *testing.T) {
 	}
 }
 
+func TestIcalFeedRoute_DeletedUser(t *testing.T) {
+	db := newTestIcalDB(t)
+	user := domain.User{Email: "deleted@example.test", IsDeleted: true}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.IcalKey{UserID: user.ID, Token: "old-feed-token"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := fiber.New()
+	registerIcalFeedRoute(app, db)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/ical/old-feed-token.ics", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("deleted user's feed status = %d", resp.StatusCode)
+	}
+}
+
 func newTestIcalDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

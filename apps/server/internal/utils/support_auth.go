@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -166,6 +167,38 @@ func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *re
 	_ = DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error
 }
 
+// SoftDeleteUser revokes persisted credentials together with the account update.
+// Redis cleanup is best effort: every authentication path also checks is_deleted.
+func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Client) error {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&domain.User{}).Where("id = ?", userID).Update("is_deleted", true).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&domain.Session{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&domain.APIKey{}).Where("user_id = ?", userID).Update("is_valid", false).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&domain.IcalKey{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ?", userID).Delete(&domain.MCP{}).Error
+	}); err != nil {
+		return err
+	}
+	if RDB != nil {
+		key := fmt.Sprintf("user_sessions:%d", userID)
+		if tokens, err := RDB.SMembers(ctx, key).Result(); err == nil {
+			for _, token := range tokens {
+				_ = RDB.Del(ctx, "session:"+token).Err()
+			}
+		}
+		_ = RDB.Del(ctx, key).Err()
+	}
+	return nil
+}
+
 func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 	if u, ok := c.Locals("user").(*domain.User); ok && u != nil {
 		return true
@@ -228,7 +261,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 	blockSubquery := DB.Model(&domain.Block{}).
 		Select("1").
 		Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uidStr, time.Now())
-	if err := DB.Where("id = ? AND NOT EXISTS (?)", uidStr, blockSubquery).First(&u).Error; err != nil {
+	if err := DB.Where("id = ? AND is_deleted = 0 AND NOT EXISTS (?)", uidStr, blockSubquery).First(&u).Error; err != nil {
 		if debugAuth {
 			log.Printf("[auth] %s %s user not found or blocked id=%s", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr))
 		}
@@ -285,7 +318,7 @@ func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
 		return false
 	}
 	var u domain.User
-	if err := DB.First(&u, key.UserID).Error; err != nil {
+	if err := DB.Where("id = ? AND is_deleted = 0", key.UserID).First(&u).Error; err != nil {
 		return false
 	}
 	var cnt int64
