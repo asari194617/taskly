@@ -43,8 +43,20 @@ test "$(auth_redis_cli ping)" = "PONG"
 test "$(auth_redis_cli set session:acl-test ok EX 60)" = "OK"
 test "$(auth_redis_cli get session:acl-test)" = "ok"
 test "$(auth_redis_cli del session:acl-test)" = "1"
+transaction_key=auth_transaction:acl-test
+lock_key="$transaction_key:lock"
+test "$(auth_redis_cli set "$transaction_key" pending EX 60)" = "OK"
+test "$(auth_redis_cli get "$transaction_key")" = "pending"
+test "$(auth_redis_cli set "$lock_key" lock-token NX EX 10)" = "OK"
+compare_and_delete='if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end'
+test "$(auth_redis_cli eval "$compare_and_delete" 1 "$lock_key" wrong-token)" = "0"
+test "$(auth_redis_cli get "$lock_key")" = "lock-token"
+test "$(auth_redis_cli eval "$compare_and_delete" 1 "$lock_key" lock-token)" = "1"
+test "$(auth_redis_cli del "$transaction_key")" = "1"
 
 expect_noperm set unrelated:key denied
+expect_noperm eval "$compare_and_delete" 1 unrelated:key lock-token
+auth_redis_cli eval 'return redis.call("FLUSHALL")' 0 | grep -q 'ACL failure in script'
 expect_noperm config get dir
 expect_noperm flushall
 

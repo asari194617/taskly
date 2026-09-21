@@ -8,10 +8,14 @@ The application user is limited to these commands:
 
 - `PING`, `SELECT`, `GET`, `SET`, `DEL`, `INCR`, `EXPIRE`
 - `SADD`, `SMEMBERS`, `SREM`
+- `EVAL` for atomically releasing the MFA transaction lock
 
 It can access only Taskly authentication, rate-limit, WebAuthn, TOTP, and session
-key prefixes. Administrative commands, scripting, Pub/Sub, arbitrary keys, and
-all other command categories remain denied.
+key prefixes, including `auth_transaction:*` for short-lived MFA transactions.
+Scripts remain subject to Redis ACL command and key checks. Administrative
+commands, Pub/Sub, arbitrary keys, and all other command categories remain denied.
+When the ACL entrypoint changes, production deployment recreates Redis so the
+new policy takes effect; the `redis-data` volume remains mounted.
 
 ## Initial rollout
 
