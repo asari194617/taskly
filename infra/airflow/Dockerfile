@@ -1,19 +1,28 @@
-FROM golang:1.26.5-bookworm AS batch-builder
+# syntax=docker/dockerfile:1.7
+
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS batch-builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src
 COPY batches/go.mod batches/go.sum ./batches/
 WORKDIR /src/batches
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    go mod download
 COPY batches/ ./
-RUN set -eux; \
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    set -eux; \
     mkdir -p /out/bin; \
+    export CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH"; \
     go build -trimpath -o /out/bin/backup-mysql ./backup-mysql; \
     go build -trimpath -o /out/bin/moderation ./moderation; \
     go build -trimpath -o /out/bin/day-shift-rotations ./day-shift-rotations; \
     go build -trimpath -o /out/bin/notifications-que-manager ./notifications/que-manager; \
-    cd notifications/delivery-channels/email && go build -trimpath -o /out/bin/notifications-delivery-channels-email .; \
-    cd /src/batches && cd notifications/delivery-channels/discord && go build -trimpath -o /out/bin/notifications-delivery-channels-discord .; \
-    cd /src/batches && cd notifications/delivery-channels/web-push && go build -trimpath -o /out/bin/notifications-delivery-channels-web-push .
+    (cd notifications/delivery-channels/email && go build -trimpath -o /out/bin/notifications-delivery-channels-email .); \
+    (cd notifications/delivery-channels/discord && go build -trimpath -o /out/bin/notifications-delivery-channels-discord .); \
+    (cd notifications/delivery-channels/web-push && go build -trimpath -o /out/bin/notifications-delivery-channels-web-push .)
 
 FROM apache/airflow:3.3.0-python3.14
 
@@ -24,13 +33,12 @@ RUN apt-get update && \
 
 RUN mkdir -p /opt/airflow/bin /opt/airflow/backups /opt/airflow/logs && \
     chown -R airflow:root /opt/airflow/bin /opt/airflow/backups /opt/airflow/logs
-COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
 
 USER airflow
 
 # Python deps for integrations: Sentry, Datadog tracer, Discord provider
 # IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
-ARG AIRFLOW_VERSION=3.2.1
+ARG AIRFLOW_VERSION=3.3.0
 ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
 RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     sentry-sdk \
@@ -41,3 +49,6 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     pymysql \
     icalendar \
     python-dotenv
+
+# Keep the expensive OS/Python dependency layers independent from batch source changes.
+COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/

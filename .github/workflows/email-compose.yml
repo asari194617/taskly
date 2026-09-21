@@ -42,7 +42,7 @@ jobs:
         env:
           NPM_CONFIG_FUND: "false"
           NPM_CONFIG_AUDIT: "false"
-        run: npm ci --prefer-offline --no-audit --no-fund || npm install --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Typecheck & build
         run: npm run build
       - name: Install production dependencies only

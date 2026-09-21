@@ -1,7 +1,7 @@
 FROM node:26.7.0 AS deps
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
-RUN npm ci --legacy-peer-deps || npm i --legacy-peer-deps
+RUN npm ci --legacy-peer-deps --no-audit --no-fund
 
 FROM deps AS build
 WORKDIR /app
