@@ -121,7 +121,7 @@ func (c *Client) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 	} else if o.CursorID != 0 && o.CursorDeadline != "" {
 		body["search_after"] = []any{o.CursorDeadline, o.CursorID}
 	}
-	b, status, err := c.request(ctx, http.MethodPost, "/"+indexName+"/_search", body)
+	b, status, err := c.request(ctx, http.MethodPost, "/"+indexName+"/_search?allow_partial_search_results=false", body)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +129,10 @@ func (c *Client) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 		return nil, fmt.Errorf("OpenSearch search: HTTP %d", status)
 	}
 	var result struct {
+		TimedOut bool `json:"timed_out"`
+		Shards   struct {
+			Failed int `json:"failed"`
+		} `json:"_shards"`
 		Hits struct {
 			Hits []struct {
 				ID   string `json:"_id"`
@@ -138,6 +142,9 @@ func (c *Client) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 	}
 	if err := json.Unmarshal(b, &result); err != nil {
 		return nil, err
+	}
+	if result.TimedOut || result.Shards.Failed != 0 {
+		return nil, fmt.Errorf("OpenSearch search incomplete")
 	}
 	out := make([]Hit, 0, len(result.Hits.Hits))
 	for _, hit := range result.Hits.Hits {
@@ -181,7 +188,7 @@ func (c *Client) remove(ctx context.Context, id uint) error {
 	return nil
 }
 
-const mapping = `{"settings":{"number_of_shards":1,"number_of_replicas":0,"index.max_ngram_diff":2,"analysis":{"tokenizer":{"task_ngram":{"type":"ngram","min_gram":1,"max_gram":3}},"analyzer":{"task_ngram":{"type":"custom","tokenizer":"task_ngram","filter":["lowercase"]}}}},"mappings":{"properties":{"task_id":{"type":"long"},"title":{"type":"text","analyzer":"task_ngram"},"description":{"type":"text","analyzer":"task_ngram"},"deadline":{"type":"date","format":"strict_date"},"is_hidden":{"type":"boolean"}}}}`
+const mapping = `{"settings":{"number_of_shards":1,"number_of_replicas":0,"index.max_ngram_diff":2,"analysis":{"tokenizer":{"task_ngram":{"type":"ngram","min_gram":1,"max_gram":3}},"analyzer":{"task_ngram":{"type":"custom","tokenizer":"task_ngram","filter":["lowercase"]}}}},"mappings":{"properties":{"task_id":{"type":"long","doc_values":true},"title":{"type":"text","analyzer":"task_ngram"},"description":{"type":"text","analyzer":"task_ngram"},"deadline":{"type":"date","format":"strict_date","doc_values":true},"is_hidden":{"type":"boolean"}}}}`
 
 func (c *Client) ensureIndex(ctx context.Context) error {
 	_, status, err := c.request(ctx, http.MethodHead, "/"+indexName, nil)
