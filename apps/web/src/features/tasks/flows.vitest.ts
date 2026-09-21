@@ -17,7 +17,7 @@ afterEach(() => {
 describe("task search and update", () => {
   it("passes search terms and cancellation to the API", async () => {
     const signal = new AbortController().signal;
-    const cursor = { cursor_deadline: "2026-09-22T00:00:00Z", cursor_id: "50" };
+    const cursor = { cursor_deadline: "2026-09-22", cursor_id: "50" };
     query.mockResolvedValueOnce({ tasks: { items: [{ id: 1, title: "report" }], next_cursor: cursor } });
     expect(await searchTasks("report", signal)).toEqual({ items: [{ id: 1, title: "report" }], nextCursor: cursor });
     expect(query).toHaveBeenCalledWith(expect.stringContaining("next_cursor{ cursor_deadline cursor_id }"), { q: "report" }, { signal });

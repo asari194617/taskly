@@ -2,7 +2,7 @@
 
 This package contains two processes:
 
-- a Fastify HTTP API backed by the Taskly MySQL database
+- a Fastify HTTP API that authenticates MCP tokens against MySQL and sends task operations to the Go API
 - an MCP stdio bridge that exposes the HTTP operations as MCP tools
 
 ## HTTP API
@@ -19,8 +19,9 @@ The Compose service is named `mcp` and is exposed at
 
 The server SHA-256 hashes the supplied token and compares it with
 `mcps.hashed_token`. Tokens are issued from **Settings > MCP** in the web UI.
-Task operations remain scoped to the token owner and follow the main API's
-task permission rules. In particular, task deletion is denied unless the
+Task operations are handled by the Go API, including task notifications. They
+remain scoped to the token owner and follow the main API's task permission
+rules. In particular, task deletion is denied unless the
 user has an explicit delete permission or an admin/manager role. Hidden tasks
 are not exposed through this API.
 
@@ -47,10 +48,13 @@ HTTP server environment variables:
 - `MCP_HOST` (default `0.0.0.0`)
 - `MCP_PORT` (default `3066`)
 - `DB_HOST`, `DB_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+- `TASKLY_API_BASE_URL` (default `http://server:8080` inside Compose)
 
 Inside Compose, use `DB_HOST=db` and `DB_PORT=3306`. The default Compose
 configuration does not publish MySQL on the host; a host-run MCP process needs
 an explicitly configured tunnel or port mapping.
+When running MCP outside Compose, set `TASKLY_API_BASE_URL` to the Go API URL
+(for example `http://localhost:3063`).
 
 ## stdio bridge
 

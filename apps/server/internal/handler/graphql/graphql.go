@@ -79,6 +79,13 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 		}
 		result := graphql.Do(params)
 		if len(result.Errors) > 0 {
+			// Preserve a transport-level authentication signal for clients. Resolver
+			// errors are otherwise returned as 400 by this endpoint.
+			for _, executionError := range result.Errors {
+				if executionError.Message == "unauthorized" {
+					return c.Status(fiber.StatusUnauthorized).JSON(result)
+				}
+			}
 			return c.Status(400).JSON(result)
 		}
 		return c.JSON(result)

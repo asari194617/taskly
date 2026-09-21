@@ -10,6 +10,7 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
+	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -51,83 +52,23 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
 
-		overdue := c.Query("overdue") == "true"
-		qstr := strings.TrimSpace(c.Query("q"))
 		limit, _ := strconv.Atoi(c.Query("limit", "20"))
-		if limit <= 0 || limit > 100 {
-			limit = 20
+		var ownerID *uint
+		mcpRequest := c.Locals("mcpToken") == true
+		if mcpRequest {
+			ownerID = &u.ID
 		}
-		// Cursor based on deadline and id to ensure stable ordering
-		cursorDeadlineStr := c.Query("cursor_deadline")
-		cursorIDStr := c.Query("cursor_id")
-		var cursorDeadline *time.Time
-		var cursorID uint
-		if cursorDeadlineStr != "" {
-			// cursor_deadline is date-only (YYYY-MM-DD)
-			if t, err := time.Parse("2006-01-02", cursorDeadlineStr); err == nil {
-				td := utils.DateOnly(t)
-				cursorDeadline = &td
+		offset, _ := strconv.Atoi(c.Query("offset", "0"))
+		items, nextCursor, err := tasklist.List(requestDB, u.ID, tasklist.Options{
+			Limit: limit, Overdue: c.Query("overdue") == "true", Search: c.Query("q"),
+			CursorDeadline: c.Query("cursor_deadline"), CursorID: c.Query("cursor_id"), OwnerID: ownerID,
+			MCP: mcpRequest, Offset: offset,
+		})
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "invalid cursor") || err.Error() == "cursor_id required" {
+				return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 			}
-		}
-		if cursorIDStr != "" {
-			if v, err := strconv.Atoi(cursorIDStr); err == nil && v > 0 {
-				cursorID = uint(v)
-			}
-		}
-
-		// Build query
-		dbq := requestDB.Model(&domain.Task{})
-		// compare using date-only to keep ordering/filters consistent with stored Deadline (date-only)
-		now := utils.DateOnly(time.Now())
-		eff := "effective_deadline"
-		if overdue {
-			dbq = dbq.Where(eff+" < ?", now)
-		} else {
-			dbq = dbq.Where(eff+" >= ?", now)
-		}
-		// Hide moderated content from non-admin/manager
-		isAdmin, _ := utils.UserHasRole(u.ID, "admin", requestDB)
-		isManager, _ := utils.UserHasRole(u.ID, "manager", requestDB)
-		if !(isAdmin || isManager) {
-			dbq = dbq.Where("is_hidden = 0")
-		}
-		if qstr != "" {
-			like := "%" + qstr + "%"
-			dbq = dbq.Where("title LIKE ? OR description LIKE ?", like, like)
-		}
-		// Apply cursor for pagination
-		// For non-overdue list (ascending by deadline NULLS LAST then id), we page after (deadline, id)
-		// For overdue (descending), we page before (deadline, id)
-		if cursorDeadline != nil {
-			if overdue {
-				dbq = dbq.Where("("+eff+" < ?) OR ("+eff+" = ? AND id < ?)", cursorDeadline, cursorDeadline, cursorID)
-			} else {
-				dbq = dbq.Where("("+eff+" > ?) OR ("+eff+" = ? AND id > ?)", cursorDeadline, cursorDeadline, cursorID)
-			}
-		} else if cursorID != 0 {
-			// Fallback if only id is present
-			if overdue {
-				dbq = dbq.Where("id < ?", cursorID)
-			} else {
-				dbq = dbq.Where("id > ?", cursorID)
-			}
-		}
-		// Ordering by effective deadline
-		if overdue {
-			dbq = dbq.Order(eff + " DESC").Order("id DESC")
-		} else {
-			dbq = dbq.Order(eff + " ASC").Order("id ASC")
-		}
-		var items []domain.Task
-		if err := dbq.Limit(limit + 1).Find(&items).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
-		}
-		var nextCursor map[string]string
-		if len(items) > limit {
-			last := items[limit-1]
-			items = items[:limit]
-			// return date-only cursor (YYYY-MM-DD)
-			nextCursor = map[string]string{"cursor_deadline": last.Deadline.Format("2006-01-02"), "cursor_id": fmt.Sprintf("%d", last.ID)}
 		}
 		return c.JSON(fiber.Map{"items": items, "next_cursor": nextCursor})
 	})
@@ -150,7 +91,7 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			DeadlineUntil   *string `json:"deadline_until"` // ENUM: NONE,MORNING,P1..P6
 			SelfCheck       *bool   `json:"is_self_check_required"`
 		}
-		if err := c.BodyParser(&body); err != nil || body.Title == "" || body.SubjectID == 0 || strings.TrimSpace(body.Deadline) == "" {
+		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Title) == "" || body.SubjectID == 0 || strings.TrimSpace(body.Deadline) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		// Parse deadline date
@@ -172,8 +113,13 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			rec.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
 		}
 		if body.DeadlineUntil != nil && strings.TrimSpace(*body.DeadlineUntil) != "" {
-			rec.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
+			rec.DeadlineUntil = *body.DeadlineUntil
 		}
+		since, until, err := tasklist.NormalizeDeadlineWindow(rec.DeadlineSince, rec.DeadlineUntil)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		rec.DeadlineSince, rec.DeadlineUntil = since, until
 		recCreated, err := jobs.CreateTask(h.db, u.ID, body.Title, body.SubjectID, body.Description, rec.Type, rec.IsRequireHandIn, rec.IsSelfCheckRequired, rec, u.Email)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
@@ -186,6 +132,9 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		var rec domain.Task
 		if err := h.db.First(&rec, c.Params("id")).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
+		}
+		if c.Locals("mcpToken") == true && (rec.AddedUserID != u.ID || rec.IsHidden) {
+			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
 		// Keep a copy for change diff
 		var body struct {
@@ -200,6 +149,9 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			DeadlineUntil   *string `json:"deadline_until"` // ENUM
 		}
 		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		if (body.Title != nil && strings.TrimSpace(*body.Title) == "") || (body.SubjectID != nil && *body.SubjectID == 0) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		if body.Title != nil {
@@ -234,10 +186,15 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			rec.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
 		}
 		if body.DeadlineUntil != nil {
-			rec.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
+			rec.DeadlineUntil = *body.DeadlineUntil
 		}
+		since, until, err := tasklist.NormalizeDeadlineWindow(rec.DeadlineSince, rec.DeadlineUntil)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		rec.DeadlineSince, rec.DeadlineUntil = since, until
 		// enforce permission: update own or explicit
-		if ok, err := utils.CheckPermission(u.ID, "tasks", "update", &rec.AddedUserID, h.db); err != nil {
+		if ok, err := tasklist.CanAccessTask(h.db, u.ID, "update", rec); err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "perm"})
 		} else if !ok {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
@@ -272,12 +229,8 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 					return fmt.Errorf("invalid deadline")
 				}
 			}
-			if body.DeadlineSince != nil {
-				r.DeadlineSince = strings.ToUpper(strings.TrimSpace(*body.DeadlineSince))
-			}
-			if body.DeadlineUntil != nil {
-				r.DeadlineUntil = strings.ToUpper(strings.TrimSpace(*body.DeadlineUntil))
-			}
+			r.DeadlineSince = rec.DeadlineSince
+			r.DeadlineUntil = rec.DeadlineUntil
 			return nil
 		}, u.Email)
 		if err != nil {
@@ -298,21 +251,17 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if err := h.db.First(&rec, c.Params("id")).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "not found"})
 		}
-		// Admin/manager fallback, otherwise require delete permission
-		isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-		isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-		allowed := isAdmin || isManager
-		if !allowed {
-			if ok, err := utils.CheckPermission(u.ID, "tasks", "delete", &rec.AddedUserID, h.db); err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "perm"})
-			} else {
-				allowed = ok
-			}
+		if c.Locals("mcpToken") == true && (rec.AddedUserID != u.ID || rec.IsHidden) {
+			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+		}
+		allowed, err := tasklist.CanAccessTask(h.db, u.ID, "delete", rec)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "perm"})
 		}
 		if !allowed {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		_, err := jobs.DeleteTask(h.db, rec.ID, u.Email)
+		_, err = jobs.DeleteTask(h.db, rec.ID, u.Email)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
