@@ -389,20 +389,10 @@ func GenerateRecoveryCode() string {
 
 func ConsumeRecoveryCode(userID uint, code string, DB *gorm.DB) bool {
 	hashed := Sha256Hex([]byte(code))
-	ok := false
-	_ = DB.Transaction(func(tx *gorm.DB) error {
-		var rc domain.RecoveryCode
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("user_id = ? AND hashed_code = ? AND is_used = 0", userID, hashed).First(&rc).Error; err != nil {
-			return nil
-		}
-		rc.IsUsed = true
-		if err := tx.Save(&rc).Error; err != nil {
-			return err
-		}
-		ok = true
-		return nil
-	})
-	return ok
+	result := DB.Model(&domain.RecoveryCode{}).
+		Where("user_id = ? AND hashed_code = ? AND is_used = 0", userID, hashed).
+		Update("is_used", true)
+	return result.Error == nil && result.RowsAffected == 1
 }
 
 func GetActiveTOTP(userID uint, DB *gorm.DB) (bool, string, error) {

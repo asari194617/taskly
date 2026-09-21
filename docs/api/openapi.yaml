@@ -189,22 +189,6 @@ paths:
       tags: [auth]
       responses:
         "200": { description: New codes returned }
-  /2fa/recovery/consume:
-    post:
-      summary: Consume a recovery code (login assistance)
-      tags: [auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email: { type: string }
-                code: { type: string }
-              required: [email, code]
-      responses:
-        "204": { description: Code consumed }
   /tasks:
     get:
       summary: List tasks with search and cursor pagination

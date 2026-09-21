@@ -21,6 +21,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/middleware"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 )
 
@@ -642,5 +643,73 @@ func TestAuthTransactionDeletedAfterAttemptLimit(t *testing.T) {
 	}
 	if mr.Exists(authTransactionKey(transactionID)) {
 		t.Fatal("transaction remains after the failed-attempt limit")
+	}
+}
+
+func TestRecoveryCodeOnlyConsumedBySuccessfulLogin(t *testing.T) {
+	app, mr, db, user := newAuthTransactionTestApp(t)
+	code := "ABCD-EFGH-JKLM-NPQR"
+	rc := domain.RecoveryCode{UserID: user.ID, HashedCode: utils.Sha256Hex([]byte(code))}
+	if err := db.Create(&rc).Error; err != nil {
+		t.Fatal(err)
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	NewHandler(db, rdb, nil).Register2FARoutes(app.Group("/2fa"), middleware.NewMiddleware(db, rdb, nil))
+	headers := map[string]string{"X-Client-Platform": "web", "User-Agent": "recovery-test"}
+	assertUnused := func() {
+		t.Helper()
+		if err := db.First(&rc, rc.ID).Error; err != nil || rc.IsUsed {
+			t.Fatalf("recovery code used unexpectedly: used=%v err=%v", rc.IsUsed, err)
+		}
+	}
+
+	for _, email := range []string{user.Email, "missing@example.com"} {
+		rw, _, err := doJSONRequest(app, fiber.MethodPost, "/2fa/recovery/consume", map[string]string{
+			"email": email, "code": code,
+		}, headers)
+		if err != nil || rw.Code != fiber.StatusNotFound {
+			t.Fatalf("removed route status=%d err=%v", rw.Code, err)
+		}
+	}
+	assertUnused()
+
+	transactionID := beginPasswordTransaction(t, app, headers)
+	for attempt := 0; attempt < authTransactionMaxAttempts; attempt++ {
+		rw, _, err := doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{
+			"auth_transaction": transactionID, "recovery_code": "WRONG-CODE",
+		}, headers)
+		if err != nil || rw.Code != fiber.StatusUnauthorized {
+			t.Fatalf("failed attempt %d status=%d err=%v", attempt+1, rw.Code, err)
+		}
+	}
+	if mr.Exists(authTransactionKey(transactionID)) {
+		t.Fatal("transaction remains after failed-attempt limit")
+	}
+	assertUnused()
+	rw, _, err := doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{
+		"auth_transaction": transactionID, "recovery_code": code,
+	}, headers)
+	if err != nil || rw.Code != fiber.StatusUnauthorized {
+		t.Fatalf("expired transaction status=%d err=%v", rw.Code, err)
+	}
+	assertUnused()
+
+	transactionID = beginPasswordTransaction(t, app, headers)
+	rw, data, err := doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{
+		"auth_transaction": transactionID, "recovery_code": code,
+	}, headers)
+	if err != nil || rw.Code != fiber.StatusOK {
+		t.Fatalf("recovery login status=%d err=%v body=%s", rw.Code, err, data)
+	}
+	if err := db.First(&rc, rc.ID).Error; err != nil || !rc.IsUsed {
+		t.Fatalf("recovery code not consumed: used=%v err=%v", rc.IsUsed, err)
+	}
+	transactionID = beginPasswordTransaction(t, app, headers)
+	rw, _, err = doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{
+		"auth_transaction": transactionID, "recovery_code": code,
+	}, headers)
+	if err != nil || rw.Code != fiber.StatusUnauthorized {
+		t.Fatalf("reused recovery code status=%d err=%v", rw.Code, err)
 	}
 }

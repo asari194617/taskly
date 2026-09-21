@@ -112,26 +112,4 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 		}
 		return c.JSON(fiber.Map{"codes": codes})
 	})
-	router.Post("/recovery/consume", func(c *fiber.Ctx) error {
-		var body struct {
-			Email string `json:"email"`
-			Code  string `json:"code"`
-		}
-		if err := utils.ParseJSONStrict(c, &body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
-		}
-		if !utils.IsEmail(body.Email) || strings.TrimSpace(body.Code) == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
-		}
-		var u domain.User
-		if err := h.db.Where("email = ?", body.Email).First(&u).Error; errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.Status(404).JSON(fiber.Map{"error": "not found"})
-		} else if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "db"})
-		}
-		if utils.ConsumeRecoveryCode(u.ID, body.Code, h.db) {
-			return c.SendStatus(204)
-		}
-		return c.Status(401).JSON(fiber.Map{"error": "invalid code"})
-	})
 }
