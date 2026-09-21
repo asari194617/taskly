@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"log"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
@@ -25,6 +28,11 @@ func Run() {
 	serviceName := utils.Env("DD_SERVICE", "taskly-server")
 	envName := utils.Env("DD_ENV", utils.Env("SENTRY_ENVIRONMENT", utils.Env("NODE_ENV", "development")))
 	version := utils.Env("DD_VERSION", utils.Env("SENTRY_RELEASE", ""))
+	shutdown, err := initTelemetry(context.Background(), serviceName, envName, version)
+	if err != nil {
+		log.Fatalf("OpenTelemetry initialization: %v", err)
+	}
+	defer shutdownTelemetry(shutdown)
 	// Configure Datadog tracer options (including optional sampling rate)
 	tOpts := []tracer.StartOption{
 		tracer.WithService(serviceName),
@@ -66,8 +74,16 @@ func Run() {
 
 	port := utils.Env("API_PORT", "8080")
 	log.Printf("Application Server listening on :%s", port)
+	stopContext, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-stopContext.Done()
+		if err := app.ShutdownWithTimeout(5 * time.Second); err != nil {
+			log.Printf("server shutdown: %v", err)
+		}
+	}()
 	if err := app.Listen(":" + port); err != nil {
-		log.Fatal(err)
+		panic(err) // Run's deferred tracer shutdowns must execute before exit.
 	}
 }
 
