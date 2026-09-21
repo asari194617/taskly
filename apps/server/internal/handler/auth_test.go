@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -68,6 +70,94 @@ func TestRequestCodeStopsWhenRandomSourceFails(t *testing.T) {
 	var count int64
 	if err := db.Model(&domain.LoginCode{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("issued codes=%d err=%v", count, err)
+	}
+}
+
+func TestIssuedLoginCodeAuthenticates(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	mail := make(chan string, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.WriteString(conn, "220 test smtp\r\n")
+		reader := bufio.NewReader(conn)
+		var message strings.Builder
+		inData := false
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			if inData {
+				if strings.TrimSpace(line) == "." {
+					mail <- message.String()
+					inData = false
+					_, _ = io.WriteString(conn, "250 queued\r\n")
+				} else {
+					message.WriteString(line)
+				}
+				continue
+			}
+			switch {
+			case strings.HasPrefix(line, "DATA"):
+				inData = true
+				_, _ = io.WriteString(conn, "354 send data\r\n")
+			case strings.HasPrefix(line, "QUIT"):
+				_, _ = io.WriteString(conn, "221 bye\r\n")
+				return
+			default:
+				_, _ = io.WriteString(conn, "250 ok\r\n")
+			}
+		}
+	}()
+	host, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SMTP_HOST", host)
+	t.Setenv("SMTP_PORT", port)
+	t.Setenv("EMAIL_COMPOSE_GRPC_ADDR", "127.0.0.1:1")
+	t.Setenv("NODE_ENV", "production")
+	t.Setenv("API_CORS_ORIGINS", "https://taskly.example")
+	app, mr, db, user := newAuthTransactionTestApp(t)
+	if err := db.Model(&user).Update("hashed_password", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	h := NewHandler(db, rdb, nil)
+	h.loginCodeRandom = bytes.NewReader([]byte{0, 0, 7})
+	app = fiber.New()
+	h.RegisterAuthRoutes(app.Group("/auth"))
+	rw, data, err := doJSONRequest(app, fiber.MethodPost, "/auth/request-code", map[string]string{"email": user.Email}, nil)
+	if err != nil || rw.Code != fiber.StatusOK {
+		t.Fatalf("issue status=%d err=%v body=%s", rw.Code, err, data)
+	}
+	select {
+	case delivered := <-mail:
+		if !strings.Contains(delivered, "000007") {
+			t.Fatalf("mail did not contain issued code")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("mail was not delivered")
+	}
+	var issued domain.LoginCode
+	if err := db.Where("email = ?", user.Email).First(&issued).Error; err != nil {
+		t.Fatal(err)
+	}
+	if issued.HashedCode != utils.Sha256Hex([]byte("000007")) || issued.ExpiresAt.Sub(issued.CreatedAt) != 10*time.Minute {
+		t.Fatalf("issued code state: %+v", issued)
+	}
+	rw, data, err = doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{"email": user.Email, "code": "000007"}, map[string]string{"Origin": "https://taskly.example", "X-Client-Platform": "web"})
+	if err != nil || rw.Code != fiber.StatusOK {
+		t.Fatalf("login status=%d err=%v body=%s", rw.Code, err, data)
 	}
 }
 
