@@ -124,6 +124,8 @@ Teams連携の `status_callback` を使用する場合は、デプロイ前に `
 
 ### デプロイ失敗時の切り戻し
 
+DB 復元、migration の互換性判定、通知バッチ停止、定期訓練は [`operations/recovery-drill.md`](operations/recovery-drill.md) を参照してください。スキーマ変更を含む PR には旧イメージへ戻せる条件を記録します。
+
 1. Actions の失敗ログで対象サービスと healthcheck の理由を確認し、`docker compose ps` と `docker compose logs --tail=100 <service>` で再確認します。
 2. アプリの新イメージが原因なら、直前に成功したデプロイの commit SHA を `TASKLY_IMAGE_TAG` に設定し、`cd "$PROD_WORKDIR/infra"` で `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml docker compose up -d --wait --wait-timeout 600 --no-build server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor` を実行します。MySQL・Redis の volume は削除しません。
 3. `./ops/verify-deploy-health.sh` を実行します。DB スキーマ変更が含まれる場合は、イメージだけ戻す前にマイグレーションの互換性を確認します。

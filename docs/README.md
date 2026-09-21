@@ -11,6 +11,7 @@ ones are retained as historical design material.
 - [`notifications.md`](notifications.md): notification settings and delivery
 - [`mcp-docs.md`](mcp-docs.md): MCP usage and client configuration
 - [`initial-settings.md`](initial-settings.md): CI/CD and production deployment
+- [`operations/recovery-drill.md`](operations/recovery-drill.md): recovery targets, database restore, rollback, notification failures, and drills
 - [`operations/network-ports.md`](operations/network-ports.md): production port exposure and verification
 - [`redis-acl-operations.md`](redis-acl-operations.md): Redis ACL rollout, rotation, and recovery
 - [`../apps/docs/openapi/openapi.yaml`](../apps/docs/openapi/openapi.yaml): OpenAPI definition used by the documentation app
