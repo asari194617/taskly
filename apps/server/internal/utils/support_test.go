@@ -27,6 +27,14 @@ func TestGenerateIcalToken(t *testing.T) {
 	}
 }
 
+func TestSessionCookieIsAlwaysSecureInProduction(t *testing.T) {
+	t.Setenv("NODE_ENV", "production")
+	t.Setenv("SESSION_COOKIE_SECURE", "false")
+	if !SessionCookieSecure() {
+		t.Fatal("production must not issue an insecure session cookie")
+	}
+}
+
 func TestSessionTokenFromRequestRejectsConflictingCredentials(t *testing.T) {
 	app := fiber.New()
 	app.Get("/", func(c *fiber.Ctx) error {

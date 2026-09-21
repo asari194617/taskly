@@ -98,6 +98,16 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 		if h.wAuth == nil {
 			return c.Status(501).JSON(fiber.Map{"error": "webauthn not configured"})
 		}
+		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
+		if plat == "" {
+			plat = "web"
+		}
+		if !utils.IsAllowedPlatform(plat) {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
+		}
+		if err := validateLoginClient(c, plat); err != nil {
+			return err
+		}
 		var body struct {
 			Email string `json:"email"`
 		}
@@ -149,16 +159,6 @@ func (h *Handler) RegisterWebAuthnRoutes(router fiber.Router, mw *mw.Middleware)
 			return c.Status(500).JSON(fiber.Map{"error": "credential storage"})
 		}
 		// Create session
-		plat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
-		if plat == "" {
-			plat = "web"
-		}
-		if !utils.IsAllowedPlatform(plat) {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid platform"})
-		}
-		if err := validateLoginClient(c, plat); err != nil {
-			return err
-		}
 		return h.issueSession(c, u.ID, plat, time.Now())
 	})
 }
