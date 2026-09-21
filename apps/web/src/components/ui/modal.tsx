@@ -1,4 +1,12 @@
 import * as React from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function Modal({
   open,
@@ -11,24 +19,19 @@ export function Modal({
   title?: string;
   children?: React.ReactNode;
 }) {
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 w-[90vw] max-w-md rounded-lg border bg-card text-card-foreground shadow">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold">{title || "Notice"}</h3>
-        </div>
-        <div className="p-4">{children}</div>
-        <div className="p-4 border-t flex justify-end">
-          <button
-            onClick={onClose}
-            className="inline-flex items-center justify-center h-9 px-3 rounded-md border bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-          >
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{title || "Notice"}</DialogTitle>
+        </DialogHeader>
+        <div>{children}</div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
             閉じる
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
