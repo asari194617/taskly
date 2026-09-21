@@ -95,6 +95,7 @@ mutation UpdatePrefs($id: Int!) {
 
 - デバイス: `Email=true`, `WebPush=false`。
 - 種類: `TASK`, `TASK_MORNING`, `TASK_EVENING`, `DAYSHIFT` は既定 ON。
+- 配信メールの言語: `users.notification_lang` の既定値 `ja`。基本設定から日本語・英語を選択でき、ログインコード、課題ダイジェスト、日直、モデレーション通知に反映されます。
 
 ## 運用
 

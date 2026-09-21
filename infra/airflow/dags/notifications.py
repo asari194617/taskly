@@ -24,7 +24,7 @@ def build_cmd(app):
     binary_name = app.replace("/", "-")
     base = (
         "set -euo pipefail; "
-        "echo '--- NOTIFICATIONS ENV ---'; env | grep -E '^(SMTP_|EMAIL_COMPOSE_|APP_NAME|LOCALE|WEB_URL|VAPID_)' || true; "
+        "echo '--- NOTIFICATIONS ENV ---'; env | grep -E '^(SMTP_|EMAIL_COMPOSE_|APP_NAME|WEB_URL|VAPID_)' || true; "
     )
     if app == "notifications/delivery-channels/email":
         # Determine STARTTLS usage and port from env; default to starttls:587 for Resend/SendGrid.
@@ -104,7 +104,6 @@ with DAG(
             "SMTP_USE_AUTH": os.environ.get("SMTP_USE_AUTH", "auto"),  # auto | always | never
             "EMAIL_COMPOSE_HTTP_ADDR": os.environ.get("EMAIL_COMPOSE_HTTP_ADDR", "http://email-compose:50052"),
             "APP_NAME": os.environ.get("APP_NAME", "Taskly"),
-            "LOCALE": os.environ.get("LOCALE", "ja"),
         },
     )
 

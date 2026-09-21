@@ -78,18 +78,16 @@ export default function SettingsBasic() {
         `mutation($name:String!){ updateMe(display_name:$name) }`,
         { name: displayName }
       );
-      // Save notification language via REST
-      try {
-        const base = getApiBase();
-        await webFetch(`${base}/settings/lang`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Client-Platform": "web",
-          },
-          body: JSON.stringify({ notification_lang: notificationLang }),
-        });
-      } catch {}
+      const base = getApiBase();
+      const res = await webFetch(`${base}/settings/lang`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Platform": "web",
+        },
+        body: JSON.stringify({ notification_lang: notificationLang }),
+      });
+      if (!res.ok) throw new Error("メールの言語設定を保存できませんでした");
       toast({ title: "保存しました" });
     } catch (e: any) {
       toast({

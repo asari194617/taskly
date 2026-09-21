@@ -40,7 +40,6 @@ func main() {
 	mailer := NewSMTPMailer(mailCfg)
 
 	deliverOpts := DeliverOptions{
-		Locale:  os.Getenv("LOCALE"),
 		AppName: os.Getenv("APP_NAME"),
 	}
 

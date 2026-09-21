@@ -54,7 +54,7 @@ Queue Manager は、同一内容を email と webpush の 2 チャネルでそ�
 
 - DB 接続: `DB_HOST`, `DB_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
 - SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USER`, `SMTP_PASSWORD`
-- その他: `EMAIL_COMPOSE_GRPC_ADDR`, `APP_NAME`, `LOCALE`
+- その他: `EMAIL_COMPOSE_GRPC_ADDR`, `APP_NAME`。言語は各ユーザーの `notification_lang`（既定 `ja`）を使用します。
 
 ### Web Push（webpush）
 

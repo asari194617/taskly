@@ -14,7 +14,7 @@ export async function initI18n(dir?: string) {
   if (!initPromise) {
     const options: InitOptions = {
       supportedLngs: ["en", "ja"],
-      fallbackLng: "en",
+      fallbackLng: "ja",
       lng: undefined,
       preload: ["en", "ja"],
       ns: [

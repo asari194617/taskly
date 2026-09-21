@@ -33,7 +33,8 @@ type Task struct {
 }
 
 type Admin struct {
-	Email string
+	Email  string
+	Locale string
 }
 
 type ModerationResult struct {
@@ -120,12 +121,21 @@ func main() {
 			}
 			highs = append(highs, map[string]any{"id": t.ID, "title": t.Title})
 		}
-		comp := composeModerationEmail(len(toHide)+flagged-len(toHide), len(toHide), highs)
+		composed := map[string]*Composed{}
 		for _, a := range admins {
+			comp, ok := composed[a.Locale]
+			if !ok {
+				comp = composeModerationEmail(a.Locale, len(toHide)+flagged-len(toHide), len(toHide), highs)
+				composed[a.Locale] = comp
+			}
 			if comp != nil {
 				_ = smtpSendMultipart(a.Email, comp.Subject, comp.Text, comp.HTML)
 			} else {
-				_ = smtpSendPlain(a.Email, "[Taskly] Moderation Alert", fmt.Sprintf("%d item(s) were auto-hidden due to potential threats.", len(toHide)))
+				if a.Locale == "en" {
+					_ = smtpSendPlain(a.Email, "[Taskly] Moderation Alert", fmt.Sprintf("%d item(s) were auto-hidden due to potential threats.", len(toHide)))
+				} else {
+					_ = smtpSendPlain(a.Email, "[Taskly] モデレーション通知", fmt.Sprintf("脅威の可能性があるため、%d件を非表示にしました。", len(toHide)))
+				}
 			}
 		}
 	} else if flagged > 0 {
@@ -228,14 +238,17 @@ func nullIfEmpty(s string) any {
 
 func listAdmins(db *sql.DB) []Admin {
 	out := []Admin{}
-	rows, err := db.Query(`SELECT u.email FROM users u JOIN role_users r ON r.user_id = u.id WHERE r.role = 'admin' AND u.is_deleted = 0`)
+	rows, err := db.Query(`SELECT DISTINCT u.email, u.notification_lang FROM users u JOIN role_users r ON r.user_id = u.id WHERE r.role = 'admin' AND u.is_deleted = 0`)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a Admin
-		if err := rows.Scan(&a.Email); err == nil && strings.TrimSpace(a.Email) != "" {
+		if err := rows.Scan(&a.Email, &a.Locale); err == nil && strings.TrimSpace(a.Email) != "" {
+			if a.Locale != "en" {
+				a.Locale = "ja"
+			}
 			out = append(out, a)
 		}
 	}
@@ -318,14 +331,10 @@ func smtpSendPlain(to, subject, text string) error {
 
 type Composed struct{ Subject, HTML, Text string }
 
-func composeModerationEmail(totalFlagged, autoHidden int, highlights []map[string]any) *Composed {
+func composeModerationEmail(locale string, totalFlagged, autoHidden int, highlights []map[string]any) *Composed {
 	addr := strings.TrimSpace(os.Getenv("EMAIL_COMPOSE_GRPC_ADDR"))
 	if addr == "" {
 		addr = "email-compose:50051"
-	}
-	locale := strings.TrimSpace(os.Getenv("ADMIN_EMAIL_LOCALE"))
-	if locale == "" {
-		locale = "ja"
 	}
 	reviewURL := strings.TrimSpace(os.Getenv("ADMIN_REVIEW_URL"))
 	cc, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
