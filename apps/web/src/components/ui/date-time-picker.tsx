@@ -84,9 +84,15 @@ export function DateTimePicker({
           <ChevronDownIcon className="ml-2 size-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[320px] max-w-[calc(100vw-2rem)] p-2" align="start">
+      <PopoverContent
+        className="w-[320px] max-w-[calc(100vw-2rem)] p-2"
+        align="start"
+        portalled={false}
+      >
         <div className="flex flex-col gap-3">
           <Calendar
+            className="mx-auto p-0"
+            classNames={{ week: "mt-1 flex w-full" }}
             mode="single"
             selected={parseLocalDate(date)}
             captionLayout="dropdown"
