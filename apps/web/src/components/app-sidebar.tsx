@@ -54,7 +54,7 @@ export function AppSidebar() {
   }, []);
 
   return (
-    <Sidebar collapsible="offcanvas">
+    <Sidebar collapsible="offcanvas" contained>
       <SidebarHeader>
         <div className="px-2 py-1 text-sm font-medium inline-flex items-center gap-2">
           <Settings className="h-4 w-4" /> {dict.settings.title}
