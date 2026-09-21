@@ -14,7 +14,7 @@ const (
 	maxGraphQLVariablesBytes = 16 << 10
 	maxGraphQLDepth          = 6
 	maxGraphQLFields         = 100
-	maxGraphQLComplexity     = 100
+	maxGraphQLComplexity     = 1000
 	defaultListSize          = 20
 )
 
@@ -51,7 +51,7 @@ func estimateGraphQLCost(doc *ast.Document, schema graphql.Schema, variables map
 		default:
 			return total, errors.New("unsupported operation")
 		}
-		cost, err := countSelections(operation.SelectionSet, root, 1, 1, fragments, map[string]bool{}, variables)
+		cost, err := countSelections(operation.SelectionSet, root, 1, 1, 0, fragments, map[string]bool{}, variables)
 		if err != nil {
 			return total, err
 		}
@@ -70,7 +70,7 @@ func estimateGraphQLCost(doc *ast.Document, schema graphql.Schema, variables map
 	return total, nil
 }
 
-func countSelections(set *ast.SelectionSet, parent *graphql.Object, depth, multiplier int, fragments map[string]*ast.FragmentDefinition, visiting map[string]bool, variables map[string]any) (graphqlCost, error) {
+func countSelections(set *ast.SelectionSet, parent *graphql.Object, depth, multiplier, pageSize int, fragments map[string]*ast.FragmentDefinition, visiting map[string]bool, variables map[string]any) (graphqlCost, error) {
 	var cost graphqlCost
 	if set == nil {
 		return cost, nil
@@ -86,16 +86,18 @@ func countSelections(set *ast.SelectionSet, parent *graphql.Object, depth, multi
 			}
 			var childType *graphql.Object
 			childMultiplier := multiplier
+			childPageSize := pageSize
 			if parent != nil {
 				if definition := parent.Fields()[node.Name.Value]; definition != nil {
 					childType, _ = graphql.GetNamed(definition.Type).(*graphql.Object)
 					if isListType(definition.Type) {
-						childMultiplier *= listSize(node.Arguments, variables)
+						childMultiplier *= listSize(node.Arguments, variables, pageSize)
+						childPageSize = 0
 					} else if childType != nil {
-						// Paginated wrapper objects (such as tasks.items) carry
-						// the page-size argument on their parent field.
-						if requested := requestedListSize(node.Arguments, variables); requested > defaultListSize {
-							childMultiplier *= requested
+						// Paginated wrappers carry the page size on the parent
+						// object, while their items field is the actual list.
+						if requested := requestedListSize(node.Arguments, variables); requested > childPageSize {
+							childPageSize = requested
 						}
 					}
 				}
@@ -107,9 +109,9 @@ func countSelections(set *ast.SelectionSet, parent *graphql.Object, depth, multi
 			if cost.fields > maxGraphQLFields || cost.complexity > maxGraphQLComplexity || depth > maxGraphQLDepth {
 				return cost, nil
 			}
-			child, err = countSelections(node.SelectionSet, childType, depth+1, childMultiplier, fragments, visiting, variables)
+			child, err = countSelections(node.SelectionSet, childType, depth+1, childMultiplier, childPageSize, fragments, visiting, variables)
 		case *ast.InlineFragment:
-			child, err = countSelections(node.SelectionSet, parent, depth, multiplier, fragments, visiting, variables)
+			child, err = countSelections(node.SelectionSet, parent, depth, multiplier, pageSize, fragments, visiting, variables)
 		case *ast.FragmentSpread:
 			name := node.Name.Value
 			fragment := fragments[name]
@@ -117,7 +119,7 @@ func countSelections(set *ast.SelectionSet, parent *graphql.Object, depth, multi
 				return cost, errors.New("unknown or cyclic fragment")
 			}
 			visiting[name] = true
-			child, err = countSelections(fragment.SelectionSet, parent, depth, multiplier, fragments, visiting, variables)
+			child, err = countSelections(fragment.SelectionSet, parent, depth, multiplier, pageSize, fragments, visiting, variables)
 			delete(visiting, name)
 		}
 		if err != nil {
@@ -148,8 +150,11 @@ func isListType(t graphql.Type) bool {
 	}
 }
 
-func listSize(args []*ast.Argument, variables map[string]any) int {
+func listSize(args []*ast.Argument, variables map[string]any, inherited int) int {
 	size := defaultListSize
+	if inherited > size {
+		size = inherited
+	}
 	if requested := requestedListSize(args, variables); requested > size {
 		size = requested
 	}
