@@ -1,6 +1,20 @@
 import * as React from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import {
+  taskRows,
+  visibleTasks,
+  type CompletionFilter,
+} from "@/features/tasks/list-model";
+import { useTaskSearch } from "@/features/tasks/useTaskSearch";
+import { useTaskCompletion } from "@/features/tasks/useTaskCompletion";
+import { useTaskActions } from "@/features/tasks/useTaskActions";
+import { TaskFormFields } from "@/features/tasks/TaskFormFields";
+import { TaskCard } from "@/features/tasks/TaskCard";
+import {
+  TaskReportDialog,
+  TasksListDeleteDialog,
+} from "@/features/tasks/TaskDialogs";
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -9,12 +23,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-// Replaced DateTimePicker with period-based DeadlinePicker
 import {
   Tooltip,
   TooltipContent,
@@ -27,7 +37,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Drawer,
@@ -37,111 +46,26 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
-import {
-  DeadlinePicker,
-  type DeadlineMeta,
-  sinceUntilFromMeta,
-  deriveLabelFromEnums,
-} from "@/components/DeadlinePicker";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  ButtonGroup,
-  ButtonGroupSeparator,
-} from "@/components/ui/button-group";
-import {
-  AlertCircle,
-  Hourglass,
-  FileText,
-  Plus,
-  Pencil,
-  Trash2,
-  Save,
-  X,
-  MoreVertical,
-  Search,
-} from "lucide-react";
+import { AlertCircle, FileText, Plus, Search } from "lucide-react";
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import { t } from "@/lib/i18n";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useLang } from "@/react/LanguageProvider";
-import { SubjectSelect as SubjectSelectControl } from "@/features/tasks/SubjectSelect";
 import {
-  createTask as createTaskRequest,
-  deleteTask as deleteTaskRequest,
   loadSubjects,
   loadViewerRole,
-  reportTask,
-  searchTasks,
-  setTaskCompleted,
-  updateTask as updateTaskRequest,
   type Subject,
-  type Task,
-  type TaskCursor,
 } from "@/features/tasks/api";
-import {
-  normalizeTaskSearch,
-  runOptimisticMutation,
-  scheduleTaskCompletion,
-} from "@/features/tasks/state.mjs";
-
-// Slot-based helpers removed; we now use symbolic meta via DeadlinePicker
-
-// RFC3339 helpers removed — we now carry date string directly
-
-// slotFromRFC3339 removed
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function formatDateYMDSlash(s: string): string {
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}/${m[2]}/${m[3]}` : s;
-}
-
-function localizeTaskType(
-  type: string | null | undefined,
-  dict: ReturnType<typeof t>["tasks"]
-): string {
-  if (!type) return "";
-  const upper = type.toUpperCase();
-  switch (upper) {
-    case "ONLINE":
-      return dict.typeOnline;
-    case "FACE_TO_FACE":
-      return dict.typeFaceToFace;
-    case "QUIZ":
-      return dict.typeQuiz;
-    case "PRESENTATION":
-      return dict.typePresentation;
-    case "SELF_STUDY":
-      return dict.typeSelfStudy;
-    case "OTHER":
-      return dict.typeOther;
-    default:
-      return type;
-  }
-}
-
 export default function TasksList() {
-  const { lang, dict } = useLang();
+  const { dict } = useLang();
 
   const formatHeadingForDate = React.useCallback(
     (d: Date): string => {
@@ -156,54 +80,74 @@ export default function TasksList() {
       const day = String(d.getDate()).padStart(2, "0");
       return `${y}/${m}/${day}`;
     },
-    [dict.tasks]
+    [dict.tasks],
   );
 
-  const [items, setItems] = React.useState<Task[] | null>(null);
-  const [nextCursor, setNextCursor] = React.useState<TaskCursor | null>(null);
-  const [loadingMore, setLoadingMore] = React.useState(false);
-  const [loadMoreError, setLoadMoreError] = React.useState(false);
-  const requestController = React.useRef<AbortController | null>(null);
-  const loadingMoreRef = React.useRef(false);
+  const {
+    items,
+    setItems,
+    nextCursor,
+    loadingMore,
+    loadMoreError,
+    error,
+    setError,
+    q,
+    qInput,
+    setQInput,
+    submitSearch,
+    loadMore,
+  } = useTaskSearch(dict.tasks.loadFailed);
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [isManager, setIsManager] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [q, setQ] = React.useState("");
-  const [completedFilter, setCompletedFilter] = React.useState<
-    "incomplete" | "completed" | "all"
-  >("all");
-  // Pending completion/uncompletion operations with undo window
-  const [pending, setPending] = React.useState<
-    Record<number, { target: boolean; timeout: ReturnType<typeof setTimeout>; cancel: () => void }>
-  >({});
-  const pendingTimers = React.useRef(new Set<ReturnType<typeof setTimeout>>());
-  React.useEffect(
-    () => () => {
-      for (const timer of pendingTimers.current) clearTimeout(timer);
-      pendingTimers.current.clear();
+  const [completedFilter, setCompletedFilter] =
+    React.useState<CompletionFilter>("all");
+  const { pending, toggleWithPending } = useTaskCompletion(
+    setItems,
+    (error: any) => {
+      toast({
+        variant: "destructive",
+        title: dict.toast.updateFailed,
+        description: error?.message,
+      });
     },
-    [],
   );
-  const [creating, setCreating] = React.useState(false);
-  const [newTitle, setNewTitle] = React.useState("");
-  const [newSubjectId, setNewSubjectId] = React.useState("");
-  // deadline as date + symbolic meta
-  const [newDate, setNewDate] = React.useState(""); // yyyy-MM-dd
-  const [newMeta, setNewMeta] = React.useState<DeadlineMeta | null>(null);
-  const [newRequire, setNewRequire] = React.useState(false);
-  const [newSelfCheck, setNewSelfCheck] = React.useState(false);
-  const [newType, setNewType] = React.useState("");
-  const [newDesc, setNewDesc] = React.useState("");
-  const [createOpen, setCreateOpen] = React.useState(false);
-  const [editingId, setEditingId] = React.useState<number | null>(null);
-  const [editTitle, setEditTitle] = React.useState("");
-  const [editSubjectId, setEditSubjectId] = React.useState("");
-  const [editDate, setEditDate] = React.useState("");
-  const [editMeta, setEditMeta] = React.useState<DeadlineMeta | null>(null);
-  const [editRequire, setEditRequire] = React.useState(false);
-  const [editSelfCheck, setEditSelfCheck] = React.useState(false);
-  const [editType, setEditType] = React.useState("");
-  const [editDesc, setEditDesc] = React.useState("");
+  const {
+    creating,
+    createOpen,
+    setCreateOpen,
+    editingId,
+    editTitle,
+    editSubjectId,
+    editDate,
+    editMeta,
+    editRequire,
+    editSelfCheck,
+    editType,
+    editDesc,
+    createValues,
+    createSetters,
+    editValues,
+    editSetters,
+    createTask,
+    beginEdit,
+    cancelEdit,
+    saveEdit,
+    deleteTask,
+    deleteOpen,
+    setDeleteOpen,
+    deleteTargetId,
+    setDeleteTargetId,
+    reportOpen,
+    setReportOpen,
+    reportTargetId,
+    setReportTargetId,
+    reportReason,
+    setReportReason,
+    reportComment,
+    setReportComment,
+    reportSubmittingId,
+    submitReport,
+  } = useTaskActions(items, setItems);
   const [subjects, setSubjects] = React.useState<Subject[]>([]);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   // One-time bootstrap: subjects and my role; avoid reloading on each search
@@ -221,113 +165,23 @@ export default function TasksList() {
       });
   }, [dict.tasks.loadFailed]);
 
-  // Search tasks with cancellation; cursor pages belong to one search only.
-  React.useEffect(() => {
-    const ac = new AbortController();
-    requestController.current = ac;
-    loadingMoreRef.current = false;
-    setLoadingMore(false);
-    setItems(null);
-    setNextCursor(null);
-    setError(null);
-    setLoadMoreError(false);
-    (async () => {
-      try {
-        const page = await searchTasks(q, ac.signal);
-        if (ac.signal.aborted) return;
-        setItems(page.items);
-        setNextCursor(page.nextCursor);
-      } catch (e: any) {
-        if (ac.signal.aborted || e?.name === "AbortError") return;
-        setError(e?.message || dict.tasks.loadFailed);
-      }
-    })();
-    return () => ac.abort();
-  }, [q, dict.tasks.loadFailed]);
-
-  const loadMore = React.useCallback(async () => {
-    const ac = requestController.current;
-    if (!ac || ac.signal.aborted || !nextCursor || loadingMoreRef.current) return;
-    loadingMoreRef.current = true;
-    setLoadingMore(true);
-    setLoadMoreError(false);
-    try {
-      const page = await searchTasks(q, ac.signal, nextCursor);
-      if (ac.signal.aborted || requestController.current !== ac) return;
-      setItems((current) => {
-        const seen = new Set(current?.map((item) => item.id));
-        return [...(current ?? []), ...page.items.filter((item) => !seen.has(item.id))];
-      });
-      setNextCursor(page.nextCursor);
-    } catch (e: any) {
-      if (!ac.signal.aborted && e?.name !== "AbortError") setLoadMoreError(true);
-    } finally {
-      if (requestController.current === ac) {
-        loadingMoreRef.current = false;
-        setLoadingMore(false);
-      }
-    }
-  }, [nextCursor, q]);
-
-  // debounce search input changes
-  const [qInput, setQInput] = React.useState("");
-  React.useEffect(() => {
-    const id = setTimeout(() => {
-      setQ(normalizeTaskSearch(qInput));
-    }, 500);
-    return () => clearTimeout(id);
-  }, [qInput]);
-
-  // Items to show: by default hide past tasks (deadline before today), but include all when searching
-  const shownItems = React.useMemo(() => {
-    if (!items) return [] as Task[];
-    const searching = q.trim().length > 0;
-    let base = items;
-    // Apply completion filter
-    if (completedFilter === "incomplete")
-      base = base.filter((t) => !t.is_completed);
-    else if (completedFilter === "completed")
-      base = base.filter((t) => !!t.is_completed);
-    if (searching) return base;
-    const todayStart = startOfDay(new Date()).getTime();
-    return base.filter((t) => {
-      if (!t.deadline) return true;
-      const d = new Date(t.deadline);
-      const sod = startOfDay(d).getTime();
-      return sod >= todayStart;
-    });
-  }, [items, q, completedFilter]);
-
-  const rows = React.useMemo(() => {
-    const groups = new Map<string, { heading: string; sortKey: number; items: Task[] }>();
-    for (const task of shownItems) {
-      const date = task.deadline ? new Date(task.deadline) : null;
-      const sortKey = date ? startOfDay(date).getTime() : Number.MAX_SAFE_INTEGER;
-      const key = String(sortKey);
-      if (!groups.has(key)) {
-        groups.set(key, {
-          heading: date ? formatHeadingForDate(date) : dict.tasks.noDeadline,
-          sortKey,
-          items: [],
-        });
-      }
-      groups.get(key)!.items.push(task);
-    }
-    return [...groups.values()]
-      .sort((a, b) => a.sortKey - b.sortKey)
-      .flatMap((group) => group.items.map((task, index) => ({
-        task,
-        heading: index === 0 ? group.heading : null,
-      })));
-  }, [shownItems, formatHeadingForDate, dict.tasks.noDeadline]);
+  const shownItems = React.useMemo(
+    () => visibleTasks(items ?? [], q, completedFilter),
+    [items, q, completedFilter],
+  );
+  const rows = React.useMemo(
+    () => taskRows(shownItems, formatHeadingForDate, dict.tasks.noDeadline),
+    [shownItems, formatHeadingForDate, dict.tasks.noDeadline],
+  );
 
   const listRef = React.useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = React.useState(0);
   React.useLayoutEffect(() => {
     const update = () => {
       if (listRef.current) {
-        const top = listRef.current.getBoundingClientRect().top + window.scrollY;
-        setScrollMargin((current) => current === top ? current : top);
+        const top =
+          listRef.current.getBoundingClientRect().top + window.scrollY;
+        setScrollMargin((current) => (current === top ? current : top));
       }
     };
     update();
@@ -336,7 +190,8 @@ export default function TasksList() {
   });
   const virtualizer = useWindowVirtualizer({
     count: rows.length + (nextCursor ? 1 : 0),
-    estimateSize: (index) => index === rows.length ? 64 : rows[index]?.heading ? 158 : 122,
+    estimateSize: (index) =>
+      index === rows.length ? 64 : rows[index]?.heading ? 158 : 122,
     getItemKey: (index) => rows[index]?.task.id ?? "load-more",
     overscan: 5,
     scrollMargin,
@@ -344,9 +199,21 @@ export default function TasksList() {
   });
   const virtualItems = virtualizer.getVirtualItems();
   React.useEffect(() => {
-    if (nextCursor && !loadingMore && !loadMoreError &&
-      virtualItems.some((item) => item.index === rows.length)) void loadMore();
-  }, [nextCursor, loadingMore, loadMoreError, virtualItems, rows.length, loadMore]);
+    if (
+      nextCursor &&
+      !loadingMore &&
+      !loadMoreError &&
+      virtualItems.some((item) => item.index === rows.length)
+    )
+      void loadMore();
+  }, [
+    nextCursor,
+    loadingMore,
+    loadMoreError,
+    virtualItems,
+    rows.length,
+    loadMore,
+  ]);
 
   // Keyboard shortcuts: g then n to create; '?' to show help
   React.useEffect(() => {
@@ -404,217 +271,6 @@ export default function TasksList() {
     editDesc,
   ]);
 
-  function SubjectSelect(props: {
-    value: string;
-    onChange: (v: string) => void;
-    subjects: Subject[];
-    placeholder?: string;
-  }) {
-    return (
-      <SubjectSelectControl
-        {...props}
-        language={lang}
-        searchLabel={dict.common.search}
-        emptyLabel={dict.tasks.notFound}
-        placeholder={props.placeholder || dict.tasks.selectPlaceholder}
-      />
-    );
-  }
-
-  // removed old datetime helpers
-
-  async function createTask() {
-    if (!newTitle.trim() || !newSubjectId.trim() || !newDate.trim()) {
-      toast({
-        variant: "destructive",
-        title: dict.toast.requiredFields,
-      });
-      return;
-    }
-    setCreating(true);
-    try {
-      const created = await createTaskRequest({
-          title: newTitle.trim(),
-          subject_id: parseInt(newSubjectId, 10),
-          is: newRequire,
-          scr: newSelfCheck,
-          deadline: newDate,
-          ...sinceUntilFromMeta(newDate, newMeta), // enums
-          description: newDesc || undefined,
-          type: newType || undefined,
-        });
-      setItems((prev) => (prev ? [created, ...prev] : [created]));
-      setNewTitle("");
-      setNewSubjectId("");
-      setNewDate("");
-      setNewMeta(null);
-      setNewRequire(false);
-      setNewSelfCheck(false);
-      setNewType("");
-      setNewDesc("");
-      setCreateOpen(false);
-      toast({ title: dict.toast.created });
-    } catch (e: any) {
-      toast({
-        variant: "destructive",
-        title: dict.toast.createFailed,
-        description: e?.message,
-      });
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  function beginEdit(t: Task) {
-    setEditingId(t.id);
-    setEditTitle(t.title);
-    setEditSubjectId(String(t.subject_id || ""));
-    setEditDate(t.deadline || "");
-    setEditMeta(null);
-    setEditRequire(!!t.is_require_hand_in);
-    setEditSelfCheck(!!t.is_self_check_required);
-    setEditType(t.type || "");
-    setEditDesc(t.description || "");
-  }
-  function cancelEdit() {
-    setEditingId(null);
-    setEditTitle("");
-    setEditSubjectId("");
-    setEditDate("");
-    setEditMeta(null);
-    setEditRequire(false);
-  }
-  async function saveEdit(id: number) {
-    const prev = items?.slice() || [];
-    // optimistic update
-    const optimistic = prev.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              title: editTitle,
-              subject_id: parseInt(editSubjectId || "0", 10) || x.subject_id,
-              deadline: editDate || null,
-              // keep since/until in local state if needed (not shown here)
-              is_require_hand_in: editRequire,
-              is_self_check_required: editSelfCheck,
-              type: editType,
-              description: editDesc,
-            }
-          : x
-      );
-    try {
-      await runOptimisticMutation(prev, optimistic, setItems, () => updateTaskRequest(id, {
-          title: editTitle,
-          subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
-          is: editRequire,
-          scr: editSelfCheck,
-          deadline: editDate || undefined,
-          ...sinceUntilFromMeta(editDate, editMeta),
-          description: editDesc,
-          type: editType,
-        }));
-      toast({ title: dict.toast.updated });
-      cancelEdit();
-    } catch (e: any) {
-      toast({
-        variant: "destructive",
-        title: dict.toast.updateFailed,
-        description: e?.message,
-      });
-    }
-  }
-  async function deleteTask(id: number) {
-    const prev = items?.slice() || [];
-    // optimistic remove
-    try {
-      await runOptimisticMutation(prev, prev.filter((x) => x.id !== id), setItems, () => deleteTaskRequest(id));
-      toast({ title: dict.toast.deleted });
-    } catch (e: any) {
-      toast({
-        variant: "destructive",
-        title: dict.toast.deleteFailed,
-        description: e?.message,
-      });
-    }
-  }
-
-  // Toggle completion with pending undo window
-  function toggleWithPending(task: Task) {
-    const existing = pending[task.id];
-    if (existing) {
-      existing.cancel();
-      pendingTimers.current.delete(existing.timeout);
-      setPending((p) => {
-        const cp = { ...p };
-        delete cp[task.id];
-        return cp;
-      });
-      return;
-    }
-    const target = !task.is_completed;
-    const action = scheduleTaskCompletion({
-      task,
-      publish: (change: (items: Task[]) => Task[]) => setItems((cur) => change(cur || [])),
-      persist: setTaskCompleted,
-      onError: (err: any) => {
-        toast({
-          variant: "destructive",
-          title: dict.toast.updateFailed,
-          description: err?.message,
-        });
-      },
-      onSettled: () => {
-        pendingTimers.current.delete(action.timeout);
-        setPending((p) => {
-          const cp = { ...p };
-          delete cp[task.id];
-          return cp;
-        });
-      },
-    });
-    pendingTimers.current.add(action.timeout);
-    setPending((p) => ({ ...p, [task.id]: { target, ...action } }));
-  }
-
-  // Delete confirmation dialog state
-  const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [deleteTargetId, setDeleteTargetId] = React.useState<number | null>(
-    null
-  );
-  // Report dialog state
-  const [reportOpen, setReportOpen] = React.useState(false);
-  const [reportTargetId, setReportTargetId] = React.useState<number | null>(
-    null
-  );
-  // Report form state (within action popover)
-  const [reportReason, setReportReason] = React.useState<string>("");
-  const [reportComment, setReportComment] = React.useState<string>("");
-  const [reportSubmittingId, setReportSubmittingId] = React.useState<
-    number | null
-  >(null);
-
-  async function submitReport(taskId: number) {
-    if (!reportReason.trim()) {
-      toast({ title: dict.toast.requiredFields });
-      return;
-    }
-    try {
-      setReportSubmittingId(taskId);
-      await reportTask(
-        taskId,
-        reportReason.trim(),
-        reportComment.trim() || undefined,
-      );
-      toast({ title: dict.toast.created });
-      setReportReason("");
-      setReportComment("");
-    } catch (e: any) {
-      toast({ title: dict.toast.createFailed, description: e?.message || "" });
-    } finally {
-      setReportSubmittingId(null);
-    }
-  }
-
   if (error) {
     return (
       <Empty className="border">
@@ -667,7 +323,7 @@ export default function TasksList() {
               onChange={(e) => setQInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  setQ(normalizeTaskSearch(qInput));
+                  submitSearch();
                 }
               }}
             />
@@ -706,18 +362,18 @@ export default function TasksList() {
 
       {/* Completion filter badges ("すべて" omitted). Click active badge to clear filter. */}
       <div className="flex flex-wrap gap-2 -mt-2">
-        {[
-          { key: "incomplete", label: "未完了" },
-          { key: "completed", label: "完了済み" },
-        ].map((f) => {
+        {(
+          [
+            { key: "incomplete", label: "未完了" },
+            { key: "completed", label: "完了済み" },
+          ] as const
+        ).map((f) => {
           const active = completedFilter === f.key;
           return (
             <Badge
               key={f.key}
               onClick={() =>
-                setCompletedFilter((prev) =>
-                  prev === f.key ? "all" : (f.key as any)
-                )
+                setCompletedFilter((prev) => (prev === f.key ? "all" : f.key))
               }
               className={
                 "cursor-pointer select-none px-3 py-1" +
@@ -744,96 +400,12 @@ export default function TasksList() {
               {dict.tasks.enterRequiredInfo}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Label htmlFor="nt-title-2">{dict.tasks.title}</Label>
-              <Input
-                id="nt-title-2"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder={dict.tasks.titlePlaceholder}
-              />
-            </div>
-            <div>
-              <Label htmlFor="nt-subject-2">{dict.tasks.subject}</Label>
-              <SubjectSelect
-                value={newSubjectId}
-                onChange={setNewSubjectId}
-                subjects={subjects}
-              />
-            </div>
-            <div>
-              <Label htmlFor="nt-date-2">{dict.tasks.deadline}</Label>
-              <DeadlinePicker
-                date={newDate}
-                meta={newMeta}
-                onChange={(d, m) => {
-                  setNewDate(d);
-                  setNewMeta(m);
-                }}
-              />
-            </div>
-            <div className="col-span-2 flex items-center gap-2">
-              <Switch
-                id="nt-req-2"
-                checked={newRequire}
-                onCheckedChange={setNewRequire}
-              />
-              <Label htmlFor="nt-req-2">{dict.tasks.requireHandIn}</Label>
-            </div>
-            <div className="col-span-2 flex items-center gap-2 -mt-2">
-              <Switch
-                id="nt-scr-2"
-                checked={newSelfCheck}
-                onCheckedChange={setNewSelfCheck}
-              />
-              <Label htmlFor="nt-scr-2">{dict.tasks.selfCheckRequired}</Label>
-            </div>
-            <div>
-              <Label htmlFor="nt-type-2">{dict.tasks.type}</Label>
-              <Select
-                value={newType}
-                onValueChange={(v: string) => setNewType(v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={dict.tasks.selectPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={dict.tasks.typeOnline}>
-                    {dict.tasks.typeOnline}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeFaceToFace}>
-                    {dict.tasks.typeFaceToFace}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeQuiz}>
-                    {dict.tasks.typeQuiz}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typePresentation}>
-                    {dict.tasks.typePresentation}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeSelfStudy}>
-                    {dict.tasks.typeSelfStudy}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeOther}>
-                    {dict.tasks.typeOther}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 mt-0">
-              <Label htmlFor="nt-desc-2">
-                {dict.tasks.description} {dict.tasks.optional}
-              </Label>
-              <textarea
-                id="nt-desc-2"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                rows={3}
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-              />
-            </div>
-            {/* 自己採点は提出必須の直下に移動済み */}
-          </div>
+          <TaskFormFields
+            id="nt-dialog"
+            values={createValues}
+            set={createSetters}
+            subjects={subjects}
+          />
           <div className="mt-3">
             <Button onClick={createTask} disabled={creating}>
               {dict.tasks.create}
@@ -854,108 +426,22 @@ export default function TasksList() {
               {dict.tasks.enterRequiredInfo}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-4 grid grid-cols-2 gap-3">
-            {/* form fields are the same as dialog */}
-            <div className="col-span-2">
-              <Label>{dict.tasks.title}</Label>
-              <Input
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder={dict.tasks.titlePlaceholder}
-              />
-            </div>
-            <div>
-              <Label>{dict.tasks.subject}</Label>
-              <SubjectSelect
-                value={newSubjectId}
-                onChange={setNewSubjectId}
-                subjects={subjects}
-              />
-            </div>
-            <div>
-              <Label>{dict.tasks.deadline}</Label>
-              <DeadlinePicker
-                date={newDate}
-                meta={newMeta}
-                onChange={(d, m) => {
-                  setNewDate(d);
-                  setNewMeta(m);
-                }}
-              />
-            </div>
-            <div className="col-span-2 flex items-center gap-2">
-              <Switch
-                id="nt-req-m"
-                checked={newRequire}
-                onCheckedChange={setNewRequire}
-              />
-              <Label htmlFor="nt-req-m">{dict.tasks.requireHandIn}</Label>
-            </div>
-            <div className="col-span-2 flex items-center gap-2 -mt-2">
-              <Switch
-                id="nt-scr-m"
-                checked={newSelfCheck}
-                onCheckedChange={setNewSelfCheck}
-              />
-              <Label htmlFor="nt-scr-m">{dict.tasks.selfCheckRequired}</Label>
-            </div>
-            <div>
-              <Label>{dict.tasks.type}</Label>
-              <Select
-                value={newType}
-                onValueChange={(v: string) => setNewType(v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={dict.tasks.selectPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={dict.tasks.typeOnline}>
-                    {dict.tasks.typeOnline}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeFaceToFace}>
-                    {dict.tasks.typeFaceToFace}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeQuiz}>
-                    {dict.tasks.typeQuiz}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typePresentation}>
-                    {dict.tasks.typePresentation}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeSelfStudy}>
-                    {dict.tasks.typeSelfStudy}
-                  </SelectItem>
-                  <SelectItem value={dict.tasks.typeOther}>
-                    {dict.tasks.typeOther}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2">
-              <Label>
-                {dict.tasks.description} {dict.tasks.optional}
-              </Label>
-              <textarea
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                rows={3}
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-              />
-            </div>
-            {/* 自己採点は提出必須の直下に配置済み */}
-            <div className="col-span-2">
-              <Button
-                onClick={createTask}
-                disabled={creating}
-                className="w-full"
-              >
-                {dict.tasks.create}
-              </Button>
-            </div>
+          <div className="px-4 pb-4 space-y-3">
+            <TaskFormFields
+              id="nt-drawer"
+              values={createValues}
+              set={createSetters}
+              subjects={subjects}
+            />
+            <Button onClick={createTask} disabled={creating} className="w-full">
+              {dict.tasks.create}
+            </Button>
           </div>
         </DrawerContent>
       </Drawer>
       {/* Empty states below toolbar */}
-      {shownItems.length === 0 && !nextCursor &&
+      {shownItems.length === 0 &&
+        !nextCursor &&
         (q ? (
           <Empty className="border">
             <EmptyHeader>
@@ -988,100 +474,12 @@ export default function TasksList() {
             </EmptyHeader>
             <EmptyContent>
               <div className="w-full max-w-xl text-left space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <Label htmlFor="nt-title">{dict.tasks.title}</Label>
-                    <Input
-                      id="nt-title"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      placeholder={dict.tasks.titlePlaceholder}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="nt-subject">{dict.tasks.subject}</Label>
-                    <SubjectSelect
-                      value={newSubjectId}
-                      onChange={setNewSubjectId}
-                      subjects={subjects}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="nt-date">{dict.tasks.deadline}</Label>
-                    <DeadlinePicker
-                      date={newDate}
-                      meta={newMeta}
-                      onChange={(d, m) => {
-                        setNewDate(d);
-                        setNewMeta(m);
-                      }}
-                    />
-                  </div>
-                  <div className="col-span-2 flex items-center gap-2">
-                    <Switch
-                      id="nt-req"
-                      checked={newRequire}
-                      onCheckedChange={setNewRequire}
-                    />
-                    <Label htmlFor="nt-req">{dict.tasks.requireHandIn}</Label>
-                  </div>
-                  <div className="col-span-2 flex items-center gap-2 -mt-2">
-                    <Switch
-                      id="nt-scr"
-                      checked={newSelfCheck}
-                      onCheckedChange={setNewSelfCheck}
-                    />
-                    <Label htmlFor="nt-scr">
-                      {dict.tasks.selfCheckRequired}
-                    </Label>
-                  </div>
-                  <div>
-                    <Label htmlFor="nt-type">{dict.tasks.type}</Label>
-                    <Select
-                      value={newType}
-                      onValueChange={(v: string) => setNewType(v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={dict.tasks.selectPlaceholder}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={dict.tasks.typeOnline}>
-                          {dict.tasks.typeOnline}
-                        </SelectItem>
-                        <SelectItem value={dict.tasks.typeFaceToFace}>
-                          {dict.tasks.typeFaceToFace}
-                        </SelectItem>
-                        <SelectItem value={dict.tasks.typeQuiz}>
-                          {dict.tasks.typeQuiz}
-                        </SelectItem>
-                        <SelectItem value={dict.tasks.typePresentation}>
-                          {dict.tasks.typePresentation}
-                        </SelectItem>
-                        <SelectItem value={dict.tasks.typeSelfStudy}>
-                          {dict.tasks.typeSelfStudy}
-                        </SelectItem>
-                        <SelectItem value={dict.tasks.typeOther}>
-                          {dict.tasks.typeOther}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-2 mt-0">
-                    <Label htmlFor="nt-desc">
-                      {dict.tasks.description} {dict.tasks.optional}
-                    </Label>
-                    <textarea
-                      id="nt-desc"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      rows={3}
-                      value={newDesc}
-                      onChange={(e) => setNewDesc(e.target.value)}
-                    />
-                  </div>
-                  {/* 自己採点は提出必須の直下に移動済み */}
-                </div>
+                <TaskFormFields
+                  id="nt-inline"
+                  values={createValues}
+                  set={createSetters}
+                  subjects={subjects}
+                />
                 <Button onClick={createTask} disabled={creating}>
                   {dict.tasks.create}
                 </Button>
@@ -1091,311 +489,74 @@ export default function TasksList() {
         ))}
 
       {/* Only visible task rows stay mounted while the window scrolls. */}
-      <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
+      <div
+        ref={listRef}
+        className="relative"
+        style={{ height: virtualizer.getTotalSize() }}
+      >
         {virtualItems.map((virtualRow) => {
           const row = rows[virtualRow.index];
           const t = row?.task;
           if (!t) {
             return (
-              <div key="load-more" data-index={virtualRow.index} ref={virtualizer.measureElement}
+              <div
+                key="load-more"
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
                 className="absolute left-0 top-0 w-full py-3 text-center"
-                style={{ transform: `translateY(${virtualRow.start - scrollMargin}px)` }}>
+                style={{
+                  transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+                }}
+              >
                 {loadMoreError ? (
-                  <Button variant="outline" onClick={() => void loadMore()}>{dict.common.reload}</Button>
-                ) : <Skeleton className="mx-auto h-8 w-40" />}
+                  <Button variant="outline" onClick={() => void loadMore()}>
+                    {dict.common.reload}
+                  </Button>
+                ) : (
+                  <Skeleton className="mx-auto h-8 w-40" />
+                )}
               </div>
             );
           }
-          const deadline = (() => {
-            if (!t.deadline) return dict.tasks.noDeadline;
-            const dateStr = formatDateYMDSlash(t.deadline);
-            const label = deriveLabelFromEnums(
-              t.deadline,
-              t.deadline_since,
-              t.deadline_until,
-              lang
-            );
-            return label ? `${dateStr} ${label}` : dateStr;
-          })();
           const isEditing = editingId === t.id;
           const pendingInfo = pending[t.id];
           return (
-            <div key={t.id} data-index={virtualRow.index} ref={virtualizer.measureElement}
+            <div
+              key={t.id}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
               className="absolute left-0 top-0 w-full pb-3"
-              style={{ transform: `translateY(${virtualRow.start - scrollMargin}px)` }}>
+              style={{
+                transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+              }}
+            >
               {row.heading && (
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">{row.heading}</h3>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                  {row.heading}
+                </h3>
               )}
               <ul>
-                        <li
-                          key={t.id}
-                          onClick={(e) => {
-                            const tag = (e.target as HTMLElement).tagName;
-                            if (
-                              [
-                                "BUTTON",
-                                "INPUT",
-                                "TEXTAREA",
-                                "LABEL",
-                                "SELECT",
-                                "SVG",
-                                "PATH",
-                              ].includes(tag)
-                            )
-                              return;
-                            if (isEditing) return;
-                            toggleWithPending(t);
-                          }}
-                          className={
-                            "relative rounded-lg border p-4 pl-12 bg-card text-card-foreground transition-opacity cursor-pointer " +
-                            (pendingInfo ? " opacity-50" : "")
-                          }
-                        >
-                          {/* Radio vertically centered on left */}
-                          <RadioGroup
-                            value={t.is_completed ? "done" : "undone"}
-                            onValueChange={(val: string) => {
-                              const target = val === "done";
-                              if (target !== !!t.is_completed) {
-                                toggleWithPending(t);
-                              }
-                            }}
-                            className="absolute left-4 top-1/2 -translate-y-1/2"
-                          >
-                            <RadioGroupItem
-                              value="undone"
-                              className="sr-only"
-                              aria-label="未完了"
-                            />
-                            <RadioGroupItem value="done" aria-label="完了" />
-                          </RadioGroup>
-                          {isEditing ? (
-                            <div className="space-y-3">
-                              <div>
-                                <Label htmlFor={`ed-title-${t.id}`}>
-                                  {dict.tasks.title}
-                                </Label>
-                                <Input
-                                  id={`ed-title-${t.id}`}
-                                  value={editTitle}
-                                  onChange={(e) => setEditTitle(e.target.value)}
-                                />
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <Label htmlFor={`ed-subject-${t.id}`}>
-                                    {dict.tasks.subject}
-                                  </Label>
-                                  <SubjectSelect
-                                    value={editSubjectId}
-                                    onChange={setEditSubjectId}
-                                    subjects={subjects}
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor={`ed-date-${t.id}`}>
-                                    {dict.tasks.deadline}
-                                  </Label>
-                                  <DeadlinePicker
-                                    date={editDate}
-                                    meta={editMeta}
-                                    onChange={(d, m) => {
-                                      setEditDate(d);
-                                      setEditMeta(m);
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <Label>{dict.tasks.type}</Label>
-                                <Select
-                                  value={editType}
-                                  onValueChange={(v: string) => setEditType(v)}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue
-                                      placeholder={dict.tasks.selectPlaceholder}
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value={dict.tasks.typeOnline}>
-                                      {dict.tasks.typeOnline}
-                                    </SelectItem>
-                                    <SelectItem
-                                      value={dict.tasks.typeFaceToFace}
-                                    >
-                                      {dict.tasks.typeFaceToFace}
-                                    </SelectItem>
-                                    <SelectItem value={dict.tasks.typeQuiz}>
-                                      {dict.tasks.typeQuiz}
-                                    </SelectItem>
-                                    <SelectItem
-                                      value={dict.tasks.typePresentation}
-                                    >
-                                      {dict.tasks.typePresentation}
-                                    </SelectItem>
-                                    <SelectItem
-                                      value={dict.tasks.typeSelfStudy}
-                                    >
-                                      {dict.tasks.typeSelfStudy}
-                                    </SelectItem>
-                                    <SelectItem value={dict.tasks.typeOther}>
-                                      {dict.tasks.typeOther}
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label>
-                                  {dict.tasks.description} {dict.tasks.optional}
-                                </Label>
-                                <textarea
-                                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                                  rows={3}
-                                  value={editDesc}
-                                  onChange={(e) => setEditDesc(e.target.value)}
-                                />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Switch
-                                  id={`ed-req-${t.id}`}
-                                  checked={editRequire}
-                                  onCheckedChange={setEditRequire}
-                                />
-                                <Label htmlFor={`ed-req-${t.id}`}>
-                                  {dict.tasks.requireHandIn}
-                                </Label>
-                              </div>
-                              <div className="flex items-center gap-2 -mt-2">
-                                <Switch
-                                  checked={editSelfCheck}
-                                  onCheckedChange={setEditSelfCheck}
-                                />
-                                <Label>{dict.tasks.selfCheckRequired}</Label>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => saveEdit(t.id)}
-                                >
-                                  <Save className="h-4 w-4 mr-1" />{" "}
-                                  {dict.tasks.save}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={cancelEdit}
-                                >
-                                  <X className="h-4 w-4 mr-1" />{" "}
-                                  {dict.tasks.cancel}
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="mb-1 flex flex-wrap gap-1">
-                                  {t.type && (
-                                    <Badge variant="secondary">
-                                      {localizeTaskType(t.type, dict.tasks)}
-                                    </Badge>
-                                  )}
-                                  {t.is_require_hand_in && (
-                                    <Badge variant="destructive">
-                                      {dict.tasks.requireHandIn}
-                                    </Badge>
-                                  )}
-                                  {t.is_self_check_required && (
-                                    <Badge>{dict.tasks.selfCheckBadge}</Badge>
-                                  )}
-                                  {(isAdmin || isManager) && t.is_hidden && (
-                                    <Badge variant="outline">非表示</Badge>
-                                  )}
-                                </div>
-                                <div className="font-medium">{t.title}</div>
-                                {(() => {
-                                  const subj = subjects.find(
-                                    (s) => s.id === t.subject_id
-                                  );
-                                  const subjectTitle = subj
-                                    ? lang === "en" && subj.name_en
-                                      ? subj.name_en
-                                      : subj.name_ja
-                                    : `${dict.tasks.subjectId}: ${t.subject_id}`;
-                                  return (
-                                    <div className="text-sm text-muted-foreground">
-                                      {subjectTitle} {deadline}
-                                    </div>
-                                  );
-                                })()}
-                                {t.description && (
-                                  <p
-                                    className="text-sm text-muted-foreground mt-1"
-                                    style={{
-                                      display: "-webkit-box",
-                                      WebkitLineClamp: 3,
-                                      WebkitBoxOrient: "vertical",
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    {t.description}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {/* Unified actions via Popover across sizes */}
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      aria-label={dict.tasks.actions}
-                                    >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-64" align="end">
-                                    <div className="flex flex-col gap-2">
-                                      <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={() => beginEdit(t)}
-                                      >
-                                        <Pencil className="h-4 w-4 mr-1" />{" "}
-                                        {dict.tasks.edit}
-                                      </Button>
-                                      {(isAdmin || isManager) && (
-                                        <Button
-                                          size="sm"
-                                          variant="destructive"
-                                          onClick={() => {
-                                            setDeleteTargetId(t.id);
-                                            setDeleteOpen(true);
-                                          }}
-                                        >
-                                          <Trash2 className="h-4 w-4 mr-1" />{" "}
-                                          {dict.tasks.delete}
-                                        </Button>
-                                      )}
-                                      <div className="pt-2 border-t">
-                                        <Button
-                                          className="mt-2"
-                                          size="sm"
-                                          onClick={() => {
-                                            setReportTargetId(t.id);
-                                            setReportOpen(true);
-                                          }}
-                                        >
-                                          {dict.tasks.reportSubmit}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                              </div>
-                            </div>
-                          )}
-                        </li>
+                <TaskCard
+                  t={t}
+                  pendingInfo={!!pendingInfo}
+                  isEditing={isEditing}
+                  canManage={isAdmin || isManager}
+                  subjects={subjects}
+                  editValues={editValues}
+                  editSetters={editSetters}
+                  toggleWithPending={toggleWithPending}
+                  saveEdit={saveEdit}
+                  cancelEdit={cancelEdit}
+                  beginEdit={beginEdit}
+                  onDelete={(id) => {
+                    setDeleteTargetId(id);
+                    setDeleteOpen(true);
+                  }}
+                  onReport={(id) => {
+                    setReportTargetId(id);
+                    setReportOpen(true);
+                  }}
+                />
               </ul>
             </div>
           );
@@ -1412,100 +573,17 @@ export default function TasksList() {
           }
         }}
       />
-      {/* Report dialog */}
-      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>{dict.tasks.reportSubmit}</DialogTitle>
-            <DialogDescription>
-              {dict.tasks.enterRequiredInfo}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="report-reason">
-                {dict.tasks.reportReasonLabel ?? "Reason"}
-              </Label>
-              <Input
-                id="report-reason"
-                value={reportReason}
-                onChange={(e) => setReportReason(e.target.value)}
-                placeholder={
-                  dict.tasks.reportReasonPlaceholder ??
-                  "Spam/Inappropriate/etc."
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="report-comment">
-                {dict.tasks.reportCommentLabel ?? "Comment"}
-              </Label>
-              <Input
-                id="report-comment"
-                value={reportComment}
-                onChange={(e) => setReportComment(e.target.value)}
-                placeholder={
-                  dict.tasks.reportCommentPlaceholder ?? "Optional details"
-                }
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => {
-                  if (reportTargetId != null) {
-                    submitReport(reportTargetId);
-                  }
-                }}
-                disabled={
-                  reportTargetId != null &&
-                  reportSubmittingId === reportTargetId
-                }
-              >
-                {dict.tasks.reportSubmit}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <TaskReportDialog
+        open={reportOpen}
+        setOpen={setReportOpen}
+        targetId={reportTargetId}
+        reason={reportReason}
+        setReason={setReportReason}
+        comment={reportComment}
+        setComment={setReportComment}
+        submittingId={reportSubmittingId}
+        onSubmit={submitReport}
+      />
     </div>
-  );
-}
-
-// Delete confirm dialog mounted at root of TasksList
-// Note: placed after component to keep JSX readable
-export function TasksListDeleteDialog({
-  open,
-  setOpen,
-  onConfirm,
-}: {
-  open: boolean;
-  setOpen: (v: boolean) => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>削除の確認</DialogTitle>
-          <DialogDescription>
-            この課題を削除します。よろしいですか？
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            キャンセル
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              onConfirm();
-              setOpen(false);
-            }}
-          >
-            削除する
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
