@@ -9,37 +9,28 @@ type Ctx = {
 
 const LangContext = React.createContext<Ctx | null>(null);
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = React.useState<Lang>(() => {
-    // 初期値をlocalStorageから読み込む
-    if (typeof window === "undefined") return "ja";
-
+function readInitialLang(): Lang {
+  try {
     const stored = localStorage.getItem("display_lang");
-    if (stored === "ja" || stored === "en") {
-      return stored;
-    }
+    if (stored === "ja" || stored === "en") return stored;
+    const preferred = navigator.languages?.[0] || navigator.language;
+    return preferred?.toLowerCase().startsWith("ja") ? "ja" : "en";
+  } catch {
+    return "ja";
+  }
+}
 
-    // localStorageになければブラウザの言語設定から判定
-    try {
-      const nav = navigator?.language || (navigator as any)?.userLanguage;
-      const langs = navigator?.languages || [];
-      const pick = (s: string) =>
-        (s || "").toLowerCase().startsWith("ja") ? "ja" : "en";
-      const detected = (langs[0] && pick(langs[0])) || pick(nav as string);
-      return detected as Lang;
-    } catch {
-      return "ja";
-    }
-  });
+export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  const [lang, setLangState] = React.useState<Lang>("ja");
 
   const dict = React.useMemo(() => t(lang), [lang]);
 
   React.useEffect(() => {
-    // 初回マウント時にlocalStorageに保存（まだ保存されていない場合）
-    const stored = localStorage.getItem("display_lang");
-    if (!stored || (stored !== "ja" && stored !== "en")) {
-      localStorage.setItem("display_lang", lang);
-    }
+    const initial = readInitialLang();
+    setLangState(initial);
+    try {
+      localStorage.setItem("display_lang", initial);
+    } catch {}
   }, []);
 
   const setLang = React.useCallback((l: Lang) => {
@@ -66,17 +57,11 @@ export function useLang() {
   const ctx = React.useContext(LangContext);
   if (ctx) return ctx;
   // Provider-less fallback: keep lang in local state synced with localStorage & events
-  const [lang, setLangState] = React.useState<Lang>(() => {
-    if (typeof window === "undefined") return "ja";
-    const stored = localStorage.getItem("display_lang");
-    return stored === "en" || stored === "ja" ? (stored as Lang) : "ja";
-  });
+  const [lang, setLangState] = React.useState<Lang>("ja");
   const dict = React.useMemo(() => t(lang), [lang]);
   React.useEffect(() => {
-    const update = () => {
-      const stored = localStorage.getItem("display_lang");
-      if (stored === "en" || stored === "ja") setLangState(stored as Lang);
-    };
+    const update = () => setLangState(readInitialLang());
+    update();
     const handleStorage = (e: StorageEvent) => {
       if (e.key === "display_lang") update();
     };

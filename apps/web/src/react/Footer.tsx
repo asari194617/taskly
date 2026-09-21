@@ -49,15 +49,15 @@ export default function Footer() {
         links: [
           { title: "Web", href: "https://taskly.iy0306.com/" },
           {
-            title: "iPhone,iPad,Mac(近日公開)",
+            title: d.appleComingSoon,
             href: "https://taskly.iy0306.com/platform/iphone-ipad-mac",
           },
           {
-            title: "Android(近日公開)",
+            title: d.androidComingSoon,
             href: "https://taskly.iy0306.com/platform/android",
           },
           {
-            title: "Windows(近日公開)",
+            title: d.windowsComingSoon,
             href: "https://taskly.iy0306.com/platform/windows",
           },
         ],
@@ -133,7 +133,7 @@ export default function Footer() {
                   <SelectValue placeholder={d.language} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ja">日本語</SelectItem>
+                  <SelectItem value="ja">{d.japanese}</SelectItem>
                   <SelectItem value="en">English</SelectItem>
                 </SelectContent>
               </Select>
@@ -161,7 +161,7 @@ export default function Footer() {
                       width="322"
                       height="322"
                       style={{ width: 32, height: 32, borderRadius: "50%" }}
-                      alt="asari194617のアイコン"
+                      alt={d.creatorIconAlt}
                       src="https://cdn.taskly.iy0306.com/assets/asari-logo.webp"
                       className="w-full rounded-md border"
                     />

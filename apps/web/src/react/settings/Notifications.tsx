@@ -140,9 +140,9 @@ export default function SettingsNotifications() {
 
   const fetchVapidKey = async (): Promise<string> => {
     const res = await webFetch(`${apiBase}/push/vapidPublicKey`);
-    if (!res.ok) throw new Error("VAPIDキーの取得に失敗しました");
+    if (!res.ok) throw new Error(dict.settingsNotifications.errorVapidFetch);
     const data = await res.json();
-    if (!data?.publicKey) throw new Error("VAPIDキーが空です");
+    if (!data?.publicKey) throw new Error(dict.settingsNotifications.errorVapidEmpty);
     return data.publicKey as string;
   };
 
@@ -411,8 +411,7 @@ export default function SettingsNotifications() {
                       <DialogHeader>
                         <DialogTitle>{dict.settingsNotifications.deviceSettings}</DialogTitle>
                         <DialogDescription>
-                          Web
-                          Push通知設定をしている各端末で、通知を受け取るかどうかを設定できます。
+                          {dict.settingsNotifications.devicesDescription}
                         </DialogDescription>
                       </DialogHeader>
                       <div className="flex flex-col gap-4">
@@ -432,14 +431,14 @@ export default function SettingsNotifications() {
                         ))}
                         {devices.length === 0 && (
                           <div className="text-xs text-muted-foreground">
-                            この端末で一度Webプッシュ通知を有効化すると表示されます。
+                            {dict.settingsNotifications.noDevices}
                           </div>
                         )}
                       </div>
                       <DialogFooter className="sm:justify-start">
                         <DialogClose asChild>
                           <Button type="button" variant="secondary">
-                            閉じる
+                            {dict.common.close}
                           </Button>
                         </DialogClose>
                       </DialogFooter>
@@ -453,7 +452,6 @@ export default function SettingsNotifications() {
             <AccordionTrigger>{dict.settingsNotifications.types}</AccordionTrigger>
             <AccordionContent className="flex flex-col gap-4 text-balance">
               <Card className="p-4 space-y-3">
-                {/* 期限が近い課題 */}
                 <div className="flex items-center justify-between">
                   <label htmlFor="notification-task" className="font-bold leading-7 [&:not(:first-child)]:mt-6">
                     {dict.settingsNotifications.taskDue}
@@ -507,20 +505,20 @@ export default function SettingsNotifications() {
         <Alert>
           <AlertCircleIcon />
           <AlertTitle>
-            通知を受け取るには、通知方法と通知の種類の両方が有効である必要があります。
+            {dict.settingsNotifications.requirements}
           </AlertTitle>
           <AlertDescription>
-            いずれかが無効の場合、配信されません。また、Webプッシュ通知を有効にするには、ブラウザの通知許可設定で「許可」にする必要があります。
+            {dict.settingsNotifications.requirementsDescription}
           </AlertDescription>
         </Alert>
         <Accordion type="multiple" className="w-full">
           <AccordionItem value="item-3">
-            <AccordionTrigger>その他の設定</AccordionTrigger>
+            <AccordionTrigger>{dict.settingsNotifications.other}</AccordionTrigger>
             <AccordionContent className="flex flex-col gap-4 text-balance">
               <Card className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="font-bold leading-7 [&:not(:first-child)]:mt-6">
-                    テスト通知
+                    {dict.settingsNotifications.testLabel}
                   </p>
                   <Button
                     variant="outline"

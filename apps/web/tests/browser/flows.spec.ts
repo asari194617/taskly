@@ -9,7 +9,9 @@ type Task = {
 };
 
 async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean } = {}) {
-  await page.addInitScript(() => localStorage.setItem("display_lang", "ja"));
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("display_lang")) localStorage.setItem("display_lang", "ja");
+  });
   let authenticated = false;
   let nextId = 2;
   let searchFailures = options.failFirstSearch ? 1 : 0;
@@ -175,4 +177,26 @@ test("通知スイッチの名前・状態が日本語と英語で読み取れ�
     await expect(page.getByRole("switch", { name, exact: true })).toBeVisible();
   }
   await expect(page.getByRole("switch", { name: "Email", exact: true })).toHaveAttribute("aria-checked", "false");
+});
+
+test("通知設定と同意画面が表示言語の切替に追従する", async ({ page }) => {
+  await mockApi(page);
+  await login(page);
+  await page.goto("/settings/notifications");
+  await expect(page.getByRole("heading", { name: "通知設定" }).first()).toBeVisible();
+  await page.getByRole("combobox", { name: "表示言語" }).click();
+  await page.getByRole("option", { name: "English" }).click();
+  await expect(page.getByRole("heading", { name: "Notification Settings" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Notification methods" }).click();
+  await expect(page.getByText("Web push notifications", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Notification types" }).click();
+  await expect(page.getByText("Tasks due soon", { exact: true })).toBeVisible();
+  await expect(page.getByText("To receive notifications, enable both a notification method and a notification type.")).toBeVisible();
+
+  await page.goto("/consent");
+  await expect(page.getByRole("heading", { name: "Before you continue" })).toBeVisible();
+  await expect(page.getByText("I agree to the Terms")).toBeVisible();
+  await page.getByRole("combobox", { name: "Language" }).click();
+  await page.getByRole("option", { name: "Japanese" }).click();
+  await expect(page.getByRole("heading", { name: "ご利用にあたって" })).toBeVisible();
 });
