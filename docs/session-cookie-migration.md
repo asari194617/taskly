@@ -15,8 +15,9 @@ cookie remains host-only to the API. Do not configure a wildcard origin or
 `SameSite=None` without a separate security review.
 
 For any request carrying the session cookie, unsafe methods require both an
-allowed `Origin` and `X-CSRF-Protection: 1`. This includes GraphQL requests
-(queries use POST) and REST updates. Requests authenticated only with Bearer
+allowed `Origin` and `X-Client-Platform: web`. This header is non-safelisted
+and explicitly permitted by both nginx and API CORS preflight. This includes
+GraphQL requests (queries use POST) and REST updates. Requests authenticated only with Bearer
 or `X-API-Key` do not need that header. Browser login requests must have an
 allowed Origin in production; a browser cannot use `X-Client-Platform` to
 obtain a native bearer response.
