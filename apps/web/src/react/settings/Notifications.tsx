@@ -39,6 +39,19 @@ function urlB64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function applicationServerKeysMatch(
+  subscription: PushSubscription,
+  expected: Uint8Array
+) {
+  const current = subscription.options.applicationServerKey;
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  return (
+    bytes.length === expected.length &&
+    bytes.every((value, index) => value === expected[index])
+  );
+}
+
 export default function SettingsNotifications() {
   const { dict } = useLang();
   const [isOpenWebPushModal, setIsOpenWebPushModal] = React.useState(false);
@@ -48,7 +61,6 @@ export default function SettingsNotifications() {
   const [perm, setPerm] = React.useState<NotificationPermission>(
     typeof Notification !== "undefined" ? Notification.permission : "default"
   );
-  const [dailyEnabled, setDailyEnabled] = React.useState<boolean>(true);
   const [typeTask, setTypeTask] = React.useState<boolean>(true);
   const [typeMorning, setTypeMorning] = React.useState<boolean>(true);
   const [typeEvening, setTypeEvening] = React.useState<boolean>(true);
@@ -56,6 +68,22 @@ export default function SettingsNotifications() {
   const [devices, setDevices] = React.useState<
     Array<{ id: number; name: string; is_enabled: boolean }>
   >([]);
+  const vapidKeyRef = React.useRef<Promise<string> | null>(null);
+
+  const loadDevices = React.useCallback(async () => {
+    try {
+      const token = localStorage.getItem("api_token") || "";
+      const res = await fetch(`${apiBase}/push/devices`, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+          "X-Client-Platform": "web",
+        },
+      });
+      if (!res.ok) return;
+      const items = await res.json();
+      if (Array.isArray(items)) setDevices(items);
+    } catch {}
+  }, []);
 
   React.useEffect(() => {
     (async () => {
@@ -74,12 +102,6 @@ export default function SettingsNotifications() {
           if (typeof j.email === "boolean") setEmailOn(j.email);
           if (typeof j.webpush === "boolean") setPushOn(j.webpush);
         }
-        // legacy daily map
-        const res = await fetch(`${apiBase}/settings/push`, { headers: h });
-        if (res.ok) {
-          const data = await res.json();
-          setDailyEnabled(!!data?.daily_enabled);
-        }
         // types
         const t = await fetch(`${apiBase}/settings/notification-types`, {
           headers: h,
@@ -91,15 +113,10 @@ export default function SettingsNotifications() {
           setTypeEvening(jj?.TASK_EVENING !== false);
           setTypeDayShift(jj?.DAYSHIFT !== false);
         }
-        // devices
-        const d = await fetch(`${apiBase}/push/devices`, { headers: h });
-        if (d.ok) {
-          const arr = await d.json();
-          if (Array.isArray(arr)) setDevices(arr);
-        }
+        await loadDevices();
       } catch {}
     })();
-  }, []);
+  }, [loadDevices]);
   React.useEffect(() => {
     let mounted = true;
     (async () => {
@@ -129,54 +146,75 @@ export default function SettingsNotifications() {
     return data.publicKey as string;
   };
 
+  React.useEffect(() => {
+    // Warm the public key while the user reads the page. This keeps the click
+    // handler focused on the browser permission/subscription operations.
+    vapidKeyRef.current = fetchVapidKey().catch((error) => {
+      vapidKeyRef.current = null;
+      throw error;
+    });
+    void vapidKeyRef.current.catch(() => {});
+  }, []);
+
   const subscribe = async () => {
     try {
       if (!("serviceWorker" in navigator))
         throw new Error(dict.settingsNotifications.errorSwUnsupported);
       if (!("PushManager" in window))
         throw new Error(dict.settingsNotifications.errorPushUnsupported);
-      // Ensure SW registered
-      const swReg = await navigator.serviceWorker.ready;
       let permission: NotificationPermission =
         typeof Notification !== "undefined"
           ? Notification.permission
           : "default";
+      // Permission must be requested before any network await so browsers keep
+      // this operation associated with the user's switch click.
       if (permission === "default") {
         permission = await Notification.requestPermission();
         setPerm(permission);
       }
       if (permission !== "granted")
         throw new Error(dict.settingsNotifications.errorNotAllowed);
-      // Ensure previous subscription is cleared (especially if server key changed)
+
+      const [swReg, vapid] = await Promise.all([
+        navigator.serviceWorker.ready,
+        vapidKeyRef.current || fetchVapidKey(),
+      ]);
+      const appServerKey = urlB64ToUint8Array(vapid);
       const existing = await swReg.pushManager.getSubscription();
-      if (existing) {
+      let sub: PushSubscription | null = existing;
+
+      // Reuse a valid browser subscription and re-sync it to the API. Replacing
+      // every subscription made the setting fragile and could discard a
+      // working subscription before the replacement succeeded.
+      if (existing && !applicationServerKeysMatch(existing, appServerKey)) {
         try {
           await existing.unsubscribe();
         } catch {}
+        sub = null;
       }
-      const vapid = await fetchVapidKey();
-      const appServerKey = urlB64ToUint8Array(vapid);
-      let sub: PushSubscription | null = null;
-      try {
-        sub = await swReg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: appServerKey,
-        });
-      } catch (err: any) {
-        // Retry once after forcing unsubscribe, handles InvalidAccessError with stale key
-        if (String(err?.name || err).includes("InvalidAccessError")) {
-          const s2 = await swReg.pushManager.getSubscription();
-          if (s2) {
-            try {
-              await s2.unsubscribe();
-            } catch {}
-          }
+
+      if (!sub) {
+        try {
           sub = await swReg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: appServerKey,
           });
-        } else {
-          throw err;
+        } catch (err: any) {
+          // Retry once after forcing unsubscribe, handles a stale browser key.
+          if (String(err?.name || err).includes("InvalidAccessError")) {
+            const stale = await swReg.pushManager.getSubscription();
+            if (stale) {
+              try {
+                await stale.unsubscribe();
+              } catch {}
+            }
+            sub = await swReg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: appServerKey,
+            });
+          } else {
+            throw err;
+          }
         }
       }
       if (!sub) throw new Error("subscription failed");
@@ -198,6 +236,7 @@ export default function SettingsNotifications() {
       if (!res.ok)
         throw new Error(dict.settingsNotifications.errorServerRegister);
       setPushOn(true);
+      await loadDevices();
       toast({ title: dict.settingsNotifications.enabledMsg });
     } catch (e: any) {
       toast({
@@ -209,71 +248,46 @@ export default function SettingsNotifications() {
   };
 
   const unsubscribe = async () => {
-    try {
-      if (!("serviceWorker" in navigator)) return;
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        const endpoint = sub.endpoint;
-        await sub.unsubscribe();
-        const token = localStorage.getItem("api_token") || "";
-        await fetch(`${apiBase}/push/unsubscribe`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: token ? `Bearer ${token}` : "",
-            "X-Client-Platform": "web",
-          },
-          body: JSON.stringify({ endpoint }),
-        });
-      }
-      setPushOn(false);
-      toast({ title: dict.settingsNotifications.disabledMsg });
-    } catch (e: any) {
-      toast({
-        variant: "destructive",
-        title: e.message || dict.settingsNotifications.errorGeneric,
-      });
-    }
-  };
-
-  const togglePush = async (next: boolean) => {
-    setLoading(true);
-    try {
-      // Update server-side method first
+    if (!("serviceWorker" in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
       const token = localStorage.getItem("api_token") || "";
-      await fetch(`${apiBase}/settings/notification-methods`, {
+      const res = await fetch(`${apiBase}/push/unsubscribe`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
           "X-Client-Platform": "web",
         },
-        body: JSON.stringify({ webpush: next }),
+        body: JSON.stringify({ endpoint: sub.endpoint }),
       });
+      if (!res.ok)
+        throw new Error(dict.settingsNotifications.errorServerRegister);
+      await sub.unsubscribe();
+    }
+    setPushOn(false);
+    await loadDevices();
+    toast({ title: dict.settingsNotifications.disabledMsg });
+  };
+
+  const togglePush = async (next: boolean) => {
+    setLoading(true);
+    try {
       if (next) {
+        // Subscribe first so permission and PushManager calls remain tied to
+        // the user's click. The subscription endpoint enables this device.
         await subscribe();
       } else {
-        // best-effort: unsubscribe current device
-        try {
-          const reg = await navigator.serviceWorker.ready;
-          const sub = await reg.pushManager.getSubscription();
-          if (sub) {
-            await fetch(`${apiBase}/push/unsubscribe`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: token ? `Bearer ${token}` : "",
-                "X-Client-Platform": "web",
-              },
-              body: JSON.stringify({ endpoint: sub.endpoint }),
-            });
-            await sub.unsubscribe();
-          }
-        } catch {}
+        await unsubscribe();
       }
-      // Mirror legacy daily flag
-      await saveDaily(next);
+    } catch (e: any) {
+      if (!next) {
+        toast({
+          variant: "destructive",
+          title: e.message || dict.settingsNotifications.errorGeneric,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -362,22 +376,6 @@ export default function SettingsNotifications() {
 
   // Removed "check subscriptions" from UI for simplicity.
 
-  const saveDaily = async (next: boolean) => {
-    setDailyEnabled(next);
-    try {
-      const token = localStorage.getItem("api_token") || "";
-      await fetch(`${apiBase}/settings/push`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
-          "X-Client-Platform": "web",
-        },
-        body: JSON.stringify({ daily_enabled: next }),
-      });
-    } catch {}
-  };
-
   return (
     <SettingsShell>
       <div className="space-y-6">
@@ -402,7 +400,7 @@ export default function SettingsNotifications() {
                   <Switch
                     checked={pushOn}
                     onCheckedChange={togglePush}
-                    disabled={loading || perm === "denied"}
+                    disabled={loading || (perm === "denied" && !pushOn)}
                   />
                 </div>
                 <div className="flex items-center justify-end">
