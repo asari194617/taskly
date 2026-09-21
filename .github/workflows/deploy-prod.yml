@@ -231,8 +231,10 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
           ./ops/disk-maintenance.sh cleanup
           ./ops/disk-maintenance.sh pre-deploy
-          docker compose down --remove-orphans || true
-          docker compose pull db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
+          # Keep unchanged services (especially MySQL and Redis) running while
+          # Compose pulls and replaces only application containers whose image or
+          # configuration changed. Database image updates should be explicit.
+          docker compose pull server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           docker compose up -d --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor
           # Do not let compose consume the remaining SSH heredoc from stdin.
           docker compose exec -T airflow-scheduler sh -ec '
