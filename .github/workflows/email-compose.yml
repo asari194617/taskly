@@ -2,9 +2,6 @@ name: email-compose-ci
 
 on:
   pull_request:
-    paths:
-      - "apps/email-compose/**"
-      - ".github/workflows/email-compose.yml"
 
 jobs:
   select-runner:
@@ -26,6 +23,7 @@ jobs:
         run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   build:
+    name: email-compose-build
     needs: select-runner
     runs-on: ${{ needs.select-runner.outputs.label }}
     defaults:

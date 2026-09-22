@@ -2,19 +2,6 @@ name: compose-build-ci
 
 on:
   pull_request:
-    paths:
-      - "apps/server/**"
-      - "apps/email-compose/**"
-      - "apps/mcp/**"
-      - "batches/**"
-      - "infra/**"
-      - ".dockerignore"
-      - ".github/scripts/image-matrix.sh"
-      - ".github/scripts/test-image-matrix.sh"
-      - ".github/scripts/require-prod-env.sh"
-      - ".github/scripts/test-prod-env-deploy.sh"
-      - ".github/workflows/compose-build.yml"
-      - ".github/workflows/deploy-prod.yml"
 
 jobs:
   test-batches:
@@ -138,7 +125,7 @@ jobs:
           echo "Build and cache: ${elapsed}s" >> "$GITHUB_STEP_SUMMARY"
 
   build:
-    name: build
+    name: compose-build
     needs: [plan, build-images, test-batches]
     if: always()
     runs-on: ubuntu-latest

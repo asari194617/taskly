@@ -9,6 +9,105 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestSearchIncludesExpiredTasksAcrossPages(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:tasklist_search?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, schema := range []string{
+		`CREATE TABLE tasks (id integer primary key, added_user_id integer, title text, subject_id integer,
+			description text, type text, is_require_hand_in boolean, is_self_check_required boolean,
+			is_hidden boolean, deadline date, effective_deadline date, deadline_since text,
+			deadline_until text, created_at datetime, updated_at datetime)`,
+		"CREATE TABLE role_users (id integer primary key, user_id integer, role text)",
+	} {
+		if err := db.Exec(schema).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	dates := []string{
+		utils.DateOnly(time.Now().AddDate(0, 0, -1)).Format("2006-01-02"),
+		utils.DateOnly(time.Now()).Format("2006-01-02"),
+		utils.DateOnly(time.Now().AddDate(0, 0, 1)).Format("2006-01-02"),
+	}
+	// More than the Web page size, with equal-date rows at page boundaries.
+	for id := 1; id <= 55; id++ {
+		date := dates[0]
+		if id == 54 {
+			date = dates[1]
+		} else if id == 55 {
+			date = dates[2]
+		}
+		title, description := "needle in title", "other"
+		if id == 2 {
+			title, description = "other", "needle in description"
+		}
+		if err := db.Exec(`INSERT INTO tasks (id, added_user_id, title, description, subject_id, is_hidden,
+			deadline, effective_deadline, deadline_since, deadline_until)
+			VALUES (?, 1, ?, ?, 1, 0, ?, ?, 'NONE', 'NONE')`, id, title, description, date, date).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`INSERT INTO tasks (id, added_user_id, title, subject_id, is_hidden,
+		deadline, effective_deadline, deadline_since, deadline_until)
+		VALUES (56, 1, 'needle hidden', 1, 1, ?, ?, 'NONE', 'NONE')`, dates[0], dates[0]).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	items, _, err := List(db, 2, Options{Limit: 100})
+	if err != nil || len(items) != 2 || items[0].ID != 54 || items[1].ID != 55 {
+		t.Fatalf("normal list: items=%v err=%v", items, err)
+	}
+	for _, search := range []string{"", "   "} {
+		items, _, err := List(db, 2, Options{Limit: 100, Search: search})
+		if err != nil || len(items) != 2 {
+			t.Fatalf("blank search %q changed the deadline filter: items=%v err=%v", search, items, err)
+		}
+	}
+
+	var got []uint
+	var cursor *Cursor
+	for page := 0; page < 3; page++ {
+		options := Options{Limit: 50, Search: " needle "}
+		if cursor != nil {
+			options.CursorDeadline, options.CursorID = cursor.CursorDeadline, cursor.CursorID
+		}
+		items, cursor, err = List(db, 2, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range items {
+			got = append(got, item.ID)
+		}
+		if cursor == nil {
+			break
+		}
+	}
+	if len(got) != 55 || cursor != nil {
+		t.Fatalf("search returned %d IDs and cursor %+v", len(got), cursor)
+	}
+	for i, id := range got {
+		if id != uint(i+1) {
+			t.Fatalf("search page position %d: got %d, want %d; all=%v", i, id, i+1, got)
+		}
+	}
+	if got[1] != 2 {
+		t.Fatal("description match missing")
+	}
+
+	items, _, err = List(db, 2, Options{Limit: 100, Search: "needle", Overdue: true})
+	if err != nil || len(items) != 53 {
+		t.Fatalf("explicit overdue search: count=%d err=%v", len(items), err)
+	}
+	if err := db.Exec("INSERT INTO role_users (user_id, role) VALUES (3, 'manager')").Error; err != nil {
+		t.Fatal(err)
+	}
+	items, _, err = List(db, 3, Options{Limit: 100, Search: "needle"})
+	if err != nil || len(items) != 56 {
+		t.Fatalf("manager search: count=%d err=%v", len(items), err)
+	}
+}
+
 func TestListVisibilityAndCursor(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:tasklist?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
