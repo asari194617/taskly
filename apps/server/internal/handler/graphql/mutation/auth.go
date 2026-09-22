@@ -456,11 +456,16 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("hash")
 				}
 				hs := string(hash)
-				if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
+				curTok, _ := c.Locals("token").(string)
+				if err := h.db.Transaction(func(tx *gorm.DB) error {
+					if err := tx.Model(&domain.User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
+						return err
+					}
+					return utils.RevokeOtherSessions(c, u.ID, curTok, tx, h.rdb)
+				}); err != nil {
+					utils.CaptureError(err)
 					return false, fmt.Errorf("db")
 				}
-				curTok, _ := c.Locals("token").(string)
-				utils.RevokeOtherSessions(c, u.ID, curTok, h.db, h.rdb)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

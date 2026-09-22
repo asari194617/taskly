@@ -14,8 +14,10 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/legal"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -226,5 +228,93 @@ func TestSecretMutationsFailOnRandomError(t *testing.T) {
 	}
 	if redisServer.Exists(fmt.Sprintf("totp-setup:%d", u.ID)) {
 		t.Fatal("TOTP secret persisted")
+	}
+}
+
+func TestSetPasswordRollsBackWhenSessionRevocationFails(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&domain.User{}, &domain.Session{}); err != nil {
+		t.Fatal(err)
+	}
+	oldHash, err := bcrypt.GenerateFromPassword([]byte("old-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := string(oldHash)
+	user := domain.User{Email: "password@example.test", HashedPassword: &hash}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range []string{"current-session", "other-session"} {
+		if err := db.Create(&domain.Session{UserID: user.ID, ClientPlatform: "ios", HashedToken: utils.Sha256Hex([]byte(token))}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`CREATE TRIGGER fail_session_delete BEFORE DELETE ON sessions BEGIN SELECT RAISE(FAIL, 'session delete failed'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	redisServer := miniredis.RunT(t)
+	redisServer.Set("session:other-session", fmt.Sprint(user.ID))
+	_, _ = redisServer.SAdd(fmt.Sprintf("user_sessions:%d", user.ID), "current-session", "other-session")
+	rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("user", &user)
+		c.Locals("token", "current-session")
+		return c.Next()
+	})
+	NewHandler(db, rdb, nil).RegisterGraphQL(app.Group("/graphql"))
+	change := func() (int, string) {
+		req := httptest.NewRequest("POST", "/graphql/", strings.NewReader(`{"query":"mutation { setPassword(current: \"old-password\", next: \"new-password\") }"}`))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.StatusCode, string(body)
+	}
+	if status, _ := change(); status != fiber.StatusBadRequest {
+		t.Fatalf("failed password mutation status=%d, want 400", status)
+	}
+	var fresh domain.User
+	if err := db.First(&fresh, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if fresh.HashedPassword == nil || *fresh.HashedPassword != hash {
+		t.Fatal("password changed even though session revocation failed")
+	}
+	var count int64
+	if err := db.Model(&domain.Session{}).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 || !redisServer.Exists("session:other-session") {
+		t.Fatalf("sessions changed despite rollback: count=%d cache=%t", count, redisServer.Exists("session:other-session"))
+	}
+	if err := db.Exec(`DROP TRIGGER fail_session_delete`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if status, body := change(); status != fiber.StatusOK || !strings.Contains(body, `"setPassword":true`) {
+		t.Fatalf("successful password mutation status=%d body=%s", status, body)
+	}
+	if err := db.First(&fresh, user.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if fresh.HashedPassword == nil || bcrypt.CompareHashAndPassword([]byte(*fresh.HashedPassword), []byte("new-password")) != nil {
+		t.Fatal("new password was not saved")
+	}
+	if err := db.Model(&domain.Session{}).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || redisServer.Exists("session:other-session") {
+		t.Fatalf("other session survived password change: count=%d cache=%t", count, redisServer.Exists("session:other-session"))
 	}
 }

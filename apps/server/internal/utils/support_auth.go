@@ -289,18 +289,31 @@ func GenerateSessionToken(uid uint, platform string) (string, error) {
 	return fmt.Sprintf("sess_%d_%s_%s", uid, platform, enc), nil
 }
 
-func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) {
+func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) error {
+	curHash := Sha256Hex([]byte(currentToken))
+	if err := DB.Where("user_id = ? AND hashed_token <> ? AND hashed_token <> ?", userID, curHash, currentToken).Delete(&domain.Session{}).Error; err != nil {
+		return fmt.Errorf("delete other persisted sessions: %w", err)
+	}
+	// Cached entries do not grant access without a persisted row. Clean them up
+	// best effort after the database operation succeeds.
 	key := fmt.Sprintf("user_sessions:%d", userID)
-	toks, _ := RDB.SMembers(c.Context(), key).Result()
+	toks, err := RDB.SMembers(c.Context(), key).Result()
+	if err != nil {
+		CaptureError(fmt.Errorf("list cached sessions for cleanup: %w", err))
+		return nil
+	}
 	for _, t := range toks {
 		if t == currentToken || strings.TrimSpace(t) == "" {
 			continue
 		}
-		_ = RDB.Del(c.Context(), "session:"+t).Err()
-		_ = RDB.SRem(c.Context(), key, t).Err()
+		if err := RDB.Del(c.Context(), "session:"+t).Err(); err != nil {
+			CaptureError(fmt.Errorf("delete cached session: %w", err))
+		}
+		if err := RDB.SRem(c.Context(), key, t).Err(); err != nil {
+			CaptureError(fmt.Errorf("remove cached session index: %w", err))
+		}
 	}
-	curHash := Sha256Hex([]byte(currentToken))
-	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&domain.Session{}).Error
+	return nil
 }
 
 func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {
