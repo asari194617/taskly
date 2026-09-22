@@ -124,7 +124,7 @@ func uploadAndPrune(path string) error {
 	host := os.Getenv("FTP_HOST")
 	c, err := ftp.Dial(net.JoinHostPort(host, valueOr(os.Getenv("FTP_PORT"), "21")),
 		ftp.DialWithTimeout(30*time.Second),
-		ftp.DialWithExplicitTLS(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: host}))
+		ftp.DialWithExplicitTLS(ftpsTLSConfig(host)))
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func uploadAndPrune(path string) error {
 	tmp := name + ".part"
 	defer c.Delete(tmp)
 	if err := c.Stor(tmp, f); err != nil {
-		return err
+		return fmt.Errorf("FTPS STOR %s: %w", tmp, err)
 	}
 	if err := verifyRemote(c, tmp, path); err != nil {
 		return err
@@ -158,6 +158,16 @@ func uploadAndPrune(path string) error {
 	}
 	log.Printf("Verified FTPS backup %s", name)
 	return pruneRemote(c, name)
+}
+
+func ftpsTLSConfig(host string) *tls.Config {
+	// The FTPS server requires the data connection to resume the control
+	// connection's TLS session. Both connections share this config during a dial.
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		ServerName:         host,
+		ClientSessionCache: tls.NewLRUClientSessionCache(32),
+	}
 }
 
 func verifyRemote(c *ftp.ServerConn, remote, local string) error {
