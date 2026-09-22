@@ -236,7 +236,7 @@ func TestSetPasswordRollsBackWhenSessionRevocationFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.User{}, &domain.Session{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.Session{}, &legal.Consent{}); err != nil {
 		t.Fatal(err)
 	}
 	oldHash, err := bcrypt.GenerateFromPassword([]byte("old-password"), bcrypt.MinCost)
@@ -246,6 +246,16 @@ func TestSetPasswordRollsBackWhenSessionRevocationFails(t *testing.T) {
 	hash := string(oldHash)
 	user := domain.User{Email: "password@example.test", HashedPassword: &hash}
 	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&legal.Consent{
+		UserID:          user.ID,
+		TermsVersion:    legal.Version,
+		PrivacyVersion:  legal.Version,
+		SecurityVersion: legal.Version,
+		DisplayLanguage: "ja",
+		AcceptedAt:      time.Now(),
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, token := range []string{"current-session", "other-session"} {
