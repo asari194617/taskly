@@ -52,7 +52,7 @@
 - `.github/scripts/require-prod-env.sh`
 - `.github/workflows/deploy-prod.yml`
 
-手動実行も可能で、`full_build=true` が既定です。
+手動実行も可能で、`full_build=true` が既定です。通常は利用可能な Runner を自動選択します。セルフホスト Runner の作業領域に問題がある場合は `runner_override=ubuntu-latest`、GitHub hosted runner の利用制限時は `runner_override=self-hosted` を指定できます。`plan` ジョブは GitHub hosted runner で実行されます。
 
 ### デプロイの流れ
 
