@@ -50,7 +50,7 @@ jobs:
           MYSQL_USER: taskly
           MYSQL_PASSWORD: taskly_ci_password
         ports:
-          - 3306/tcp
+          - 3306:3306
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
           --health-interval=10s --health-timeout=5s --health-retries=12
@@ -59,6 +59,7 @@ jobs:
       MYSQL_PASSWORD: taskly_ci_password
       MYSQL_DATABASE: taskly_ci
       DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
       MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
       REDIS_USERNAME: default
       REDIS_PASSWORD: taskly_ci_password
@@ -66,8 +67,6 @@ jobs:
       TEST_MIGRATION_DB: "1"
       TEST_API_SMOKE: "1"
     steps:
-      - name: Select MySQL port
-        run: echo "DB_PORT=${{ job.services.mysql.ports['3306'] }}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
@@ -83,12 +82,7 @@ jobs:
           /tmp/taskly-erasure-venv/bin/pip install pymysql==1.1.2
           TEST_ACCOUNT_ERASURE_DB=1 /tmp/taskly-erasure-venv/bin/python -m unittest infra.airflow.tests.test_account_erasure_integration -v
       - name: Start test Redis
-        run: |
-          name="taskly-ci-redis-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          docker run -d --rm --name "$name" -p 127.0.0.1::6379 redis:7-alpine redis-server --requirepass taskly_ci_password
-          port=$(docker port "$name" 6379/tcp)
-          echo "REDIS_ADDR=127.0.0.1:${port##*:}" >> "$GITHUB_ENV"
-          echo "REDIS_CONTAINER=$name" >> "$GITHUB_ENV"
+        run: docker run -d --name taskly-ci-redis -p 6379:6379 redis:7-alpine redis-server --requirepass taskly_ci_password
       - name: Start API and check database-backed route
         working-directory: apps/server
         run: |
@@ -108,7 +102,3 @@ jobs:
             -d '{"title":"baseline API smoke","subject_id":359,"deadline":"2026-10-01"}'
           curl --fail --silent --show-error http://127.0.0.1:8080/tasks \
             -H 'X-API-Key: taskly-baseline-ci-key' | grep -q 'baseline API smoke'
-      - name: Stop test Redis
-        if: always()
-        run: |
-          if [ -n "${REDIS_CONTAINER:-}" ]; then docker stop "$REDIS_CONTAINER" || true; fi

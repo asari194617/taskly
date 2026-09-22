@@ -23,7 +23,7 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:canonical
       - run: npm run test:security-headers
-      - run: npx playwright install chromium
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - if: failure()
         uses: actions/upload-artifact@v7
