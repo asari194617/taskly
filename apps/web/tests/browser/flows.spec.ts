@@ -108,6 +108,50 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await expect(page.getByText("検索結果がありません")).toBeVisible();
 });
 
+test("課題の完了フィルターをキーボードで切り替え・解除できる", async ({ page }) => {
+  const api = await mockApi(page);
+  api.tasks.push(
+    { id: 1, title: "未完了の課題", subject_id: 1, deadline: "2026-09-23", is_completed: false },
+    { id: 2, title: "完了した課題", subject_id: 1, deadline: "2026-09-23", is_completed: true },
+  );
+  await login(page);
+
+  const incomplete = page.getByRole("button", { name: "未完了", exact: true });
+  const completed = page.getByRole("button", { name: "完了済み", exact: true });
+  await expect(incomplete).toHaveAttribute("aria-pressed", "false");
+  await expect(completed).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByPlaceholder("課題を検索 (タイトル/説明)").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "新規作成" }).first()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(incomplete).toBeFocused();
+  expect(await incomplete.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none");
+  await page.keyboard.press("Enter");
+  await expect(incomplete).toHaveAttribute("aria-pressed", "true");
+  await expect(completed).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("未完了の課題")).toBeVisible();
+  await expect(page.getByText("完了した課題")).toHaveCount(0);
+
+  await page.keyboard.press("Space");
+  await expect(incomplete).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("完了した課題")).toBeVisible();
+
+  await page.keyboard.press("Tab");
+  await expect(completed).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(completed).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("未完了の課題")).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(completed).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("未完了の課題")).toBeVisible();
+
+  await completed.click();
+  await expect(completed).toHaveAttribute("aria-pressed", "true");
+  await completed.click();
+  await expect(completed).toHaveAttribute("aria-pressed", "false");
+});
+
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {
   await mockApi(page, { failFirstSearch: true });
   await login(page);

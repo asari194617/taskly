@@ -360,7 +360,7 @@ export default function TasksList() {
         </Button>
       </div>
 
-      {/* Completion filter badges ("すべて" omitted). Click active badge to clear filter. */}
+      {/* Completion filters ("すべて" omitted). Activate the selected filter to clear it. */}
       <div className="flex flex-wrap gap-2 -mt-2">
         {(
           [
@@ -372,9 +372,7 @@ export default function TasksList() {
           return (
             <Badge
               key={f.key}
-              onClick={() =>
-                setCompletedFilter((prev) => (prev === f.key ? "all" : f.key))
-              }
+              asChild
               className={
                 "cursor-pointer select-none px-3 py-1" +
                 (active
@@ -382,7 +380,15 @@ export default function TasksList() {
                   : " bg-muted text-muted-foreground")
               }
             >
-              {f.label}
+              <button
+                type="button"
+                aria-pressed={active}
+                onClick={() =>
+                  setCompletedFilter((prev) => (prev === f.key ? "all" : f.key))
+                }
+              >
+                {f.label}
+              </button>
             </Badge>
           );
         })}
