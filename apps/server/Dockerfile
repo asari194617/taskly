@@ -32,6 +32,7 @@ RUN apk add --no-cache ca-certificates tzdata bash curl grep sed findutils
 COPY --from=build /out/api /app/api
 COPY --from=build /out/migrate /app/migrate
 COPY ./migrations /app/migrations
+COPY ./baseline.sql /app/baseline.sql
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV API_PORT=8080
 EXPOSE 8080 9464
