@@ -165,6 +165,15 @@ export const t = (lang: Lang) => ({
     selectPlaceholder: lang === "ja" ? "選択してください" : "Please select",
     notFound: lang === "ja" ? "見つかりませんでした" : "Not found",
     itemsCount: lang === "ja" ? "件" : "items",
+    completionFilter: lang === "ja" ? "完了状態で絞り込み" : "Filter by completion status",
+    incomplete: lang === "ja" ? "未完了" : "Incomplete",
+    completed: lang === "ja" ? "完了済み" : "Completed",
+    all: lang === "ja" ? "すべて" : "All",
+    showingFilter: lang === "ja" ? "表示中" : "Showing",
+    completionFilterHint:
+      lang === "ja"
+        ? "選択中の条件をもう一度押すと、すべて表示します。"
+        : "Press the selected filter again to show all tasks.",
     today: lang === "ja" ? "今日" : "Today",
     tomorrow: lang === "ja" ? "あす" : "Tomorrow",
     dayAfterTomorrow: lang === "ja" ? "あさって" : "Day after tomorrow",

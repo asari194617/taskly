@@ -108,6 +108,56 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await expect(page.getByText("検索結果がありません")).toBeVisible();
 });
 
+test("完了状態フィルターをキーボードで切り替え、選択と解除を読み取れる", async ({ page }) => {
+  const api = await mockApi(page);
+  api.tasks.push(
+    { id: 10, title: "未完了の課題", subject_id: 1, deadline: "", is_completed: false },
+    { id: 11, title: "完了済みの課題", subject_id: 1, deadline: "", is_completed: true },
+  );
+  await login(page);
+
+  const filters = page.getByRole("group", { name: "完了状態で絞り込み" });
+  const incomplete = filters.getByRole("button", { name: "未完了", exact: true });
+  const completed = filters.getByRole("button", { name: "完了済み", exact: true });
+  await expect(filters).toContainText("選択中の条件をもう一度押すと、すべて表示します。");
+  await expect(filters.getByRole("status")).toHaveText("表示中: すべて");
+  await expect(incomplete).toHaveAttribute("aria-pressed", "false");
+  await expect(completed).toHaveAttribute("aria-pressed", "false");
+
+  await incomplete.focus();
+  await expect(incomplete).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(incomplete).toHaveAttribute("aria-pressed", "true");
+  await expect(filters.getByRole("status")).toHaveText("表示中: 未完了");
+  await expect(page.getByText("未完了の課題")).toBeVisible();
+  await expect(page.getByText("完了済みの課題")).toHaveCount(0);
+
+  await page.keyboard.press("Tab");
+  await expect(completed).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(incomplete).toHaveAttribute("aria-pressed", "false");
+  await expect(completed).toHaveAttribute("aria-pressed", "true");
+  await expect(filters.getByRole("status")).toHaveText("表示中: 完了済み");
+  await expect(page.getByText("完了済みの課題")).toBeVisible();
+  await expect(page.getByText("未完了の課題")).toHaveCount(0);
+
+  await page.keyboard.press("Space");
+  await expect(completed).toHaveAttribute("aria-pressed", "false");
+  await expect(filters.getByRole("status")).toHaveText("表示中: すべて");
+  await expect(page.getByText("未完了の課題")).toBeVisible();
+  await expect(page.getByText("完了済みの課題")).toBeVisible();
+
+  await page.evaluate(() => {
+    localStorage.setItem("display_lang", "en");
+    window.dispatchEvent(new Event("languagechange"));
+  });
+  const englishFilters = page.getByRole("group", { name: "Filter by completion status" });
+  await expect(englishFilters.getByRole("button", { name: "Incomplete" })).toHaveAttribute("aria-pressed", "false");
+  await expect(englishFilters.getByRole("button", { name: "Completed" })).toHaveAttribute("aria-pressed", "false");
+  await expect(englishFilters.getByRole("status")).toHaveText("Showing: All");
+  await expect(englishFilters).toContainText("Press the selected filter again to show all tasks.");
+});
+
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {
   await mockApi(page, { failFirstSearch: true });
   await login(page);
