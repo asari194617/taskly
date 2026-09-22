@@ -29,6 +29,7 @@ the following files are authoritative: `infra/docker-compose.yml`, `.env.example
 These documents are useful background, but they are not authoritative current
 status:
 
+- `legal/terms-issue-404.md`: proposed terms revision and publication procedure; not yet effective
 - `improvements.md`: point-in-time security review and recommendations
 - `remain.md`: earlier backlog and requirements notes
 - `setup.tmp.md`: migration-specific rollout notes
