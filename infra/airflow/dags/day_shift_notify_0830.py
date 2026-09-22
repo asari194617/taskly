@@ -27,6 +27,7 @@ from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.utils.trigger_rule import TriggerRule
 from school_calendar import JST, event_overlaps_date
+from day_shift_recipients import select_day_shift_recipients
 
 
 def mysql_connect():
@@ -316,25 +317,6 @@ def enqueue_day_shift_push(conn, today: date, user_id: int) -> None:
             VALUES ('dayshift', '今日', '日直', '日直の担当日です',
                     '本日は日直の担当日です。よろしくお願いします。', %s, 'webpush', %s)
             ON DUPLICATE KEY UPDATE id=id""", (user_id, key))
-
-
-def select_day_shift_recipients(all_users, blocked_map, pref_map, dev_map, subscribed_ids):
-    enabled, blocked, email, push = [], [], [], []
-    for user in all_users:
-        if user.get("id") is None:
-            continue
-        uid = int(user["id"])
-        if blocked_map.get(uid, 0) > 0:
-            blocked.append(user)
-            continue
-        if pref_map.get(uid, 1) == 0:
-            continue
-        enabled.append(user)
-        if dev_map.get((uid, "EMAIL"), 1) == 1 and (user.get("email") or "").strip():
-            email.append(user)
-        if dev_map.get((uid, "WEBPUSH"), 0) == 1 and uid in subscribed_ids:
-            push.append(user)
-    return enabled, blocked, email, push
 
 
 def notify_day_shift(**context):

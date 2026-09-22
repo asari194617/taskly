@@ -1,20 +1,15 @@
-import ast
-import pathlib
+import sys
 import unittest
+from pathlib import Path
 
-
-SOURCE = pathlib.Path(__file__).parents[1] / "dags" / "day_shift_notify_0830.py"
-tree = ast.parse(SOURCE.read_text())
-selector = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
-                and node.name == "select_day_shift_recipients")
-namespace = {}
-exec(compile(ast.Module(body=[selector], type_ignores=[]), str(SOURCE), "exec"), namespace)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dags"))
+from day_shift_recipients import select_day_shift_recipients
 
 
 class DayShiftRecipientTest(unittest.TestCase):
     def test_channel_settings_and_blocked_users(self):
         users = [{"id": uid, "email": f"{uid}@example.test"} for uid in range(1, 6)]
-        enabled, blocked, email, push = namespace["select_day_shift_recipients"](
+        enabled, blocked, email, push = select_day_shift_recipients(
             users,
             {5: 1},
             {4: 0},

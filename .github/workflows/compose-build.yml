@@ -116,6 +116,14 @@ jobs:
             test -x /opt/airflow/bin/moderation
             mysqldump --version | grep -q "MySQL Community Server"
           '
+      - name: Test Airflow Python DAGs
+        if: matrix.service == 'airflow'
+        run: |
+          docker run --rm \
+            --volume "$PWD/infra/airflow:/opt/airflow/ci:ro" \
+            --entrypoint python \
+            "taskly-ci-airflow:${{ github.sha }}" \
+            -m unittest discover -s /opt/airflow/ci/tests -v
       - name: Build timing
         if: always()
         run: |
