@@ -6,7 +6,6 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
-	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
 
@@ -27,14 +26,9 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					_, err := h.requireAdminActor(c, true)
+					if err != nil {
+						return nil, err
 					}
 					cid := p.Args["cycle_id"].(int)
 					var groups []domain.DayShiftCycleGroup
@@ -56,14 +50,9 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					_, err := h.requireAdminActor(c, true)
+					if err != nil {
+						return nil, err
 					}
 					var items []domain.DayShiftCycle
 					if err := h.db.Order("begin_date DESC").Find(&items).Error; err != nil {
@@ -89,14 +78,9 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					_, err := h.requireAdminActor(c, true)
+					if err != nil {
+						return nil, err
 					}
 					page := 1
 					if v, ok := p.Args["page"].(int); ok && v > 0 {
@@ -145,14 +129,9 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					_, err := h.requireAdminActor(c, true)
+					if err != nil {
+						return nil, err
 					}
 					cid := p.Args["cycle_id"].(int)
 					var groups []domain.DayShiftCycleGroup
@@ -185,14 +164,9 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					_, err := h.requireAdminActor(c, true)
+					if err != nil {
+						return nil, err
 					}
 					cid := p.Args["cycle_id"].(int)
 					page := 1

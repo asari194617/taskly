@@ -29,7 +29,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -70,7 +70,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return nil, err
 				}
@@ -107,7 +107,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return nil, err
 				}
@@ -167,7 +167,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -208,7 +208,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -236,7 +236,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -267,7 +267,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -289,7 +289,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -322,7 +322,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -349,7 +349,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -392,7 +392,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return nil, err
 				}
@@ -440,7 +440,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -485,7 +485,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
@@ -510,7 +510,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				u, err := h.requireAdminActor(c)
+				u, err := h.requireAdminActor(c, true)
 				if err != nil {
 					return false, err
 				}
