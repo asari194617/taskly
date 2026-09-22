@@ -96,7 +96,7 @@ func TestEmptyDatabaseBaseline(t *testing.T) {
 	if err := os.Mkdir(newDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(newDir, "0029_baseline_probe.sql"), []byte(`CREATE TABLE baseline_probe (id INT PRIMARY KEY)`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(newDir, "0032_baseline_probe.sql"), []byte(`CREATE TABLE baseline_probe (id INT PRIMARY KEY)`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("MIGRATIONS_DIR", newDir)
@@ -107,7 +107,7 @@ func TestEmptyDatabaseBaseline(t *testing.T) {
 		t.Fatalf("repeat subsequent migration: %v", err)
 	}
 	var applied int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM migrations WHERE name = '0029_baseline_probe.sql'`).Scan(&applied); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM migrations WHERE name = '0032_baseline_probe.sql'`).Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
 	if applied != 1 {
