@@ -168,12 +168,12 @@ services:
     volumes:
       - airflow-logs:/opt/airflow/logs
       - ./airflow/dags:/opt/airflow/dags
-    # Clean stale PID, initialize/upgrade DB once, then start webserver
+    # Metadata migrations are an explicit maintenance operation.
     command:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-webserver.pid; airflow db migrate; exec airflow api-server -p 3065",
+        "rm -f /opt/airflow/airflow-webserver.pid; exec airflow api-server -p 3065",
       ]
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:3065/api/v2/monitor/health"]
@@ -282,12 +282,12 @@ services:
       timeout: 20s
       retries: 3
       start_period: 90s
-    # Clean stale PID, initialize/upgrade DB once, then start scheduler
+    # Metadata migrations are an explicit maintenance operation.
     command:
       [
         "bash",
         "-lc",
-        "rm -f /opt/airflow/airflow-scheduler.pid; airflow db migrate; exec airflow scheduler",
+        "rm -f /opt/airflow/airflow-scheduler.pid; exec airflow scheduler",
       ]
   airflow-dag-processor:
     image: ghcr.io/asari194617/taskly/airflow:${TASKLY_IMAGE_TAG:-latest}
