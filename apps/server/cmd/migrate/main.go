@@ -16,7 +16,11 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-const baseline = "0025_integration_jobs.sql"
+const (
+	legacyBaseline = "0025_integration_jobs.sql"
+	// baseline.sql is a schema-only snapshot after migration 0028.
+	baselineVersion = "0028_notification_delivery.sql"
+)
 
 var migrationName = regexp.MustCompile(`^([0-9]{4})_[a-z0-9_]+\.sql$`)
 
@@ -61,17 +65,41 @@ func run(ctx context.Context) error {
 	}
 	defer conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK('taskly_schema_migrations')`)
 
-	var baselineApplied int
-	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM migrations WHERE name = ?`, baseline).Scan(&baselineApplied); err != nil {
-		return fmt.Errorf("read legacy migration baseline: %w", err)
+	migrationsDir := os.Getenv("MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "/app/migrations"
 	}
-	if baselineApplied != 1 {
-		return fmt.Errorf("legacy migrations through %s must be reconciled before automatic migrations", baseline)
-	}
-
-	files, err := migrationFiles("/app/migrations")
+	files, err := migrationFiles(migrationsDir)
 	if err != nil {
 		return err
+	}
+	var tableCount int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()`).Scan(&tableCount); err != nil {
+		return fmt.Errorf("inspect database tables: %w", err)
+	}
+	if tableCount == 0 {
+		contents, err := os.ReadFile(filepath.Join(filepath.Dir(migrationsDir), "baseline.sql"))
+		if err != nil {
+			return fmt.Errorf("read empty-database baseline: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, string(contents)); err != nil {
+			return fmt.Errorf("apply empty-database baseline: %w (MySQL DDL may be partially applied; inspect before retrying)", err)
+		}
+		// The snapshot contains these migrations. Record them only after every CREATE succeeds.
+		for _, name := range []string{legacyBaseline, "0027_remove_task_search_outbox.sql", baselineVersion} {
+			if _, err := conn.ExecContext(ctx, `INSERT INTO migrations(name) VALUES (?)`, name); err != nil {
+				return fmt.Errorf("record baseline migration %s: %w", name, err)
+			}
+		}
+		log.Printf("created empty database from schema baseline through %s", baselineVersion)
+	} else {
+		var baselineApplied int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM migrations WHERE name = ?`, legacyBaseline).Scan(&baselineApplied); err != nil {
+			return fmt.Errorf("read legacy migration baseline: %w", err)
+		}
+		if baselineApplied != 1 {
+			return fmt.Errorf("existing database is not reconciled through %s; refusing to apply the empty-database baseline", legacyBaseline)
+		}
 	}
 	for _, name := range files {
 		var applied int
@@ -81,7 +109,7 @@ func run(ctx context.Context) error {
 		if applied != 0 {
 			continue
 		}
-		contents, err := os.ReadFile(filepath.Join("/app/migrations", name))
+		contents, err := os.ReadFile(filepath.Join(migrationsDir, name))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", name, err)
 		}

@@ -81,7 +81,25 @@ mountします。通常のローカルCompose起動ではこのoverrideを使い
 本番の既存スキーマと `migrations` 表は `0025_integration_jobs.sql` まで照合済みです。
 `0023`〜`0025` はスキーマ変更が先に存在したため、2026-09-21 に適用履歴を補正しました。
 自動実行の対象は `apps/server/migrations/0026_*.sql` 以降です。古い SQL は
-重複した変更を含むため、新規DBをこの仕組みだけで作成することはできません。
+重複した変更を含むため、空DBには `apps/server/baseline.sql` を適用します。
+このベースラインは2026-09-22に本番 MySQL 8.4 のアプリ用35表からデータを除いて取得し、
+`0028_notification_delivery.sql` 適用後のスキーマとして固定したものです。
+
+新規環境では空の MySQL 8.4 データベースを作り、Airflow などが表を作る前に
+API イメージの `/app/migrate` を実行します。ローカル Compose なら DB 起動後に
+`cd infra && docker compose build server` と
+`docker compose run --rm --no-deps --entrypoint /app/migrate server` を順に実行します。
+環境変数 `MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`、`DB_HOST`、`DB_PORT` が必要です。
+マイグレーターは表が一つもない場合に限ってベースラインを作り、`0025`、`0027`、`0028` の
+適用履歴を記録してから、以後の SQL を適用します。再実行は安全です。
+
+既存DBではベースラインを実行しません。実行前に
+`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();` が0以外で、
+`SELECT name FROM migrations WHERE name='0025_integration_jobs.sql';` が1行であることを確認します。
+履歴がない既存DB、またはベースライン適用に失敗して表だけ作られたDBは自動処理を止めます。
+バックアップ復元後もこの識別を行い、履歴を手動で補正する前に実際のスキーマと照合してください。
+MySQL の DDL は全体をロールバックできないため、途中失敗後は使い捨てDBを作り直すか、
+残った表を調査してから復旧します。本番のデータを含むDBを空にして再試行しないでください。
 
 新しいマイグレーションは連番の `NNNN_name.sql` を追加し、一度適用したファイルは
 変更しないでください。デプロイ中に MySQL の名前付きロックを取得し、未適用の
