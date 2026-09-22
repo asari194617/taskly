@@ -38,7 +38,13 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:canonical
       - run: npm run test:security-headers
-      - run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium
+        run: |
+          if [[ "${{ runner.environment }}" == "self-hosted" ]]; then
+            npx playwright install chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
       - run: npm run test:browser
       - if: failure()
         uses: actions/upload-artifact@v7

@@ -32,6 +32,7 @@ GitHub Actions の本番更新は `deploy-production` concurrency group で直�
 `main` の ruleset は `api-build`、`api-empty-database`、`web-build-and-test`、`mcp-build`、`email-compose-build`、`compose-build` を必須チェックとする。これらのワークフローは全 PR で実行する。必要承認数は 0 で、自己レビューでマージできる運用とする。例外権限は設定しない。必須チェックの変更時は、ruleset とこの一覧を同時に更新する。
 
 CI と本番デプロイの画像ビルドは、ワークフローごとの runner 選択に従う。セルフホストランナーを選択できない場合は GitHub ホストランナーへのフォールバックがある。必須チェックが完了しない場合はマージせず、選択された runner とジョブログを確認する。
+Web の Playwright はセルフホストランナーではブラウザのみを導入し、GitHub ホストランナーではOS依存パッケージも導入する。セルフホストランナーに `sudo` は使えない。
 
 リリース前に担当者は変更された `apps/server/migrations/NNNN_*.sql` を列挙し、旧 API イメージが新スキーマで動くか、旧スキーマへ戻す必要があるかを PR に記録する。追加だけの変更でも、旧 API の読み書き経路を検証する。列削除や型変更がある場合は原則として先に互換期間を設け、旧イメージへの即時切り戻しを「不可」と判定する。
 
