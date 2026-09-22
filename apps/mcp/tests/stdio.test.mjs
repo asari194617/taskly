@@ -48,6 +48,10 @@ test("stdio bridge advertises tools and calls the HTTP API", async () => {
         "user_update",
       ],
     );
+    const profile = listed.tools.find((tool) => tool.name === "user_update");
+    assert.deepEqual(Object.keys(profile.inputSchema.properties.patch.properties).sort(),
+      ["display_name", "notification_lang"]);
+    assert.equal(profile.inputSchema.properties.patch.additionalProperties, false);
 
     const result = await client.callTool({
       name: "tasks_list",

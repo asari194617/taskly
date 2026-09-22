@@ -131,7 +131,7 @@ const tools: Record<
     handler: async (input: any) => api(`/users/${input.id}`),
   },
   user_update: {
-    description: "Patch update a user",
+    description: "Update your display name or notification language",
     inputSchema: {
       type: "object",
       properties: {
@@ -140,11 +140,9 @@ const tools: Record<
           type: "object",
           properties: {
             display_name: { type: "string" },
-            is_deleted: { type: "boolean" },
-            notification_lang: { type: "string" },
-            is_registered: { type: "boolean" },
-            is_agreed_policies: { type: "boolean" },
+            notification_lang: { type: "string", enum: ["ja", "en"] },
           },
+          additionalProperties: false,
         },
       },
     },

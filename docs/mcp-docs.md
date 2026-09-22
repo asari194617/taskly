@@ -11,7 +11,7 @@ Taskly MCP は、HTTP API と、その API を MCP ツールとして公開す�
 - `tasks_update`: `{ id, patch }`
 - `tasks_delete`: `{ id }`
 - `user_get`: `{ id }`
-- `user_update`: `{ id, patch }`
+- `user_update`: `{ id, patch: { display_name?, notification_lang? } }`（本人のみ。`notification_lang` は `ja` または `en`）
 
 HTTP endpoint の詳細は `apps/mcp/README.md` を参照してください。
 

@@ -17,6 +17,11 @@ The Compose service is named `mcp` and is exposed at
 | PATCH, DELETE | `/tasks/:id` | `X-MCP-Token` |
 | GET, PATCH | `/users/:id` | `X-MCP-Token` |
 
+`PATCH /users/:id` accepts only the token owner's `display_name` and
+`notification_lang` (`ja` or `en`). The request is validated and applied by the
+Go API. Account deletion, registration, and policy agreement are not profile
+updates and cannot be changed with `user_update`.
+
 The server SHA-256 hashes the supplied token and compares it with
 `mcps.hashed_token`. Tokens are issued from **Settings > MCP** in the web UI.
 Task operations are handled by the Go API, including task notifications. They

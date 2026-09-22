@@ -91,4 +91,41 @@ describe("MCP task bridge", () => {
     const res = await app.inject({ method: "GET", url: "/users/456", headers: { "x-mcp-token": "good" } });
     assert.equal(res.statusCode, 403);
   });
+
+  test("rejects account state updates and forwards only profile fields", async () => {
+    const calls: unknown[] = [];
+    const pool = mockPool("good");
+    pool.execute = async () => { throw new Error("profile update must not write MySQL directly"); };
+    const app = await createApp(pool, async (token, method, path, body) => {
+      calls.push({ token, method, path, body });
+      return { status: 204, body: undefined };
+    });
+    const headers = { "x-mcp-token": "good" };
+    for (const field of ["is_deleted", "is_registered", "is_agreed_policies"]) {
+      const res = await app.inject({ method: "PATCH", url: "/users/123", headers,
+        payload: { display_name: "Allowed", [field]: true } });
+      assert.equal(res.statusCode, 400, field);
+    }
+    assert.equal((await app.inject({ method: "PATCH", url: "/users/123", headers,
+      payload: { notification_lang: 1 } })).statusCode, 400);
+    assert.equal((await app.inject({ method: "PATCH", url: "/users/456", headers,
+      payload: { display_name: "Other" } })).statusCode, 403);
+    assert.deepEqual(calls, []);
+
+    const res = await app.inject({ method: "PATCH", url: "/users/123", headers,
+      payload: { display_name: "Allowed", notification_lang: "en" } });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), { ok: true });
+    assert.deepEqual(calls, [{ token: "good", method: "PATCH", path: "/users/me",
+      body: { display_name: "Allowed", notification_lang: "en" } }]);
+  });
+
+  test("passes through profile validation failures from Go API", async () => {
+    const app = await createApp(mockPool("good"), async () =>
+      ({ status: 400, body: { error: "invalid notification_lang" } }));
+    const res = await app.inject({ method: "PATCH", url: "/users/123",
+      headers: { "x-mcp-token": "good" }, payload: { notification_lang: "invalid" } });
+    assert.equal(res.statusCode, 400);
+    assert.deepEqual(res.json(), { error: "invalid notification_lang" });
+  });
 });

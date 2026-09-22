@@ -134,30 +134,20 @@ export async function createApp(pool: DBPool, taskGateway: TaskGateway = httpTas
     if (id !== userId) {
       return reply.code(403).send({ error: "forbidden" });
     }
-    const body = req.body as any;
-    const fields: string[] = [];
-    const values: any[] = [];
-    const up = (k: string, v: any) => {
-      fields.push(`${k} = ?`);
-      values.push(v);
-    };
-    const maybe = (k: string) => {
-      if (body[k] !== undefined) up(k, body[k]);
-    };
-    maybe("display_name");
-    if (body.is_deleted !== undefined)
-      up("is_deleted", body.is_deleted ? 1 : 0);
-    maybe("notification_lang");
-    if (body.is_registered !== undefined)
-      up("is_registered", body.is_registered ? 1 : 0);
-    if (body.is_agreed_policies !== undefined)
-      up("is_agreed_policies", body.is_agreed_policies ? 1 : 0);
-    // push_daily_enabled removed; use notification_devices WEBPUSH via server APIs instead
-    if (fields.length === 0) return reply.send({ ok: true });
-    const sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
-    values.push(id);
-    await pool.execute(sql, values);
-    reply.send({ ok: true });
+    const body = req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.entries(body).some(([key, value]) =>
+        !["display_name", "notification_lang"].includes(key) || typeof value !== "string")) {
+      return reply.code(400).send({ error: "invalid profile patch" });
+    }
+    if (Object.keys(body).length === 0) return reply.send({ ok: true });
+    try {
+      const result = await taskGateway(tokenFrom(req), "PATCH", "/users/me", body);
+      if (result.status !== 204) return reply.code(result.status).send(result.body);
+      return reply.send({ ok: true });
+    } catch {
+      return reply.code(502).send({ error: "user API unavailable" });
+    }
   });
 
   return app;
