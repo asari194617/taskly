@@ -27,6 +27,27 @@ mysql_root() {
 }
 mysql_root -e 'SELECT 1' >/dev/null
 
+rebuild_foreign_keys() {
+  local query table constraint columns referenced referenced_columns update_rule delete_rule tick count=0
+  tick=$(printf '\x60')
+  # MySQL can retain the old schema in InnoDB's FK target after a cross-schema
+  # RENAME TABLE even when information_schema reports the new schema. Rebuild
+  # every metadata FK before allowing Airflow to write again.
+  query="SELECT k.table_name,k.constraint_name,GROUP_CONCAT(CONCAT(CHAR(96),k.column_name,CHAR(96)) ORDER BY k.ordinal_position SEPARATOR ','),k.referenced_table_name,GROUP_CONCAT(CONCAT(CHAR(96),k.referenced_column_name,CHAR(96)) ORDER BY k.ordinal_position SEPARATOR ','),r.update_rule,r.delete_rule FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.constraint_schema=k.constraint_schema AND r.constraint_name=k.constraint_name WHERE k.table_schema='$AIRFLOW_META_DATABASE' AND k.referenced_table_name IS NOT NULL GROUP BY k.table_name,k.constraint_name,k.referenced_table_name,r.update_rule,r.delete_rule ORDER BY k.table_name,k.constraint_name"
+  while IFS=$'\t' read -r table constraint columns referenced referenced_columns update_rule delete_rule; do
+    [[ $table =~ ^[A-Za-z0-9_]+$ && $constraint =~ ^[A-Za-z0-9_.]+$ && $referenced =~ ^[A-Za-z0-9_]+$ ]] || exit 1
+    [[ $(printf '%s' "$columns" | tr -d '\140') =~ ^[A-Za-z0-9_,]+$ ]] || exit 1
+    [[ $(printf '%s' "$referenced_columns" | tr -d '\140') =~ ^[A-Za-z0-9_,]+$ ]] || exit 1
+    case "$update_rule" in CASCADE|RESTRICT|SET\ NULL|NO\ ACTION) ;; *) exit 1 ;; esac
+    case "$delete_rule" in CASCADE|RESTRICT|SET\ NULL|NO\ ACTION) ;; *) exit 1 ;; esac
+    mysql_root -e "ALTER TABLE ${tick}${AIRFLOW_META_DATABASE}${tick}.${tick}${table}${tick} DROP FOREIGN KEY ${tick}${constraint}${tick}"
+    mysql_root -e "ALTER TABLE ${tick}${AIRFLOW_META_DATABASE}${tick}.${tick}${table}${tick} ADD CONSTRAINT ${tick}${constraint}${tick} FOREIGN KEY ($columns) REFERENCES ${tick}${AIRFLOW_META_DATABASE}${tick}.${tick}${referenced}${tick} ($referenced_columns) ON UPDATE $update_rule ON DELETE $delete_rule"
+    count=$((count + 1))
+  done < <(mysql_root -e "$query")
+  (( count > 0 )) || { echo 'No Airflow foreign keys found after migration' >&2; exit 1; }
+  echo "Rebuilt $count Airflow foreign keys"
+}
+
 schema_exists=$(mysql_root -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '$AIRFLOW_META_DATABASE'")
 if [[ $schema_exists == 1 ]]; then
   existing_tables=$(mysql_root -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$AIRFLOW_META_DATABASE'")
@@ -69,11 +90,18 @@ verify_isolation() {
   fi
 }
 
+verify_no_mixed_tables() {
+  local overlap
+  overlap=$(mysql_root -e "SELECT COUNT(*) FROM information_schema.tables a JOIN information_schema.tables m ON m.table_schema = '$AIRFLOW_META_DATABASE' AND m.table_name = a.table_name WHERE a.table_schema = '$MYSQL_DATABASE'")
+  [[ $overlap == 0 ]] || { echo "Airflow tables remain in the application schema: $overlap" >&2; exit 1; }
+}
+
 if [[ $old_dag_runs == 0 ]]; then
   # Fresh install, or a completed migration being replayed by deployment.
   docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate </dev/null
   restrict_app_grants
   verify_isolation
+  verify_no_mixed_tables
   echo 'Airflow metadata database is ready'
   exit 0
 fi
@@ -110,6 +138,7 @@ for table in "${tables[@]}"; do
 done
 sql=$(IFS=,; echo "RENAME TABLE ${renames[*]}")
 mysql_root -e "$sql"
+rebuild_foreign_keys
 
 # New Airflow versions can add tables that were absent from the old schema.
 docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate </dev/null
@@ -120,4 +149,5 @@ after_tasks=$(mysql_root -e "SELECT COUNT(*) FROM \`$AIRFLOW_META_DATABASE\`.tas
 }
 restrict_app_grants
 verify_isolation
+verify_no_mixed_tables
 echo "Moved ${#tables[@]} Airflow tables; DAG runs: $after_runs, task instances: $after_tasks"
