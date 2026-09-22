@@ -41,3 +41,28 @@ with DAG(
             "FTP_DIR": os.environ.get("FTP_DIR", "/backups"),
         },
     )
+
+    # Keep Airflow history recoverable independently of the application dump.
+    run_metadata_backup = BashOperator(
+        task_id="run_metadata_backup",
+        bash_command="/opt/airflow/bin/backup-mysql",
+        trigger_rule="all_done",
+        env={
+            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "DB_HOST": os.environ.get("DB_HOST", "db"),
+            "DB_PORT": os.environ.get("DB_PORT", "3306"),
+            "MYSQL_USER": os.environ.get("AIRFLOW_META_USER", ""),
+            "MYSQL_PASSWORD": os.environ.get("AIRFLOW_META_PASSWORD", ""),
+            "MYSQL_DATABASE": os.environ.get("AIRFLOW_META_DATABASE", ""),
+            "BACKUP_DIR": "/opt/airflow/backups/airflow",
+            "BACKUP_AGE_RECIPIENT": os.environ.get("BACKUP_AGE_RECIPIENT", ""),
+            "BACKUP_RETENTION_DAYS": os.environ.get("BACKUP_RETENTION_DAYS", "14"),
+            "FTP_HOST": os.environ.get("FTP_HOST", ""),
+            "FTP_PORT": os.environ.get("FTP_PORT", "21"),
+            "FTP_USER": os.environ.get("FTP_USER", ""),
+            "FTP_PASSWORD": os.environ.get("FTP_PASSWORD", ""),
+            "FTP_DIR": os.environ.get("FTP_DIR", "/backups").rstrip("/") + "/airflow",
+        },
+    )
+
+    run_backup >> run_metadata_backup

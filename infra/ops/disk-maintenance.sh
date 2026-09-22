@@ -124,9 +124,12 @@ cleanup_airflow_files() {
     -e BACKUP_RETENTION_DAYS="$BACKUP_RETENTION_DAYS" \
     -e BACKUP_MIN_COPIES="$BACKUP_MIN_COPIES" \
     "$AIRFLOW_CONTAINER" bash -euo pipefail -c '
-      mapfile -d "" old < <(find /opt/airflow/backups -xdev -type f -name "backup-*.sql.gz.age" \
-        -mtime "+$BACKUP_RETENTION_DAYS" -print0 | sort -zr)
-      for ((i=BACKUP_MIN_COPIES; i<${#old[@]}; i++)); do rm -f -- "${old[$i]}"; done
+      for directory in /opt/airflow/backups /opt/airflow/backups/airflow; do
+        test -d "$directory" || continue
+        mapfile -d "" old < <(find "$directory" -maxdepth 1 -type f -name "backup-*.sql.gz.age" \
+          -mtime "+$BACKUP_RETENTION_DAYS" -print0 | sort -zr)
+        for ((i=BACKUP_MIN_COPIES; i<${#old[@]}; i++)); do rm -f -- "${old[$i]}"; done
+      done
     '
 }
 

@@ -48,10 +48,12 @@ jobs:
         run: infra/ops/test-disk-maintenance.sh
       - name: Validate Compose configuration
         run: |
-          touch .env
-          docker compose --file infra/docker-compose.yml config --quiet
+          cp .env.example .env
+          docker compose --env-file .env.example --file infra/docker-compose.yml config --quiet
       - name: Test Compose port exposure policy
         run: infra/ops/test-port-exposure.sh
+      - name: Test Airflow database separation
+        run: infra/ops/test-airflow-db-separation.sh
       - name: Test Datadog socket policy
         run: infra/ops/test-datadog-sockets.sh
       - name: Test Redis ACL policy

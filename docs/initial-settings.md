@@ -36,6 +36,7 @@
 - `PROD_SSH_PORT`: 省略時は `22`
 - `PROD_WORKDIR`: サーバー上の絶対パス
 - `PROD_ENV`: 本番 `.env` の内容。空値では本番ホストへの接続前にデプロイを中止する
+- `PROD_ENV` 内の `AIRFLOW_META_DATABASE`, `AIRFLOW_META_USER`, `AIRFLOW_META_PASSWORD`: Airflow メタDB専用の接続設定。既存DBからの移行手順は [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) を参照
 - `PROD_COMPOSE_PROFILES`: 将来 Compose profile を追加する場合の予約値（現行構成には profile なし）
 - `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。設定された経路だけ追加検証します。
 
@@ -62,7 +63,7 @@
 5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
 7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull する。Redis ACL の entrypoint が変更された場合は Redis を再作成し、DB と Redis の起動を確認する。
-8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
+8. Airflow を停止してメタDBを分離し、権限と履歴件数を確認する。新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
 9. アプリコンテナの再作成後、最大10分間 healthcheck を待つ。
 10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
 11. Datadog APM socket への接続と Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。

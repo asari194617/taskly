@@ -35,6 +35,11 @@ services:
     entrypoint: ["/usr/local/bin/taskly-redis-entrypoint"]
     env_file:
       - ../.env
+    environment:
+      MYSQL_ROOT_PASSWORD: ""
+      AIRFLOW_META_DATABASE: ""
+      AIRFLOW_META_USER: ""
+      AIRFLOW_META_PASSWORD: ""
     volumes:
       - redis-data:/data
       - ./redis/entrypoint.sh:/usr/local/bin/taskly-redis-entrypoint:ro
@@ -66,6 +71,10 @@ services:
       - "127.0.0.1:3064:9464" # Host-only metrics scraping
     environment:
       # コンテナ間通信では localhost:3061 ではなく、サービス名:ポート を利用する
+      MYSQL_ROOT_PASSWORD: ""
+      AIRFLOW_META_DATABASE: ""
+      AIRFLOW_META_USER: ""
+      AIRFLOW_META_PASSWORD: ""
       REDIS_ADDR: redis:6379
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       TZ: Asia/Tokyo
@@ -90,6 +99,10 @@ services:
     logging: *default-logging
     environment:
       TASKLY_API_BASE_URL: http://server:8080
+      MYSQL_ROOT_PASSWORD: ""
+      AIRFLOW_META_DATABASE: ""
+      AIRFLOW_META_USER: ""
+      AIRFLOW_META_PASSWORD: ""
     networks:
       - default
       - proxy
@@ -115,6 +128,7 @@ services:
     logging: *default-logging
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      MYSQL_ROOT_PASSWORD: ""
       AIRFLOW__CORE__PARALLELISM: "8"
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
@@ -122,7 +136,7 @@ services:
       AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__EXPOSE_CONFIG: "True"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_META_USER:?set AIRFLOW_META_USER}:${AIRFLOW_META_PASSWORD:?set AIRFLOW_META_PASSWORD}@db:3306/${AIRFLOW_META_DATABASE:?set AIRFLOW_META_DATABASE}
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "8"
       AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "0"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
@@ -154,8 +168,6 @@ services:
     volumes:
       - airflow-logs:/opt/airflow/logs
       - ./airflow/dags:/opt/airflow/dags
-      - ../.env:/opt/airflow/.env:ro
-      - ..:/workspace
     # Clean stale PID, initialize/upgrade DB once, then start webserver
     command:
       [
@@ -181,6 +193,10 @@ services:
     logging: *default-logging
     environment:
       EMAIL_COMPOSE_GRPC_HOST: 0.0.0.0
+      MYSQL_ROOT_PASSWORD: ""
+      AIRFLOW_META_DATABASE: ""
+      AIRFLOW_META_USER: ""
+      AIRFLOW_META_PASSWORD: ""
       EMAIL_COMPOSE_GRPC_PORT: 50051
       DD_SERVICE: taskly-email-compose
       DD_TRACE_AGENT_PORT: "8126"
@@ -218,6 +234,7 @@ services:
     logging: *default-logging
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      MYSQL_ROOT_PASSWORD: ""
       AIRFLOW__CORE__PARALLELISM: "8"
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
@@ -225,7 +242,7 @@ services:
       AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__BASE_URL: http://airflow-webserver:3065
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_META_USER:?set AIRFLOW_META_USER}:${AIRFLOW_META_PASSWORD:?set AIRFLOW_META_PASSWORD}@db:3306/${AIRFLOW_META_DATABASE:?set AIRFLOW_META_DATABASE}
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "8"
       AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "0"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
@@ -254,8 +271,7 @@ services:
       - airflow-logs:/opt/airflow/logs
       - airflow-backups:/opt/airflow/backups
       - ./airflow/dags:/opt/airflow/dags
-      - ../.env:/opt/airflow/.env:ro
-      - ..:/workspace
+      - ../apps/email-compose/src/proto:/workspace/apps/email-compose/src/proto:ro
     healthcheck:
       test:
         [
@@ -292,13 +308,14 @@ services:
     logging: *default-logging
     environment:
       AIRFLOW__CORE__PARALLELISM: "8"
+      MYSQL_ROOT_PASSWORD: ""
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
       AIRFLOW__SCHEDULER__MAX_THREADS: "2"
       AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__BASE_URL: http://airflow-webserver:3065
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_META_USER:?set AIRFLOW_META_USER}:${AIRFLOW_META_PASSWORD:?set AIRFLOW_META_PASSWORD}@db:3306/${AIRFLOW_META_DATABASE:?set AIRFLOW_META_DATABASE}
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "2"
       AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "0"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
@@ -319,8 +336,6 @@ services:
     volumes:
       - airflow-logs:/opt/airflow/logs
       - ./airflow/dags:/opt/airflow/dags
-      - ../.env:/opt/airflow/.env:ro
-      - ..:/workspace
     command: ["bash", "-lc", "exec airflow dag-processor"]
     healthcheck:
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "DagProcessorJob", "--local"]
