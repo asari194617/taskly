@@ -3,10 +3,11 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 COMPOSE_FILE="$PROJECT_ROOT/infra/docker-compose.yml"
+PROD_COMPOSE_FILE="$PROJECT_ROOT/infra/docker-compose.prod.yml"
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
-docker compose --env-file "$PROJECT_ROOT/.env.example" --file "$COMPOSE_FILE" config --format json >"$tmp"
+docker compose --env-file "$PROJECT_ROOT/.env.example" --file "$COMPOSE_FILE" --file "$PROD_COMPOSE_FILE" config --format json >"$tmp"
 
 # Datastores and gRPC workers must only be reachable on the Compose network.
 jq -e '
@@ -22,7 +23,10 @@ jq -e '
   | {
     server: [["3063", 8080], ["3064", 9464]],
     mcp: [["3066", 3066]],
-    "airflow-webserver": [["3065", 3065]]
+    "airflow-webserver": [["3065", 3065]],
+    grafana: [["3067", 3000]],
+    prometheus: [["3068", 9090]],
+    alertmanager: [["3069", 9093]]
   } as $expected
   | all($expected | keys[] as $service
       | ($expected[$service]) as $ports
@@ -33,5 +37,7 @@ jq -e '
             and .published == $port[0]
             and .target == $port[1])))
 ' "$tmp" >/dev/null
+
+jq -e 'all(.services[]; all((.ports // [])[]; .host_ip == "127.0.0.1"))' "$tmp" >/dev/null
 
 echo "Compose port exposure policy passed"

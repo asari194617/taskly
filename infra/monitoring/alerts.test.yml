@@ -1,0 +1,53 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="taskly-api",instance="server:9464"}'
+        values: '1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TasklyMetricsScrapeDown
+        exp_alerts:
+          - exp_labels: {job: taskly-api, instance: 'server:9464', severity: critical}
+            exp_annotations:
+              summary: 'Taskly metrics scrape failed: taskly-api'
+              description: Check the exporter and Prometheus target for taskly-api.
+  - interval: 1m
+    input_series:
+      - series: 'taskly_integration_job_oldest_age_seconds{status="pending"}'
+        values: '0 660 720 780 840 900 960 1020'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: TasklyIntegrationJobsStalled
+        exp_alerts:
+          - exp_labels: {status: pending, severity: warning}
+            exp_annotations:
+              summary: Integration job has been pending or processing for over 10 minutes
+  - interval: 1m
+    input_series:
+      - series: 'taskly_http_requests_total{method="GET",route="/test",status="200"}'
+        values: '0+10x12'
+      - series: 'taskly_http_requests_total{method="GET",route="/test",status="500"}'
+        values: '0+2x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TasklyAPIErrorRate
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: Taskly API 5xx rate exceeds 5% over 5 minutes
+  - interval: 1m
+    input_series:
+      - series: 'taskly_notification_batch_last_run_timestamp_seconds{channel="email",outcome="success"}'
+        values: '100 100 100 100'
+      - series: 'taskly_notification_batch_last_run_timestamp_seconds{channel="email",outcome="failed"}'
+        values: '200 200 200 200'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TasklyNotificationBatchFailed
+        exp_alerts:
+          - exp_labels: {channel: email, severity: critical}
+            exp_annotations:
+              summary: 'Notification batch failed: email'

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: Taskly
+    folder: Operations
+    type: file
+    options:
+      path: /var/lib/grafana/taskly-dashboards

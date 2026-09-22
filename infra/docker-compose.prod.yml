@@ -32,9 +32,82 @@ services:
       <<: *datadog-environment
     volumes:
       - *datadog-socket-mount
+      - ./monitoring/airflow_exporter.py:/opt/airflow/monitoring/airflow_exporter.py:ro
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        rm -f /opt/airflow/airflow-scheduler.pid
+        airflow db migrate
+        python /opt/airflow/monitoring/airflow_exporter.py &
+        exec airflow scheduler
 
   airflow-dag-processor:
     environment:
       <<: *datadog-environment
     volumes:
       - *datadog-socket-mount
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    mem_limit: 192m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:3068:9090"
+    depends_on:
+      - server
+      - alertmanager
+      - blackbox
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    entrypoint: ["/bin/sh", "/etc/alertmanager/start-alertmanager.sh"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/start-alertmanager.sh:/etc/alertmanager/start-alertmanager.sh:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:3069:9093"
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    restart: unless-stopped
+    mem_limit: 32m
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    restart: unless-stopped
+    mem_limit: 192m
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/taskly.yml:ro
+      - ./monitoring/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/taskly.yml:ro
+      - ./monitoring/grafana/taskly-operations.json:/var/lib/grafana/taskly-dashboards/taskly-operations.json:ro
+    ports:
+      - "127.0.0.1:3067:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

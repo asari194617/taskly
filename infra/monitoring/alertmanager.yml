@@ -1,0 +1,11 @@
+route:
+  receiver: discord
+  group_by: [alertname, instance, dag]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: discord
+    discord_configs:
+      - webhook_url_file: /tmp/discord-webhook-url
+        send_resolved: true

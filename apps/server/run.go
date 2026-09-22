@@ -67,9 +67,13 @@ func Run() {
 	if err := jobs.EnsureSchema(db); err != nil {
 		log.Fatalf("integration jobs schema: %v", err)
 	}
+	jobs.RegisterQueueMetrics(db)
+	registerOperationsMetrics(db)
 	rdb := mustInitRedis()
 	wAuth := initWebAuthn()
-	metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464"))
+	if err := metricsServer(utils.Env("METRICS_BIND_ADDR", "127.0.0.1:9464")); err != nil {
+		log.Fatal(err)
+	}
 	app := newServerApp(db, rdb, wAuth, serviceName)
 
 	port := utils.Env("API_PORT", "8080")
