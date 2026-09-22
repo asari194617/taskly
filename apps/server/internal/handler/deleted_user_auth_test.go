@@ -123,6 +123,13 @@ func TestDeletedUserCredentialsAreRejected(t *testing.T) {
 					t.Fatalf("%s after deletion: %d", credential.header, got)
 				}
 			}
+			var closed domain.User
+			if err := db.First(&closed, user.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if !closed.IsDeleted || closed.DeletedAt == nil {
+				t.Fatalf("closure time missing: deleted=%t at=%v", closed.IsDeleted, closed.DeletedAt)
+			}
 			var sessions, keys, tokens, icalKeys int64
 			if err := db.Model(&domain.Session{}).Where("user_id = ?", user.ID).Count(&sessions).Error; err != nil {
 				t.Fatal(err)
