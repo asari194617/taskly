@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
   PopoverContent,
@@ -89,45 +89,31 @@ export function TaskCard({
     <li
       key={t.id}
       onClick={(e) => {
-        const tag = (e.target as HTMLElement).tagName;
-        if (
-          [
-            "BUTTON",
-            "INPUT",
-            "TEXTAREA",
-            "LABEL",
-            "SELECT",
-            "SVG",
-            "PATH",
-          ].includes(tag)
-        )
-          return;
         if (isEditing) return;
+        if (
+          (e.target as HTMLElement).closest(
+            "button, input, textarea, label, select, a, [role='button'], [role='checkbox']",
+          )
+        ) return;
         toggleWithPending(t);
       }}
       className={
-        "relative rounded-lg border p-4 pl-12 bg-card text-card-foreground transition-opacity cursor-pointer " +
+        "relative rounded-lg border p-4 pl-12 bg-card text-card-foreground transition-opacity " +
+        (isEditing ? "" : "cursor-pointer ") +
         (pendingInfo ? " opacity-50" : "")
       }
     >
-      {/* Radio vertically centered on left */}
-      <RadioGroup
-        value={t.is_completed ? "done" : "undone"}
-        onValueChange={(val: string) => {
-          const target = val === "done";
-          if (target !== !!t.is_completed) {
+      <Checkbox
+        checked={!!t.is_completed}
+        disabled={isEditing}
+        onCheckedChange={(checked) => {
+          if (checked !== !!t.is_completed) {
             toggleWithPending(t);
           }
         }}
-        className="absolute left-4 top-1/2 w-auto -translate-y-1/2"
-      >
-        <RadioGroupItem
-          value="undone"
-          className="sr-only absolute!"
-          aria-label="未完了"
-        />
-        <RadioGroupItem value="done" aria-label="完了" />
-      </RadioGroup>
+        aria-label={`${t.title}: ${dict.tasks.completion}`}
+        className="absolute left-4 top-1/2 -translate-y-1/2"
+      />
       {isEditing ? (
         <div className="space-y-3">
           <TaskFormFields
