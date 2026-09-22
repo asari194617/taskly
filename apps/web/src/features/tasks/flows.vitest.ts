@@ -4,6 +4,7 @@ vi.mock("@/lib/graphql", () => ({ gql: vi.fn() }));
 
 import { gql } from "@/lib/graphql";
 import { createTask, deleteTask, reportTask, searchTasks, updateTask, setTaskCompleted } from "./api";
+import { appendTaskPage, visibleTasks } from "./list-model";
 import { runOptimisticMutation, scheduleTaskCompletion } from "./state.mjs";
 
 const query = vi.mocked(gql);
@@ -58,6 +59,33 @@ describe("task search and update", () => {
     query.mockResolvedValueOnce({ tasks: { items: [{ id: 2, title: "later" }], next_cursor: null } });
     expect(await searchTasks("report", signal, cursor)).toEqual({ items: [{ id: 2, title: "later" }], nextCursor: null });
     expect(query).toHaveBeenLastCalledWith(expect.stringContaining("cursor_deadline:$cursor_deadline"), { q: "report", ...cursor }, { signal });
+  });
+
+  it("shows expired title and description matches across search pages", async () => {
+    const cursor = { cursor_deadline: "2026-09-20", cursor_id: "50" };
+    const first = Array.from({ length: 50 }, (_, index) => ({
+      id: index + 1,
+      title: index === 0 ? "needle title" : "other",
+      description: index === 1 ? "needle description" : null,
+      deadline: "2026-09-20",
+    }));
+    const second = [{ id: 51, title: "needle today", deadline: "2026-09-21" }];
+    query.mockResolvedValueOnce({ tasks: { items: first, next_cursor: cursor } });
+    query.mockResolvedValueOnce({ tasks: { items: second, next_cursor: null } });
+
+    const page1 = await searchTasks("needle");
+    const page2 = await searchTasks("needle", undefined, page1.nextCursor!);
+    const results = appendTaskPage(page1.items, page2.items);
+    expect(results).toHaveLength(51);
+    expect(visibleTasks(results, "needle", "all", new Date(2026, 8, 21)).map((task) => task.id))
+      .toEqual(Array.from({ length: 51 }, (_, index) => index + 1));
+    expect(visibleTasks(results, "", "all", new Date(2026, 8, 21)).map((task) => task.id))
+      .toEqual([51]);
+    expect(query).toHaveBeenLastCalledWith(
+      expect.stringContaining("tasks(limit:50, q:$q"),
+      { q: "needle", ...cursor },
+      { signal: undefined },
+    );
   });
 
   it("falls back only for the older completion schema and propagates other errors", async () => {

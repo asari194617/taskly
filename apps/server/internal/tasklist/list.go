@@ -82,15 +82,16 @@ func List(db *gorm.DB, userID uint, options Options) ([]domain.Task, *Cursor, er
 	if !isAdmin && !isManager {
 		query = query.Where("is_hidden = 0")
 	}
+	search := strings.TrimSpace(options.Search)
 	today := utils.DateOnly(time.Now()).Format("2006-01-02")
 	if options.MCP {
 		// MCP keeps its established owner-only, ID-descending offset contract.
 	} else if options.Overdue {
 		query = query.Where("effective_deadline < ?", today)
-	} else {
+	} else if search == "" {
 		query = query.Where("effective_deadline >= ?", today)
 	}
-	if search := strings.TrimSpace(options.Search); search != "" {
+	if search != "" {
 		like := "%" + search + "%"
 		query = query.Where("(title LIKE ? OR description LIKE ?)", like, like)
 	}
