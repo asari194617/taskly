@@ -2,7 +2,6 @@ package main
 
 import (
 	"compress/gzip"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -24,7 +23,7 @@ func TestIntegrationFTPS(t *testing.T) {
 	host := os.Getenv("FTP_HOST")
 	c, err := ftp.Dial(net.JoinHostPort(host, valueOr(os.Getenv("FTP_PORT"), "21")),
 		ftp.DialWithTimeout(30*time.Second),
-		ftp.DialWithExplicitTLS(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: host}))
+		ftp.DialWithExplicitTLS(ftpsTLSConfig(host)))
 	if err != nil {
 		t.Fatal(err)
 	}

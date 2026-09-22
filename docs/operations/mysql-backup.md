@@ -36,3 +36,5 @@ age -d -i /safe/path/backup-age-key.txt backup.sql.gz.age | gzip -dc \
 | 2026-09-21 | 統合テストで生成した一時 age ファイル | 一時ファイルのため記録なし | Docker MySQL 8.4 `restore_target` | `backup_source.sample` の行を復元し `restored` を確認 | 自動テスト `TestIntegrationRestore` |
 
 2026-09-21 に本番設定の FTPS 接続先へ一時ファイルを送受信し、Go クライアントでサイズ・SHA-256 照合が成功した。一時ファイルはテスト後に削除した。
+
+2026-09-22 の定期実行と FTPS 転送障害の調査・復元確認は [`ftps-transfer-2026-09-22.md`](ftps-transfer-2026-09-22.md) に記録した。
