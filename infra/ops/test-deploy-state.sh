@@ -35,12 +35,14 @@ guard="$root/infra/ops/deploy-state.sh"
 
 # Interrupted after stopping Airflow: the marker prevents a fresh deploy.
 bash "$guard" begin "$temp/host" "$new"
+export MOCK_STATUS=exited
 if bash "$guard" begin "$temp/host" "$new" >"$temp/output" 2>&1; then
   echo 'Interrupted deployment was accepted' >&2; exit 1
 fi
 grep -q 'unfinished' "$temp/output"
-grep -q 'current images:' "$temp/output"
+grep -q 'current images: unhealthy or inconsistent:' "$temp/output"
 grep -q 'current migrations:' "$temp/output"
+unset MOCK_STATUS
 
 # A migration was recorded before failure. A later run still cannot proceed.
 printf '0029_new_schema.sql\n' >> "$temp/migrations"
