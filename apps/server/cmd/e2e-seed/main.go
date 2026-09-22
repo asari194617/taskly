@@ -39,7 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"tasks_users_completions", "integration_jobs", "tasks_teams_logs", "tasks", "sessions", "role_users", "subjects", "users"} {
+	for _, table := range []string{"tasks_users_completions", "integration_jobs", "tasks_teams_logs", "tasks", "sessions", "role_users", "policy_consents", "subjects", "users"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM `"+table+"`"); err != nil {
 			log.Fatalf("clear %s: %v", table, err)
 		}
