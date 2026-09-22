@@ -7,6 +7,7 @@ ARG TARGETARCH
 
 WORKDIR /src
 COPY batches/go.mod batches/go.sum ./batches/
+COPY batches/notifications/delivery-channels/common/go.mod batches/notifications/delivery-channels/common/go.sum ./batches/notifications/delivery-channels/common/
 WORKDIR /src/batches
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go mod download
