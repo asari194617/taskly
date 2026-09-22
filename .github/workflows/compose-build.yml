@@ -35,7 +35,7 @@ jobs:
     outputs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
-      runner: ${{ steps.pick.outputs.runner }}
+      runner: ${{ steps.fallback.outputs.use-runner || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,8 +76,6 @@ jobs:
           echo "count=$(jq '.include | length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
           echo "Changed files: ${files[*]}"
           echo "Image matrix: $matrix"
-      - id: default-runner
-        run: echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
       - id: fallback
         name: Select self-hosted with fallback
         uses: dodi-smart/runner-fallback-action@v2
@@ -86,13 +84,11 @@ jobs:
           github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
           primary-runner: self-hosted
           fallback-runner: ubuntu-latest
-      - id: pick
-        run: echo "runner=${{ steps.fallback.outputs.runner || steps.default-runner.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   build-images:
     needs: plan
     if: needs.plan.outputs.count != '0'
-    runs-on: ${{ needs.plan.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}

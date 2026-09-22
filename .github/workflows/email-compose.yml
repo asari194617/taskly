@@ -10,10 +10,8 @@ jobs:
   select-runner:
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.pick.outputs.runner }}
+      label: ${{ steps.fbk.outputs.use-runner || '["ubuntu-latest"]' }}
     steps:
-      - id: def
-        run: echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
       - id: fbk
         name: Select self-hosted with fallback
         uses: dodi-smart/runner-fallback-action@v2
@@ -22,12 +20,10 @@ jobs:
           github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
           primary-runner: self-hosted
           fallback-runner: ubuntu-latest
-      - id: pick
-        run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: select-runner
-    runs-on: ${{ needs.select-runner.outputs.label }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     defaults:
       run:
         working-directory: apps/email-compose
