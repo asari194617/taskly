@@ -1,18 +1,106 @@
 package server
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestIcalFeedRoute_AllTasksWithConstantQueries(t *testing.T) {
+	for _, count := range []int{127, 501} {
+		t.Run(fmt.Sprintf("%d_tasks", count), func(t *testing.T) {
+			db := newTestIcalDB(t)
+			user := domain.User{Email: "feed@example.test", NotificationLang: "en"}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatal(err)
+			}
+			en := "Math"
+			subject := domain.Subject{NameJa: "数学", NameEn: &en}
+			if err := db.Create(&subject).Error; err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Date(2026, time.June, 8, 0, 0, 0, 0, time.UTC)
+			tasks := make([]domain.Task, count)
+			for i := range tasks {
+				tasks[i] = domain.Task{AddedUserID: user.ID, SubjectID: subject.ID, Title: fmt.Sprintf("task-%03d", i), Deadline: deadline}
+			}
+			if err := db.CreateInBatches(tasks, 100).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&domain.IcalKey{UserID: user.ID, Token: "many-tasks"}).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			var queries atomic.Int64
+			if err := db.Callback().Query().Before("gorm:query").Register("count_ical_queries", func(*gorm.DB) {
+				queries.Add(1)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			app := fiber.New()
+			registerIcalFeedRoute(app, db)
+			resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/ical/many-tasks.ics", nil), -1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d: %s", resp.StatusCode, body)
+			}
+			if got := strings.Count(string(body), "BEGIN:VEVENT"); got != count {
+				t.Fatalf("events = %d, want %d", got, count)
+			}
+			if !strings.Contains(string(body), fmt.Sprintf("SUMMARY:[課題] Math: task-%03d", count-1)) {
+				t.Fatal("last task or English subject name missing")
+			}
+			if got := queries.Load(); got != 3 {
+				t.Fatalf("queries = %d, want 3", got)
+			}
+		})
+	}
+}
+
+func TestIcalFeedRoute_DatabaseError(t *testing.T) {
+	db := newTestIcalDB(t)
+	user := domain.User{Email: "feed-error@example.test"}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.IcalKey{UserID: user.ID, Token: "broken-feed"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DROP TABLE tasks").Error; err != nil {
+		t.Fatal(err)
+	}
+	app := fiber.New()
+	registerIcalFeedRoute(app, db)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/ical/broken-feed.ics", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); strings.HasPrefix(got, "text/calendar") {
+		t.Fatalf("error response has calendar content type: %q", got)
+	}
+}
 
 func TestIcalFeedRoute(t *testing.T) {
 	db := newTestIcalDB(t)
@@ -110,7 +198,41 @@ func TestIcalFeedRoute_DeletedUser(t *testing.T) {
 	}
 }
 
-func newTestIcalDB(t *testing.T) *gorm.DB {
+func BenchmarkBuildICSForUser(b *testing.B) {
+	for _, count := range []int{127, 501} {
+		b.Run(fmt.Sprintf("%d_tasks", count), func(b *testing.B) {
+			db := newTestIcalDB(b)
+			user := domain.User{Email: "benchmark@example.test"}
+			if err := db.Create(&user).Error; err != nil {
+				b.Fatal(err)
+			}
+			subject := domain.Subject{NameJa: "数学"}
+			if err := db.Create(&subject).Error; err != nil {
+				b.Fatal(err)
+			}
+			tasks := make([]domain.Task, count)
+			for i := range tasks {
+				tasks[i] = domain.Task{
+					AddedUserID: user.ID, SubjectID: subject.ID,
+					Title:    fmt.Sprintf("task-%03d", i),
+					Deadline: time.Date(2026, time.June, 8, 0, 0, 0, 0, time.UTC),
+				}
+			}
+			if err := db.CreateInBatches(tasks, 100).Error; err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := utils.BuildICSForUser(user.ID, db); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func newTestIcalDB(t testing.TB) *gorm.DB {
 	t.Helper()
 
 	dsn := "file:ical-route-" + strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()) + "?mode=memory&cache=shared"

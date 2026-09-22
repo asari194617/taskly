@@ -23,14 +23,9 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				// Clamp and store integer as string value
 				idx := p.Args["index"].(int)
@@ -65,13 +60,9 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				if !isAdmin {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, false)
+				if err != nil {
+					return false, err
 				}
 				key := strings.TrimSpace(p.Args["key"].(string))
 				val := p.Args["value"].(string)
@@ -103,14 +94,9 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				cid := p.Args["cycle_id"].(int)
 				if cid < 0 {

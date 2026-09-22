@@ -7,7 +7,6 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
-	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
 
@@ -27,14 +26,9 @@ func (h *Handler) mutationFieldsSubjects(t *gqlH.GqlTypes) graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return nil, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return nil, fmt.Errorf("forbidden")
+				_, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return nil, err
 				}
 				nameJa := strings.TrimSpace(p.Args["name_ja"].(string))
 				if nameJa == "" {
@@ -88,14 +82,9 @@ func (h *Handler) mutationFieldsSubjects(t *gqlH.GqlTypes) graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return nil, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return nil, fmt.Errorf("forbidden")
+				_, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return nil, err
 				}
 				id := p.Args["id"].(int)
 				var rec domain.Subject
@@ -156,14 +145,9 @@ func (h *Handler) mutationFieldsSubjects(t *gqlH.GqlTypes) graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				_, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				id := p.Args["id"].(int)
 				hard, _ := p.Args["hard"].(bool)

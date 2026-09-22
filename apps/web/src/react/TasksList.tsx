@@ -317,6 +317,7 @@ export default function TasksList() {
         <div className="flex-1">
           <InputGroup>
             <InputGroupInput
+              aria-label={dict.tasks.searchLabel}
               placeholder={dict.tasks.searchPlaceholder}
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
@@ -352,6 +353,7 @@ export default function TasksList() {
         <Button
           size="icon"
           className="sm:hidden inline-flex"
+          aria-label={dict.tasks.newTask}
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="h-4 w-4" />
