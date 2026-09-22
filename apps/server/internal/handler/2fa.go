@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -95,6 +96,9 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 
 	// Recovery codes
 	router.Post("/recovery/generate", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
+		if utils.Env("AUTH_RECOVERY_EXTERNAL", "") == "1" {
+			return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "recovery codes managed by auth service"})
+		}
 		u := c.Locals("user").(*domain.User)
 		codes := make([]string, 0, 10)
 		if err := h.db.Transaction(func(tx *gorm.DB) error {

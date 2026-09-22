@@ -63,6 +63,7 @@ export default function SettingsSecurity() {
   const authPasskeyURL = import.meta.env.PUBLIC_AUTH_PASSKEY_URL?.trim();
   const authPasswordURL = import.meta.env.PUBLIC_AUTH_PASSWORD_URL?.trim();
   const authEmailCodeURL = import.meta.env.PUBLIC_AUTH_EMAIL_CODE_URL?.trim();
+  const authRecoveryURL = import.meta.env.PUBLIC_AUTH_RECOVERY_URL?.trim();
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -832,7 +833,13 @@ export default function SettingsSecurity() {
           <div className="text-sm text-muted-foreground">
             {dict.settingsSecurity.recovery.desc}
           </div>
-          {auth?.recovery_codes_count && auth.recovery_codes_count > 0 ? (
+          {authRecoveryURL ? (
+            <Button asChild>
+              <a href={authRecoveryURL}>
+                {dict.settingsSecurity.recovery.reissue}
+              </a>
+            </Button>
+          ) : auth?.recovery_codes_count && auth.recovery_codes_count > 0 ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button disabled={generatingRecovery}>
