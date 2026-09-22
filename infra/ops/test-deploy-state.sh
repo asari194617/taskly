@@ -8,7 +8,7 @@ touch "$temp/host/infra/.env"
 old=1111111111111111111111111111111111111111
 new=2222222222222222222222222222222222222222
 printf '%s\n' "$old" > "$temp/running-sha"
-printf '0028_notification_delivery.sql\n' > "$temp/migrations"
+printf '0010_business_calendar_date_index\n0028_notification_delivery.sql\n' > "$temp/migrations"
 cat > "$temp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
