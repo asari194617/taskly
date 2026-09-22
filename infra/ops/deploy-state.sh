@@ -44,7 +44,7 @@ deployment_sha() {
 
 migration_digest() {
   local names
-  names=$(docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --batch --skip-column-names "$MYSQL_DATABASE" -e "SELECT name FROM migrations ORDER BY name"') || fail 'cannot read application migrations'
+  names=$(docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --batch --skip-column-names "$MYSQL_DATABASE" -e "SELECT name FROM migrations ORDER BY name"' </dev/null) || fail 'cannot read application migrations'
   [[ -n $names ]] || fail 'application migrations are empty'
   if printf '%s\n' "$names" | LC_ALL=C grep -Evq '^[0-9]{4}_[a-z0-9_]+\.sql$'; then
     fail 'application migrations have an unexpected format'
