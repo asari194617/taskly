@@ -152,6 +152,18 @@ test("課題の完了フィルターをキーボードで切り替え・解除�
   await expect(completed).toHaveAttribute("aria-pressed", "false");
 });
 
+test("モバイルの新規作成ボタンを名前で見つけて作成画面を開ける", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await login(page);
+
+  const createButton = page.getByRole("button", { name: "新規作成", exact: true })
+    .and(page.locator('button[aria-label="新規作成"]'));
+  await expect(createButton).toBeVisible();
+  await createButton.click();
+  await expect(page.getByRole("dialog").getByText("新規課題の作成")).toBeVisible();
+});
+
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {
   await mockApi(page, { failFirstSearch: true });
   await login(page);
