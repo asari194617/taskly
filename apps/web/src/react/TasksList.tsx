@@ -354,6 +354,7 @@ export default function TasksList() {
         <Button
           size="icon"
           className="sm:hidden inline-flex"
+          aria-label={dict.tasks.newTask}
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="h-4 w-4" />
