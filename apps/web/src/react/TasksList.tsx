@@ -23,7 +23,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -336,7 +335,6 @@ export default function TasksList() {
             </InputGroupAddon>
           </InputGroup>
         </div>
-        {/* Removed select filter (moved to badges) */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -362,38 +360,50 @@ export default function TasksList() {
         </Button>
       </div>
 
-      {/* Completion filters ("すべて" omitted). Activate the selected filter to clear it. */}
-      <div className="flex flex-wrap gap-2 -mt-2">
-        {(
-          [
-            { key: "incomplete", label: "未完了" },
-            { key: "completed", label: "完了済み" },
-          ] as const
-        ).map((f) => {
-          const active = completedFilter === f.key;
-          return (
-            <Badge
-              key={f.key}
-              asChild
-              className={
-                "cursor-pointer select-none px-3 py-1" +
-                (active
-                  ? " bg-primary text-primary-foreground"
-                  : " bg-muted text-muted-foreground")
-              }
-            >
-              <button
+      <div
+        role="group"
+        aria-label={dict.tasks.completionFilter}
+        aria-describedby="completion-filter-hint"
+        className="-mt-2 space-y-1"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              { key: "incomplete", label: dict.tasks.incomplete },
+              { key: "completed", label: dict.tasks.completed },
+            ] as const
+          ).map((f) => {
+            const active = completedFilter === f.key;
+            return (
+              <Button
+                key={f.key}
                 type="button"
+                size="xs"
+                variant={active ? "default" : "secondary"}
                 aria-pressed={active}
                 onClick={() =>
                   setCompletedFilter((prev) => (prev === f.key ? "all" : f.key))
                 }
               >
                 {f.label}
-              </button>
-            </Badge>
-          );
-        })}
+              </Button>
+            );
+          })}
+          <span
+            role="status"
+            aria-live="polite"
+            className="text-xs text-muted-foreground"
+          >
+            {dict.tasks.showingFilter}: {completedFilter === "all"
+              ? dict.tasks.all
+              : completedFilter === "incomplete"
+                ? dict.tasks.incomplete
+                : dict.tasks.completed}
+          </span>
+        </div>
+        <p id="completion-filter-hint" className="text-xs text-muted-foreground">
+          {dict.tasks.completionFilterHint}
+        </p>
       </div>
 
       {/* New Task Form (responsive dialog/drawer) */}

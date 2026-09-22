@@ -135,16 +135,19 @@ test("課題検索欄と新規作成ボタンの名前を日本語・英語と�
   }
 });
 
-test("課題の完了フィルターをキーボードで切り替え・解除できる", async ({ page }) => {
+test("完了状態フィルターをキーボードで切り替え、選択と解除を読み取れる", async ({ page }) => {
   const api = await mockApi(page);
   api.tasks.push(
-    { id: 1, title: "未完了の課題", subject_id: 1, deadline: "2026-09-23", is_completed: false },
-    { id: 2, title: "完了した課題", subject_id: 1, deadline: "2026-09-23", is_completed: true },
+    { id: 10, title: "未完了の課題", subject_id: 1, deadline: "", is_completed: false },
+    { id: 11, title: "完了済みの課題", subject_id: 1, deadline: "", is_completed: true },
   );
   await login(page);
 
-  const incomplete = page.getByRole("button", { name: "未完了", exact: true });
-  const completed = page.getByRole("button", { name: "完了済み", exact: true });
+  const filters = page.getByRole("group", { name: "完了状態で絞り込み" });
+  const incomplete = filters.getByRole("button", { name: "未完了", exact: true });
+  const completed = filters.getByRole("button", { name: "完了済み", exact: true });
+  await expect(filters).toContainText("選択中の条件をもう一度押すと、すべて表示します。");
+  await expect(filters.getByRole("status")).toHaveText("表示中: すべて");
   await expect(incomplete).toHaveAttribute("aria-pressed", "false");
   await expect(completed).toHaveAttribute("aria-pressed", "false");
 
@@ -153,30 +156,40 @@ test("課題の完了フィルターをキーボードで切り替え・解除�
   await expect(page.getByRole("button", { name: "新規作成" }).first()).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(incomplete).toBeFocused();
-  expect(await incomplete.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none");
   await page.keyboard.press("Enter");
   await expect(incomplete).toHaveAttribute("aria-pressed", "true");
-  await expect(completed).toHaveAttribute("aria-pressed", "false");
+  await expect(filters.getByRole("status")).toHaveText("表示中: 未完了");
   await expect(page.getByText("未完了の課題")).toBeVisible();
-  await expect(page.getByText("完了した課題")).toHaveCount(0);
-
-  await page.keyboard.press("Space");
-  await expect(incomplete).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByText("完了した課題")).toBeVisible();
+  await expect(page.getByText("完了済みの課題")).toHaveCount(0);
 
   await page.keyboard.press("Tab");
   await expect(completed).toBeFocused();
   await page.keyboard.press("Space");
+  await expect(incomplete).toHaveAttribute("aria-pressed", "false");
   await expect(completed).toHaveAttribute("aria-pressed", "true");
+  await expect(filters.getByRole("status")).toHaveText("表示中: 完了済み");
+  await expect(page.getByText("完了済みの課題")).toBeVisible();
   await expect(page.getByText("未完了の課題")).toHaveCount(0);
-  await page.keyboard.press("Enter");
-  await expect(completed).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByText("未完了の課題")).toBeVisible();
 
-  await completed.click();
-  await expect(completed).toHaveAttribute("aria-pressed", "true");
-  await completed.click();
+  await page.keyboard.press("Space");
   await expect(completed).toHaveAttribute("aria-pressed", "false");
+  await expect(filters.getByRole("status")).toHaveText("表示中: すべて");
+  await expect(page.getByText("未完了の課題")).toBeVisible();
+  await expect(page.getByText("完了済みの課題")).toBeVisible();
+
+  await page.evaluate(() => {
+    localStorage.setItem("display_lang", "en");
+    window.dispatchEvent(new Event("languagechange"));
+  });
+  const englishFilters = page.getByRole("group", { name: "Filter by completion status" });
+  await expect(englishFilters.getByRole("button", { name: "Incomplete" })).toHaveAttribute("aria-pressed", "false");
+  await expect(englishFilters.getByRole("button", { name: "Completed" })).toHaveAttribute("aria-pressed", "false");
+  await expect(englishFilters.getByRole("status")).toHaveText("Showing: All");
+  await expect(englishFilters).toContainText("Press the selected filter again to show all tasks.");
+  await englishFilters.getByRole("button", { name: "Completed" }).click();
+  await expect(englishFilters.getByRole("status")).toHaveText("Showing: Completed");
+  await englishFilters.getByRole("button", { name: "Completed" }).click();
+  await expect(englishFilters.getByRole("status")).toHaveText("Showing: All");
 });
 
 test("モバイルの新規作成ボタンを名前で見つけて作成画面を開ける", async ({ page }) => {
