@@ -21,13 +21,13 @@ fail() {
 # Use the running container image, never the release tag from an environment file.
 running_sha() {
   local service=$1 id image sha status health
-  id=$(docker compose ps -q "$service")
+  id=$(docker compose ps -q "$service") || fail "cannot inspect $service"
   [[ -n $id ]] || fail "$service has no container"
-  image=$(docker inspect --format '{{.Config.Image}}' "$id")
+  image=$(docker inspect --format '{{.Config.Image}}' "$id") || fail "cannot inspect $service image"
   [[ $image =~ ^ghcr\.io/asari194617/taskly/[^:]+:([0-9a-f]{40})$ ]] || fail "$service has an unexpected image: $image"
   sha=${BASH_REMATCH[1]}
-  status=$(docker inspect --format '{{.State.Status}}' "$id")
-  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id")
+  status=$(docker inspect --format '{{.State.Status}}' "$id") || fail "cannot inspect $service status"
+  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id") || fail "cannot inspect $service health"
   [[ $status == running && ( $health == healthy || $health == none ) ]] || fail "$service is $status/$health"
   printf '%s\n' "$sha"
 }
@@ -35,7 +35,7 @@ running_sha() {
 deployment_sha() {
   local expected='' actual service
   for service in server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor; do
-    actual=$(running_sha "$service")
+    actual=$(running_sha "$service") || return 1
     [[ -z $expected || $actual == "$expected" ]] || fail "application images have mixed release SHAs"
     expected=$actual
   done
