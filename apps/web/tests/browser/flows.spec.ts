@@ -50,6 +50,10 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
       Object.assign(task, { title: variables.title, subject_id: variables.subject_id || task.subject_id });
       return respond({ data: { updateTask: { id: task.id } } });
     }
+    if (query.includes("uncompleteTask(")) {
+      tasks.find((item) => item.id === variables.id)!.is_completed = false;
+      return respond({ data: { uncompleteTask: true } });
+    }
     if (query.includes("completeTask(")) {
       tasks.find((item) => item.id === variables.id)!.is_completed = true;
       return respond({ data: { completeTask: true } });
@@ -100,7 +104,7 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await expect(page.getByText("編集済み課題")).toBeVisible();
   await expect.poll(() => api.tasks[0].title).toBe("編集済み課題");
 
-  await page.getByRole("radio", { name: "完了", exact: true }).click();
+  await page.getByRole("checkbox", { name: "編集済み課題: 完了" }).click();
   await expect.poll(() => api.tasks[0].is_completed, { timeout: 6_000 }).toBe(true);
   await page.getByPlaceholder("課題を検索 (タイトル/説明)").fill("編集済み");
   await expect(page.getByText("編集済み課題")).toBeVisible();
@@ -162,6 +166,44 @@ test("モバイルの新規作成ボタンを名前で見つけて作成画面�
   await expect(createButton).toBeVisible();
   await createButton.click();
   await expect(page.getByRole("dialog").getByText("新規課題の作成")).toBeVisible();
+});
+
+test("課題ごとの完了チェックボックスをキーボードで操作でき、他のボタンは状態を変えない", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  api.tasks.push(
+    { id: 1, title: "数学の課題", subject_id: 1, deadline: "2099-12-01", is_completed: false },
+    { id: 2, title: "英語の課題", subject_id: 1, deadline: "2099-12-01", is_completed: true },
+  );
+  await page.goto("/home");
+  await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");
+
+  const math = page.getByRole("checkbox", { name: "数学の課題: 完了" });
+  const english = page.getByRole("checkbox", { name: "英語の課題: 完了" });
+  await expect(math).not.toBeChecked();
+  await expect(english).toBeChecked();
+  await math.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(math).toBeFocused();
+  expect(await math.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  expect(await math.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none");
+  await page.keyboard.press("Space");
+  await expect(math).toBeChecked();
+  await expect.poll(() => api.tasks[0].is_completed, { timeout: 6_000 }).toBe(true);
+
+  await english.focus();
+  await expect(english).toBeFocused();
+  expect(await english.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  expect(await english.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none");
+  await page.keyboard.press("Space");
+  await expect(english).not.toBeChecked();
+  await expect.poll(() => api.tasks[1].is_completed, { timeout: 6_000 }).toBe(false);
+
+  await page.getByRole("button", { name: "アクション" }).first().click();
+  await expect(math).toBeChecked();
+  await page.keyboard.press("Escape");
+  await page.getByText("数学の課題").click();
+  await expect(math).not.toBeChecked();
 });
 
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {

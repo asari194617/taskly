@@ -128,6 +128,7 @@ export const t = (lang: Lang) => ({
   },
   tasks: {
     title: lang === "ja" ? "タイトル" : "Title",
+    completion: lang === "ja" ? "完了" : "Completed",
     subject: lang === "ja" ? "サブジェクト" : "Subject",
     subjectId: lang === "ja" ? "教科ID" : "Subject ID",
     deadline: lang === "ja" ? "期限" : "Deadline",
