@@ -27,13 +27,6 @@ func computeLiveDigestGroupsAt(db *sql.DB, now time.Time) (map[int64][]dcCommon.
 	}
 	groups := make(map[int64][]dcCommon.QueueItem, len(ids))
 	for _, uid := range ids {
-		blocked, err := dcCommon.IsUserBlocked(db, uid)
-		if err != nil {
-			return nil, err
-		}
-		if blocked {
-			continue
-		}
 		dp := devicePrefs[uid]
 		if !dp.Email {
 			continue

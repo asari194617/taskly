@@ -10,23 +10,11 @@ import (
 	"strings"
 	"time"
 
+	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 	_ "github.com/go-sql-driver/mysql"
 )
 
-type Task struct {
-	ID                  uint
-	AddedUserID         uint
-	SubjectID           uint
-	SubjectName         string
-	Type                string
-	Title               string
-	Description         *string
-	Deadline            time.Time
-	DeadlineSince       string
-	DeadlineUntil       string
-	IsRequireHandIn     bool
-	IsSelfCheckRequired bool
-}
+type Task = dcCommon.Task
 
 type DayShift struct {
 	Date time.Time
@@ -78,56 +66,39 @@ func main() {
 	items := make([]NotifyItem, 0, 256)
 
 	// 期限が近い課題（今日〜あさってまでの「日付」）を抽出（DATEのみ）
-	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	endDate := time.Date(now.Year(), now.Month(), now.Day()+2, 0, 0, 0, 0, now.Location())
-	rows, err := db.Query(
-		"SELECT t.id, t.added_user_id, t.subject_id, COALESCE(s.name_ja, '') AS subject_name, t.type, t.title, t.description, t.deadline, t.deadline_since, t.deadline_until, t.is_require_hand_in, t.is_self_check_required "+
-			"FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline BETWEEN ? AND ?",
-		startDate, endDate,
-	)
+	tasks, err := dcCommon.FetchDueTasks(db, now)
 	if err != nil {
 		log.Fatal("query tasks (effective window): ", err)
-	} else {
-		for rows.Next() {
-			var t Task
-			var desc sql.NullString
-			if err := rows.Scan(&t.ID, &t.AddedUserID, &t.SubjectID, &t.SubjectName, &t.Type, &t.Title, &desc, &t.Deadline, &t.DeadlineSince, &t.DeadlineUntil, &t.IsRequireHandIn, &t.IsSelfCheckRequired); err != nil {
-				log.Fatal("scan task: ", err)
-			}
-			if desc.Valid {
-				t.Description = &desc.String
-			}
-			// ラベルは日付ベース（今日/あす）
-			label := whenLabel(now, t.Deadline)
-			subj := strings.TrimSpace(t.SubjectName)
-			if subj == "" {
-				subj = "課題"
-			}
-			// メタ（科目 + 期限ラベル）
-			deadline := deadlineLabel(t, t.Deadline)
-			meta := fmt.Sprintf("%s %s", subj, deadline)
-			// バッジJSON
-			badges := buildBadgesJSON(t)
-			items = append(items, NotifyItem{
-				TaskID:    t.ID,
-				Kind:      "task",
-				WhenLabel: label,
-				Subject:   subj,
-				Title:     t.Title,
-				Body:      deadline,
-				UserID:    0, // expand to all users by preferences below
-				Meta:      meta,
-				Badges:    badges,
-			})
+	}
+	for _, t := range tasks {
+		// ラベルは日付ベース（今日/あす）
+		label := whenLabel(now, t.Deadline)
+		subj := strings.TrimSpace(t.SubjectName)
+		if subj == "" {
+			subj = "課題"
 		}
-		if err := rows.Err(); err != nil {
-			log.Fatal("read tasks: ", err)
-		}
-		rows.Close()
+		// メタ（科目 + 期限ラベル）
+		deadline := deadlineLabel(t, t.Deadline)
+		meta := fmt.Sprintf("%s %s", subj, deadline)
+		// バッジJSON
+		badges := buildBadgesJSON(t)
+		items = append(items, NotifyItem{
+			TaskID:    t.ID,
+			Kind:      "task",
+			WhenLabel: label,
+			Subject:   subj,
+			Title:     t.Title,
+			Body:      deadline,
+			UserID:    0, // expand to all users by preferences below
+			Meta:      meta,
+			Badges:    badges,
+		})
 	}
 
 	// Resolve eligible users and preferences
-	userIDs, devicePrefs, typePrefs, err := loadEligibleUsersAndPrefs(db)
+	userIDs, devicePrefs, typePrefs, err := dcCommon.LoadEligibleUsersAndPrefs(db,
+		dcCommon.UserDevicePrefs{Email: true, WebPush: false},
+		map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true})
 	if err != nil {
 		log.Fatal("load notification preferences: ", err)
 	}
@@ -338,108 +309,6 @@ func periodIndex(s string) int {
 		}
 	}
 	return 0
-}
-
-func isUserBlocked(db *sql.DB, uid uint) (bool, error) {
-	row := db.QueryRow(`SELECT COUNT(1) FROM blocks WHERE user_id = ? AND (expires_at IS NULL OR expires_at > NOW())`, uid)
-	var cnt int
-	if err := row.Scan(&cnt); err != nil {
-		return false, err
-	}
-	return cnt > 0, nil
-}
-
-type userDevicePrefs struct{ Email, WebPush bool }
-
-// loadEligibleUsersAndPrefs returns non-deleted/non-blocked users and their notification prefs.
-// Defaults: email=true, webpush=false when no settings row exists.
-func loadEligibleUsersAndPrefs(db *sql.DB) ([]uint, map[uint]userDevicePrefs, map[uint]map[string]bool, error) {
-	ids := make([]uint, 0, 1024)
-	device := make(map[uint]userDevicePrefs, 1024)
-	typePrefs := make(map[uint]map[string]bool, 1024)
-	// load users
-	rows, err := db.Query(`SELECT id, is_deleted FROM users`)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id uint
-		var del bool
-		if err := rows.Scan(&id, &del); err != nil {
-			return nil, nil, nil, err
-		}
-		if del {
-			continue
-		}
-		blocked, err := isUserBlocked(db, id)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if blocked {
-			continue
-		}
-		ids = append(ids, id)
-		// default device prefs
-		device[id] = userDevicePrefs{Email: true, WebPush: false}
-		// default type prefs: all enabled
-		typePrefs[id] = map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, nil, err
-	}
-	// overlay per-user device settings
-	rows2, err := db.Query(`SELECT user_id, platform, MAX(is_enabled) FROM notification_devices GROUP BY user_id, platform`)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var uid uint
-		var platform string
-		var enabled bool
-		if err := rows2.Scan(&uid, &platform, &enabled); err != nil {
-			return nil, nil, nil, err
-		}
-		if _, ok := device[uid]; !ok {
-			continue
-		}
-		p := device[uid]
-		switch strings.ToUpper(strings.TrimSpace(platform)) {
-		case "EMAIL":
-			p.Email = enabled
-		case "WEBPUSH":
-			p.WebPush = enabled
-		}
-		device[uid] = p
-	}
-	if err := rows2.Err(); err != nil {
-		return nil, nil, nil, err
-	}
-	// overlay per-user type settings
-	rows3, err := db.Query(`SELECT user_id, notification_type, is_enabled FROM notification_type_prefs`)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer rows3.Close()
-	for rows3.Next() {
-		var uid uint
-		var t string
-		var en bool
-		if err := rows3.Scan(&uid, &t, &en); err != nil {
-			return nil, nil, nil, err
-		}
-		m := typePrefs[uid]
-		if m == nil {
-			continue
-		}
-		m[strings.ToUpper(strings.TrimSpace(t))] = en
-		typePrefs[uid] = m
-	}
-	if err := rows3.Err(); err != nil {
-		return nil, nil, nil, err
-	}
-	return ids, device, typePrefs, nil
 }
 
 // buildBadgesJSON builds badges JSON based on task attributes

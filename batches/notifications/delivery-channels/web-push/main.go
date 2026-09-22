@@ -172,8 +172,14 @@ func notificationKey(it dcCommon.QueueItem) string {
 }
 
 func webPushEligible(db *sql.DB, it dcCommon.QueueItem) (bool, error) {
-	if !it.UserID.Valid {
+	if !it.UserID.Valid || it.UserID.Int64 <= 0 {
 		return false, nil
+	}
+	device, prefs, eligible, err := dcCommon.LoadEligibleUserAndPrefs(db, uint(it.UserID.Int64),
+		dcCommon.UserDevicePrefs{Email: true, WebPush: false},
+		map[string]bool{"TASK": true, "TASK_MORNING": true, "TASK_EVENING": true, "DAYSHIFT": true})
+	if err != nil || !eligible || !device.WebPush {
+		return false, err
 	}
 	typeKey := "TASK"
 	slotKey := slotType(it.Slot)
@@ -181,15 +187,7 @@ func webPushEligible(db *sql.DB, it dcCommon.QueueItem) (bool, error) {
 		typeKey = "DAYSHIFT"
 		slotKey = "DAYSHIFT"
 	}
-	var count int
-	err := db.QueryRow(`SELECT COUNT(1) FROM users u
-		WHERE u.id = ? AND u.is_deleted = 0
-		AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.user_id=u.id AND (b.expires_at IS NULL OR b.expires_at > NOW()))
-		AND NOT EXISTS (SELECT 1 FROM notification_type_prefs p WHERE p.user_id=u.id AND p.notification_type=? AND p.is_enabled=0)
-		AND NOT EXISTS (SELECT 1 FROM notification_type_prefs p WHERE p.user_id=u.id AND p.notification_type=? AND p.is_enabled=0)
-		AND EXISTS (SELECT 1 FROM notification_devices d WHERE d.user_id=u.id AND d.platform='WEBPUSH' AND d.is_enabled=1)`,
-		it.UserID.Int64, typeKey, slotKey).Scan(&count)
-	return count > 0, err
+	return prefs[typeKey] && prefs[slotKey], nil
 }
 
 func slotType(slot sql.NullString) string {

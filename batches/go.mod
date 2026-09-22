@@ -1,15 +1,18 @@
 module github.com/asari194617/taskly/batches
 
-go 1.25.0
+go 1.25.4
 
 require (
 	filippo.io/age v1.2.1
+	github.com/asari194617/taskly/batches/notifications/delivery-channels/common v0.0.0
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/jhump/protoreflect v1.17.0
 	github.com/jlaffaye/ftp v0.2.0
 	google.golang.org/genai v1.33.0
 	google.golang.org/grpc v1.83.2
 )
+
+replace github.com/asari194617/taskly/batches/notifications/delivery-channels/common => ./notifications/delivery-channels/common
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
