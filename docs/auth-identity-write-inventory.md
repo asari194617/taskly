@@ -26,7 +26,7 @@ Status: cutover blocker inventory (2026-09-21)
 
 メールコード許可設定の本人操作は、認証サービスの `/security` から auth DB の `users.email_code_allowed` を更新する。Web の `PUBLIC_AUTH_EMAIL_CODE_URL` は旧トグルを新画面のリンクへ変え、API の `AUTH_EMAIL_SETTINGS_EXTERNAL=1` は旧 GraphQL `setAuthSettings` と REST `POST /settings/auth` を拒否する。管理者更新と旧ログインのコード使用は別の経路であり、このフラグだけでは所有権を移せない。
 
-復旧コードの再発行は認証サービスの `/security` から auth DB で行う。Web の `PUBLIC_AUTH_RECOVERY_URL` は旧再発行ボタンを新画面へのリンクへ変え、API の `AUTH_RECOVERY_EXTERNAL=1` は旧 GraphQL `recoveryGenerate` と REST `/2fa/recovery/generate` を拒否する。旧ログインの復旧コード消費も停止するまで両 DB の所有権を切り替えない。
+復旧コードの再発行は認証サービスの `/security` から auth DB で行う。Web の `PUBLIC_AUTH_RECOVERY_URL` は旧再発行ボタンを新画面へのリンクへ変え、API の `AUTH_RECOVERY_EXTERNAL=1` は旧 GraphQL `recoveryGenerate`、REST `/2fa/recovery/generate`、旧 `/auth/login` の復旧コード利用を拒否し、旧方法一覧と MFA 選択肢から復旧コードを外す。フラグは最終コピー後にだけ有効にし、旧 DB と新 DB の所有権を同時に切り替える。
 
 切り替え時の API 側ゲート `AUTH_PASSKEYS_EXTERNAL=1` は旧 `/webauthn/*` と GraphQL のパスキー登録・名前変更・削除を拒否する。既定値は `0` とし、旧ログインを使う間は有効化しない。このゲートはパスキー以外の認証情報更新や直接 DB 書き込みを止めないため、全認証データの切り替え承認には使わない。
 

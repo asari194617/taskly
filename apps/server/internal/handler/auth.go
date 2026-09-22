@@ -254,7 +254,7 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		}
 		// recovery codes presence (independent of TOTP)
 		recoveryAvailable := false
-		if hasUser {
+		if hasUser && utils.Env("AUTH_RECOVERY_EXTERNAL", "") != "1" {
 			var rc int64
 			_ = h.db.Model(&domain.RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&rc).Error
 			recoveryAvailable = rc > 0
@@ -298,6 +298,9 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		}
 		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid json"})
+		}
+		if body.Recovery != "" && utils.Env("AUTH_RECOVERY_EXTERNAL", "") == "1" {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "recovery codes managed by auth service"})
 		}
 		platform := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
 		if platform == "" {
@@ -442,7 +445,7 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 			if totpActive {
 				allowedMFA = append(allowedMFA, "totp")
 			}
-			if recoveryCount > 0 {
+			if recoveryCount > 0 && utils.Env("AUTH_RECOVERY_EXTERNAL", "") != "1" {
 				allowedMFA = append(allowedMFA, "recovery")
 			}
 
