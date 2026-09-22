@@ -24,6 +24,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["agreePolicies"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -44,6 +45,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"display_name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			displayName, _ := p.Args["display_name"].(string)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -69,6 +71,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"email_login_enabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -103,6 +106,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["logout"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					utils.ClearSessionCookie(c)
@@ -121,12 +125,13 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["deleteMe"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
 				}
 				u := c.Locals("user").(*domain.User)
-				if err := utils.SoftDeleteUser(c.Context(), u.ID, h.db, h.rdb); err != nil {
+				if err := utils.SoftDeleteUser(p.Context, u.ID, h.db, h.rdb); err != nil {
 					return false, err
 				}
 				utils.ClearSessionCookie(c)
@@ -145,6 +150,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			},
 		}),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return nil, fmt.Errorf("unauthorized")
@@ -155,7 +161,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return nil, fmt.Errorf("server")
 				}
 				key := fmt.Sprintf("totp-setup:%d", u.ID)
-				if err := h.rdb.Set(c.Context(), key, secret, 10*time.Minute).Err(); err != nil {
+				if err := h.rdb.Set(p.Context, key, secret, 10*time.Minute).Err(); err != nil {
 					return nil, fmt.Errorf("server")
 				}
 				issuer := "Taskly"
@@ -173,6 +179,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"code": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -180,7 +187,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				u := c.Locals("user").(*domain.User)
 				code, _ := p.Args["code"].(string)
 				key := fmt.Sprintf("totp-setup:%d", u.ID)
-				secret, _ := h.rdb.Get(c.Context(), key).Result()
+				secret, _ := h.rdb.Get(p.Context, key).Result()
 				if secret == "" {
 					return false, fmt.Errorf("setup expired")
 				}
@@ -207,7 +214,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				}
 				// The temporary setup key can expire naturally if cleanup fails.
 				// Report cleanup failures to Sentry when configured.
-				if err := h.rdb.Del(c.Context(), key).Err(); err != nil {
+				if err := h.rdb.Del(p.Context, key).Err(); err != nil {
 					utils.CaptureError(err)
 				}
 				return true, nil
@@ -219,6 +226,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["totpDisable"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -243,6 +251,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["recoveryGenerate"] = &graphql.Field{
 		Type: graphql.NewList(graphql.String),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return nil, fmt.Errorf("unauthorized")
@@ -277,6 +286,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["webauthnRegisterBegin"] = &graphql.Field{
 		Type: graphql.String,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return "", fmt.Errorf("unauthorized")
@@ -292,7 +302,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return "", fmt.Errorf("begin failed")
 				}
 				bsd, _ := json.Marshal(sd)
-				_ = h.rdb.Set(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID), string(bsd), 10*time.Minute).Err()
+				_ = h.rdb.Set(p.Context, fmt.Sprintf("webauthn:reg:%d", u.ID), string(bsd), 10*time.Minute).Err()
 				b, _ := json.Marshal(creation)
 				return string(b), nil
 			}
@@ -306,6 +316,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -314,14 +325,14 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("webauthn not configured")
 				}
 				u := c.Locals("user").(*domain.User)
-				raw, _ := h.rdb.Get(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Result()
+				raw, _ := h.rdb.Get(p.Context, fmt.Sprintf("webauthn:reg:%d", u.ID)).Result()
 				if raw == "" {
 					return false, fmt.Errorf("session expired")
 				}
 				var sd webauthn.SessionData
 				_ = json.Unmarshal([]byte(raw), &sd)
 				payload, _ := p.Args["input"].(string)
-				req, _ := http.NewRequestWithContext(c.Context(), "POST", "", strings.NewReader(payload))
+				req, _ := http.NewRequestWithContext(p.Context, "POST", "", strings.NewReader(payload))
 				req.Header.Set("Content-Type", "application/json")
 				// wrap so FinishRegistration can read credentials via h.db if needed
 				wUser := utils.NewWebauthnUserWrapper(u, h.db)
@@ -338,7 +349,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				if err := h.db.Create(&rec).Error; err != nil {
 					return false, fmt.Errorf("db")
 				}
-				_ = h.rdb.Del(c.Context(), fmt.Sprintf("webauthn:reg:%d", u.ID)).Err()
+				_ = h.rdb.Del(p.Context, fmt.Sprintf("webauthn:reg:%d", u.ID)).Err()
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -353,6 +364,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -384,6 +396,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -406,6 +419,7 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"next":    &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")

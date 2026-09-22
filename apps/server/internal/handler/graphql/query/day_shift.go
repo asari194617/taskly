@@ -25,6 +25,7 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 				"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -53,6 +54,7 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 		"adminDayshiftCycles": &graphql.Field{
 			Type: graphql.NewList(dayShiftCycleType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -85,6 +87,7 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 				"q":         &graphql.ArgumentConfig{Type: graphql.String},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -140,6 +143,7 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 				"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -179,6 +183,7 @@ func (h *Handler) QueryFieldsDayShift(t *gqlH.GqlTypes) graphql.Fields {
 				"page_size": &graphql.ArgumentConfig{Type: graphql.Int},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")

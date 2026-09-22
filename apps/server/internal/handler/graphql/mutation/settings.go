@@ -21,6 +21,7 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 			"index": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -62,6 +63,7 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 			"value": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
@@ -99,6 +101,7 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 			"cycle_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")

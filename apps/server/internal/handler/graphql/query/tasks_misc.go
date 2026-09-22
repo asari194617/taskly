@@ -37,6 +37,7 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				"cursor_id":       &graphql.ArgumentConfig{Type: graphql.String},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -118,6 +119,7 @@ func (h *Handler) QueryFieldsMisc(t *gqlH.GqlTypes) graphql.Fields {
 		"subjects": &graphql.Field{
 			Type: graphql.NewList(subjectType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) { // session only
 						return nil, fmt.Errorf("unauthorized")
@@ -144,6 +146,7 @@ func (h *Handler) QueryFieldsMisc(t *gqlH.GqlTypes) graphql.Fields {
 		"me": &graphql.Field{
 			Type: meType,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -177,6 +180,7 @@ func (h *Handler) QueryFieldsMisc(t *gqlH.GqlTypes) graphql.Fields {
 		"authSettings": &graphql.Field{
 			Type: authSettingsType,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -208,6 +212,7 @@ func (h *Handler) QueryFieldsMisc(t *gqlH.GqlTypes) graphql.Fields {
 		"myPasskeys": &graphql.Field{
 			Type: graphql.NewList(passkeyType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")

@@ -25,6 +25,7 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 		"apiKeys": &graphql.Field{
 			Type: graphql.NewList(apiKeyType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -58,6 +59,7 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 		"icalTokens": &graphql.Field{
 			Type: graphql.NewList(icalTokenType),
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -92,6 +94,7 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 		"dayShiftIndex": &graphql.Field{
 			Type: graphql.Int,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return 0, fmt.Errorf("unauthorized")
@@ -113,6 +116,7 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 		"dayShiftCurrentCycle": &graphql.Field{
 			Type: graphql.Int,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return 0, fmt.Errorf("unauthorized")
@@ -134,6 +138,7 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 		"mcpInfo": &graphql.Field{
 			Type: mcpInfoType,
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
@@ -161,6 +166,7 @@ func (h *Handler) QueryFieldsSettings(t *gqlH.GqlTypes) graphql.Fields {
 				"limit":  &graphql.ArgumentConfig{Type: graphql.Int},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")

@@ -3,6 +3,7 @@ package gqlH
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -77,8 +78,8 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 			return c.Status(400).JSON(fiber.Map{"error": "query too complex"})
 		}
 
-		// Timeout context (5s)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Retain upstream cancellation while enforcing the GraphQL deadline.
+		ctx, cancel := context.WithTimeout(c.UserContext(), 5*time.Second)
 		defer cancel()
 
 		// Disable introspection in production
@@ -94,6 +95,13 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 			Context:        WithFiberCtx(ctx, c),
 		}
 		result := graphql.Do(params)
+		if ctx.Err() == context.DeadlineExceeded {
+			utils.CaptureError(fmt.Errorf("graphql request timeout: %w", ctx.Err()))
+			return c.Status(fiber.StatusGatewayTimeout).JSON(fiber.Map{"error": "query timeout"})
+		}
+		if ctx.Err() == context.Canceled {
+			return ctx.Err()
+		}
 		if len(result.Errors) > 0 {
 			// Preserve a transport-level authentication signal for clients. Resolver
 			// errors are otherwise returned as 400 by this endpoint.
