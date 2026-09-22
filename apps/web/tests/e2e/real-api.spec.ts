@@ -18,6 +18,13 @@ async function login(page: Page, email: string) {
   await expect(page.locator('astro-island[component-url*="Password"]')).not.toHaveAttribute("ssr", "");
   await page.getByLabel("パスワード").fill("e2e-password");
   await page.getByRole("button", { name: "次へ" }).click();
+  await expect(page).toHaveURL(/\/(home|consent)(?:\?.*)?$/);
+  if (new URL(page.url()).pathname === "/consent") {
+    const policies = page.getByRole("checkbox");
+    await expect(policies).toHaveCount(3);
+    for (let index = 0; index < 3; index++) await policies.nth(index).click();
+    await page.getByRole("button", { name: "同意して進む" }).click();
+  }
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");
   await expect(page.getByRole("button", { name: "新規作成" }).first()).toBeVisible();
