@@ -1,5 +1,7 @@
 # Airflow メタDBの分離
 
+2026-09-22 の本番移行と検証結果は [`airflow-db-separation-2026-09-22.md`](airflow-db-separation-2026-09-22.md) に記録しています。
+
 ## 接続とバックアップ
 
 `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD` は Taskly のアプリDB用です。API、MCP、DAG の Python 処理とバッチ、アプリ migration、毎日の暗号化バックアップはこの接続を使います。`AIRFLOW_META_DATABASE` / `AIRFLOW_META_USER` / `AIRFLOW_META_PASSWORD` は Airflow のメタデータ専用です。別のDB名とユーザー名を使い、パスワードは英数字・`_`・`-` で生成してください（例: `openssl rand -hex 32`）。URL に埋め込むため、この文字集合に限定します。両方の資格情報は本番 `PROD_ENV` とローカル `.env` に設定します。
