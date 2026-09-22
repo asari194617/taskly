@@ -3,5 +3,12 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  test: { include: ["src/**/*.vitest.ts"], environment: "node" },
+  test: {
+    include: ["src/**/*.vitest.ts"],
+    environment: "node",
+    coverage: {
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.vitest.ts", "src/**/*.d.ts"],
+    },
+  },
 });

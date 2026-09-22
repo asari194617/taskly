@@ -1,0 +1,184 @@
+name: pr-coverage
+
+on:
+  pull_request:
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const pr = context.payload.pull_request;
+            fs.writeFileSync('pr.json', JSON.stringify({
+              number: pr.number,
+              sha: pr.head.sha,
+              repository: pr.head.repo.full_name,
+            }));
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-pr
+          path: pr.json
+
+  go:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: server
+            directory: apps/server
+          - id: batches
+            directory: batches
+          - id: batch-email
+            directory: batches/notifications/delivery-channels/email
+          - id: batch-web-push
+            directory: batches/notifications/delivery-channels/web-push
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.4"
+          cache-dependency-path: ${{ matrix.directory }}/go.sum
+      - name: Test with coverage
+        working-directory: ${{ matrix.directory }}
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out > coverage.txt
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go coverage.txt "$GITHUB_WORKSPACE/${{ matrix.id }}.json"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.id }}
+          path: ${{ matrix.id }}.json
+          if-no-files-found: ignore
+
+  web:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - name: Test with coverage
+        run: |
+          npx vitest run --coverage --coverage.reporter=json-summary
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/web.json"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-web
+          path: web.json
+          if-no-files-found: ignore
+
+  mcp:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mcp
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/mcp/package-lock.json
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Test with coverage
+        run: |
+          npx c8 --all --reporter=json-summary --include='dist/**/*.js' --include='dist-test/**/*.js' --exclude='**/__tests__/**' npm test
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/mcp.json"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-mcp
+          path: mcp.json
+          if-no-files-found: ignore
+
+  comment:
+    needs: [go, web, mcp]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      actions: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: coverage-results
+      - uses: actions/github-script@v8
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue_number });
+            if (pr.head.sha !== process.env.EXPECTED_SHA) {
+              core.info('A newer PR revision exists; skipping this coverage comment.');
+              return;
+            }
+            const marker = '<!-- taskly-pr-coverage -->';
+            const rows = [
+              ['API (Go statements)', 'server'],
+              ['Batches (Go statements)', 'batches'],
+              ['Batch email (Go statements)', 'batch-email'],
+              ['Batch web push (Go statements)', 'batch-web-push'],
+              ['Web (Vitest lines)', 'web'],
+              ['MCP (Node lines)', 'mcp'],
+            ].map(([label, id]) => {
+              let value = 'Unavailable (test or setup failed)';
+              try {
+                const result = JSON.parse(fs.readFileSync(`coverage-results/${id}.json`, 'utf8'));
+                if (typeof result.percent === 'number' && Number.isFinite(result.percent) &&
+                    result.percent >= 0 && result.percent <= 100) {
+                  value = `${result.percent.toFixed(1)}%`;
+                }
+              } catch (error) {
+                core.info(`${id}: ${error.message}`);
+              }
+              return `| ${label} | ${value} |`;
+            });
+            const body = [marker, '### Test coverage', '',
+              '| Test group | Coverage |', '| --- | ---: |', ...rows, '',
+              `Results for ${process.env.EXPECTED_SHA.slice(0, 7)}. Go reports statement coverage; Web and MCP report line coverage.`,
+              `[Workflow run](${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId})`,
+            ].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const previous = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
