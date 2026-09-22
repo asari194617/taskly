@@ -162,6 +162,7 @@ jobs:
 
   deploy:
     needs: [plan, release-images]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.release-images.result == 'success' }}
     runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
