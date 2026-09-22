@@ -46,7 +46,7 @@ def erase_due_accounts(connection, now=None):
                 cursor.execute(
                     """DELETE q FROM notifications_queue q JOIN tasks t
                        ON t.id = CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(q.event_key, ':', 4), ':', -1) AS UNSIGNED)
-                       WHERE q.event_key LIKE 'task:%' AND t.added_user_id = %s""",
+                       WHERE q.event_key LIKE 'task:%%' AND t.added_user_id = %s""",
                     (user_id,),
                 )
                 # Remove account-created shared content and its dependent rows.
