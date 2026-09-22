@@ -24,6 +24,12 @@ func TestMigrationFiles(t *testing.T) {
 	}
 }
 
+func TestRepositoryMigrationsHaveUniqueVersions(t *testing.T) {
+	if _, err := migrationFiles("../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMigrationFilesRejectsDuplicateVersion(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"0026_first.sql", "0026_second.sql"} {
