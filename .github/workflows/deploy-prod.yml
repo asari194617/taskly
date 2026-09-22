@@ -9,6 +9,7 @@ on:
       - "apps/email-compose/**"
       - "batches/**"
       - "infra/**"
+      - ".github/scripts/check-prod-airflow.sh"
       - ".dockerignore"
       - ".github/scripts/image-matrix.sh"
       - ".github/scripts/require-prod-env.sh"
@@ -41,6 +42,7 @@ jobs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       redis_acl_changed: ${{ steps.matrix.outputs.redis_acl_changed }}
+      airflow_changed: ${{ steps.matrix.outputs.airflow_changed }}
       runner: ${{ inputs.runner_override == 'ubuntu-latest' && '["ubuntu-latest"]' || inputs.runner_override == 'self-hosted' && '["self-hosted"]' || steps.fallback.outputs.use-runner || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@v7
@@ -53,6 +55,7 @@ jobs:
           FULL_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.full_build }}
         run: |
           redis_acl_changed=false
+          airflow_config_changed=false
           if [[ "$FULL_BUILD" == true ]]; then
             matrix=$(.github/scripts/image-matrix.sh --all)
             redis_acl_changed=true
@@ -67,12 +70,18 @@ jobs:
               if [[ "$file" == infra/redis/entrypoint.sh ]]; then
                 redis_acl_changed=true
               fi
+              if [[ "$file" == infra/docker-compose.yml || "$file" == infra/docker-compose.prod.yml ]]; then
+                airflow_config_changed=true
+              fi
             done
             echo "Changed files: ${files[*]}"
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "count=$(jq '.include | length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
           echo "redis_acl_changed=$redis_acl_changed" >> "$GITHUB_OUTPUT"
+          airflow_changed=$(jq -r 'any(.include[]; .service == "airflow")' <<<"$matrix")
+          if [[ "$airflow_config_changed" == true ]]; then airflow_changed=true; fi
+          echo "airflow_changed=$airflow_changed" >> "$GITHUB_OUTPUT"
           echo "Image matrix: $matrix"
       - id: fallback
         name: Select self-hosted with fallback
@@ -177,6 +186,7 @@ jobs:
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RELEASE_SHA: ${{ github.sha }}
       REDIS_ACL_CHANGED: ${{ needs.plan.outputs.redis_acl_changed }}
+      AIRFLOW_CHANGED: ${{ needs.plan.outputs.airflow_changed }}
       PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
       PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
       PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
@@ -289,15 +299,16 @@ jobs:
             docker compose up -d --no-build --force-recreate redis
           fi
           docker compose up -d --no-build --wait db redis
-          # Quiesce metadata writes before moving the legacy Airflow tables.
-          docker compose stop airflow-webserver airflow-scheduler airflow-dag-processor
-          ./ops/prepare-airflow-db.sh </dev/null
           docker compose run --rm --no-deps --entrypoint /app/migrate server </dev/null
-          # --wait fails on unhealthy containers and bounds startup time.
-          if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor prometheus alertmanager blackbox grafana; then
+          # A release SHA is assigned to all images, but unchanged Airflow
+          # containers must keep running instead of being recreated for its tag.
+          if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp prometheus alertmanager blackbox grafana; then
             docker compose ps
             docker compose logs --tail=50 --no-color db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor prometheus alertmanager blackbox grafana
             exit 1
+          fi
+          if [ "$AIRFLOW_CHANGED" = true ] || [ -z "\$(docker compose ps -q airflow-webserver)" ] || [ -z "\$(docker compose ps -q airflow-scheduler)" ] || [ -z "\$(docker compose ps -q airflow-dag-processor)" ]; then
+            docker compose up -d --no-deps --wait --wait-timeout 600 --no-build airflow-webserver airflow-scheduler airflow-dag-processor
           fi
           ./ops/verify-deploy-health.sh
           docker compose exec -T server curl --fail --silent --show-error \
@@ -324,6 +335,10 @@ jobs:
         run: |
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
             bash -s -- complete "$PROD_WORKDIR" "$RELEASE_SHA" < infra/ops/deploy-state.sh
+      - name: Check Airflow after deploy failure
+        if: ${{ failure() || cancelled() }}
+        continue-on-error: true
+        run: .github/scripts/check-prod-airflow.sh
       - name: Deploy summary
         if: always()
         run: |

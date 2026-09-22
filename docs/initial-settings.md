@@ -50,6 +50,7 @@
 - `.dockerignore`
 - `.github/scripts/image-matrix.sh`
 - `.github/scripts/require-prod-env.sh`
+- `.github/scripts/check-prod-airflow.sh`
 - `.github/workflows/deploy-prod.yml`
 
 手動実行も可能で、`full_build=true` が既定です。通常は利用可能な Runner を自動選択します。セルフホスト Runner の作業領域に問題がある場合は `runner_override=ubuntu-latest`、GitHub hosted runner の利用制限時は `runner_override=self-hosted` を指定できます。`plan` ジョブは GitHub hosted runner で実行されます。
@@ -63,10 +64,14 @@
 5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
 7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull する。Redis ACL の entrypoint が変更された場合は Redis を再作成し、DB と Redis の起動を確認する。
-8. Airflow を停止してメタDBを分離し、権限と履歴件数を確認する。新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。
-9. アプリコンテナの再作成後、最大10分間 healthcheck を待つ。
+8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。Airflow のイメージまたは Compose 設定が変わった場合だけ Airflow 3サービスを更新する。メタDB移行は通常デプロイでは実行しない。
+9. 更新したコンテナの再作成後、最大10分間 healthcheck を待つ。
 10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
 11. Datadog APM socket への接続と Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+
+同時に複数の push があっても実行中のデプロイはキャンセルせず、後続を待機させます。デプロイ失敗時は別の SSH セッションで Airflow 3サービスの状態を確認し、停止・不健康・確認不能なら Actions にエラーを表示します。
+
+Airflow メタDBの初期化・スキーマ更新・旧アプリDBからの分離が必要な場合は、バックアップと DAG の実行状況を確認してから [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) の明示的な移行手順を実行してください。Airflow のサービス起動時に `db migrate` は実行しません。
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
