@@ -10,6 +10,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/handler"
 	adminH "github.com/asari194617/taskly/apps/server/internal/handler/admin"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	mw "github.com/asari194617/taskly/apps/server/internal/middleware"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/getsentry/sentry-go"
@@ -183,6 +184,13 @@ func registerIcalFeedRoute(app fiber.Router, db *gorm.DB) {
 		// enforce expiry if set
 		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
 			return c.Status(404).SendString("not found")
+		}
+		current, err := legal.Current(db, key.UserID)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return c.Status(403).SendString("policy consent required")
 		}
 		ics, err := utils.BuildICSForUser(key.UserID, db)
 		if err != nil {

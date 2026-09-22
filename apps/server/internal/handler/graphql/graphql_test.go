@@ -13,6 +13,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/sqlite"
@@ -24,9 +25,18 @@ func TestGraphQLCancelsSlowDBQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := db.AutoMigrate(&legal.Consent{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&legal.Consent{UserID: 1, TermsVersion: legal.Version, PrivacyVersion: legal.Version, SecurityVersion: legal.Version, DisplayLanguage: "ja"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	queryStarted := make(chan struct{}, 1)
 	queryStopped := make(chan struct{}, 1)
 	if err := db.Callback().Query().Before("gorm:query").Register("test:slow_query", func(tx *gorm.DB) {
+		if tx.Statement.Table == "policy_consents" {
+			return
+		}
 		queryStarted <- struct{}{}
 		select {
 		case <-tx.Statement.Context.Done():
@@ -168,10 +178,13 @@ func TestSecretMutationsFailOnRandomError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.IcalKey{}, &domain.RecoveryCode{}); err != nil {
+	if err := db.AutoMigrate(&domain.IcalKey{}, &domain.RecoveryCode{}, &legal.Consent{}); err != nil {
 		t.Fatal(err)
 	}
 	u := domain.User{ID: 9, Email: "test@example.com"}
+	if err := db.Create(&legal.Consent{UserID: u.ID, TermsVersion: legal.Version, PrivacyVersion: legal.Version, SecurityVersion: legal.Version, DisplayLanguage: "ja"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&domain.RecoveryCode{UserID: u.ID, HashedCode: "old"}).Error; err != nil {
 		t.Fatal(err)
 	}

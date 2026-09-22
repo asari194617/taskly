@@ -7,11 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlMutation "github.com/asari194617/taskly/apps/server/internal/handler/graphql/mutation"
 	gqlQuery "github.com/asari194617/taskly/apps/server/internal/handler/graphql/query"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	graphql "github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
 )
 
@@ -66,6 +69,16 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 		document, err := parser.Parse(parser.ParseParams{Source: body.Query})
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid query"})
+		}
+		if utils.UserFromSession(c, h.db, h.rdb) {
+			u := c.Locals("user").(*domain.User)
+			current, err := legal.Current(h.db, u.ID)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "consent status unavailable"})
+			}
+			if !current && !consentOnlyOperation(document) {
+				return c.Status(403).JSON(fiber.Map{"error": "policy consent required"})
+			}
 		}
 		cost, err := estimateGraphQLCost(document, schema, body.Variables)
 		if err != nil {
@@ -122,6 +135,29 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 		}
 		return c.Next()
 	})
+}
+
+// Before consent, only account inspection, consent, logout and deletion are
+// reachable. Fragments and multiple root selections fail closed.
+func consentOnlyOperation(document *ast.Document) bool {
+	if len(document.Definitions) != 1 {
+		return false
+	}
+	op, ok := document.Definitions[0].(*ast.OperationDefinition)
+	if !ok || op.SelectionSet == nil || len(op.SelectionSet.Selections) != 1 {
+		return false
+	}
+	field, ok := op.SelectionSet.Selections[0].(*ast.Field)
+	if !ok || field.Name == nil {
+		return false
+	}
+	switch field.Name.Value {
+	case "me":
+		return op.Operation == "query"
+	case "agreePolicies", "logout", "deleteMe":
+		return op.Operation == "mutation"
+	}
+	return false
 }
 
 // Detect introspection query

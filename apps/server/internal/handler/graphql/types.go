@@ -135,13 +135,14 @@ func (h *Handler) createGQLTypes() *gqlShared.GqlTypes {
 	meType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Me",
 		Fields: graphql.Fields{
-			"id":                 &graphql.Field{Type: graphql.Int},
-			"email":              &graphql.Field{Type: graphql.String},
-			"display_name":       &graphql.Field{Type: graphql.String},
-			"is_admin":           &graphql.Field{Type: graphql.Boolean},
-			"is_manager":         &graphql.Field{Type: graphql.Boolean},
-			"is_registered":      &graphql.Field{Type: graphql.Boolean},
-			"is_agreed_policies": &graphql.Field{Type: graphql.Boolean},
+			"id":                         &graphql.Field{Type: graphql.Int},
+			"email":                      &graphql.Field{Type: graphql.String},
+			"display_name":               &graphql.Field{Type: graphql.String},
+			"is_admin":                   &graphql.Field{Type: graphql.Boolean},
+			"is_manager":                 &graphql.Field{Type: graphql.Boolean},
+			"is_registered":              &graphql.Field{Type: graphql.Boolean},
+			"is_agreed_policies":         &graphql.Field{Type: graphql.Boolean},
+			"policy_notice_effective_at": &graphql.Field{Type: graphql.String},
 		},
 	})
 

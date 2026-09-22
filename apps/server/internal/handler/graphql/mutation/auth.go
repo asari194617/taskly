@@ -10,6 +10,7 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
@@ -23,6 +24,12 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 
 	fields["agreePolicies"] = &graphql.Field{
 		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"terms_version":    &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"privacy_version":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"security_version": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"display_language": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
@@ -30,7 +37,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("unauthorized")
 				}
 				u := c.Locals("user").(*domain.User)
-				if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("is_agreed_policies", true).Error; err != nil {
+				if err := legal.Accept(h.db, u.ID,
+					p.Args["terms_version"].(string), p.Args["privacy_version"].(string),
+					p.Args["security_version"].(string), p.Args["display_language"].(string)); err != nil {
 					return false, err
 				}
 				return true, nil

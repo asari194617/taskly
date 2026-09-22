@@ -8,6 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/sqlite"
@@ -19,7 +20,10 @@ func TestAdminResolverAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.RoleUser{}, &domain.Subject{}); err != nil {
+	if err := db.AutoMigrate(&domain.RoleUser{}, &domain.Subject{}, &legal.Consent{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&legal.Consent{UserID: 1, TermsVersion: legal.Version, PrivacyVersion: legal.Version, SecurityVersion: legal.Version, DisplayLanguage: "ja"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	redisServer := miniredis.RunT(t)

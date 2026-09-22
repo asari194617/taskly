@@ -29,8 +29,22 @@
 | `notification_lang`  | `VARCHAR(5)`   | NOT NULL, DEFAULT 'ja'              | 通知の言語                 |
 | `email_code_allowed` | `BOOLEAN`      | NOT NULL, DEFAULT TRUE              | メールコードログインの許可 |
 | `is_registered`      | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 登録完了フラグ             |
-| `is_agreed_policies` | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 規約同意フラグ             |
+| `is_agreed_policies` | `BOOLEAN`      | NOT NULL, DEFAULT FALSE             | 旧 API 用互換フラグ。現在の同意判定には使用しない |
 | `created_at`         | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 作成日時                   |
+
+### `policy_consents`: 文書同意イベント
+
+| フィールド名 | 型 | 詳細 |
+| --- | --- | --- |
+| `id` | `BIGINT UNSIGNED` | PK |
+| `user_id` | `BIGINT UNSIGNED` | 利用者 ID、`users.id` 参照 |
+| `terms_version` | `VARCHAR(32)` | 利用規約の保存版 |
+| `privacy_version` | `VARCHAR(32)` | プライバシーポリシーの保存版 |
+| `security_version` | `VARCHAR(32)` | セキュリティポリシーの保存版 |
+| `display_language` | `VARCHAR(5)` | 同意画面の表示言語 |
+| `accepted_at` | `DATETIME(6)` | 同意日時（JST。API の MySQL 接続設定に準拠） |
+
+本文の保存先、再同意の判定、保持期間は [文書同意の運用](legal/README.md) を参照。
 
 ### `subjects`: 科目
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -60,6 +61,10 @@ func TestEmptyDatabaseBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	userID, _ := user.LastInsertId()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO policy_consents(user_id, terms_version, privacy_version, security_version, display_language, accepted_at)
+		VALUES (?, ?, ?, ?, 'ja', NOW(6))`, userID, legal.Version, legal.Version, legal.Version); err != nil {
+		t.Fatal(err)
+	}
 	subject, err := tx.ExecContext(ctx, `INSERT INTO subjects(name_ja) VALUES ('ベースライン検証')`)
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +130,10 @@ func TestEmptyDatabaseBaseline(t *testing.T) {
 			t.Fatal(err)
 		}
 		userID, _ := user.LastInsertId()
+		if _, err := db.ExecContext(ctx, `INSERT INTO policy_consents(user_id, terms_version, privacy_version, security_version, display_language, accepted_at)
+			VALUES (?, ?, ?, ?, 'ja', NOW(6))`, userID, legal.Version, legal.Version, legal.Version); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := db.ExecContext(ctx, `INSERT INTO subjects(id, name_ja) VALUES (359, 'API smoke')`); err != nil {
 			t.Fatal(err)
 		}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
@@ -164,14 +165,23 @@ func (h *Handler) QueryFieldsMisc(t *gqlH.GqlTypes) graphql.Fields {
 							isManager = true
 						}
 					}
+					agreed, err := legal.Current(h.db, u.ID)
+					if err != nil {
+						return nil, err
+					}
+					notice, err := legal.Notice(h.db, u.ID)
+					if err != nil {
+						return nil, err
+					}
 					return map[string]any{
-						"id":                 u.ID,
-						"email":              u.Email,
-						"display_name":       u.DisplayName,
-						"is_admin":           isAdmin,
-						"is_manager":         isManager,
-						"is_registered":      u.IsRegistered,
-						"is_agreed_policies": u.IsAgreedPolicies,
+						"id":                         u.ID,
+						"email":                      u.Email,
+						"display_name":               u.DisplayName,
+						"is_admin":                   isAdmin,
+						"is_manager":                 isManager,
+						"is_registered":              u.IsRegistered,
+						"is_agreed_policies":         agreed,
+						"policy_notice_effective_at": notice,
 					}, nil
 				}
 				return nil, fmt.Errorf("context missing")

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/gofiber/fiber/v2"
@@ -29,6 +30,14 @@ func NewMiddleware(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn) *Mi
 // AuthRequired ensures the request is authenticated via session or API key
 func (mw *Middleware) AuthRequired(c *fiber.Ctx) error {
 	if utils.UserFromSession(c, mw.db, mw.rdb) || utils.UserFromAPIKey(c, mw.db) || utils.UserFromMCPToken(c, mw.db) {
+		u := c.Locals("user").(*domain.User)
+		current, err := legal.Current(mw.db, u.ID)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "consent status unavailable"})
+		}
+		if !current {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "policy consent required"})
+		}
 		return c.Next()
 	}
 	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})

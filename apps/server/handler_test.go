@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/driver/sqlite"
@@ -25,6 +26,7 @@ func TestIcalFeedRoute_AllTasksWithConstantQueries(t *testing.T) {
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatal(err)
 			}
+			seedPolicyConsent(t, db, user.ID)
 			en := "Math"
 			subject := domain.Subject{NameJa: "数学", NameEn: &en}
 			if err := db.Create(&subject).Error; err != nil {
@@ -68,8 +70,8 @@ func TestIcalFeedRoute_AllTasksWithConstantQueries(t *testing.T) {
 			if !strings.Contains(string(body), fmt.Sprintf("SUMMARY:[課題] Math: task-%03d", count-1)) {
 				t.Fatal("last task or English subject name missing")
 			}
-			if got := queries.Load(); got != 3 {
-				t.Fatalf("queries = %d, want 3", got)
+			if got := queries.Load(); got != 4 {
+				t.Fatalf("queries = %d, want 4", got)
 			}
 		})
 	}
@@ -81,6 +83,7 @@ func TestIcalFeedRoute_DatabaseError(t *testing.T) {
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatal(err)
 	}
+	seedPolicyConsent(t, db, user.ID)
 	if err := db.Create(&domain.IcalKey{UserID: user.ID, Token: "broken-feed"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +115,7 @@ func TestIcalFeedRoute(t *testing.T) {
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
+	seedPolicyConsent(t, db, user.ID)
 
 	subject := domain.Subject{NameJa: "数学"}
 	if err := db.Create(&subject).Error; err != nil {
@@ -174,6 +178,27 @@ func TestIcalFeedRoute_NotFound(t *testing.T) {
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestIcalFeedRoute_RequiresCurrentConsent(t *testing.T) {
+	db := newTestIcalDB(t)
+	user := domain.User{Email: "legacy-feed@example.test", IsAgreedPolicies: true}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&domain.IcalKey{UserID: user.ID, Token: "legacy-feed"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	app := fiber.New()
+	registerIcalFeedRoute(app, db)
+	res, err := app.Test(httptest.NewRequest(http.MethodGet, "/ical/legacy-feed.ics", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("legacy iCal feed status = %d", res.StatusCode)
 	}
 }
 
@@ -301,6 +326,19 @@ func newTestIcalDB(t testing.TB) *gorm.DB {
 			t.Fatalf("create test tables: %v", err)
 		}
 	}
+	if err := db.AutoMigrate(&legal.Consent{}); err != nil {
+		t.Fatalf("create policy consents: %v", err)
+	}
 
 	return db
+}
+
+func seedPolicyConsent(t testing.TB, db *gorm.DB, userID uint) {
+	t.Helper()
+	if err := db.Create(&legal.Consent{
+		UserID: userID, TermsVersion: legal.Version, PrivacyVersion: legal.Version,
+		SecurityVersion: legal.Version, DisplayLanguage: "ja", AcceptedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 }

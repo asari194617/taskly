@@ -9,6 +9,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	graphqlHandler "github.com/asari194617/taskly/apps/server/internal/handler/graphql"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/asari194617/taskly/apps/server/internal/middleware"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -32,11 +33,14 @@ func TestDeletedUserCredentialsAreRejected(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := db.AutoMigrate(&domain.User{}, &domain.Session{}, &domain.APIKey{}, &domain.IcalKey{}, &domain.MCP{}, &domain.Block{}, &domain.RoleUser{}, &domain.Log{}); err != nil {
+			if err := db.AutoMigrate(&domain.User{}, &domain.Session{}, &domain.APIKey{}, &domain.IcalKey{}, &domain.MCP{}, &domain.Block{}, &domain.RoleUser{}, &domain.Log{}, &legal.Consent{}); err != nil {
 				t.Fatal(err)
 			}
 			user := domain.User{Email: "deleted@example.test"}
 			if err := db.Create(&user).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&legal.Consent{UserID: user.ID, TermsVersion: legal.Version, PrivacyVersion: legal.Version, SecurityVersion: legal.Version, DisplayLanguage: "ja"}).Error; err != nil {
 				t.Fatal(err)
 			}
 			const session, apiKey, mcpToken = "old-session", "old-api-key", "old-mcp-token"
@@ -104,6 +108,9 @@ func TestDeletedUserCredentialsAreRejected(t *testing.T) {
 				if deletion == "graphql admin" {
 					admin := domain.User{Email: "admin@example.test"}
 					if err := db.Create(&admin).Error; err != nil {
+						t.Fatal(err)
+					}
+					if err := db.Create(&legal.Consent{UserID: admin.ID, TermsVersion: legal.Version, PrivacyVersion: legal.Version, SecurityVersion: legal.Version, DisplayLanguage: "ja"}).Error; err != nil {
 						t.Fatal(err)
 					}
 					if err := db.Create(&domain.RoleUser{UserID: admin.ID, Role: "admin"}).Error; err != nil {

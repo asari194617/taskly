@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/asari194617/taskly/apps/server/internal/middleware"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -18,11 +19,14 @@ func TestMCPUserProfileDoesNotChangeAccountState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&domain.User{}, &domain.MCP{}, &domain.Block{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.MCP{}, &domain.Block{}, &legal.Consent{}); err != nil {
 		t.Fatal(err)
 	}
 	user := domain.User{Email: "mcp-profile@example.test"}
 	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&legal.Consent{UserID: user.ID, TermsVersion: legal.Version, PrivacyVersion: legal.Version, SecurityVersion: legal.Version, DisplayLanguage: "ja"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&domain.MCP{UserID: user.ID, HashedToken: utils.Sha256Hex([]byte("profile-token"))}).Error; err != nil {

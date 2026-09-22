@@ -6,9 +6,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { gql } from "@/lib/graphql";
 import { useLang } from "@/react/LanguageProvider";
 
+const policyVersion = "2026-09-22.1";
+const policyPath = (kind: string) => `/legal/${kind}-${policyVersion}`;
+
 function PolicyLink({ href, label, lang, agree }: { href: string; label: string; lang: "ja" | "en"; agree: string }) {
   const link = (
-    <a href={href} target="_blank" className="underline">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="underline">
       {label}
     </a>
   );
@@ -21,17 +24,21 @@ export default function ConsentPage() {
   const [pp, setPp] = React.useState(false);
   const [sp, setSp] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(false);
   const canSubmit = tos && pp && sp;
 
   const submit = async () => {
     if (!canSubmit) return;
     setLoading(true);
     try {
-      await gql<{ agreePolicies: boolean }>("mutation{ agreePolicies }");
+      await gql<{ agreePolicies: boolean }>(
+        "mutation($terms:String!,$privacy:String!,$security:String!,$language:String!){ agreePolicies(terms_version:$terms,privacy_version:$privacy,security_version:$security,display_language:$language) }",
+        { terms: policyVersion, privacy: policyVersion, security: policyVersion, language: lang }
+      );
       const next = new URLSearchParams(location.search).get("next");
-      location.replace(next && next.startsWith("/") ? next : "/home");
+      location.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
     } catch {
-      // silently ignore; user can retry
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -42,6 +49,9 @@ export default function ConsentPage() {
       <h1 className="text-2xl font-semibold">{dict.consent.heading}</h1>
       <p className="text-sm text-muted-foreground">
         {dict.consent.description}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {dict.consent.version}: {policyVersion}
       </p>
       <div className="space-y-3">
         <label
@@ -56,7 +66,7 @@ export default function ConsentPage() {
           <Checkbox checked={tos} />
           <span>
             <PolicyLink
-              href="https://ritzy-lift-e38.notion.site/28ba3874f8c880a783ddf9d39aea1242?source=copy_link"
+              href={policyPath("terms")}
               label={dict.common.terms}
               lang={lang}
               agree={dict.consent.agree}
@@ -74,7 +84,7 @@ export default function ConsentPage() {
           <Checkbox checked={pp} />
           <span>
             <PolicyLink
-              href="https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03?source=copy_link"
+              href={policyPath("privacy")}
               label={dict.common.privacyPolicy}
               lang={lang}
               agree={dict.consent.agree}
@@ -92,7 +102,7 @@ export default function ConsentPage() {
           <Checkbox checked={sp} />
           <span>
             <PolicyLink
-              href="https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f?source=copy_link"
+              href={policyPath("security")}
               label={dict.common.securityPolicy}
               lang={lang}
               agree={dict.consent.agree}
@@ -101,6 +111,7 @@ export default function ConsentPage() {
         </label>
       </div>
       <div className="pt-2">
+        {error && <p role="alert">{dict.consent.error}</p>}
         <Button onClick={submit} disabled={!canSubmit || loading}>
           {dict.consent.continue}
         </Button>

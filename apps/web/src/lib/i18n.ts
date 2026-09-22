@@ -76,6 +76,14 @@ export const t = (lang: Lang) => ({
         : "Please agree to the following policies to continue.",
     agree: lang === "ja" ? "に同意します" : "I agree to the",
     continue: lang === "ja" ? "同意して進む" : "Agree and continue",
+    version: lang === "ja" ? "文書版" : "Document version",
+    error: lang === "ja"
+      ? "同意を記録できませんでした。再読み込みしてお試しください。"
+      : "Could not record consent. Reload and try again.",
+    notice: (date: string) => lang === "ja"
+      ? `利用規約・プライバシー・セキュリティポリシーが ${date} に改定されます。`
+      : `The terms, privacy and security policies change on ${date}.`,
+    noticeAction: lang === "ja" ? "変更内容を確認して同意する" : "Review and agree",
   },
   landing: {
     hero: {
