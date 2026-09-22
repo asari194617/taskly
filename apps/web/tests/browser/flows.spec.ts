@@ -184,6 +184,7 @@ test("通知設定と同意画面が表示言語の切替に追従する", async
   await login(page);
   await page.goto("/settings/notifications");
   await expect(page.getByRole("heading", { name: "通知設定" }).first()).toBeVisible();
+  await expect(page.locator('astro-island[component-url*="AppShell"]:not([ssr])')).toHaveCount(1);
   await page.getByRole("combobox", { name: "表示言語" }).click();
   await page.getByRole("option", { name: "English" }).click();
   await expect(page.getByRole("heading", { name: "Notification Settings" }).first()).toBeVisible();
@@ -196,6 +197,7 @@ test("通知設定と同意画面が表示言語の切替に追従する", async
   await page.goto("/consent");
   await expect(page.getByRole("heading", { name: "Before you continue" })).toBeVisible();
   await expect(page.getByText("I agree to the Terms")).toBeVisible();
+  await expect(page.locator('astro-island[component-url*="AppShell"]:not([ssr])')).toHaveCount(1);
   await page.getByRole("combobox", { name: "Language" }).click();
   await page.getByRole("option", { name: "Japanese" }).click();
   await expect(page.getByRole("heading", { name: "ご利用にあたって" })).toBeVisible();
