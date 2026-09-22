@@ -24,6 +24,12 @@
 使用率の段階は warning 70%、critical 80%、emergency 90%。段階が変わった時と正常へ
 復旧した時だけ、`.env` の `DISK_ALERT_WEBHOOK_URL`（未設定時は`DISCORD_WEBHOOK_URL`）へ通知する。
 webhookがない場合はsyslogへ記録する。
+Webhookまたはsyslogへの記録が成功した段階だけを保存する。配送に失敗するとコマンドは非0で終了し、
+同じ段階が続く限り次の5分ごとの確認で再試行する。成功後は段階が変わるまで重複通知しない。
+Webhook未設定時はsyslogへの記録成功を通知成功として扱い、syslog記録失敗時も再試行する。
+cronは`pipefail`を有効にしているため、配送失敗時の終了状態をパイプラインでも保持する。
+Webhook配送失敗は`journalctl -t taskly-disk`の`disk alert webhook delivery failed`で確認できる。
+syslog記録失敗は標準エラーに`disk alert syslog delivery failed`を出す。
 
 デプロイ開始時には安全な清掃を実行し、その後も使用率85%以上、または空き容量10GiB未満なら、
 containerを停止する前にデプロイを中止する。閾値は `DISK_*` 環境変数で変更できる。

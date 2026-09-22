@@ -86,9 +86,13 @@ send_alert_if_changed() {
     if ! curl --fail --silent --show-error --max-time 10 \
       -H 'Content-Type: application/json' -d "{\"content\":\"$escaped\"}" "$webhook" >/dev/null; then
       echo "Warning: disk alert webhook delivery failed" >&2
+      return 1
     fi
   else
-    logger -t taskly-disk "$message" 2>/dev/null || true
+    if ! logger -t taskly-disk "$message"; then
+      echo "Warning: disk alert syslog delivery failed" >&2
+      return 1
+    fi
   fi
   printf '%s\n' "$level" >"$STATE_FILE"
 }
