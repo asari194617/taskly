@@ -39,6 +39,8 @@ if bash "$guard" begin "$temp/host" "$new" >"$temp/output" 2>&1; then
   echo 'Interrupted deployment was accepted' >&2; exit 1
 fi
 grep -q 'unfinished' "$temp/output"
+grep -q 'current images:' "$temp/output"
+grep -q 'current migrations:' "$temp/output"
 
 # A migration was recorded before failure. A later run still cannot proceed.
 printf '0029_new_schema.sql\n' >> "$temp/migrations"
@@ -54,5 +56,12 @@ grep -q 'differs from target' "$temp/output"
 # Once all services run the new release, completion records its migration state.
 printf '%s\n' "$new" > "$temp/running-sha"
 bash "$guard" complete "$temp/host" "$new"
+printf '0030_unexpected.sql\n' >> "$temp/migrations"
+if bash "$guard" begin "$temp/host" "$old" >"$temp/output" 2>&1; then
+  echo 'Migration drift was accepted' >&2; exit 1
+fi
+grep -q 'differs from the last successful deployment' "$temp/output"
+sed '$d' "$temp/migrations" > "$temp/migrations.tmp"
+mv "$temp/migrations.tmp" "$temp/migrations"
 bash "$guard" begin "$temp/host" "$old"
 echo 'Production deployment state guard tests passed'

@@ -77,7 +77,13 @@ case "$action" in
   begin)
     if [[ -e $state_file ]]; then
       read_state
-      [[ ${state[0]} == committed ]] || fail "previous deployment of ${state[2]} is unfinished (last known SHA ${state[1]})"
+      if [[ ${state[0]} == in_progress ]]; then
+        # A failed run may have stopped Airflow or changed the schema. Show the
+        # observed state, but never infer that an automatic retry is safe.
+        observed_sha=$(deployment_sha 2>&1) || observed_sha="unhealthy or inconsistent: $observed_sha"
+        observed_migrations=$(migration_digest 2>&1) || observed_migrations="unavailable: $observed_migrations"
+        fail "previous deployment of ${state[2]} is unfinished (last known SHA ${state[1]}, current images: $observed_sha, current migrations: $observed_migrations)"
+      fi
     fi
     current=$(deployment_sha)
     digest=$(migration_digest)
