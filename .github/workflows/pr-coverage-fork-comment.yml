@@ -1,0 +1,94 @@
+name: pr-coverage-fork-comment
+
+on:
+  workflow_run:
+    workflows: [pr-coverage]
+    types: [completed]
+
+jobs:
+  comment:
+    if: github.event.workflow_run.event == 'pull_request'
+    permissions:
+      actions: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          pattern: coverage-*
+          merge-multiple: true
+          path: coverage-results
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const run = context.payload.workflow_run;
+            let metadata;
+            try {
+              metadata = JSON.parse(fs.readFileSync('coverage-results/pr.json', 'utf8'));
+            } catch (error) {
+              core.warning(`PR metadata artifact is unavailable: ${error.message}`);
+              return;
+            }
+            if (!Number.isSafeInteger(metadata.number) || metadata.number < 1 ||
+                !/^[0-9a-f]{40}$/.test(metadata.sha) ||
+                typeof metadata.repository !== 'string') {
+              core.warning('Invalid PR metadata artifact');
+              return;
+            }
+            if (metadata.repository === `${owner}/${repo}`) return;
+            if (run.head_repository?.full_name !== metadata.repository) {
+              core.warning('Artifact repository does not match the triggering workflow run');
+              return;
+            }
+            if (run.pull_requests.length && !run.pull_requests.some(pr => pr.number === metadata.number)) {
+              core.warning('Artifact PR number does not match the triggering workflow run');
+              return;
+            }
+            const issue_number = metadata.number;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue_number });
+            if (pr.head.sha !== metadata.sha || pr.head.repo?.full_name !== metadata.repository ||
+                pr.head.ref !== run.head_branch) {
+              core.info('PR head changed or metadata does not match; skipping this coverage comment.');
+              return;
+            }
+            const marker = '<!-- taskly-pr-coverage -->';
+            const rows = [
+              ['API (Go statements)', 'server'],
+              ['Batches (Go statements)', 'batches'],
+              ['Batch email (Go statements)', 'batch-email'],
+              ['Batch web push (Go statements)', 'batch-web-push'],
+              ['Web (Vitest lines)', 'web'],
+              ['MCP (Node lines)', 'mcp'],
+            ].map(([label, id]) => {
+              let value = 'Unavailable (test or setup failed)';
+              try {
+                const result = JSON.parse(fs.readFileSync(`coverage-results/${id}.json`, 'utf8'));
+                if (typeof result.percent === 'number' && Number.isFinite(result.percent) &&
+                    result.percent >= 0 && result.percent <= 100) {
+                  value = `${result.percent.toFixed(1)}%`;
+                }
+              } catch (error) {
+                core.info(`${id}: ${error.message}`);
+              }
+              return `| ${label} | ${value} |`;
+            });
+            const body = [marker, '### Test coverage', '',
+              '| Test group | Coverage |', '| --- | ---: |', ...rows, '',
+              `Results for ${metadata.sha.slice(0, 7)}. Go reports statement coverage; Web and MCP report line coverage.`,
+              `[Workflow run](${run.html_url})`,
+            ].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const previous = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
