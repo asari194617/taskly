@@ -6,7 +6,6 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlShared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
-	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 )
 
@@ -22,14 +21,9 @@ func (h *Handler) queryFieldsAdminSubjects(t *gqlShared.GqlTypes) graphql.Fields
 			Resolve: func(p graphql.ResolveParams) (any, error) {
 				h := h.withContext(p.Context)
 				if c, ok := gqlShared.FiberCtxFromContext(p.Context); ok {
-					if !utils.UserFromSession(c, h.db, h.rdb) {
-						return nil, fmt.Errorf("unauthorized")
-					}
-					u := c.Locals("user").(*domain.User)
-					isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-					isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-					if !(isAdmin || isManager) {
-						return nil, fmt.Errorf("forbidden")
+					_, err := h.requireAdminActor(c, true)
+					if err != nil {
+						return nil, err
 					}
 					includeExpired, _ := p.Args["include_expired"].(bool)
 					dbq := h.db.Model(&domain.Subject{})

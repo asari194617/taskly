@@ -6,7 +6,6 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
-	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 	"gorm.io/gorm"
 )
@@ -24,14 +23,9 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				gid := p.Args["group_id"].(int)
 				raw, _ := p.Args["user_ids"].([]any)
@@ -75,14 +69,9 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				cid := p.Args["cycle_id"].(int)
 				raw, _ := p.Args["group_ids"].([]any)
@@ -101,7 +90,7 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 					}
 				}
 				// update positions transactionally
-				err := h.db.Transaction(func(tx *gorm.DB) error {
+				err = h.db.Transaction(func(tx *gorm.DB) error {
 					for i, id := range ids {
 						if err := tx.Model(&domain.DayShiftCycleGroup{}).Where("id = ? AND cycle_id = ?", id, cid).Update("position", i+1).Error; err != nil {
 							return err
@@ -125,14 +114,9 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return nil, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return nil, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return nil, err
 				}
 				bd, err1 := time.Parse("2006-01-02", p.Args["begin_date"].(string))
 				fd, err2 := time.Parse("2006-01-02", p.Args["finish_date"].(string))
@@ -159,14 +143,9 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				if err := h.db.Delete(&domain.DayShiftCycle{}, p.Args["id"].(int)).Error; err != nil {
 					return false, fmt.Errorf("db")
@@ -190,14 +169,9 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return nil, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return nil, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return nil, err
 				}
 				cid := p.Args["cycle_id"].(int)
 				uidVals, _ := p.Args["user_ids"].([]any)
@@ -242,14 +216,9 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
-				if !utils.UserFromSession(c, h.db, h.rdb) {
-					return false, fmt.Errorf("unauthorized")
-				}
-				u := c.Locals("user").(*domain.User)
-				isAdmin, _ := utils.UserHasRole(u.ID, "admin", h.db)
-				isManager, _ := utils.UserHasRole(u.ID, "manager", h.db)
-				if !(isAdmin || isManager) {
-					return false, fmt.Errorf("forbidden")
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
 				}
 				gid := p.Args["group_id"].(int)
 				cid := p.Args["cycle_id"].(int)

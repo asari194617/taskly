@@ -8,10 +8,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// requireAdminActor keeps transport authentication and role checks out of
-// individual admin resolvers. Managers intentionally retain the same access
-// they had before this extraction.
-func (h *Handler) requireAdminActor(c *fiber.Ctx) (*domain.User, error) {
+// requireAdminActor authenticates an admin operation and optionally permits managers.
+func (h *Handler) requireAdminActor(c *fiber.Ctx, allowManager bool) (*domain.User, error) {
 	if !utils.UserFromSession(c, h.db, h.rdb) {
 		return nil, fmt.Errorf("unauthorized")
 	}
@@ -20,12 +18,17 @@ func (h *Handler) requireAdminActor(c *fiber.Ctx) (*domain.User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("authorization: %w", err)
 	}
-	isManager, err := utils.UserHasRole(actor.ID, "manager", h.db)
-	if err != nil {
-		return nil, fmt.Errorf("authorization: %w", err)
+	if isAdmin {
+		return actor, nil
 	}
-	if !isAdmin && !isManager {
-		return nil, fmt.Errorf("forbidden")
+	if allowManager {
+		isManager, err := utils.UserHasRole(actor.ID, "manager", h.db)
+		if err != nil {
+			return nil, fmt.Errorf("authorization: %w", err)
+		}
+		if isManager {
+			return actor, nil
+		}
 	}
-	return actor, nil
+	return nil, fmt.Errorf("forbidden")
 }
