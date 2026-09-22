@@ -18,11 +18,19 @@
   無効な通知設定、購読がないユーザーを除外し、有効な購読へ送信します。VAPID 鍵は
   DB の値を優先し、環境変数を代替として使います。
 - メール配信はキューを読みません。実行時に締切が近い課題と対象ユーザーを取得し、
-  Email と `TASK` の設定を確認してユーザーごとにダイジェストを組み立てます。
+  Email と `TASK`・実行時間帯の設定を確認してユーザーごとにダイジェストを組み立てます。
   `users.notification_lang` に従って email-compose の gRPC で本文を生成し、SMTP で送信します。
-  現行のメール配信処理は `TASK_MORNING` / `TASK_EVENING` を参照しません。
 - メール配信の締切日時の抽出範囲も同じです。翌々日の 00:00 より後の課題は
   現行の SQL では対象外です。
+- Queue Manager・メール・Discord は `delivery-channels/common` の `FetchDueTasks` と
+  `LoadEligibleUsersAndPrefs` を使います。Web Push はキュー内の単一ユーザーに対して
+  同じ判定を行う `LoadEligibleUserAndPrefs` を使います。課題は期限の昇順で取得します。
+  ブロック・削除済み判定と端末・通知種別設定の読込はこの module に集約しています。
+- 既定値は呼び出し側で指定します。Queue Manager は Email 有効・Web Push 無効、
+  `TASK` と朝夕の種別を有効とします。メールは Email/Web Push とも有効、
+  通知種別に既定値を置かず、設定がない `TASK`・朝夕は許可します。Discord は
+  Email 有効・Web Push 無効、`TASK`/`DAYSHIFT` 有効です。Web Push 配信は
+  Web Push 無効を既定値とし、有効な端末設定がある場合だけ送信します。
 - Queue Manager は日直候補も作りますが、宛先ユーザーが `0` のままなので現在は
   キューに投入されず、この DAG から日直通知は配信されません。日直向けには別の
   `day_shift_notify_0830` DAG があります。

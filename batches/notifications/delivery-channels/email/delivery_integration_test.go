@@ -36,9 +36,6 @@ func TestDigestRecipientsRespectSettingsAndBlocks(t *testing.T) {
 				sqlmock.NewRows([]string{"user_id", "platform", "is_enabled"}).AddRow(3, "EMAIL", false))
 			mock.ExpectQuery("SELECT user_id, notification_type, is_enabled FROM notification_type_prefs").WillReturnRows(
 				sqlmock.NewRows([]string{"user_id", "notification_type", "is_enabled"}).AddRow(2, tc.disabled, false))
-			for range 3 {
-				mock.ExpectQuery("SELECT COUNT\\(1\\) FROM blocks").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-			}
 			groups, err := computeLiveDigestGroupsAt(db, now)
 			if err != nil {
 				t.Fatal(err)
