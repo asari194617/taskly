@@ -24,6 +24,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, true); err != nil {
 						return nil, err
@@ -66,6 +67,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"task_id": &graphql.ArgumentConfig{Type: graphql.Int},
 			},
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, false); err != nil {
 						return nil, err
@@ -113,6 +115,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			},
 			Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, false); err != nil {
 						return nil, err
@@ -144,6 +147,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, true); err != nil {
 						return nil, err
@@ -172,6 +176,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, true); err != nil {
 						return nil, err
@@ -207,6 +212,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"ids": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.Int)))},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, true); err != nil {
 						return nil, err
@@ -274,6 +280,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"q": &graphql.ArgumentConfig{Type: graphql.String},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, true); err != nil {
 						return nil, err
@@ -347,6 +354,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 				"page_size": &graphql.ArgumentConfig{Type: graphql.Int},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 					if _, err := h.requireAdminActor(c, true); err != nil {
 						return nil, err

@@ -1,6 +1,8 @@
 package gqlQuery
 
 import (
+	"context"
+
 	gqlShared "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/go-webauthn/webauthn/webauthn"
 	graphql "github.com/graphql-go/graphql"
@@ -38,4 +40,14 @@ func NewHandler(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn) *Handl
 		rdb:   rdb,
 		wAuth: wAuth,
 	}
+}
+
+// withContext gives each resolver its own DB session bound to the GraphQL request.
+// The original handler is shared by concurrent requests and must stay unchanged.
+func (h *Handler) withContext(ctx context.Context) *Handler {
+	request := *h
+	if h.db != nil {
+		request.db = h.db.WithContext(ctx)
+	}
+	return &request
 }

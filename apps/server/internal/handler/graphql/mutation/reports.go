@@ -31,6 +31,7 @@ func (h *Handler) mutationFieldsReports() graphql.Fields {
 			"comment": &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			// Fiber context for auth
 			c, ok := gqlH.FiberCtxFromContext(p.Context)
 			if !ok {

@@ -25,6 +25,7 @@ func (h *Handler) mutationFieldsSubjects(t *gqlH.GqlTypes) graphql.Fields {
 			"expires_at": &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return nil, fmt.Errorf("unauthorized")
@@ -85,6 +86,7 @@ func (h *Handler) mutationFieldsSubjects(t *gqlH.GqlTypes) graphql.Fields {
 			"expires_at": &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return nil, fmt.Errorf("unauthorized")
@@ -152,6 +154,7 @@ func (h *Handler) mutationFieldsSubjects(t *gqlH.GqlTypes) graphql.Fields {
 			"hard": &graphql.ArgumentConfig{Type: graphql.Boolean},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")

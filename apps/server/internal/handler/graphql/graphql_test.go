@@ -1,6 +1,7 @@
 package gqlH
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
@@ -16,6 +18,76 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestGraphQLCancelsSlowDBQuery(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:graphql-cancel?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queryStarted := make(chan struct{}, 1)
+	queryStopped := make(chan struct{}, 1)
+	if err := db.Callback().Query().Before("gorm:query").Register("test:slow_query", func(tx *gorm.DB) {
+		queryStarted <- struct{}{}
+		select {
+		case <-tx.Statement.Context.Done():
+			queryStopped <- struct{}{}
+		case <-time.After(time.Second):
+			tx.AddError(fmt.Errorf("database query was not canceled"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	redisServer := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app := fiber.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	app.Use(func(c *fiber.Ctx) error {
+		c.SetUserContext(ctx)
+		c.Locals("user", &domain.User{ID: 1})
+		return c.Next()
+	})
+	NewHandler(db, rdb, nil).RegisterGraphQL(app.Group("/graphql"))
+	req := httptest.NewRequest("POST", "/graphql/", strings.NewReader(`{"query":"query { subjects { id } }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != fiber.StatusGatewayTimeout {
+		t.Fatalf("status = %d, want 504", res.StatusCode)
+	}
+	select {
+	case <-queryStarted:
+	default:
+		t.Fatal("DB query did not start")
+	}
+	select {
+	case <-queryStopped:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("DB query continued after cancellation")
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for sqlDB.Stats().InUse != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if inUse := sqlDB.Stats().InUse; inUse != 0 {
+		t.Fatalf("DB connections still in use after cancellation: %d", inUse)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["error"] != "query timeout" {
+		t.Fatalf("error = %q, want query timeout", body["error"])
+	}
+}
 
 func TestGraphQLRejectsExpensiveRequests(t *testing.T) {
 	redisServer := miniredis.RunT(t)

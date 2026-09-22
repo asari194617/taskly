@@ -27,6 +27,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"email_login_enabled": &graphql.ArgumentConfig{Type: graphql.Boolean},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -67,6 +68,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"notification_lang": &graphql.ArgumentConfig{Type: graphql.String},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -103,6 +105,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"csv": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -162,6 +165,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"enabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -202,6 +206,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"hard":    &graphql.ArgumentConfig{Type: graphql.Boolean}, // true: hard delete; false: set is_deleted
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -214,7 +219,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 						return false, fmt.Errorf("db")
 					}
 				} else {
-					if err := utils.SoftDeleteUser(c.Context(), uint(id), h.db, h.rdb); err != nil {
+					if err := utils.SoftDeleteUser(p.Context, uint(id), h.db, h.rdb); err != nil {
 						return false, fmt.Errorf("db")
 					}
 				}
@@ -229,6 +234,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "role": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -259,6 +265,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "role": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -280,6 +287,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}, "reason": &graphql.ArgumentConfig{Type: graphql.String}, "expires_at": &graphql.ArgumentConfig{Type: graphql.String}},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -312,6 +320,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)}},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -338,6 +347,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"enabled":           &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -380,6 +390,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"enabled":  &graphql.ArgumentConfig{Type: graphql.Boolean},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -427,6 +438,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"is_enabled": &graphql.ArgumentConfig{Type: graphql.Boolean},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -471,6 +483,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"device_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {
@@ -495,6 +508,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 			"webpush_enabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				u, err := h.requireAdminActor(c)
 				if err != nil {

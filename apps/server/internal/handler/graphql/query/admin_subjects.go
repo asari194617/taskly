@@ -20,6 +20,7 @@ func (h *Handler) queryFieldsAdminSubjects(t *gqlShared.GqlTypes) graphql.Fields
 				"include_expired": &graphql.ArgumentConfig{Type: graphql.Boolean},
 			},
 			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
 				if c, ok := gqlShared.FiberCtxFromContext(p.Context); ok {
 					if !utils.UserFromSession(c, h.db, h.rdb) {
 						return nil, fmt.Errorf("unauthorized")
