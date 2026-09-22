@@ -27,7 +27,8 @@ on:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  # Never terminate a job after it has begun changing the production host.
+  cancel-in-progress: false
 
 env:
   # The production host was verified as x86_64 on 2026-09-21.
@@ -210,6 +211,10 @@ jobs:
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
       - name: Verify SSH connectivity
         run: ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" true
+      - name: Check and mark production deployment
+        run: |
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
+            bash -s -- begin "$PROD_WORKDIR" "$RELEASE_SHA" < infra/ops/deploy-state.sh
       - name: Rsync repository to server
         run: |
           set -eux
@@ -218,6 +223,7 @@ jobs:
             --exclude ".git" \
             --exclude ".github" \
             --exclude "/.env" \
+            --exclude "/.deploy-state" \
             --exclude "/infra/.env" \
             --exclude ".DS_Store" \
             --exclude "**/node_modules" \
@@ -313,6 +319,10 @@ jobs:
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
           ./ops/install-user-cron.sh "$PROD_WORKDIR"
           EOS
+      - name: Mark production deployment complete
+        run: |
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
+            bash -s -- complete "$PROD_WORKDIR" "$RELEASE_SHA" < infra/ops/deploy-state.sh
       - name: Deploy summary
         if: always()
         run: |
