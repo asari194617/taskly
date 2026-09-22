@@ -6,12 +6,28 @@ on:
     types: [completed]
 
 jobs:
+  select-runner:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.fbk.outputs.use-runner || '["ubuntu-latest"]' }}
+    steps:
+      - id: fbk
+        name: Select self-hosted with fallback
+        uses: dodi-smart/runner-fallback-action@v2
+        continue-on-error: true
+        with:
+          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
+          primary-runner: self-hosted
+          fallback-runner: ubuntu-latest
+
   comment:
+    needs: select-runner
     if: github.event.workflow_run.event == 'pull_request'
     permissions:
       actions: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/download-artifact@v8
         continue-on-error: true
