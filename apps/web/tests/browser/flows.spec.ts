@@ -124,7 +124,10 @@ test("完了状態フィルターをキーボードで切り替え、選択と�
   await expect(incomplete).toHaveAttribute("aria-pressed", "false");
   await expect(completed).toHaveAttribute("aria-pressed", "false");
 
-  await incomplete.focus();
+  await page.getByPlaceholder("課題を検索 (タイトル/説明)").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "新規作成" }).first()).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(incomplete).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(incomplete).toHaveAttribute("aria-pressed", "true");
@@ -156,6 +159,10 @@ test("完了状態フィルターをキーボードで切り替え、選択と�
   await expect(englishFilters.getByRole("button", { name: "Completed" })).toHaveAttribute("aria-pressed", "false");
   await expect(englishFilters.getByRole("status")).toHaveText("Showing: All");
   await expect(englishFilters).toContainText("Press the selected filter again to show all tasks.");
+  await englishFilters.getByRole("button", { name: "Completed" }).click();
+  await expect(englishFilters.getByRole("status")).toHaveText("Showing: Completed");
+  await englishFilters.getByRole("button", { name: "Completed" }).click();
+  await expect(englishFilters.getByRole("status")).toHaveText("Showing: All");
 });
 
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {
