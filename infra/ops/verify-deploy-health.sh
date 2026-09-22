@@ -4,7 +4,7 @@ set -Eeuo pipefail
 # Run from infra/ after `docker compose up --wait`. The Compose healthchecks
 # cover every container; these probes also cover the host port mappings and
 # Airflow components whose health endpoint returns 200 even when unhealthy.
-services=(db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor)
+services=(db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor prometheus alertmanager blackbox grafana)
 
 diagnose() {
   echo "Deployment health verification failed: ${failure:-unknown failure}" >&2
@@ -26,7 +26,9 @@ for service in "${services[@]}"; do
     false
   fi
   state=$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$id")
-  if [[ "$state" != 'running healthy' ]]; then
+  expected='running healthy'
+  case "$service" in prometheus|alertmanager|blackbox|grafana) expected='running missing' ;; esac
+  if [[ "$state" != "$expected" ]]; then
     failure="$service is $state"
     false
   fi
@@ -49,6 +51,25 @@ probe() {
 probe 'API host port' http://127.0.0.1:3063/healthz
 probe 'MCP host port' http://127.0.0.1:3066/healthz
 probe 'Airflow host port' http://127.0.0.1:3065/api/v2/monitor/health
+probe 'Prometheus host port' http://127.0.0.1:3068/-/ready
+probe 'Alertmanager host port' http://127.0.0.1:3069/-/ready
+probe 'Grafana host port' http://127.0.0.1:3067/api/health
+
+failure='API metrics endpoint is unavailable or missing required series'
+curl --fail --silent --show-error --max-time 10 http://127.0.0.1:3064/metrics | python3 -c '
+import sys
+body = sys.stdin.read()
+required = ("go_goroutines", "taskly_http_requests_total", "taskly_integration_jobs", "taskly_notification_deliveries")
+missing = [name for name in required if name not in body]
+if missing:
+    print(f"Missing API metrics: {missing}", file=sys.stderr)
+    sys.exit(1)
+print("API metrics endpoint: required series present")
+'
+failure='Airflow metrics exporter is unavailable or missing DAG metrics'
+docker compose exec -T airflow-scheduler curl --fail --silent --show-error --max-time 10 \
+  http://127.0.0.1:9470/metrics | grep -q '^taskly_airflow_dag_last_run_timestamp_seconds'
+echo 'Airflow metrics exporter: required series present'
 
 for name in API MCP Airflow; do
   variable="PROD_PUBLIC_${name}_HEALTH_URL"
@@ -88,7 +109,9 @@ for index in "${!services[@]}"; do
   fi
   state=$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$id")
   current_restarts=$(docker inspect --format '{{.RestartCount}}' "$id")
-  if [[ "$state" != 'running healthy' || "$current_restarts" != "${restarts[$index]}" ]]; then
+  expected='running healthy'
+  case "$service" in prometheus|alertmanager|blackbox|grafana) expected='running missing' ;; esac
+  if [[ "$state" != "$expected" || "$current_restarts" != "${restarts[$index]}" ]]; then
     failure="$service changed during stability check: $state, restarts ${restarts[$index]} -> $current_restarts"
     false
   fi

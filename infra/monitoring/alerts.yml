@@ -1,0 +1,70 @@
+groups:
+  - name: taskly
+    rules:
+      - alert: TasklyMetricsScrapeDown
+        expr: up{job=~"taskly-api|taskly-airflow"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Taskly metrics scrape failed: {{ $labels.job }}"
+          description: "Check the exporter and Prometheus target for {{ $labels.job }}."
+      - alert: TasklyServiceDown
+        expr: probe_success{job="taskly-services"} == 0 or up{job="taskly-services"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Taskly service health probe failed: {{ $labels.instance }}"
+      - alert: TasklyAPIErrorRate
+        expr: sum(rate(taskly_http_requests_total{status=~"5..",route!="/healthz"}[5m])) / clamp_min(sum(rate(taskly_http_requests_total{route!="/healthz"}[5m])), 0.001) > 0.05 and sum(increase(taskly_http_requests_total{route!="/healthz"}[5m])) > 20
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Taskly API 5xx rate exceeds 5% over 5 minutes"
+      - alert: TasklyAPILatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(taskly_http_request_duration_seconds_bucket{route!="/healthz"}[5m]))) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Taskly API p95 latency exceeds 1 second"
+      - alert: TasklyIntegrationJobsFailed
+        expr: taskly_integration_jobs{status="failed"} > 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Integration jobs require manual recovery"
+      - alert: TasklyIntegrationJobsStalled
+        expr: taskly_integration_job_oldest_age_seconds{status=~"pending|processing"} > 600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Integration job has been pending or processing for over 10 minutes"
+      - alert: TasklyNotificationDeliveryFailed
+        expr: taskly_notification_deliveries{outcome="error"} > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Day shift notification delivery failed"
+      - alert: TasklyAirflowDAGFailed
+        expr: taskly_airflow_dag_last_run_timestamp_seconds{outcome="failed",dag!="backup_mysql"} > on(dag) taskly_airflow_dag_last_run_timestamp_seconds{outcome="success",dag!="backup_mysql"}
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Airflow DAG failed: {{ $labels.dag }}"
+      - alert: TasklyAirflowComponentDown
+        expr: taskly_airflow_component_healthy == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Airflow component unhealthy: {{ $labels.component }}"
+      - alert: TasklyNotificationBatchFailed
+        expr: taskly_notification_batch_last_run_timestamp_seconds{outcome="failed"} > on(channel) taskly_notification_batch_last_run_timestamp_seconds{outcome="success"}
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Notification batch failed: {{ $labels.channel }}"
+      - alert: TasklyAirflowDAGStale
+        expr: time() - taskly_airflow_dag_last_run_timestamp_seconds{outcome="success",dag!="backup_mysql"} > 129600
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Airflow DAG has no success in 36 hours: {{ $labels.dag }}"

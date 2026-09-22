@@ -55,7 +55,7 @@ func Enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, erro
 			return Job{}, err
 		}
 		if job.ID != 0 {
-			enqueued.WithLabelValues(kind).Inc()
+			enqueued.WithLabelValues(metricKind(kind)).Inc()
 		}
 		if err := db.Where("dedup_key = ?", *dedupKey).Take(&existing).Error; err != nil {
 			return Job{}, err
@@ -68,7 +68,7 @@ func Enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, erro
 	if err := db.Create(&job).Error; err != nil {
 		return Job{}, err
 	}
-	enqueued.WithLabelValues(kind).Inc()
+	enqueued.WithLabelValues(metricKind(kind)).Inc()
 	return job, nil
 }
 
@@ -165,15 +165,15 @@ func (w *Worker) RunOne() (bool, error) {
 			continue
 		}
 		candidate.Attempts++
-		waitSeconds.WithLabelValues(candidate.Kind).Observe(max(0, now.Sub(candidate.AvailableAt).Seconds()))
+		waitSeconds.WithLabelValues(metricKind(candidate.Kind)).Observe(max(0, now.Sub(candidate.AvailableAt).Seconds()))
 		started := time.Now()
 		err := w.Deliver(candidate)
-		deliverySeconds.WithLabelValues(candidate.Kind).Observe(time.Since(started).Seconds())
+		deliverySeconds.WithLabelValues(metricKind(candidate.Kind)).Observe(time.Since(started).Seconds())
 		outcome := "succeeded"
 		if err != nil {
 			outcome = "failed"
 		}
-		completed.WithLabelValues(candidate.Kind, outcome).Inc()
+		completed.WithLabelValues(metricKind(candidate.Kind), outcome).Inc()
 		if err == nil {
 			err = w.DB.Model(&Job{}).Where("id = ? AND status = ? AND attempts = ?", candidate.ID, "processing", candidate.Attempts).Updates(map[string]any{"status": "succeeded", "lease_until": nil, "last_error": nil}).Error
 		} else {

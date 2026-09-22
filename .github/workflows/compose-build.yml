@@ -56,6 +56,12 @@ jobs:
         run: infra/ops/test-airflow-db-separation.sh
       - name: Test Datadog socket policy
         run: infra/ops/test-datadog-sockets.sh
+      - name: Validate monitoring configuration and alert scenarios
+        run: |
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/infra/monitoring:/etc/prometheus:ro" prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/infra/monitoring:/etc/prometheus:ro" prom/prometheus:v3.5.0 test rules /etc/prometheus/alerts.test.yml
+          docker run --rm --entrypoint /bin/amtool -v "$PWD/infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" prom/alertmanager:v0.28.1 check-config /etc/alertmanager/alertmanager.yml
+          python3 -m py_compile infra/monitoring/airflow_exporter.py
       - name: Test Redis ACL policy
         run: infra/redis/test-acl.sh
       - id: matrix

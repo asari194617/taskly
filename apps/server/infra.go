@@ -188,7 +188,7 @@ func mustInitSentry() bool {
 }
 
 // metricsServer starts a Prometheus metrics HTTP server on the given bind address.
-func metricsServer(bind string) {
+func metricsServer(bind string) error {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true, // 起動ログが邪魔な場合は無効に
 	})
@@ -199,15 +199,15 @@ func metricsServer(bind string) {
 	// 3. リスナーを作成してバックグラウンドで起動
 	ln, err := net.Listen("tcp", bind)
 	if err != nil {
-		log.Printf("metrics listen err: %v", err)
-		return
+		return fmt.Errorf("metrics listen: %w", err)
 	}
 
 	go func() {
 		if err := app.Listener(ln); err != nil {
-			log.Printf("metrics server err: %v", err)
+			log.Fatalf("metrics server: %v", err)
 		}
 	}()
+	return nil
 }
 
 // initWebAuthn configures the global WebAuthn relying party if possible.

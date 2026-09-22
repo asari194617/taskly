@@ -14,6 +14,7 @@ ones are retained as historical design material.
 - [`initial-settings.md`](initial-settings.md): CI/CD and production deployment
 - [`operations/recovery-drill.md`](operations/recovery-drill.md): recovery targets, database restore, rollback, notification failures, and drills
 - [`operations/network-ports.md`](operations/network-ports.md): production port exposure and verification
+- [`operations/metrics-monitoring.md`](operations/metrics-monitoring.md): metric collection, dashboard, alerts, and response
 - [`redis-acl-operations.md`](redis-acl-operations.md): Redis ACL rollout, rotation, and recovery
 - [`../apps/docs/openapi/openapi.yaml`](../apps/docs/openapi/openapi.yaml): OpenAPI definition used by the documentation app
 - [`batches/notifications/README.md`](batches/notifications/README.md): notification batch behavior

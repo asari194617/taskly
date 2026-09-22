@@ -2,7 +2,7 @@
 set -euo pipefail
 
 WORKDIR="${1:-}"
-[[ -n "$WORKDIR" && -x "$WORKDIR/infra/ops/disk-maintenance.sh" ]] || {
+[[ -n "$WORKDIR" && -x "$WORKDIR/infra/ops/disk-maintenance.sh" && -x "$WORKDIR/infra/ops/monitoring-watchdog.sh" ]] || {
   echo "Usage: $0 ABSOLUTE_PROJECT_WORKDIR" >&2
   exit 2
 }
@@ -20,9 +20,10 @@ trap 'rm -f "$tmp"' EXIT
   '
   echo "$BEGIN_MARKER"
   echo "*/5 * * * * cd '$WORKDIR/infra' && ./ops/disk-maintenance.sh status 2>&1 | logger -t taskly-disk"
+  echo "* * * * * cd '$WORKDIR/infra' && ./ops/monitoring-watchdog.sh 2>&1 | logger -t taskly-monitoring"
   echo "25 3 * * * cd '$WORKDIR/infra' && ./ops/disk-maintenance.sh cleanup 2>&1 | logger -t taskly-disk"
   echo "$END_MARKER"
 } >"$tmp"
 
 crontab "$tmp"
-echo "Installed Taskly disk monitoring and cleanup in the current user's crontab"
+echo "Installed Taskly disk and metrics monitoring in the current user's crontab"
