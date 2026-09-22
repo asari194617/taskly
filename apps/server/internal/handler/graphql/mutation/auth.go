@@ -443,6 +443,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"next":    &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSWORD_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("password managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {

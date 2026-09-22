@@ -61,6 +61,7 @@ import {
 export default function SettingsSecurity() {
   const { dict } = useLang();
   const authPasskeyURL = import.meta.env.PUBLIC_AUTH_PASSKEY_URL?.trim();
+  const authPasswordURL = import.meta.env.PUBLIC_AUTH_PASSWORD_URL?.trim();
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -84,9 +85,13 @@ export default function SettingsSecurity() {
 
   React.useEffect(() => {
     if (new URLSearchParams(window.location.search).has("change-password")) {
+      if (authPasswordURL) {
+        window.location.assign(authPasswordURL);
+        return;
+      }
       setPwOpen(true);
     }
-  }, []);
+  }, [authPasswordURL]);
 
   React.useEffect(() => {
     loadSecuritySettings()
@@ -95,7 +100,7 @@ export default function SettingsSecurity() {
         setPasskeys(d.myPasskeys || []);
       })
       .catch(() =>
-        toast({ variant: "destructive", title: dict.toast.userInfoFetchError })
+        toast({ variant: "destructive", title: dict.toast.userInfoFetchError }),
       );
   }, []);
 
@@ -167,7 +172,7 @@ export default function SettingsSecurity() {
         typeof options.publicKey.challenge === "string"
       ) {
         (options.publicKey.challenge as any) = base64urlToBuffer(
-          options.publicKey.challenge
+          options.publicKey.challenge,
         );
       }
       if (
@@ -175,7 +180,7 @@ export default function SettingsSecurity() {
         typeof options.publicKey.user.id === "string"
       ) {
         options.publicKey.user.id = base64urlToBuffer(
-          options.publicKey.user.id as string
+          options.publicKey.user.id as string,
         ) as any;
       }
       if (Array.isArray(options?.publicKey?.excludeCredentials)) {
@@ -206,7 +211,7 @@ export default function SettingsSecurity() {
         try {
           const d = await loadSecuritySettings();
           setPasskeys(d.myPasskeys || []);
-          setAuth((s) => ({ ...(s || {}), ...d.authSettings } as AuthState));
+          setAuth((s) => ({ ...(s || {}), ...d.authSettings }) as AuthState);
         } catch {}
       } else {
         throw new Error("finish returned false");
@@ -236,130 +241,148 @@ export default function SettingsSecurity() {
                 {dict.settingsSecurity.password.desc}
               </div>
             </div>
-            <Dialog
-              open={isDesktop && pwOpen}
-              onOpenChange={(v: boolean) => setPwOpen(isDesktop ? v : pwOpen)}
-            >
-              <DialogTrigger asChild>
-                <Button variant="secondary" onClick={() => setPwOpen(true)}>
+            {authPasswordURL && (
+              <Button asChild variant="secondary">
+                <a href={authPasswordURL}>
                   {dict.settingsSecurity.password.open}
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {dict.settingsSecurity.password.dialogTitle}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {dict.settingsSecurity.password.dialogDesc}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3">
-                  <div>
-                    <Label>{dict.settingsSecurity.password.current}</Label>
-                    <Input
-                      type="password"
-                      value={pwCurrent}
-                      onChange={(e) => setPwCurrent(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>{dict.settingsSecurity.password.next}</Label>
-                    <Input
-                      type="password"
-                      value={pwNext}
-                      onChange={(e) => setPwNext(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="secondary" onClick={() => setPwOpen(false)}>
-                    {dict.common.close}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      try {
-                        await setPassword(pwCurrent || undefined, pwNext);
-                        toast({ title: dict.toast.updated });
-                        setPwCurrent("");
-                        setPwNext("");
-                        setPwOpen(false);
-                      } catch (e: any) {
-                        toast({
-                          variant: "destructive",
-                          title: dict.toast.updateFailed,
-                          description: e?.message,
-                        });
-                      }
-                    }}
-                  >
-                    {dict.settingsSecurity.password.update}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Drawer
-              open={!isDesktop && pwOpen}
-              onOpenChange={(v: boolean) => setPwOpen(!isDesktop ? v : pwOpen)}
-            >
-              <DrawerContent>
-                <DrawerHeader className="text-left">
-                  <DrawerTitle>
-                    {dict.settingsSecurity.password.dialogTitle}
-                  </DrawerTitle>
-                  <DrawerDescription>
-                    {dict.settingsSecurity.password.dialogDesc}
-                  </DrawerDescription>
-                </DrawerHeader>
-                <div className="px-4 pb-4 space-y-3">
-                  <div>
-                    <Label>{dict.settingsSecurity.password.current}</Label>
-                    <Input
-                      type="password"
-                      value={pwCurrent}
-                      onChange={(e) => setPwCurrent(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>{dict.settingsSecurity.password.next}</Label>
-                    <Input
-                      type="password"
-                      value={pwNext}
-                      onChange={(e) => setPwNext(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      onClick={() => setPwOpen(false)}
-                      className="flex-1"
-                    >
-                      {dict.common.close}
+                </a>
+              </Button>
+            )}
+            {!authPasswordURL && (
+              <>
+                <Dialog
+                  open={isDesktop && pwOpen}
+                  onOpenChange={(v: boolean) =>
+                    setPwOpen(isDesktop ? v : pwOpen)
+                  }
+                >
+                  <DialogTrigger asChild>
+                    <Button variant="secondary" onClick={() => setPwOpen(true)}>
+                      {dict.settingsSecurity.password.open}
                     </Button>
-                    <Button
-                      className="flex-1"
-                      onClick={async () => {
-                        try {
-                          await setPassword(pwCurrent || undefined, pwNext);
-                          toast({ title: dict.toast.updated });
-                          setPwCurrent("");
-                          setPwNext("");
-                          setPwOpen(false);
-                        } catch (e: any) {
-                          toast({
-                            variant: "destructive",
-                            title: dict.toast.updateFailed,
-                            description: e?.message,
-                          });
-                        }
-                      }}
-                    >
-                      {dict.settingsSecurity.password.update}
-                    </Button>
-                  </div>
-                </div>
-              </DrawerContent>
-            </Drawer>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>
+                        {dict.settingsSecurity.password.dialogTitle}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {dict.settingsSecurity.password.dialogDesc}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <div>
+                        <Label>{dict.settingsSecurity.password.current}</Label>
+                        <Input
+                          type="password"
+                          value={pwCurrent}
+                          onChange={(e) => setPwCurrent(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>{dict.settingsSecurity.password.next}</Label>
+                        <Input
+                          type="password"
+                          value={pwNext}
+                          onChange={(e) => setPwNext(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setPwOpen(false)}
+                      >
+                        {dict.common.close}
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          try {
+                            await setPassword(pwCurrent || undefined, pwNext);
+                            toast({ title: dict.toast.updated });
+                            setPwCurrent("");
+                            setPwNext("");
+                            setPwOpen(false);
+                          } catch (e: any) {
+                            toast({
+                              variant: "destructive",
+                              title: dict.toast.updateFailed,
+                              description: e?.message,
+                            });
+                          }
+                        }}
+                      >
+                        {dict.settingsSecurity.password.update}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <Drawer
+                  open={!isDesktop && pwOpen}
+                  onOpenChange={(v: boolean) =>
+                    setPwOpen(!isDesktop ? v : pwOpen)
+                  }
+                >
+                  <DrawerContent>
+                    <DrawerHeader className="text-left">
+                      <DrawerTitle>
+                        {dict.settingsSecurity.password.dialogTitle}
+                      </DrawerTitle>
+                      <DrawerDescription>
+                        {dict.settingsSecurity.password.dialogDesc}
+                      </DrawerDescription>
+                    </DrawerHeader>
+                    <div className="px-4 pb-4 space-y-3">
+                      <div>
+                        <Label>{dict.settingsSecurity.password.current}</Label>
+                        <Input
+                          type="password"
+                          value={pwCurrent}
+                          onChange={(e) => setPwCurrent(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>{dict.settingsSecurity.password.next}</Label>
+                        <Input
+                          type="password"
+                          value={pwNext}
+                          onChange={(e) => setPwNext(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => setPwOpen(false)}
+                          className="flex-1"
+                        >
+                          {dict.common.close}
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          onClick={async () => {
+                            try {
+                              await setPassword(pwCurrent || undefined, pwNext);
+                              toast({ title: dict.toast.updated });
+                              setPwCurrent("");
+                              setPwNext("");
+                              setPwOpen(false);
+                            } catch (e: any) {
+                              toast({
+                                variant: "destructive",
+                                title: dict.toast.updateFailed,
+                                description: e?.message,
+                              });
+                            }
+                          }}
+                        >
+                          {dict.settingsSecurity.password.update}
+                        </Button>
+                      </div>
+                    </div>
+                  </DrawerContent>
+                </Drawer>
+              </>
+            )}
           </div>
         </Card>
         <Card className="p-4 space-y-3">
@@ -439,7 +462,7 @@ export default function SettingsSecurity() {
                             width={200}
                             height={200}
                             src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-                              totpUri
+                              totpUri,
                             )}`}
                           />
                         ) : null}
@@ -510,7 +533,9 @@ export default function SettingsSecurity() {
           </div>
           {authPasskeyURL && (
             <Button asChild>
-              <a href={authPasskeyURL}>{dict.settingsSecurity.passkey.manage}</a>
+              <a href={authPasskeyURL}>
+                {dict.settingsSecurity.passkey.manage}
+              </a>
             </Button>
           )}
           <div className={authPasskeyURL ? "hidden" : "flex flex-wrap gap-2"}>
@@ -571,8 +596,8 @@ export default function SettingsSecurity() {
                                               ...it,
                                               device_name: editingPk.name,
                                             }
-                                          : it
-                                      )
+                                          : it,
+                                      ),
                                     );
                                     setEditingPk(null);
                                   } catch {
@@ -622,7 +647,7 @@ export default function SettingsSecurity() {
                                   try {
                                     await deletePasskey(pk.id);
                                     setPasskeys((list) =>
-                                      list.filter((it) => it.id !== pk.id)
+                                      list.filter((it) => it.id !== pk.id),
                                     );
                                   } catch {
                                     toast({
@@ -700,8 +725,8 @@ export default function SettingsSecurity() {
                                               ...it,
                                               device_name: editingPk.name,
                                             }
-                                          : it
-                                      )
+                                          : it,
+                                      ),
                                     );
                                     setEditingPk(null);
                                   } catch {
@@ -751,7 +776,7 @@ export default function SettingsSecurity() {
                                   try {
                                     await deletePasskey(pk.id);
                                     setPasskeys((list) =>
-                                      list.filter((it) => it.id !== pk.id)
+                                      list.filter((it) => it.id !== pk.id),
                                     );
                                   } catch {
                                     toast({
@@ -847,7 +872,7 @@ export default function SettingsSecurity() {
                   variant="secondary"
                   onClick={async () => {
                     await navigator.clipboard.writeText(
-                      recoveryCodes.join("\n")
+                      recoveryCodes.join("\n"),
                     );
                     toast({ title: dict.common.copy });
                   }}

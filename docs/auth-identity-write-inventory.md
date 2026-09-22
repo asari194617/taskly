@@ -20,6 +20,10 @@ Status: cutover blocker inventory (2026-09-21)
 
 新認証サービスのパスキー管理画面が利用可能になった切り替え時には、Web ビルドの `PUBLIC_AUTH_PASSKEY_URL=https://auth.taskly.iy0306.com/passkeys` を設定し、設定画面から同画面へ移す。このフラグが空の間は従来の管理 UI を維持する。フラグを有効化しても旧 API の GraphQL/REST 書き込み口は残るため、全クライアントとバックグラウンド経路を含めた書き込み所有権の移管が終わるまで最終コピー・公開切り替えをしない。
 
+パスワード管理画面を切り替える Web ビルド設定は `PUBLIC_AUTH_PASSWORD_URL=https://auth.taskly.iy0306.com/security`。空なら旧設定ダイアログを維持する。新画面では直近10分の認証と既存パスワードの照合後に更新し、auth セッションと OAuth トークンを失効させる。旧 GraphQL `setPassword` と REST 設定経路は別途停止する必要があり、このリンクだけで切り替え可能にはならない。
+
+`AUTH_PASSWORD_EXTERNAL=1` は旧 GraphQL `setPassword` を拒否する。既定値は `0` で、旧ログインを使う間は有効化しない。REST 設定はパスワード自体を更新しないが、メールコード許可を旧 DB へ書くため別の移管が必要。
+
 切り替え時の API 側ゲート `AUTH_PASSKEYS_EXTERNAL=1` は旧 `/webauthn/*` と GraphQL のパスキー登録・名前変更・削除を拒否する。既定値は `0` とし、旧ログインを使う間は有効化しない。このゲートはパスキー以外の認証情報更新や直接 DB 書き込みを止めないため、全認証データの切り替え承認には使わない。
 
 ## 切り替え判定
