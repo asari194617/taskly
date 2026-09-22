@@ -19,6 +19,11 @@ on:
         description: Rebuild all production images
         type: boolean
         default: true
+      runner_override:
+        description: Runner for image builds and deploy
+        type: choice
+        options: [auto, ubuntu-latest, self-hosted]
+        default: auto
 
 concurrency:
   group: deploy-production
@@ -35,7 +40,7 @@ jobs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       redis_acl_changed: ${{ steps.matrix.outputs.redis_acl_changed }}
-      runner: ${{ steps.fallback.outputs.use-runner || '["ubuntu-latest"]' }}
+      runner: ${{ inputs.runner_override == 'ubuntu-latest' && '["ubuntu-latest"]' || inputs.runner_override == 'self-hosted' && '["self-hosted"]' || steps.fallback.outputs.use-runner || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@v7
         with:
