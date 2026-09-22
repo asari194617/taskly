@@ -311,8 +311,10 @@ services:
       MYSQL_ROOT_PASSWORD: ""
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
-      AIRFLOW__SCHEDULER__MAX_THREADS: "2"
-      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
+      # A two-vCPU host cannot afford two concurrent Python DAG parsers.
+      # Airflow 3 reads these settings from the dag_processor section.
+      AIRFLOW__DAG_PROCESSOR__PARSING_PROCESSES: "1"
+      AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL: "300"
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__BASE_URL: http://airflow-webserver:3065
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_META_USER:?set AIRFLOW_META_USER}:${AIRFLOW_META_PASSWORD:?set AIRFLOW_META_PASSWORD}@db:3306/${AIRFLOW_META_DATABASE:?set AIRFLOW_META_DATABASE}

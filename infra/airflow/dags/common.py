@@ -1,46 +1,39 @@
+from __future__ import annotations
+
 import os
 import logging
 import json
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING
 
-from airflow.sdk import Context
+if TYPE_CHECKING:
+    from airflow.sdk import Context
 
 __all__ = [
     "discord_failure_callback",
     "discord_success_callback",
 ]
 
-# Load environment variables from mounted .env if available
-try:
-    from dotenv import load_dotenv
-    env_path = "/opt/airflow/.env"
-    if os.path.exists(env_path):
-        load_dotenv(env_path, override=False)
-    else:
-        load_dotenv(override=False)
-except Exception:
-    # Do not fail DAG import if python-dotenv is missing
-    pass
-
-# Initialize Sentry SDK if DSN is provided (works alongside Airflow Sentry provider)
-try:
-    import sentry_sdk
+def _initialize_callback_integrations() -> None:
+    # Compose supplies the environment through env_file. Importing and initializing
+    # Sentry during every DAG parse adds work even when no callback is invoked.
     dsn = os.environ.get("SENTRY_DSN")
-    if dsn:
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+
         sentry_sdk.init(
             dsn=dsn,
             environment=os.environ.get("SENTRY_ENVIRONMENT", os.environ.get("AIRFLOW__CORE__ENVIRONMENT", "development")),
             traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
         )
-except Exception:
-    # Avoid breaking DAG import on Sentry issues
-    pass
+    except Exception:
+        logging.getLogger(__name__).warning("Sentry callback initialization failed (suppressed)", exc_info=True)
 
 def _send_discord_message(message: str) -> None:
-# Load environment variables from mounted .env if available
     url = os.environ.get("DISCORD_WEBHOOK_URL")
     if url:
         url = url.strip().strip('"').strip("'")
@@ -150,6 +143,7 @@ def discord_failure_callback(context: Context) -> None:
     Works with DISCORD_WEBHOOK_URL or DISCORD_WEBHOOK_TOKEN.
     """
     try:
+        _initialize_callback_integrations()
         ti = context.get("ti")
         dag = context.get("dag")
         dag_id = dag.dag_id if dag else "unknown"
@@ -173,6 +167,7 @@ def discord_success_callback(context: Context) -> None:
     Sends a summary regardless of task-level success notifications.
     """
     try:
+        _initialize_callback_integrations()
         dag = context.get("dag")
         dag_id = dag.dag_id if dag else "unknown"
         run_id = context.get("run_id", "")

@@ -1,0 +1,4 @@
+# Airflow 3 uses glob syntax. Only scheduled production DAGs are parsed.
+common.py
+holiday_calendar.py
+tutorial_example.py
