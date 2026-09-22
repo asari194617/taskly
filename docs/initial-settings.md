@@ -38,7 +38,7 @@
 - `PROD_ENV`: 本番 `.env` の内容。空値では本番ホストへの接続前にデプロイを中止する
 - `PROD_ENV` 内の `AIRFLOW_META_DATABASE`, `AIRFLOW_META_USER`, `AIRFLOW_META_PASSWORD`: Airflow メタDB専用の接続設定。既存DBからの移行手順は [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) を参照
 - `PROD_COMPOSE_PROFILES`: 将来 Compose profile を追加する場合の予約値（現行構成には profile なし）
-- `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。設定された経路だけ追加検証します。
+- `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。API と MCP は `/readyz` を指定します。既存の `/healthz` 設定は検証スクリプトが `/readyz` に置き換えます。設定された経路だけ追加検証します。
 
 `main` への push では次のパスが変更された場合に起動します。
 

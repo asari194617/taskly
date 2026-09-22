@@ -79,7 +79,7 @@ services:
       EMAIL_COMPOSE_GRPC_ADDR: email-compose:50051
       TZ: Asia/Tokyo
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/healthz"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/readyz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -109,7 +109,7 @@ services:
     ports:
       - "127.0.0.1:3066:3066" # Host Nginx -> MCP
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3066/healthz',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3066/readyz',{signal:AbortSignal.timeout(3000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5

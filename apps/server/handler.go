@@ -113,8 +113,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	app.Use(middleware.ApiKeyRouteScope)
 
-	/* ヘルスチェック */
-	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
+	registerHealthRoutes(app, db, rdb)
 
 	/* GraphQL */
 	graphqlHandler.RegisterGraphQL(app.Group("/graphql"))

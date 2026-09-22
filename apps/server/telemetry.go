@@ -63,7 +63,7 @@ func telemetryMiddleware() fiber.Handler {
 	tracer := otel.Tracer("taskly/server/http")
 	propagator := otel.GetTextMapPropagator()
 	return func(c *fiber.Ctx) error {
-		if c.Path() == "/healthz" {
+		if c.Path() == "/healthz" || c.Path() == "/readyz" {
 			return c.Next()
 		}
 		parent := propagator.Extract(c.UserContext(), propagation.HeaderCarrier(map[string][]string{

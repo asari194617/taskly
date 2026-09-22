@@ -48,8 +48,8 @@ probe() {
   echo "$name: HTTP 200"
 }
 
-probe 'API host port' http://127.0.0.1:3063/healthz
-probe 'MCP host port' http://127.0.0.1:3066/healthz
+probe 'API host port' http://127.0.0.1:3063/readyz
+probe 'MCP host port' http://127.0.0.1:3066/readyz
 probe 'Airflow host port' http://127.0.0.1:3065/api/v2/monitor/health
 probe 'Prometheus host port' http://127.0.0.1:3068/-/ready
 probe 'Alertmanager host port' http://127.0.0.1:3069/-/ready
@@ -74,7 +74,15 @@ echo 'Airflow metrics exporter: required series present'
 for name in API MCP Airflow; do
   variable="PROD_PUBLIC_${name}_HEALTH_URL"
   if [[ -n "${!variable:-}" ]]; then
-    probe "$name public route" "${!variable}"
+    url=${!variable}
+    if [[ "$name" == API || "$name" == MCP ]]; then
+      if [[ "$url" == */healthz ]]; then
+        url="${url%/healthz}/readyz"
+      elif [[ "$url" != */readyz ]]; then
+        url="${url%/}/readyz"
+      fi
+    fi
+    probe "$name public route" "$url"
   fi
 done
 

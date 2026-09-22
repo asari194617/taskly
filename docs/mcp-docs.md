@@ -22,7 +22,7 @@ HTTP endpoint の詳細は `apps/mcp/README.md` を参照してください。
 ```bash
 cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d --build db mcp
-curl -fsS http://localhost:3066/healthz
+curl -fsS http://localhost:3066/readyz
 ```
 
 stdio ブリッジをソースから実行する場合:
@@ -72,7 +72,7 @@ TLS 終端やインターネット向けリバースプロキシは含みませ�
 1. DNS を本番入口へ向ける。
 2. 外部リバースプロキシまたはロードバランサーで HTTPS を終端する。
 3. MCP の `3066` は `127.0.0.1` に限定し、Nginx 経由でのみ到達可能にする。
-4. 公開 URL の `GET /healthz` が `{"ok":true}` を返すことを確認する。
+4. 公開 URL の `GET /readyz` が `{"ok":true}` を返すことを確認する（MySQL と Go API の利用可能性も検査）。
 
 クライアント側の `TASKLY_MCP_BASE_URL` には、その HTTPS URL を設定します。
 
@@ -91,7 +91,7 @@ TLS 終端やインターネット向けリバースプロキシは含みませ�
 クライアントが disconnected のまま:
 
 - `node` または `taskly-mcp` が PATH から実行できるか確認します。
-- `TASKLY_MCP_BASE_URL` に `/healthz` を付けた URL が到達可能か確認します。
+- `TASKLY_MCP_BASE_URL` に `/readyz` を付けた URL が到達可能か確認します。
 - Web UI でトークンを再発行し、`TASKLY_MCP_TOKEN` を更新します。
 
 ## セキュリティ

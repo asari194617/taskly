@@ -20,11 +20,21 @@ tags:
 paths:
   /healthz:
     get:
-      summary: Health check
+      summary: Process liveness check
       tags: [auth]
       responses:
         "200":
-          description: OK
+          description: API process is running; dependencies are not checked
+  /readyz:
+    get:
+      summary: API readiness check
+      description: Pings MySQL and Redis with a two second deadline.
+      tags: [auth]
+      responses:
+        "200":
+          description: MySQL and Redis are available
+        "503":
+          description: A required dependency is unavailable
   /auth/request-code:
     post:
       summary: Request login code via email

@@ -7,6 +7,16 @@ export type DBPool = {
   execute: (...args: any[]) => Promise<any>;
 };
 
+const readinessTimeoutMs = 1500;
+
+async function apiReady(): Promise<boolean> {
+  const base = process.env.TASKLY_API_BASE_URL || "http://server:8080";
+  const response = await fetch(new URL("/readyz", base), {
+    signal: AbortSignal.timeout(readinessTimeoutMs),
+  });
+  return response.ok;
+}
+
 function sha256Hex(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -23,14 +33,18 @@ function taskForMCP(row: any) {
   return Object.fromEntries(Object.entries(fields).map(([from, to]) => [to, row[from] !== undefined ? row[from] : row[to]]));
 }
 
-export async function createApp(pool: DBPool, taskGateway: TaskGateway = httpTaskGateway()) {
+export async function createApp(
+  pool: DBPool,
+  taskGateway: TaskGateway = httpTaskGateway(),
+  checkApiReady: () => Promise<boolean> = apiReady,
+) {
   const app = Fastify({ logger: false });
 
   // Auth plugin: X-MCP-Token -> mcps.hashed_token match (with expiry)
   app.register(
     fp(async (instance) => {
       instance.addHook("preHandler", async (req, reply) => {
-        if (req.url === "/healthz") return; // public
+        if (req.url === "/healthz" || req.url === "/readyz") return; // public
         const token = (req.headers["x-mcp-token"] ||
           req.headers["x-mcp-api-token"]) as string | undefined;
         if (!token) {
@@ -56,6 +70,21 @@ export async function createApp(pool: DBPool, taskGateway: TaskGateway = httpTas
   );
 
   app.get("/healthz", async () => ({ ok: true }));
+  app.get("/readyz", async (_req, reply) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), 2000);
+    });
+    const checks = await Promise.race([Promise.allSettled([
+      pool.query({ sql: "SELECT 1", timeout: readinessTimeoutMs }),
+      checkApiReady(),
+    ]), deadline]);
+    clearTimeout(timer);
+    if (!checks || checks[0].status !== "fulfilled" || checks[1].status !== "fulfilled" || !checks[1].value) {
+      return reply.code(503).send({ ok: false });
+    }
+    return { ok: true };
+  });
 
   // The MCP facade preserves its response shape while the Go API performs
   // task authorization, validation, persistence and notifications.

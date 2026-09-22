@@ -13,6 +13,7 @@ The Compose service is named `mcp` and is exposed at
 | Method | Path | Authentication |
 | --- | --- | --- |
 | GET | `/healthz` | none |
+| GET | `/readyz` | none |
 | GET, POST | `/tasks` | `X-MCP-Token` |
 | PATCH, DELETE | `/tasks/:id` | `X-MCP-Token` |
 | GET, PATCH | `/users/:id` | `X-MCP-Token` |
@@ -32,9 +33,16 @@ are not exposed through this API.
 
 ```bash
 curl -fsS http://localhost:3066/healthz
+curl -fsS http://localhost:3066/readyz
 curl -fsS -H "X-MCP-Token: $TASKLY_MCP_TOKEN" \
   http://localhost:3066/tasks
 ```
+
+`/healthz` confirms that the process responds. `/readyz` checks MySQL with a
+short query timeout and the Go API's `/readyz` with a short HTTP timeout. It
+returns HTTP 503 if either check fails. Compose and deployment verification use
+`/readyz`; a dependency outage marks the container unhealthy without using
+the liveness endpoint to restart it.
 
 ## Local development
 
