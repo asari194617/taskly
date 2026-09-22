@@ -19,9 +19,9 @@ trap 'rm -f "$tmp"' EXIT
     !skip { print }
   '
   echo "$BEGIN_MARKER"
-  echo "*/5 * * * * cd '$WORKDIR/infra' && ./ops/disk-maintenance.sh status 2>&1 | logger -t taskly-disk"
+  echo "*/5 * * * * cd '$WORKDIR/infra' && bash -o pipefail -c './ops/disk-maintenance.sh status 2>&1 | logger -t taskly-disk'"
   echo "* * * * * cd '$WORKDIR/infra' && ./ops/monitoring-watchdog.sh 2>&1 | logger -t taskly-monitoring"
-  echo "25 3 * * * cd '$WORKDIR/infra' && ./ops/disk-maintenance.sh cleanup 2>&1 | logger -t taskly-disk"
+  echo "25 3 * * * cd '$WORKDIR/infra' && bash -o pipefail -c './ops/disk-maintenance.sh cleanup 2>&1 | logger -t taskly-disk'"
   echo "$END_MARKER"
 } >"$tmp"
 
