@@ -72,7 +72,7 @@ func (mw *Middleware) AdminOnly(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-// ApiKeyRouteScope restricts what endpoints can be accessed when using X-API-Key
+// ApiKeyRouteScope restricts what endpoints can be accessed with API and MCP tokens.
 // Allowed when using API Key:
 // - GET /tasks
 // - POST /tasks
@@ -87,7 +87,8 @@ func (mw *Middleware) ApiKeyRouteScope(c *fiber.Ctx) error {
 		}
 		method, path := c.Method(), strings.TrimRight(c.Path(), "/")
 		if ((method == fiber.MethodGet || method == fiber.MethodPost) && path == "/tasks") ||
-			((method == fiber.MethodPatch || method == fiber.MethodDelete) && strings.HasPrefix(path, "/tasks/") && validTaskID(strings.TrimPrefix(path, "/tasks/"))) {
+			((method == fiber.MethodPatch || method == fiber.MethodDelete) && strings.HasPrefix(path, "/tasks/") && validTaskID(strings.TrimPrefix(path, "/tasks/"))) ||
+			(method == fiber.MethodPatch && path == "/users/me") {
 			return c.Next()
 		}
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "mcp token not allowed for this endpoint"})

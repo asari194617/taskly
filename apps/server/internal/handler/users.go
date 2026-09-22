@@ -9,13 +9,14 @@ import (
 )
 
 func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
-	// User profile: update display name
+	// User profile: update display name and notification language
 	router.Patch("/me", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var body struct {
 			DisplayName *string `json:"display_name"`
+			NotificationLang *string `json:"notification_lang"`
 		}
-		if err := c.BodyParser(&body); err != nil {
+		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
 		}
 		updates := map[string]any{}
@@ -25,6 +26,13 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 				dn = dn[:255]
 			}
 			updates["display_name"] = dn
+		}
+		if body.NotificationLang != nil {
+			lang := strings.ToLower(strings.TrimSpace(*body.NotificationLang))
+			if lang != "ja" && lang != "en" {
+				return c.Status(400).JSON(fiber.Map{"error": "invalid notification_lang"})
+			}
+			updates["notification_lang"] = lang
 		}
 		if len(updates) == 0 {
 			return c.Status(400).JSON(fiber.Map{"error": "no changes"})
