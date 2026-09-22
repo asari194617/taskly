@@ -8,7 +8,7 @@ touch "$temp/host/infra/.env"
 old=1111111111111111111111111111111111111111
 new=2222222222222222222222222222222222222222
 printf '%s\n' "$old" > "$temp/running-sha"
-printf '0028_notification_delivery.sql\n' > "$temp/migrations"
+printf '0019_email_suppressions\n0028_notification_delivery.sql\n' > "$temp/migrations"
 cat > "$temp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -32,6 +32,15 @@ MOCK
 chmod +x "$temp/bin/docker"
 export PATH="$temp/bin:$PATH" MOCK_SHA="$temp/running-sha" MOCK_MIGRATIONS="$temp/migrations"
 guard="$root/infra/ops/deploy-state.sh"
+
+# Historic production records omit .sql; malformed names must still fail.
+printf 'invalid migration\n' >> "$temp/migrations"
+if bash "$guard" begin "$temp/host" "$new" >"$temp/output" 2>&1; then
+  echo 'Malformed migration name was accepted' >&2; exit 1
+fi
+grep -q 'unexpected format' "$temp/output"
+sed '$d' "$temp/migrations" > "$temp/migrations.tmp"
+mv "$temp/migrations.tmp" "$temp/migrations"
 
 # Interrupted after stopping Airflow: the marker prevents a fresh deploy.
 bash "$guard" begin "$temp/host" "$new"
