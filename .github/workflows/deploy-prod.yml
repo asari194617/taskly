@@ -279,7 +279,7 @@ jobs:
           docker compose up -d --no-build --wait db redis
           # Quiesce metadata writes before moving the legacy Airflow tables.
           docker compose stop airflow-webserver airflow-scheduler airflow-dag-processor
-          ./ops/prepare-airflow-db.sh
+          ./ops/prepare-airflow-db.sh </dev/null
           docker compose run --rm --no-deps --entrypoint /app/migrate server </dev/null
           # --wait fails on unhealthy containers and bounds startup time.
           if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor; then

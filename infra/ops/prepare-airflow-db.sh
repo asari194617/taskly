@@ -71,7 +71,7 @@ verify_isolation() {
 
 if [[ $old_dag_runs == 0 ]]; then
   # Fresh install, or a completed migration being replayed by deployment.
-  docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate
+  docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate </dev/null
   restrict_app_grants
   verify_isolation
   echo 'Airflow metadata database is ready'
@@ -81,7 +81,7 @@ fi
 # The new image defines the exact metadata table set. Create a disposable
 # schema, intersect its tables with the legacy mixed schema, then move that set
 # atomically. Moving keeps DAG schedules, runs, task history and FAB users.
-docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate
+docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate </dev/null
 mapfile -t tables < <(mysql_root -e "SELECT n.table_name FROM information_schema.tables n JOIN information_schema.tables o ON o.table_schema = '$MYSQL_DATABASE' AND o.table_name = n.table_name WHERE n.table_schema = '$AIRFLOW_META_DATABASE' AND n.table_type = 'BASE TABLE' ORDER BY n.table_name")
 (( ${#tables[@]} > 0 )) || { echo 'No legacy Airflow tables were found' >&2; exit 1; }
 
@@ -112,7 +112,7 @@ sql=$(IFS=,; echo "RENAME TABLE ${renames[*]}")
 mysql_root -e "$sql"
 
 # New Airflow versions can add tables that were absent from the old schema.
-docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate
+docker compose run --rm --no-deps --entrypoint airflow airflow-webserver db migrate </dev/null
 after_runs=$(mysql_root -e "SELECT COUNT(*) FROM \`$AIRFLOW_META_DATABASE\`.dag_run")
 after_tasks=$(mysql_root -e "SELECT COUNT(*) FROM \`$AIRFLOW_META_DATABASE\`.task_instance")
 [[ $before_runs == "$after_runs" && $before_tasks == "$after_tasks" ]] || {
