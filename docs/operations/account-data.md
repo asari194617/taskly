@@ -1,5 +1,7 @@
 # 退会・個人データ請求・消去
 
+退会日時と保留テーブルは `0031_account_deletion_retention.sql` で追加する。`0030_policy_consents.sql` の後に適用する。
+
 公開案内は `/account-data`。本書は運用担当者向け。Issue #403 の実装時点の方針であり、個別の法的請求は事実関係を確認して扱う。
 
 保存期間 30 日はサービスの運用上定めた期間で、法定の一律期間ではない。個人情報保護委員会の[保存期間に関する FAQ](https://www.ppc.go.jp/all_faq_index/faq1-q5-2/)と[遅滞ない消去に関する FAQ](https://www.ppc.go.jp/all_faq_index/faq1-q5-3/)を参照する。

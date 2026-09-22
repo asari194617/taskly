@@ -24,6 +24,16 @@ func TestMigrationFiles(t *testing.T) {
 	}
 }
 
+func TestRepositoryMigrationFiles(t *testing.T) {
+	files, err := migrationFiles(filepath.Join("..", "..", "migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no repository migrations found")
+	}
+}
+
 func TestMigrationFilesRejectsDuplicateVersion(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"0026_first.sql", "0026_second.sql"} {
