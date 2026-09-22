@@ -35,7 +35,7 @@ jobs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       redis_acl_changed: ${{ steps.matrix.outputs.redis_acl_changed }}
-      runner: ${{ steps.pick.outputs.runner }}
+      runner: ${{ steps.fallback.outputs.use-runner || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -68,8 +68,6 @@ jobs:
           echo "count=$(jq '.include | length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
           echo "redis_acl_changed=$redis_acl_changed" >> "$GITHUB_OUTPUT"
           echo "Image matrix: $matrix"
-      - id: default-runner
-        run: echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
       - id: fallback
         name: Select self-hosted with fallback
         uses: dodi-smart/runner-fallback-action@v2
@@ -78,13 +76,11 @@ jobs:
           github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
           primary-runner: self-hosted
           fallback-runner: ubuntu-latest
-      - id: pick
-        run: echo "runner=${{ steps.fallback.outputs.runner || steps.default-runner.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   publish-images:
     needs: plan
     if: needs.plan.outputs.count != '0'
-    runs-on: ${{ needs.plan.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     permissions:
       contents: read
       packages: write
@@ -122,7 +118,7 @@ jobs:
   release-images:
     needs: [plan, publish-images]
     if: ${{ always() && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
-    runs-on: ${{ needs.plan.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     permissions:
       contents: read
       packages: write
@@ -158,7 +154,7 @@ jobs:
 
   deploy:
     needs: [plan, release-images]
-    runs-on: ${{ needs.plan.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
