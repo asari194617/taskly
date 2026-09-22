@@ -318,6 +318,7 @@ export default function TasksList() {
         <div className="flex-1">
           <InputGroup>
             <InputGroupInput
+              aria-label={dict.tasks.searchLabel}
               placeholder={dict.tasks.searchPlaceholder}
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}

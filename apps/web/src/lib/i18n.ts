@@ -143,6 +143,7 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "課題を検索 (タイトル/説明)"
         : "Search tasks (title/description)",
+    searchLabel: lang === "ja" ? "課題を検索" : "Search tasks",
     newTask: lang === "ja" ? "新規作成" : "New task",
     createNewTask: lang === "ja" ? "新しい課題を作成" : "Create new task",
     edit: lang === "ja" ? "編集" : "Edit",

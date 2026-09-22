@@ -112,6 +112,29 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await expect(page.getByText("検索結果がありません")).toBeVisible();
 });
 
+test("課題検索欄と新規作成ボタンの名前を日本語・英語と両画面幅で取得できる", async ({ page }) => {
+  await mockApi(page, { authenticated: true });
+  await page.goto("/home");
+  await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");
+  const toolbar = page.locator('[data-slot="input-group"]').locator("xpath=../..");
+
+  for (const [lang, searchName, createName] of [
+    ["ja", "課題を検索", "新規作成"],
+    ["en", "Search tasks", "New task"],
+  ] as const) {
+    await page.evaluate((value) => {
+      localStorage.setItem("display_lang", value);
+      window.dispatchEvent(new Event("languagechange"));
+    }, lang);
+
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect(page.getByRole("textbox", { name: searchName, exact: true })).toBeVisible();
+      await expect(toolbar.getByRole("button", { name: createName, exact: true })).toBeVisible();
+    }
+  }
+});
+
 test("課題の完了フィルターをキーボードで切り替え・解除できる", async ({ page }) => {
   const api = await mockApi(page);
   api.tasks.push(
