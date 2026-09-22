@@ -25,7 +25,7 @@ archived edition or the server's accepted version.
 
 ## Migration and access
 
-`0030_policy_consents.sql` adds append-only events with user ID, acceptance
+`0031_policy_consents.sql` adds append-only events with user ID, acceptance
 time, all three document versions and the display language. The legacy
 `users.is_agreed_policies` value is retained for old API compatibility but
 cannot establish when or which text a user accepted. No synthetic events are
