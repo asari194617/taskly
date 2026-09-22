@@ -291,6 +291,7 @@ export const t = (lang: Lang) => ({
     expiryDialog: lang === "ja" ? "有効期限を設定/更新" : "Set or update expiration",
     clearExpiryHint:
       lang === "ja" ? "空欄で保存すると期限を解除します。" : "Save an empty value to remove the expiration date.",
+    invalidExpiry: lang === "ja" ? "有効な日時を選択してください。" : "Select a valid date and time.",
     loadFailed: lang === "ja" ? "読み込みに失敗しました" : "Failed to load",
     updateFailed: lang === "ja" ? "更新に失敗しました" : "Failed to update",
     copyFailed: lang === "ja" ? "コピーに失敗しました" : "Failed to copy",

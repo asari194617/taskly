@@ -1,4 +1,5 @@
 import { formatYmdHm } from "@/lib/utils";
+import { expiryFromLocalInput, expiryToLocalInput, InvalidTokenExpiryError } from "@/lib/token-expiry";
 ("use client");
 import * as React from "react";
 import SettingsShell from "@/react/SettingsShell";
@@ -44,27 +45,6 @@ type IItem = {
   expires_at?: string | null;
 };
 
-function toRFC3339FromLocal(input: string): string | undefined {
-  const v = (input || "").trim();
-  if (!v) return undefined;
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return undefined;
-  return d.toISOString();
-}
-
-function fromRFC3339ToLocalInput(s?: string | null): string {
-  if (!s) return "";
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  const mm = pad(d.getMonth() + 1);
-  const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-}
-
 export default function SettingsIcal() {
   const { dict } = useLang();
   const [items, setItems] = React.useState<IItem[]>([]);
@@ -94,7 +74,7 @@ export default function SettingsIcal() {
     try {
       await gql<{ icalCreate: { id: number; url: string } }>(
         `mutation($d:String,$e:String){ icalCreate(description:$d,expires_at:$e){ id url } }`,
-        { d: desc || undefined, e: toRFC3339FromLocal(expires) }
+        { d: desc || undefined, e: expiryFromLocalInput(expires) }
       );
       setDesc("");
       setExpires("");
@@ -103,7 +83,7 @@ export default function SettingsIcal() {
       toast({
         variant: "destructive",
         title: dict.settingsIcal.createFailed,
-        description: e?.message,
+        description: e instanceof InvalidTokenExpiryError ? dict.settingsDetail.invalidExpiry : e?.message,
       });
     }
   }
@@ -124,11 +104,11 @@ export default function SettingsIcal() {
   }
   const [editId, setEditId] = React.useState<number | null>(null);
   const [editExpires, setEditExpires] = React.useState<string>(""); // local
-  async function updateExpiry(id: number, value: string) {
+  async function updateExpiry(id: number, value: string, original?: string | null) {
     try {
       await gql<{ icalUpdate: boolean }>(
         `mutation($id:Int!,$e:String){ icalUpdate(id:$id, expires_at:$e) }`,
-        { id, e: toRFC3339FromLocal(value) }
+        { id, e: expiryFromLocalInput(value, { update: true, original }) }
       );
       setEditId(null);
       setEditExpires("");
@@ -137,7 +117,7 @@ export default function SettingsIcal() {
       toast({
         variant: "destructive",
         title: dict.settingsDetail.updateFailed,
-        description: e?.message,
+        description: e instanceof InvalidTokenExpiryError ? dict.settingsDetail.invalidExpiry : e?.message,
       });
     }
   }
@@ -251,7 +231,7 @@ export default function SettingsIcal() {
                         if (open) {
                           setEditId(it.id);
                           setEditExpires(
-                            fromRFC3339ToLocalInput(it.expires_at)
+                            expiryToLocalInput(it.expires_at)
                           );
                         } else {
                           setEditId(null);
@@ -276,7 +256,7 @@ export default function SettingsIcal() {
                         />
                         <DialogFooter>
                           <Button
-                            onClick={() => updateExpiry(editId!, editExpires)}
+                            onClick={() => updateExpiry(editId!, editExpires, it.expires_at)}
                           >
                             {dict.common.save}
                           </Button>

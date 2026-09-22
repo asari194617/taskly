@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/tooltip";
 import { CircleHelp as CircleQuestionMark } from "lucide-react";
 import { formatYmdHm } from "@/lib/utils";
+import { expiryFromLocalInput, expiryToLocalInput, InvalidTokenExpiryError } from "@/lib/token-expiry";
 
 type ApiKey = {
   id: number;
@@ -54,23 +55,6 @@ export default function SettingsApiKeys() {
   const [creating, setCreating] = React.useState(false);
   const [openCreate, setOpenCreate] = React.useState(false);
   const HELP_URL = "https://ritzy-lift-e38.notion.site/API-290a3874f8c880189db2e3d09128077d?source=copy_link";
-
-  function toRFC3339(input: string): string | undefined {
-    const v = (input || "").trim();
-    if (!v) return undefined;
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return undefined;
-    return d.toISOString();
-  }
-  function fromRFC3339(s?: string | null): string {
-    if (!s) return "";
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-      d.getDate()
-    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
 
   async function load() {
     try {
@@ -96,7 +80,7 @@ export default function SettingsApiKeys() {
       setCreating(true);
       const data = await gql<{ apiKeyCreate: { id: number; token: string } }>(
         `mutation($d:String,$e:String){ apiKeyCreate(description:$d, expires_at:$e){ id token } }`,
-        { d: desc || undefined, e: toRFC3339(expires) }
+        { d: desc || undefined, e: expiryFromLocalInput(expires) }
       );
       setCreatedToken(data.apiKeyCreate.token);
       setDesc("");
@@ -106,7 +90,7 @@ export default function SettingsApiKeys() {
       toast({
         variant: "destructive",
         title: dict.settingsApiKeys.issueFailed,
-        description: e?.message,
+        description: e instanceof InvalidTokenExpiryError ? dict.settingsDetail.invalidExpiry : e?.message,
       });
     } finally {
       setCreating(false);
@@ -127,18 +111,18 @@ export default function SettingsApiKeys() {
     }
   }
 
-  async function updateExpiry(id: number, value: string) {
+  async function updateExpiry(id: number, value: string, original?: string | null) {
     try {
       await gql<{ apiKeyUpdate: { id: number; is_valid: boolean } }>(
         `mutation($id:Int!,$e:String){ apiKeyUpdate(id:$id, expires_at:$e){ id is_valid } }`,
-        { id, e: toRFC3339(value) }
+        { id, e: expiryFromLocalInput(value, { update: true, original }) }
       );
       load();
     } catch (e: any) {
       toast({
         variant: "destructive",
         title: dict.settingsDetail.updateFailed,
-        description: e?.message,
+        description: e instanceof InvalidTokenExpiryError ? dict.settingsDetail.invalidExpiry : e?.message,
       });
     }
   }
@@ -314,7 +298,7 @@ export default function SettingsApiKeys() {
                         onOpenChange={(open) => {
                           if (open) {
                             setEditId(it.id);
-                            setEditExpires(fromRFC3339(it.expires_at));
+                            setEditExpires(expiryToLocalInput(it.expires_at));
                           } else {
                             setEditId(null);
                             setEditExpires("");
@@ -338,7 +322,7 @@ export default function SettingsApiKeys() {
                           />
                           <DialogFooter>
                             <Button
-                              onClick={() => updateExpiry(editId!, editExpires)}
+                              onClick={() => updateExpiry(editId!, editExpires, it.expires_at)}
                             >
                               {dict.common.save}
                             </Button>

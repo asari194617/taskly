@@ -33,6 +33,7 @@ import {
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { CircleHelp as CircleQuestionMark } from "lucide-react";
 import { formatYmdHm } from "@/lib/utils";
+import { expiryFromLocalInput, expiryToLocalInput, InvalidTokenExpiryError } from "@/lib/token-expiry";
 
 type McpInfo = {
   enabled: boolean;
@@ -53,23 +54,6 @@ export default function SettingsMcp() {
   const [editExpires, setEditExpires] = React.useState<string>("");
   const [openIssue, setOpenIssue] = React.useState(false);
   const HELP_URL = "https://ritzy-lift-e38.notion.site/MCP-290a3874f8c880a08c31f53116cb2ead?source=copy_link";
-
-  function toRFC3339(input: string): string | undefined {
-    const v = (input || "").trim();
-    if (!v) return undefined;
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return undefined;
-    return d.toISOString();
-  }
-  function fromRFC3339(s?: string | null): string {
-    if (!s) return "";
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-      d.getDate()
-    )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
 
   async function loadInfo() {
     try {
@@ -122,7 +106,7 @@ export default function SettingsMcp() {
       setCreating(true);
       const d = await gql<{ mcpCreate: { ok: boolean; token: string } }>(
         `mutation($e:String){ mcpCreate(expires_at:$e){ ok token } }`,
-        { e: toRFC3339(expires) }
+        { e: expiryFromLocalInput(expires) }
       );
       setCreatedToken(d.mcpCreate.token);
       setExpires("");
@@ -133,7 +117,7 @@ export default function SettingsMcp() {
       toast({
         variant: "destructive",
         title: dict.toast.createFailed,
-        description: e?.message,
+        description: e instanceof InvalidTokenExpiryError ? dict.settingsDetail.invalidExpiry : e?.message,
       });
     } finally {
       setCreating(false);
@@ -159,7 +143,7 @@ export default function SettingsMcp() {
     try {
       await gql<{ mcpUpdate: boolean }>(
         `mutation($e:String){ mcpUpdate(expires_at:$e) }`,
-        { e: toRFC3339(editExpires) }
+        { e: expiryFromLocalInput(editExpires, { update: true, original: info?.expires_at }) }
       );
       toast({ title: dict.toast.updated });
       setEditExpires("");
@@ -169,7 +153,7 @@ export default function SettingsMcp() {
       toast({
         variant: "destructive",
         title: dict.toast.updateFailed,
-        description: e?.message,
+        description: e instanceof InvalidTokenExpiryError ? dict.settingsDetail.invalidExpiry : e?.message,
       });
     }
   }
@@ -231,7 +215,7 @@ export default function SettingsMcp() {
                       <Dialog
                         onOpenChange={(open) => {
                           if (open) {
-                            setEditExpires(fromRFC3339(info?.expires_at));
+                            setEditExpires(expiryToLocalInput(info?.expires_at));
                           } else {
                             setEditExpires("");
                           }
