@@ -12,7 +12,7 @@ Status: cutover blocker inventory (2026-09-21)
 | `users.display_name`, `notification_lang`, `is_agreed_policies` | REST `/users/me`, `/settings`; GraphQL `updateMe`, `agreePolicies`, `adminUserUpdate` | app 側プロフィールを正本とする場合も、auth UI が必要とする値の読み取りまたは同期を用意する。 |
 | `login_codes` | REST 旧 `/auth` の発行、使用、試行回数・ロック更新 | 新ログインの発行と検証は auth DB に一本化。旧ログインを残す間は旧 DB のコードを新サービスが誤って受け付けないようにする。 |
 | `totp_secrets`, `recovery_codes` | REST `/2fa`; GraphQL TOTP 有効化/無効化、復旧コード再生成; `utils.ConsumeRecoveryCode` | 設定・再生成・使用を auth DB に一本化し、旧認証経路との併存期間中の二重使用を防ぐ。 |
-| `passkeys` | REST `/webauthn` 登録・認証回数更新; GraphQL 登録・名前変更・削除 | 旧 RP ID の認証と新 RP ID の再登録動線を確保し、両 DB の credential 状態を整合させる。 |
+| `passkeys` | REST `/webauthn` 登録・認証回数更新; GraphQL 登録・名前変更・削除 | 新 UI を旧 RP ID `taskly.iy0306.com` のサブドメインに置き、同じ RP ID で既存クレデンシャルを検証する。両 DB の署名カウンタ・名前・削除を整合させる。 |
 | `sessions` | `handler/session.go` 発行、`utils.RevokeSession` / `RevokeOtherSessions` 削除、GraphQL logout | 旧セッションの期限まで旧 DB を検証する。DB 行を毎回正本として照合し、Redis に失効済みのキャッシュが残っても再認証を拒否する。OAuth トークンとの一括失効と切り戻し時の扱いを検証する。 |
 | `blocks` | REST `/admin/users`、GraphQL `adminUserBlock` / `adminUserUnblock` | app API と auth ログインの両方で同一のブロック状態を判定し、更新を同期する。 |
 
@@ -30,4 +30,4 @@ Status: cutover blocker inventory (2026-09-21)
 
 2026-09-22 に旧 API のセッション検証を DB 正本に変更し、DB 行が消えた後に Redis キャッシュだけが残る場合の拒否を回帰テストで確認した。GraphQL の `setPassword` はパスワード更新と他端末の永続セッション削除を同一トランザクションに変更し、削除失敗時のロールバックと成功時の失効をテストした。認証情報の書き込み先移管は引き続き未完了である。
 
-同日の本番 DB 読み取り専用集計では、有効ユーザー46件、パスキー保有者1件、そのうちパスキー以外の現行認証手段を持たないユーザー0件だった。新 RP ID への再登録動線はまだ必要だが、現在の利用者にパスキーだけを唯一のログイン手段とする人はいない。移行直前にも再集計する。
+同日の本番 DB 読み取り専用集計では、有効ユーザー46件、パスキー保有者1件、そのうちパスキー以外の現行認証手段を持たないユーザー0件だった。新 UI の origin から旧 RP ID で実際に認証できることを確認するまで旧ログインを維持し、移行直前にも再集計する。
