@@ -13,6 +13,7 @@ ones are retained as historical design material.
 - [`mcp-docs.md`](mcp-docs.md): MCP usage and client configuration
 - [`initial-settings.md`](initial-settings.md): CI/CD and production deployment
 - [`operations/recovery-drill.md`](operations/recovery-drill.md): recovery targets, database restore, rollback, notification failures, and drills
+- [`operations/account-data.md`](operations/account-data.md): account closure, erasure, data requests, and restore reconciliation
 - [`operations/network-ports.md`](operations/network-ports.md): production port exposure and verification
 - [`operations/metrics-monitoring.md`](operations/metrics-monitoring.md): metric collection, dashboard, alerts, and response
 - [`redis-acl-operations.md`](redis-acl-operations.md): Redis ACL rollout, rotation, and recovery

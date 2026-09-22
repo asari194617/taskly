@@ -1,21 +1,22 @@
 package domain
 
 import (
-	"time"
 	"fmt"
+	"time"
 )
 
 type User struct {
-	ID               uint      `gorm:"primaryKey"`
-	Email            string    `gorm:"uniqueIndex;size:255;not null"`
-	DisplayName      string    `gorm:"size:255"`
-	HashedPassword   *string   `gorm:"size:255"`
-	EmailCodeAllowed bool      `gorm:"default:true"`
-	IsDeleted        bool      `gorm:"default:false"`
-	NotificationLang string    `gorm:"size:5;not null;default:'ja'"`
-	IsRegistered     bool      `gorm:"default:false"`
-	IsAgreedPolicies bool      `gorm:"default:false"`
-	CreatedAt        time.Time `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
+	ID               uint       `gorm:"primaryKey"`
+	Email            string     `gorm:"uniqueIndex;size:255;not null"`
+	DisplayName      string     `gorm:"size:255"`
+	HashedPassword   *string    `gorm:"size:255"`
+	EmailCodeAllowed bool       `gorm:"default:true"`
+	IsDeleted        bool       `gorm:"default:false"`
+	DeletedAt        *time.Time `gorm:"index"`
+	NotificationLang string     `gorm:"size:5;not null;default:'ja'"`
+	IsRegistered     bool       `gorm:"default:false"`
+	IsAgreedPolicies bool       `gorm:"default:false"`
+	CreatedAt        time.Time  `gorm:"type:datetime;not null;default:CURRENT_TIMESTAMP"`
 }
 
 type TOTPSecret struct {

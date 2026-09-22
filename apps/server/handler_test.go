@@ -258,6 +258,7 @@ func newTestIcalDB(t testing.TB) *gorm.DB {
 			hashed_password TEXT,
 			email_code_allowed INTEGER NOT NULL DEFAULT 1,
 			is_deleted INTEGER NOT NULL DEFAULT 0,
+			deleted_at DATETIME,
 			notification_lang TEXT NOT NULL DEFAULT 'ja',
 			is_registered INTEGER NOT NULL DEFAULT 0,
 			is_agreed_policies INTEGER NOT NULL DEFAULT 0,

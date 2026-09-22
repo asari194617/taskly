@@ -248,8 +248,8 @@ export const t = (lang: Lang) => ({
     basic: lang === "ja" ? "基本設定" : "Basic Settings",
     basicDesc:
       lang === "ja"
-        ? "表示名・アカウント削除"
-        : "Display name, account deletion",
+        ? "表示名・退会"
+        : "Display name, account closure",
     security: lang === "ja" ? "セキュリティ設定" : "Security Settings",
     securityDesc:
       lang === "ja"
@@ -277,18 +277,22 @@ export const t = (lang: Lang) => ({
     email: lang === "ja" ? "メールアドレス" : "Email",
     displayName: lang === "ja" ? "表示名" : "Display name",
     notificationLang: lang === "ja" ? "配信メールの言語" : "Email language",
-    deleteAccount: lang === "ja" ? "アカウント削除" : "Delete account",
+    deleteAccount: lang === "ja" ? "退会する" : "Close account",
     irreversible:
       lang === "ja"
-        ? "この操作は取り消せません。"
-        : "This action cannot be undone.",
+        ? "退会するとログインと連携が直ちに停止します。メールアドレス・表示名・共有課題などは請求対応のため30日間保持し、その後の日次処理で消去します。暗号化バックアップには通常さらに14日間残ります。"
+        : "Closing your account immediately disables sign-in and integrations. We retain your email, display name, shared tasks and related data for 30 days to handle requests, then erase them in a daily job. Encrypted backups normally retain copies for a further 14 days.",
+    erasureInfo:
+      lang === "ja" ? "退会と個人データの消去は別の処理です。例外と請求方法は" : "Account closure and personal data erasure are separate. For exceptions and requests, see the",
+    erasureLink: lang === "ja" ? "退会後のデータ取扱い" : "account data policy",
+    requestContact: lang === "ja" ? "退会後の請求窓口" : "Data request contact",
     deleteConfirmTitle:
-      lang === "ja" ? "本当に削除しますか？" : "Are you sure to delete?",
+      lang === "ja" ? "退会しますか？" : "Close your account?",
     emailLanguageSaveFailed:
       lang === "ja" ? "メールの言語設定を保存できませんでした" : "Could not save the email language setting",
     saved: lang === "ja" ? "保存しました" : "Saved",
     saveFailed: lang === "ja" ? "保存に失敗しました" : "Failed to save",
-    deleteFailed: lang === "ja" ? "削除に失敗しました" : "Failed to delete",
+    deleteFailed: lang === "ja" ? "退会できませんでした" : "Failed to close account",
   },
   settingsDetail: {
     help: lang === "ja" ? "ヘルプ" : "Help",

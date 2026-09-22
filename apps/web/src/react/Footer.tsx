@@ -73,6 +73,7 @@ export default function Footer() {
             title: d.privacyPolicy,
             href: "https://ritzy-lift-e38.notion.site/28ba3874f8c88073a4b2c0a56b82bc03",
           },
+          { title: d.privacy, href: "/account-data" },
           {
             title: d.securityPolicy,
             href: "https://ritzy-lift-e38.notion.site/28ba3874f8c880938951dab0cbd4814f",

@@ -15,6 +15,7 @@ import mysql.connector
 
 
 DAGS = (
+    "account_erasure",
     "backup_mysql",
     "day_shift_index_increment",
     "day_shift_notify_0830",

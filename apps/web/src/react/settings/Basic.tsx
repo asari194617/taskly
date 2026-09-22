@@ -163,6 +163,12 @@ export default function SettingsBasic() {
             <div className="text-sm text-muted-foreground">
               {dict.settingsBasic.irreversible}
             </div>
+            <p className="text-sm text-muted-foreground">
+              {dict.settingsBasic.erasureInfo}{" "}
+              <a className="underline" href="/account-data">{dict.settingsBasic.erasureLink}</a>
+              {" "}<span aria-hidden="true">·</span>{" "}
+              {dict.settingsBasic.requestContact}: <a className="underline" href="mailto:lyrical_beagles.9r@icloud.com">lyrical_beagles.9r@icloud.com</a>
+            </p>
           </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -177,6 +183,7 @@ export default function SettingsBasic() {
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   {dict.settingsBasic.irreversible}
+                  {" "}<a className="underline" href="/account-data">{dict.settingsBasic.erasureLink}</a>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -185,7 +192,7 @@ export default function SettingsBasic() {
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={deleteAccount}
                 >
-                  {dict.common.delete}
+                  {dict.settingsBasic.deleteAccount}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

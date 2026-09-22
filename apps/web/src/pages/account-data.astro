@@ -1,0 +1,30 @@
+---
+import Layout from "../layouts/AppLayout.astro";
+---
+<Layout title="退会後のデータ取扱い | Taskly" description="退会、個人データの消去、開示等の請求方法">
+  <main class="mx-auto max-w-3xl space-y-8 py-8 px-4">
+    <h1 class="text-3xl font-bold">退会後のデータ取扱い</h1>
+    <p>設定画面の「退会」はサービスの利用停止です。個人データの消去とは処理時期が異なります。</p>
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">退会時に停止するもの</h2>
+      <p>ログインを停止し、セッション・API キー・MCP トークン・iCal 購読 URL を失効させます。通知や外部連携も停止します。</p>
+    </section>
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">保存と消去</h2>
+      <p>メールアドレス、表示名、認証設定、課題とその関連記録、通知・連携の履歴を、退会後の請求への対応と誤処理の確認のため、退会日から 30 日保存します。期限後の日次処理で消去します。課題は共有されていても消去されます。</p>
+      <p>法令上の義務や具体的な紛争への対応に必要な場合に限り、理由と再確認日を記録して対象データの消去を保留します。必要性がなくなれば消去します。</p>
+      <p>暗号化バックアップは通常 14 日、最低 3 世代を保持します。バックアップ内の情報を個別に書き換えることはできません。復元時には退会・消去の記録を再適用してからサービスを再開します。</p>
+      <p>すでに Teams・Discord・メールなど外部へ送信された内容は、この処理では消去できません。外部での削除をご希望の場合は窓口へご相談ください。</p>
+    </section>
+    <section class="space-y-2">
+      <h2 class="text-xl font-semibold">開示・訂正・利用停止・消去の請求</h2>
+      <p>退会前後を問わず、<a class="underline" href="mailto:lyrical_beagles.9r@icloud.com?subject=Taskly%20%E5%80%8B%E4%BA%BA%E3%83%87%E3%83%BC%E3%82%BF%E8%AB%8B%E6%B1%82">lyrical_beagles.9r@icloud.com</a> に、登録メールアドレス、希望する請求内容、返信先をお送りください。機微な情報や本人確認書類は最初のメールに添付しないでください。</p>
+      <p>担当者は受付後、登録メールアドレスへの確認など必要最小限の方法で本人確認を行います。退会後にそのメールを使えない場合は別の確認方法を個別に案内します。確認後に対象データと保留理由を調査し、対応結果または対応できない理由をメールで回答します。手数料を求める場合は事前に金額と支払方法を案内します。</p>
+    </section>
+    <section lang="en" class="space-y-2 border-t pt-6">
+      <h2 class="text-xl font-semibold">Account closure and data requests</h2>
+      <p>Closing your account immediately disables access and credentials. We erase account and task data in a daily job after 30 days for request handling; encrypted backups normally expire within a further 14 days, subject to a three-copy minimum. A documented legal or dispute hold may delay erasure. Content already sent to Teams, Discord, or email is not removed by this job.</p>
+      <p>For access, correction, suspension or erasure, email <a class="underline" href="mailto:lyrical_beagles.9r@icloud.com">lyrical_beagles.9r@icloud.com</a> before or after closure. Include your registered email and request, but do not attach identity documents initially. We will verify identity and respond by email.</p>
+    </section>
+  </main>
+</Layout>

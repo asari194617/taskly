@@ -39,8 +39,8 @@ func TestEmptyDatabaseBaseline(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if tables != 35 {
-		t.Fatalf("expected 35 application tables, got %d", tables)
+	if tables != 36 {
+		t.Fatalf("expected 36 application tables, got %d", tables)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM migrations WHERE name IN (?, ?, ?)`, legacyBaseline, "0027_remove_task_search_outbox.sql", baselineVersion).Scan(&migrations); err != nil {
 		t.Fatal(err)

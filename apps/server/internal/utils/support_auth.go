@@ -173,7 +173,7 @@ func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *re
 // Redis cleanup is best effort: every authentication path also checks is_deleted.
 func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Client) error {
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&domain.User{}).Where("id = ?", userID).Update("is_deleted", true).Error; err != nil {
+		if err := tx.Model(&domain.User{}).Where("id = ? AND is_deleted = 0", userID).Updates(map[string]any{"is_deleted": true, "deleted_at": time.Now().UTC()}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("user_id = ?", userID).Delete(&domain.Session{}).Error; err != nil {

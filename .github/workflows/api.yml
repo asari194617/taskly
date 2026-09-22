@@ -76,6 +76,11 @@ jobs:
       - name: Initialize schema and exercise core tables
         working-directory: apps/server
         run: go test ./cmd/migrate -run '^TestEmptyDatabaseBaseline$' -count=1 -v
+      - name: Verify account erasure against MySQL
+        run: |
+          python3 -m venv /tmp/taskly-erasure-venv
+          /tmp/taskly-erasure-venv/bin/pip install pymysql==1.1.2
+          TEST_ACCOUNT_ERASURE_DB=1 /tmp/taskly-erasure-venv/bin/python -m unittest infra.airflow.tests.test_account_erasure_integration -v
       - name: Start test Redis
         run: docker run -d --name taskly-ci-redis -p 6379:6379 redis:7-alpine redis-server --requirepass taskly_ci_password
       - name: Start API and check database-backed route
