@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from airflow.models.dagbag import DagBag
+from airflow.dag_processing.dagbag import DagBag
 
 DAGS = Path(__file__).resolve().parents[1] / "dags"
 sys.path.insert(0, str(DAGS))
@@ -10,7 +10,7 @@ sys.path.insert(0, str(DAGS))
 
 class DagImportTest(unittest.TestCase):
     def test_all_dags_load(self):
-        bag = DagBag(dag_folder=str(DAGS), include_examples=False, safe_mode=False)
+        bag = DagBag(dag_folder=str(DAGS), safe_mode=False)
         self.assertEqual(bag.import_errors, {})
         self.assertEqual(
             set(bag.dag_ids),
