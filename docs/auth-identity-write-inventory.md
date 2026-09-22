@@ -24,6 +24,8 @@ Status: cutover blocker inventory (2026-09-21)
 
 `AUTH_PASSWORD_EXTERNAL=1` は旧 GraphQL `setPassword` を拒否する。既定値は `0` で、旧ログインを使う間は有効化しない。REST 設定はパスワード自体を更新しないが、メールコード許可を旧 DB へ書くため別の移管が必要。
 
+メールコード許可設定の本人操作は、認証サービスの `/security` から auth DB の `users.email_code_allowed` を更新する。Web の `PUBLIC_AUTH_EMAIL_CODE_URL` は旧トグルを新画面のリンクへ変え、API の `AUTH_EMAIL_SETTINGS_EXTERNAL=1` は旧 GraphQL `setAuthSettings` と REST `POST /settings/auth` を拒否する。管理者更新と旧ログインのコード使用は別の経路であり、このフラグだけでは所有権を移せない。
+
 切り替え時の API 側ゲート `AUTH_PASSKEYS_EXTERNAL=1` は旧 `/webauthn/*` と GraphQL のパスキー登録・名前変更・削除を拒否する。既定値は `0` とし、旧ログインを使う間は有効化しない。このゲートはパスキー以外の認証情報更新や直接 DB 書き込みを止めないため、全認証データの切り替え承認には使わない。
 
 ## 切り替え判定

@@ -37,6 +37,9 @@ func (h *Handler) RegisterSettingsRoutes(router fiber.Router) {
 	})
 
 	router.Post("/auth", func(c *fiber.Ctx) error {
+		if utils.Env("AUTH_EMAIL_SETTINGS_EXTERNAL", "") == "1" {
+			return c.Status(http.StatusConflict).JSON(fiber.Map{"error": "email code settings managed by auth service"})
+		}
 		u := c.Locals("user").(*domain.User)
 		var body struct {
 			EmailLoginEnabled *bool `json:"email_login_enabled"`

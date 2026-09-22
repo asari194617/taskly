@@ -80,6 +80,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"email_login_enabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_EMAIL_SETTINGS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("email code settings managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {

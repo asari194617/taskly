@@ -62,6 +62,7 @@ export default function SettingsSecurity() {
   const { dict } = useLang();
   const authPasskeyURL = import.meta.env.PUBLIC_AUTH_PASSKEY_URL?.trim();
   const authPasswordURL = import.meta.env.PUBLIC_AUTH_PASSWORD_URL?.trim();
+  const authEmailCodeURL = import.meta.env.PUBLIC_AUTH_EMAIL_CODE_URL?.trim();
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -388,18 +389,34 @@ export default function SettingsSecurity() {
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <label htmlFor="security-email-login" className="font-medium">
-                {dict.settingsSecurity.emailLogin.title}
-              </label>
+              {authEmailCodeURL ? (
+                <div className="font-medium">
+                  {dict.settingsSecurity.emailLogin.title}
+                </div>
+              ) : (
+                <label htmlFor="security-email-login" className="font-medium">
+                  {dict.settingsSecurity.emailLogin.title}
+                </label>
+              )}
               <div className="text-sm text-muted-foreground">
-                {dict.settingsSecurity.emailLogin.note}
+                {authEmailCodeURL
+                  ? dict.settingsSecurity.emailLogin.externalNote
+                  : dict.settingsSecurity.emailLogin.note}
               </div>
             </div>
-            <Switch
-              id="security-email-login"
-              checked={!!auth?.email_login_enabled}
-              onCheckedChange={toggleEmailLogin}
-            />
+            {authEmailCodeURL ? (
+              <Button asChild variant="secondary">
+                <a href={authEmailCodeURL}>
+                  {dict.settingsSecurity.emailLogin.manage}
+                </a>
+              </Button>
+            ) : (
+              <Switch
+                id="security-email-login"
+                checked={!!auth?.email_login_enabled}
+                onCheckedChange={toggleEmailLogin}
+              />
+            )}
           </div>
         </Card>
         <Card className="p-4 space-y-3">
