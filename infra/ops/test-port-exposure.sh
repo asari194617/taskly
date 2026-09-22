@@ -6,7 +6,7 @@ COMPOSE_FILE="$PROJECT_ROOT/infra/docker-compose.yml"
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
-docker compose --file "$COMPOSE_FILE" config --format json >"$tmp"
+docker compose --env-file "$PROJECT_ROOT/.env.example" --file "$COMPOSE_FILE" config --format json >"$tmp"
 
 # Datastores and gRPC workers must only be reachable on the Compose network.
 jq -e '

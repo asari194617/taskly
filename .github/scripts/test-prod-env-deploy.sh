@@ -21,7 +21,11 @@ if PROD_ENV='   ' "$repo/.github/scripts/require-prod-env.sh" >/dev/null 2>&1; t
   echo 'Blank PROD_ENV was accepted' >&2
   exit 1
 fi
-PROD_ENV='KEY=value' "$repo/.github/scripts/require-prod-env.sh"
+if PROD_ENV='KEY=value' "$repo/.github/scripts/require-prod-env.sh" >/dev/null 2>&1; then
+  echo 'Missing Airflow metadata settings were accepted' >&2
+  exit 1
+fi
+PROD_ENV=$'AIRFLOW_META_DATABASE=taskly_airflow\nAIRFLOW_META_USER=taskly_airflow\nAIRFLOW_META_PASSWORD=example' "$repo/.github/scripts/require-prod-env.sh"
 
 mkdir -p "$tmp/source/infra" "$tmp/remote/infra" "$tmp/bin"
 printf 'old root\n' > "$tmp/remote/.env"

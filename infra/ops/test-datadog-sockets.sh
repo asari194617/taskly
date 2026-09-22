@@ -7,7 +7,7 @@ PROD_COMPOSE_FILE="$PROJECT_ROOT/infra/docker-compose.prod.yml"
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
-docker compose --file "$COMPOSE_FILE" --file "$PROD_COMPOSE_FILE" config --format json >"$tmp"
+docker compose --env-file "$PROJECT_ROOT/.env.example" --file "$COMPOSE_FILE" --file "$PROD_COMPOSE_FILE" config --format json >"$tmp"
 
 jq -e '
   . as $config
