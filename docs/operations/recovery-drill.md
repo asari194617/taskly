@@ -21,7 +21,7 @@
 
 ## デプロイ失敗と migration の切り戻し
 
-GitHub Actions の本番更新は `deploy-production` concurrency group で直列化し、実行中の run は後続 push でキャンセルしない。更新前に `infra/ops/deploy-state.sh begin` が稼働中のアプリ各サービスのイメージ SHA と `migrations` の名前一覧の digest を確認し、`<PROD_WORKDIR>/.deploy-state` に `in_progress` を記録する。更新後のヘルス確認とサービス確認がすべて成功すると `complete` が `committed` を記録する。`.deploy-state` は rsync の削除対象から除外される。
+GitHub Actions の本番更新は `deploy-production` concurrency group で直列化し、実行中の run は後続 push でキャンセルしない。更新前に `infra/ops/deploy-state.sh begin` が稼働中のアプリ各サービスのイメージ SHA と `migrations` の名前一覧の digest を確認し、`<PROD_WORKDIR>/.deploy-state` に `in_progress` を記録する。更新後のヘルス確認とサービス確認がすべて成功すると `complete` が `committed` を記録する。`.deploy-state` は rsync の削除対象から除外される。既存の migration 履歴には `.sql` 付きと拡張子なしの名前が混在するため、ガードは両形式を受け入れ、記録済みの名前そのものを digest に含める。履歴名を手作業で書き換えない。
 
 `in_progress` が残った場合、次の run は本番変更前に停止する。**記録を削除して再実行しない。** `docker compose ps`、実際のコンテナイメージ、Airflow の状態、`migrations` 表と対象 SQL、失敗したジョブのログを確認する。Airflow 停止後なら DB とアプリの状態を調べて Airflow を復旧する。migration 後なら旧 API との互換性を確認し、下記の手順で切り戻しまたは修正リリースを選ぶ。復旧して全サービスのヘルスと稼働 SHA、migration 履歴が確定したら、担当者が `infra/ops/deploy-state.sh` の記録をその状態へ手動で調整し、別の担当者が確認してから次のデプロイを実行する。操作内容と判断根拠は障害記録に残す。MySQL DDL の部分適用は migration 履歴だけでは検出できないため、失敗時の SQL と実スキーマの照合が必要。
 
