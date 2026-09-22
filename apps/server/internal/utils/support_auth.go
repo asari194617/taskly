@@ -225,48 +225,33 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 		return false
 	}
 	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
-	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
-	if err != nil || strings.TrimSpace(uidStr) == "" {
-		var session domain.Session
-		if dbErr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; dbErr != nil {
-			if debugAuth {
-				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
-			}
-			return false
-		}
-		if headerPlat != "" && session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
-			if debugAuth {
-				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
-			}
-			return false
-		}
-		ttl := SessionTTL
-		if session.ExpiresAt != nil {
-			rem := time.Until(*session.ExpiresAt)
-			if rem > 0 && rem < ttl {
-				ttl = rem
-			}
-		}
-		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", session.UserID), ttl).Err()
-		uidStr = fmt.Sprintf("%d", session.UserID)
+	// The persisted row is authoritative. A cached Redis entry may outlive a
+	// revocation or be repopulated after cleanup, so it cannot grant access.
+	var session domain.Session
+	if err := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; err != nil {
+		_ = RDB.Del(c.Context(), "session:"+token).Err()
 		if debugAuth {
-			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
+			log.Printf("[auth] %s %s db:miss", c.Method(), sanitizeURLPath(c.Path()))
 		}
-	} else {
-		if headerPlat != "" {
-			var session domain.Session
-			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&session).Error; err == nil {
-				if session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
-					if debugAuth {
-						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
-					}
-					return false
-				}
-			}
-		}
+		return false
+	}
+	if headerPlat != "" && session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
 		if debugAuth {
-			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
+			log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
 		}
+		return false
+	}
+	uidStr := fmt.Sprintf("%d", session.UserID)
+	ttl := SessionTTL
+	if session.ExpiresAt != nil {
+		rem := time.Until(*session.ExpiresAt)
+		if rem > 0 && rem < ttl {
+			ttl = rem
+		}
+	}
+	_ = RDB.Set(c.Context(), "session:"+token, uidStr, ttl).Err()
+	if debugAuth {
+		log.Printf("[auth] %s %s db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
 	}
 	var u domain.User
 	blockSubquery := DB.Model(&domain.Block{}).

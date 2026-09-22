@@ -118,6 +118,9 @@ func TestDeletedUserCredentialsAreRejected(t *testing.T) {
 					}
 					actorToken = "admin-session"
 					mr.Set("session:"+actorToken, fmt.Sprint(admin.ID))
+					if err := db.Create(&domain.Session{UserID: admin.ID, HashedToken: utils.Sha256Hex([]byte(actorToken)), ClientPlatform: "ios"}).Error; err != nil {
+						t.Fatal(err)
+					}
 					query = fmt.Sprintf("mutation { adminUserDelete(user_id: %d) }", user.ID)
 				}
 				rw, body, err := doJSONRequest(app, fiber.MethodPost, "/graphql/", map[string]string{"query": query}, map[string]string{"Authorization": "Bearer " + actorToken})

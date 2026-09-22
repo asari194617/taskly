@@ -363,6 +363,46 @@ func TestCookieSessionCSRFAndLogoutRevokesDatabaseFallback(t *testing.T) {
 	}
 }
 
+func TestStaleRedisSessionCannotAuthenticateAfterDatabaseRevocation(t *testing.T) {
+	app, mr, db, user := newAuthTransactionTestApp(t)
+	const token = "stale-session"
+	if err := db.Create(&domain.Session{UserID: user.ID, HashedToken: utils.Sha256Hex([]byte(token)), ClientPlatform: "ios"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	mr.Set("session:"+token, fmt.Sprint(user.ID))
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app.Get("/session-check", func(c *fiber.Ctx) error {
+		if !utils.UserFromSession(c, db, rdb) {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+	check := func() int {
+		req := httptest.NewRequest(fiber.MethodGet, "/session-check", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Client-Platform", "ios")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := check(); got != fiber.StatusNoContent {
+		t.Fatalf("valid session status=%d", got)
+	}
+	if err := db.Where("user_id = ?", user.ID).Delete(&domain.Session{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !mr.Exists("session:" + token) {
+		t.Fatal("test requires a stale Redis entry")
+	}
+	if got := check(); got != fiber.StatusUnauthorized {
+		t.Fatalf("revoked session status=%d", got)
+	}
+}
+
 func TestLogoutReportsRedisRevocationFailure(t *testing.T) {
 	t.Setenv("API_CORS_ORIGINS", "https://taskly.example")
 	app, mr, db, user := newAuthTransactionTestApp(t)
