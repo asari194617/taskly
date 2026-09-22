@@ -1,0 +1,89 @@
+name: real-api-e2e
+
+on:
+  pull_request:
+    paths:
+      - "apps/server/**"
+      - "apps/web/**"
+      - ".github/workflows/e2e.yml"
+
+jobs:
+  web-api-db:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: taskly_e2e
+          MYSQL_USER: taskly
+          MYSQL_PASSWORD: taskly_e2e_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      CI: "1"
+      TASKLY_E2E_RESET: "1"
+      MYSQL_USER: taskly
+      MYSQL_PASSWORD: taskly_e2e_password
+      MYSQL_DATABASE: taskly_e2e
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
+      REDIS_ADDR: 127.0.0.1:6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: taskly_e2e_password
+      JWT_SECRET: taskly-e2e-isolated-secret-at-least-32-characters
+      API_PORT: "3063"
+      API_CORS_ORIGINS: http://localhost:4321
+      NODE_ENV: development
+      DD_TRACE_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25.4"
+          cache-dependency-path: apps/server/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Start isolated Redis
+        run: docker run -d --name taskly-e2e-redis -p 6379:6379 redis:7-alpine redis-server --requirepass taskly_e2e_password
+      - name: Migrate and build API and reset helper
+        working-directory: apps/server
+        run: |
+          go run ./cmd/migrate
+          go build -o server-e2e ./cmd/server
+          go build -o e2e-seed ./cmd/e2e-seed
+      - name: Start API
+        working-directory: apps/server
+        run: |
+          ./server-e2e > "$RUNNER_TEMP/taskly-e2e-api.log" 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3063/healthz; then exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/taskly-e2e-api.log"
+          exit 1
+      - name: Install browser dependencies
+        working-directory: apps/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run real API browser tests
+        working-directory: apps/web
+        run: npm run test:e2e
+      - name: Upload API log and browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: real-api-e2e-results
+          path: |
+            ${{ runner.temp }}/taskly-e2e-api.log
+            apps/web/test-results/
+            apps/web/playwright-report/
+          retention-days: 7
