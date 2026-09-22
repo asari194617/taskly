@@ -18,6 +18,8 @@ Status: cutover blocker inventory (2026-09-21)
 
 `role_users`、`permissions`、`api_keys` と通知・タスク等の業務データは app DB に残る。auth DB の `users.id` を変えず、app DB の shadow record を維持する。auth サービスから app DB へ直接広い権限を与える設計にはしない。
 
+新認証サービスのパスキー管理画面が利用可能になった切り替え時には、Web ビルドの `PUBLIC_AUTH_PASSKEY_URL=https://auth.taskly.iy0306.com/passkeys` を設定し、設定画面から同画面へ移す。このフラグが空の間は従来の管理 UI を維持する。フラグを有効化しても旧 API の GraphQL/REST 書き込み口は残るため、全クライアントとバックグラウンド経路を含めた書き込み所有権の移管が終わるまで最終コピー・公開切り替えをしない。
+
 ## 切り替え判定
 
 1. 上表の書き込みを auth API または明示した同期経路へ移す。各更新の失敗・再試行・競合を試験する。

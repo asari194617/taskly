@@ -60,6 +60,7 @@ import {
 
 export default function SettingsSecurity() {
   const { dict } = useLang();
+  const authPasskeyURL = import.meta.env.PUBLIC_AUTH_PASSKEY_URL?.trim();
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -507,7 +508,12 @@ export default function SettingsSecurity() {
           <div className="text-sm text-muted-foreground">
             {dict.settingsSecurity.passkey.desc}
           </div>
-          <div className="flex flex-wrap gap-2">
+          {authPasskeyURL && (
+            <Button asChild>
+              <a href={authPasskeyURL}>{dict.settingsSecurity.passkey.manage}</a>
+            </Button>
+          )}
+          <div className={authPasskeyURL ? "hidden" : "flex flex-wrap gap-2"}>
             <Button onClick={registerPasskey}>
               {dict.settingsSecurity.passkey.register}
             </Button>
