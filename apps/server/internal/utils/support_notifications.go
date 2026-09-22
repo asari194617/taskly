@@ -36,7 +36,13 @@ func smtpSendPlain(to, subject, text string) error {
 	if toSec <= 0 {
 		toSec = 60
 	}
-	dialer := &net.Dialer{Timeout: time.Duration(toSec) * time.Second}
+	// Keep the complete SMTP attempt inside the two-minute job lease. The
+	// deadline covers both connection setup and the SMTP conversation.
+	if toSec > 90 {
+		toSec = 90
+	}
+	deadline := time.Now().Add(time.Duration(toSec) * time.Second)
+	dialer := &net.Dialer{Deadline: deadline}
 	mode := strings.ToLower(strings.TrimSpace(Env("SMTP_TLS", "")))
 	var conn net.Conn
 	var err error
@@ -50,7 +56,7 @@ func smtpSendPlain(to, subject, text string) error {
 		return err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(time.Duration(toSec) * time.Second))
+	_ = conn.SetDeadline(deadline)
 	cl, err := smtp.NewClient(conn, smtpHost)
 	if err != nil {
 		return err

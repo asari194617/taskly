@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -180,5 +182,135 @@ func TestCallbackDeliveryFailureIsTrackedAndRetried(t *testing.T) {
 	}
 	if err := db.First(&stored, job.ID).Error; err != nil || stored.Status != "succeeded" || calls != 2 {
 		t.Fatalf("retry = %#v, calls=%d, err=%v", stored, calls, err)
+	}
+}
+
+func TestSlowKindDoesNotBlockAnotherKind(t *testing.T) {
+	db := testDB(t)
+	for _, kind := range []string{"teams_callback", "teams_inbound"} {
+		if _, err := Enqueue(db, kind, map[string]any{"test": true}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	slow := NewKindWorker(db, "teams_callback", func(Job) error {
+		close(started)
+		<-release
+		return nil
+	})
+	var group sync.WaitGroup
+	group.Add(1)
+	go func() { defer group.Done(); _, _ = slow.RunOne() }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("callback did not start")
+	}
+	fast := NewKindWorker(db, "teams_inbound", func(Job) error { return nil })
+	processed, err := fast.RunOne()
+	close(release)
+	group.Wait()
+	if err != nil || !processed {
+		t.Fatalf("inbound behind slow callback: processed=%v err=%v", processed, err)
+	}
+	var inbound Job
+	if err := db.Where("kind = ?", "teams_inbound").First(&inbound).Error; err != nil || inbound.Status != "succeeded" {
+		t.Fatalf("inbound = %#v, %v", inbound, err)
+	}
+}
+
+func TestTwoWorkersDoNotDeliverSameJob(t *testing.T) {
+	db := testDB(t)
+	if _, err := Enqueue(db, "task_discord", map[string]any{"test": true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	worker := NewKindWorker(db, "task_discord", func(Job) error {
+		close(started)
+		<-release
+		return nil
+	})
+	var group sync.WaitGroup
+	group.Add(1)
+	go func() { defer group.Done(); _, _ = worker.RunOne() }()
+	<-started
+	second := NewKindWorker(db, "task_discord", func(Job) error { t.Error("duplicate delivery"); return nil })
+	processed, err := second.RunOne()
+	close(release)
+	group.Wait()
+	if err != nil || processed {
+		t.Fatalf("second claim: processed=%v err=%v", processed, err)
+	}
+}
+
+func TestFallbackClaimsOnlyUnknownKinds(t *testing.T) {
+	db := testDB(t)
+	for _, kind := range []string{"teams_inbound", "future_kind"} {
+		if _, err := Enqueue(db, kind, map[string]any{"test": true}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fallback := NewWorker(db, func(job Job) error {
+		if job.Kind != "future_kind" {
+			t.Fatalf("fallback claimed %s", job.Kind)
+		}
+		return errors.New("unsupported kind")
+	})
+	fallback.ExcludeKinds = []string{"teams_inbound"}
+	if processed, err := fallback.RunOne(); !processed || err == nil {
+		t.Fatalf("fallback: processed=%v err=%v", processed, err)
+	}
+}
+
+func TestInboundBurstDrainsWhileCallbackIsBlocked(t *testing.T) {
+	db := testDB(t)
+	if _, err := Enqueue(db, "teams_callback", map[string]any{"test": true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+	callback := NewKindWorker(db, "teams_callback", func(Job) error {
+		close(blocked)
+		<-release
+		return nil
+	})
+	var callbackGroup sync.WaitGroup
+	callbackGroup.Add(1)
+	go func() { defer callbackGroup.Done(); _, _ = callback.RunOne() }()
+	<-blocked
+	defer func() { close(release); callbackGroup.Wait() }()
+	const burst = 100
+	for i := 0; i < burst; i++ {
+		if _, err := Enqueue(db, "teams_inbound", map[string]int{"sequence": i}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var delivered atomic.Int64
+	workers := make([]*Worker, 4)
+	for i := range workers {
+		workers[i] = NewKindWorker(db, "teams_inbound", func(Job) error {
+			delivered.Add(1)
+			return nil
+		})
+		workers[i].Start()
+	}
+	defer func() {
+		for _, worker := range workers {
+			worker.Stop()
+		}
+	}()
+	deadline := time.After(5 * time.Second)
+	for delivered.Load() < burst {
+		select {
+		case <-deadline:
+			t.Fatalf("only %d/%d inbound jobs drained", delivered.Load(), burst)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	var remaining int64
+	if err := db.Model(&Job{}).Where("kind = ? AND status = ?", "teams_inbound", "pending").Count(&remaining).Error; err != nil || remaining != 0 {
+		t.Fatalf("remaining inbound jobs = %d, %v", remaining, err)
 	}
 }

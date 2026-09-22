@@ -54,6 +54,9 @@ func Enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, erro
 		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&job).Error; err != nil {
 			return Job{}, err
 		}
+		if job.ID != 0 {
+			enqueued.WithLabelValues(kind).Inc()
+		}
 		if err := db.Where("dedup_key = ?", *dedupKey).Take(&existing).Error; err != nil {
 			return Job{}, err
 		}
@@ -65,18 +68,29 @@ func Enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, erro
 	if err := db.Create(&job).Error; err != nil {
 		return Job{}, err
 	}
+	enqueued.WithLabelValues(kind).Inc()
 	return job, nil
 }
 
 type Worker struct {
-	DB      *gorm.DB
-	Deliver func(Job) error
-	stop    chan struct{}
-	done    chan struct{}
+	DB           *gorm.DB
+	Deliver      func(Job) error
+	Kind         string
+	ExcludeKinds []string
+	stop         chan struct{}
+	done         chan struct{}
 }
 
 func NewWorker(db *gorm.DB, deliver func(Job) error) *Worker {
 	return &Worker{DB: db, Deliver: deliver, stop: make(chan struct{}), done: make(chan struct{})}
+}
+
+// NewKindWorker reserves a processing lane for one job kind. Multiple workers
+// of the same kind still contend through the database lease.
+func NewKindWorker(db *gorm.DB, kind string, deliver func(Job) error) *Worker {
+	w := NewWorker(db, deliver)
+	w.Kind = kind
+	return w
 }
 
 func (w *Worker) Start() {
@@ -119,8 +133,14 @@ func (w *Worker) Stop() {
 func (w *Worker) RunOne() (bool, error) {
 	now := time.Now()
 	var candidates []Job
-	if err := w.DB.Where("(status = ? AND available_at <= ?) OR (status = ? AND lease_until <= ?)", "pending", now, "processing", now).
-		Order("id").Limit(10).Find(&candidates).Error; err != nil {
+	query := w.DB.Where("(status = ? AND available_at <= ?) OR (status = ? AND lease_until <= ?)", "pending", now, "processing", now)
+	if w.Kind != "" {
+		query = query.Where("kind = ?", w.Kind)
+	}
+	if len(w.ExcludeKinds) > 0 {
+		query = query.Where("kind NOT IN ?", w.ExcludeKinds)
+	}
+	if err := query.Order("id").Limit(10).Find(&candidates).Error; err != nil {
 		return false, err
 	}
 	for _, candidate := range candidates {
@@ -136,7 +156,7 @@ func (w *Worker) RunOne() (bool, error) {
 			continue
 		}
 		lease := now.Add(2 * time.Minute)
-		result := w.DB.Model(&Job{}).Where("id = ? AND ((status = ? AND available_at <= ?) OR (status = ? AND lease_until <= ?))", candidate.ID, "pending", now, "processing", now).
+		result := w.DB.Model(&Job{}).Where("id = ? AND kind = ? AND ((status = ? AND available_at <= ?) OR (status = ? AND lease_until <= ?))", candidate.ID, candidate.Kind, "pending", now, "processing", now).
 			Updates(map[string]any{"status": "processing", "lease_until": lease, "attempts": gorm.Expr("attempts + 1")})
 		if result.Error != nil {
 			return false, result.Error
@@ -145,7 +165,15 @@ func (w *Worker) RunOne() (bool, error) {
 			continue
 		}
 		candidate.Attempts++
+		waitSeconds.WithLabelValues(candidate.Kind).Observe(max(0, now.Sub(candidate.AvailableAt).Seconds()))
+		started := time.Now()
 		err := w.Deliver(candidate)
+		deliverySeconds.WithLabelValues(candidate.Kind).Observe(time.Since(started).Seconds())
+		outcome := "succeeded"
+		if err != nil {
+			outcome = "failed"
+		}
+		completed.WithLabelValues(candidate.Kind, outcome).Inc()
 		if err == nil {
 			err = w.DB.Model(&Job{}).Where("id = ? AND status = ? AND attempts = ?", candidate.ID, "processing", candidate.Attempts).Updates(map[string]any{"status": "succeeded", "lease_until": nil, "last_error": nil}).Error
 		} else {

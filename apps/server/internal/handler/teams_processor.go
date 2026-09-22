@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"log"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -26,7 +28,17 @@ type teamsProcessor struct {
 	started   chan struct{}
 	startOnce sync.Once
 	stopOnce  sync.Once
-	worker    *jobs.Worker
+	workers   []*jobs.Worker
+}
+
+var integrationJobKinds = []string{"teams_inbound", "teams_callback", "task_discord", "task_email"}
+
+func integrationWorkersPerKind() int {
+	n, err := strconv.Atoi(os.Getenv("INTEGRATION_JOB_WORKERS_PER_KIND"))
+	if err != nil || n < 1 || n > 8 {
+		return 1
+	}
+	return n
 }
 
 func newTeamsProcessor(db *gorm.DB) *teamsProcessor {
@@ -46,10 +58,44 @@ func (p *teamsProcessor) Start() {
 			},
 			Client: newTeamsCallbackClient(net.DefaultResolver.LookupIPAddr),
 		}
-		p.worker = jobs.NewWorker(p.db, func(job jobs.Job) error { return jobs.Deliver(p.db, job, policy) })
-		p.worker.Start()
+		for _, kind := range integrationJobKinds {
+			for i := 0; i < integrationWorkersPerKind(); i++ {
+				worker := jobs.NewKindWorker(p.db, kind, func(job jobs.Job) error { return jobs.Deliver(p.db, job, policy) })
+				p.workers = append(p.workers, worker)
+				worker.Start()
+			}
+		}
+		// Preserve failure reporting for unsupported kinds left by older or
+		// newer deployments instead of leaving those rows pending forever.
+		fallback := jobs.NewWorker(p.db, func(job jobs.Job) error { return jobs.Deliver(p.db, job, policy) })
+		fallback.ExcludeKinds = integrationJobKinds
+		p.workers = append(p.workers, fallback)
+		fallback.Start()
 		close(p.started)
-		go func() { <-p.stop; p.worker.Stop(); close(p.done) }()
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				if err := jobs.ObserveBacklog(p.db, integrationJobKinds); err != nil {
+					log.Printf("integration jobs backlog: %v", err)
+				}
+				select {
+				case <-p.stop:
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+		go func() {
+			<-p.stop
+			var group sync.WaitGroup
+			for _, worker := range p.workers {
+				group.Add(1)
+				go func(w *jobs.Worker) { defer group.Done(); w.Stop() }(worker)
+			}
+			group.Wait()
+			close(p.done)
+		}()
 	})
 }
 
