@@ -2,12 +2,10 @@ name: web-ci
 
 on:
   pull_request:
-    paths:
-      - "apps/web/**"
-      - ".github/workflows/web.yml"
 
 jobs:
   build-and-test:
+    name: web-build-and-test
     runs-on: ubuntu-latest
     defaults:
       run:

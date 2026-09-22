@@ -2,9 +2,6 @@ name: api-ci
 
 on:
   pull_request:
-    paths:
-      - "apps/server/**"
-      - ".github/workflows/api.yml"
 
 jobs:
   select-runner:
@@ -26,6 +23,7 @@ jobs:
         run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   build:
+    name: api-build
     needs: select-runner
     runs-on: ${{ needs.select-runner.outputs.label }}
     steps:
@@ -45,6 +43,7 @@ jobs:
         run: go test ./...
 
   empty-database:
+    name: api-empty-database
     runs-on: ubuntu-latest
     services:
       mysql:

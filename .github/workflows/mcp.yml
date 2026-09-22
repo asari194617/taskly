@@ -2,9 +2,6 @@ name: mcp-ci
 
 on:
   pull_request:
-    paths:
-      - "apps/mcp/**"
-      - ".github/workflows/mcp.yml"
 
 jobs:
   select-runner:
@@ -26,6 +23,7 @@ jobs:
         run: echo "runner=${{ steps.fbk.outputs.runner || steps.def.outputs.runner }}" >> "$GITHUB_OUTPUT"
 
   build:
+    name: mcp-build
     needs: select-runner
     runs-on: ${{ needs.select-runner.outputs.label }}
     steps:
