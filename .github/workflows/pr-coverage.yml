@@ -64,6 +64,9 @@ jobs:
         with:
           go-version: "1.25.4"
           cache-dependency-path: ${{ matrix.directory }}/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       - name: Test with coverage
         working-directory: ${{ matrix.directory }}
         run: |

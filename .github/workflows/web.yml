@@ -22,6 +22,9 @@ jobs:
     name: web-build-and-test
     needs: select-runner
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --user 1001
     defaults:
       run:
         working-directory: apps/web
@@ -38,13 +41,6 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:canonical
       - run: npm run test:security-headers
-      - name: Install Playwright Chromium
-        run: |
-          if [[ "${{ runner.environment }}" == "self-hosted" ]]; then
-            npx playwright install chromium
-          else
-            npx playwright install --with-deps chromium
-          fi
       - run: npm run test:browser
       - if: failure()
         uses: actions/upload-artifact@v7
