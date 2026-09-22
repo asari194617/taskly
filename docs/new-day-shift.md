@@ -12,6 +12,7 @@
   - 平日でも行わない日の判定には、Googleカレンダーにある年間行事予定を利用する。
   - URL: https://calendar.google.com/calendar/ical/383f9f7a757bde1769f735fb29e49bb8f2511aa4b856049478aa5ebebf38cef0%40group.calendar.google.com/private-19b492f962ce44a9bbc41af48ad0980a/basic.ics
   - 当該行事により日直業務を行わない場合、`DESCRIPTION`フィールドに`DAY_SHIFT_OFF`という文字列が含まれている。バッチ処理の際には当該日が含まれるイベントを全て確認し、`DAY_SHIFT_OFF`が含まれている場合はインクリメントを行わない。
+  - 学校カレンダーの予定は JST の対象日 00:00〜翌日 00:00 との重なりで判定し、通知に表示する行事一覧にも同じ判定を使う。タイムゾーンなしの時刻は JST として扱う。`DTSTART` は含み、`DTEND` は含まないため、翌日 00:00 終了の予定と終日予定の排他的終了日は翌日の対象外となる。`DURATION` は開始時刻からの経過時間として扱う。
   - その他、土曜日・日曜日・祝日は休日とみなす。
     - 祝日は`one.webcal.jp/JapanHolidays/`から提供されるiCalデータを利用する。
     - URL: https://one.webcal.jp/JapanHolidays/

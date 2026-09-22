@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 import requests
 import icalendar  # type: ignore
 import os
@@ -8,6 +8,7 @@ from airflow.sdk import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 import pymysql  # type: ignore
 from holiday_calendar import is_calendar_holiday
+from school_calendar import JST, event_overlaps_date
 
 # Database connection (read/write directly, no API calls)
 DB_HOST = os.environ.get("DB_HOST", "mysql")
@@ -52,7 +53,7 @@ def is_day_shift_off(d: datetime) -> bool:
             # No school calendar configured; cannot detect DAY_SHIFT_OFF
             return False
         cal = fetch_ics(SCHOOL_CAL_URL)
-        target_date = d.date()
+        target_date = d.astimezone(JST).date() if d.tzinfo else d.date()
         for comp in cal.walk("vevent"):
             # Description に DAY_SHIFT_OFF を含む予定のみを対象とする
             desc = comp.get("description") or ""
@@ -61,39 +62,7 @@ def is_day_shift_off(d: datetime) -> bool:
             if "DAY_SHIFT_OFF" not in desc:
                 continue
 
-            dtstart_prop = comp.get("dtstart")
-            if not dtstart_prop:
-                continue
-
-            dtstart = dtstart_prop.dt
-            if isinstance(dtstart, datetime):
-                start_date = dtstart.date()
-            else:
-                start_date = dtstart
-
-            end_date = start_date
-            dtend_prop = comp.get("dtend")
-            duration_prop = comp.get("duration")
-
-            if dtend_prop is not None:
-                dtend = dtend_prop.dt
-                if isinstance(dtend, datetime):
-                    end_date_candidate = dtend.date()
-                else:
-                    end_date_candidate = dtend
-
-                # RFC 5545 に従い、DTEND は非包含とみなし、開始日と異なる場合は 1 日戻す
-                if end_date_candidate > start_date:
-                    end_date = end_date_candidate - timedelta(days=1)
-                else:
-                    end_date = start_date
-            elif duration_prop is not None:
-                duration_value = getattr(duration_prop, "dt", duration_prop)
-                if isinstance(duration_value, timedelta) and duration_value.days > 0:
-                    # duration は経過時間なので、開始日 + duration - 1 日を最終日とする
-                    end_date = start_date + duration_value - timedelta(days=1)
-
-            if start_date <= target_date <= end_date:
+            if event_overlaps_date(comp, target_date):
                 return True
         return False
     except Exception as e:
@@ -305,8 +274,6 @@ def clear_current_cycle_config() -> None:
         conn.commit()
     finally:
         conn.close()
-
-JST = timezone(timedelta(hours=9))
 
 
 def increment_if_needed(**context):

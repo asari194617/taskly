@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, date, timedelta
 import os
 import smtplib
 import time
@@ -26,6 +26,7 @@ from airflow.sdk import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.utils.trigger_rule import TriggerRule
+from school_calendar import JST, event_overlaps_date
 
 
 def mysql_connect():
@@ -79,33 +80,7 @@ def list_events_for_date(target_date: date) -> list[str]:
             if not summary:
                 continue
 
-            dtstart_prop = comp.get("dtstart")
-            if not dtstart_prop:
-                continue
-            dtstart = dtstart_prop.dt
-            if isinstance(dtstart, datetime):
-                start_date = dtstart.date()
-            else:
-                start_date = dtstart
-
-            end_date = start_date
-            dtend_prop = comp.get("dtend")
-            duration_prop = comp.get("duration")
-
-            if dtend_prop is not None:
-                dtend = dtend_prop.dt
-                if isinstance(dtend, datetime):
-                    end_date_candidate = dtend.date()
-                else:
-                    end_date_candidate = dtend
-                if end_date_candidate > start_date:
-                    end_date = end_date_candidate - timedelta(days=1)
-            elif duration_prop is not None:
-                duration_value = getattr(duration_prop, "dt", duration_prop)
-                if isinstance(duration_value, timedelta) and duration_value.days > 0:
-                    end_date = start_date + duration_value - timedelta(days=1)
-
-            if start_date <= target_date <= end_date:
+            if event_overlaps_date(comp, target_date):
                 if summary not in seen:
                     events.append(summary)
                     seen.add(summary)
@@ -365,7 +340,7 @@ def select_day_shift_recipients(all_users, blocked_map, pref_map, dev_map, subsc
 def notify_day_shift(**context):
     conn = mysql_connect()
     try:
-        today = datetime.now(timezone(timedelta(hours=9))).date()
+        today = datetime.now(JST).date()
         # Always notify regardless of day-of-week
 
         # Global skip flag via configs.skip_day_shift_notifications
