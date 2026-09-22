@@ -32,7 +32,7 @@ jobs:
       - name: Test production environment deployment
         run: .github/scripts/test-prod-env-deploy.sh
       - name: Test interrupted production deployment guard
-        run: infra/ops/test-deploy-state.sh
+        run: bash infra/ops/test-deploy-state.sh
       - name: Test disk maintenance safeguards
         run: infra/ops/test-disk-maintenance.sh
       - name: Validate Compose configuration
