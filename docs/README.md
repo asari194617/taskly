@@ -9,6 +9,7 @@ ones are retained as historical design material.
 - [`Specification.md`](Specification.md): product specification, including planned features
 - [`schema.md`](schema.md): database schema
 - [`notifications.md`](notifications.md): notification settings and delivery
+- [`ical-feed.md`](ical-feed.md): public iCal feed scope, errors, and performance verification
 - [`mcp-docs.md`](mcp-docs.md): MCP usage and client configuration
 - [`initial-settings.md`](initial-settings.md): CI/CD and production deployment
 - [`operations/recovery-drill.md`](operations/recovery-drill.md): recovery targets, database restore, rollback, notification failures, and drills
