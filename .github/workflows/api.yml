@@ -59,7 +59,6 @@ jobs:
       MYSQL_PASSWORD: taskly_ci_password
       MYSQL_DATABASE: taskly_ci
       DB_HOST: 127.0.0.1
-      DB_PORT: ${{ job.services.mysql.ports[3306] }}
       MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
       REDIS_USERNAME: default
       REDIS_PASSWORD: taskly_ci_password
@@ -67,6 +66,8 @@ jobs:
       TEST_MIGRATION_DB: "1"
       TEST_API_SMOKE: "1"
     steps:
+      - name: Select MySQL port
+        run: echo "DB_PORT=${{ job.services.mysql.ports['3306'] }}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
