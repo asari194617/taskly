@@ -175,13 +175,19 @@ func registerIcalFeedRoute(app fiber.Router, db *gorm.DB) {
 		token := c.Params("token")
 		var key domain.IcalKey
 		if err := db.Joins("JOIN users ON users.id = ical_keys.user_id").Where("ical_keys.token = ? AND users.is_deleted = 0", token).First(&key).Error; err != nil {
-			return c.Status(404).SendString("not found")
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return c.Status(404).SendString("not found")
+			}
+			return fmt.Errorf("load iCal token: %w", err)
 		}
 		// enforce expiry if set
 		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
 			return c.Status(404).SendString("not found")
 		}
-		ics := utils.BuildICSForUser(key.UserID, db)
+		ics, err := utils.BuildICSForUser(key.UserID, db)
+		if err != nil {
+			return fmt.Errorf("build iCal feed: %w", err)
+		}
 		c.Set("Content-Type", "text/calendar; charset=utf-8")
 		return c.SendString(ics)
 	})

@@ -2,14 +2,39 @@ package utils
 
 import (
 	"fmt"
-	"github.com/asari194617/taskly/apps/server/internal/domain"
-	"gorm.io/gorm"
 	"strings"
 	"time"
+
+	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"gorm.io/gorm"
 )
 
 // iCal builder and helpers
-func BuildICSForUser(userID uint, DB *gorm.DB) string {
+func BuildICSForUser(userID uint, DB *gorm.DB) (string, error) {
+	var user domain.User
+	if err := DB.Select("notification_lang").First(&user, userID).Error; err != nil {
+		return "", fmt.Errorf("load iCal user: %w", err)
+	}
+	lang := strings.ToLower(strings.TrimSpace(user.NotificationLang))
+	if lang == "" {
+		lang = "ja"
+	}
+
+	// Include every task. A fixed LIMIT silently drops events from subscribed calendars.
+	var tasks []struct {
+		domain.Task   `gorm:"embedded"`
+		SubjectNameJa *string `gorm:"column:subject_name_ja"`
+		SubjectNameEn *string `gorm:"column:subject_name_en"`
+	}
+	if err := DB.Model(&domain.Task{}).
+		Select("tasks.*, subjects.name_ja AS subject_name_ja, subjects.name_en AS subject_name_en").
+		Joins("LEFT JOIN subjects ON subjects.id = tasks.subject_id").
+		Where("tasks.added_user_id = ?", userID).
+		Order(EffectiveDeadlineExpr("tasks") + " ASC, tasks.id ASC").
+		Find(&tasks).Error; err != nil {
+		return "", fmt.Errorf("load iCal tasks: %w", err)
+	}
+
 	b := &strings.Builder{}
 	crlf := "\r\n"
 	now := time.Now().UTC().Format("20060102T150405Z")
@@ -18,28 +43,20 @@ func BuildICSForUser(userID uint, DB *gorm.DB) string {
 	b.WriteString("PRODID:-//Taskly//EN" + crlf)
 	b.WriteString("CALSCALE:GREGORIAN" + crlf)
 	b.WriteString("METHOD:PUBLISH" + crlf)
-	var tasks []domain.Task
-	// Order by effective deadline timestamp derived from date + enum
-	eff := EffectiveDeadlineExpr("")
-	_ = DB.Where("added_user_id = ?", userID).Order(eff + " ASC").Limit(500).Find(&tasks).Error
-	for _, t := range tasks {
+	for _, row := range tasks {
+		t := row.Task
 		// Treat tasks as all-day events in the calendar (use date-only DTSTART/DTEND)
 		// Use the task.Deadline (date only) as the day; DTEND is exclusive and set to next day
 		if t.Deadline.IsZero() {
 			continue
 		}
 
-		var subj domain.Subject
-		_ = DB.First(&subj, t.SubjectID).Error
-		var u domain.User
-		_ = DB.First(&u, t.AddedUserID).Error
-		lang := strings.ToLower(strings.TrimSpace(u.NotificationLang))
-		if lang == "" {
-			lang = "ja"
+		sName := ""
+		if row.SubjectNameJa != nil {
+			sName = *row.SubjectNameJa
 		}
-		sName := subj.NameJa
-		if lang == "en" && subj.NameEn != nil && *subj.NameEn != "" {
-			sName = *subj.NameEn
+		if lang == "en" && row.SubjectNameEn != nil && *row.SubjectNameEn != "" {
+			sName = *row.SubjectNameEn
 		}
 		b.WriteString("BEGIN:VEVENT" + crlf)
 		b.WriteString(fmt.Sprintf("UID:tsk-%d@taskly\r\n", t.ID))
@@ -88,7 +105,7 @@ func BuildICSForUser(userID uint, DB *gorm.DB) string {
 		b.WriteString("END:VEVENT" + crlf)
 	}
 	b.WriteString("END:VCALENDAR" + crlf)
-	return b.String()
+	return b.String(), nil
 }
 
 func ICalEscape(s string) string {
