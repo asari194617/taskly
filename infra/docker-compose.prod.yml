@@ -72,8 +72,8 @@ services:
     image: prom/alertmanager:v0.28.1
     restart: unless-stopped
     mem_limit: 64m
-    env_file:
-      - ../.env
+    environment:
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     entrypoint: ["/bin/sh", "/etc/alertmanager/start-alertmanager.sh"]
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
