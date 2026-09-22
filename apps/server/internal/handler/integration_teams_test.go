@@ -100,3 +100,17 @@ func TestTeamsProcessorStopBeforeStartRejectsNewJobs(t *testing.T) {
 		t.Fatal("Enqueue() accepted work after Stop()")
 	}
 }
+
+func TestIntegrationWorkersPerKind(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{
+		{"", 1}, {"0", 1}, {"9", 1}, {"abc", 1}, {"4", 4},
+	} {
+		t.Setenv("INTEGRATION_JOB_WORKERS_PER_KIND", tc.value)
+		if got := integrationWorkersPerKind(); got != tc.want {
+			t.Fatalf("%q: got %d, want %d", tc.value, got, tc.want)
+		}
+	}
+}
