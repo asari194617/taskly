@@ -8,7 +8,7 @@
 
 ## 初回移行
 
-本番デプロイは `infra/ops/prepare-airflow-db.sh` を Airflow サービス停止後、アプリ migration と Airflow 起動前に実行します。MySQL が既存 volume で起動していても root 接続で新DB・ユーザーを作ります。新 Airflow イメージで一時的なメタスキーマを作成してテーブル一覧を取得し、旧アプリDBにある Airflow テーブルを1つの `RENAME TABLE` 文で移動します。その後 `airflow db migrate` を再実行して新バージョンに必要なテーブルを補い、`dag_run` と `task_instance` の件数を照合します。Airflow のメタユーザーにはメタDBだけ、アプリユーザーにはアプリDBだけを許可します。双方のアカウントで反対側のDBへの書き込み拒否を確認します。
+本番デプロイは `infra/ops/prepare-airflow-db.sh` を Airflow サービス停止後、アプリ migration と Airflow 起動前に実行します。MySQL が既存 volume で起動していても root 接続で新DB・ユーザーを作ります。新 Airflow イメージで一時的なメタスキーマを作成してテーブル一覧を取得し、旧アプリDBにある Airflow テーブルを1つの `RENAME TABLE` 文で移動します。MySQL が旧スキーマへの内部参照を保持する場合があるため、移動したメタテーブルの外部キーを新スキーマ内への参照として作り直します。その後 `airflow db migrate` を再実行して新バージョンに必要なテーブルを補い、`dag_run` と `task_instance` の件数を照合します。Airflow のメタユーザーにはメタDBだけ、アプリユーザーにはアプリDBだけを許可します。双方のアカウントで反対側のDBへの書き込み拒否を確認します。
 
 デプロイ前に以下を確認します。
 
