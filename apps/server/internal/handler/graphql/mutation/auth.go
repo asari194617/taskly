@@ -298,6 +298,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["webauthnRegisterBegin"] = &graphql.Field{
 		Type: graphql.String,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return "", fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -328,6 +331,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -376,6 +382,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -408,6 +417,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {

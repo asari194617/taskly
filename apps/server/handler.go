@@ -137,7 +137,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 	appHandler.RegisterSettingsRoutes(app.Group("/settings", middleware.AuthRequired, middleware.Audit))
 
 	/* パスキー */
-	appHandler.RegisterWebAuthnRoutes(app.Group("/webauthn"), middleware)
+	appHandler.RegisterWebAuthnRoutes(app.Group("/webauthn", blockLegacyPasskeys), middleware)
 
 	/* APIキー */
 	appHandler.RegisterAPIKeyRoutes(app.Group("/apikeys", middleware.AuthRequired, middleware.Audit))
