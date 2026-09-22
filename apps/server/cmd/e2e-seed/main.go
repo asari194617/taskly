@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/legal"
 	"github.com/go-sql-driver/mysql"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -39,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"tasks_users_completions", "integration_jobs", "tasks_teams_logs", "tasks", "sessions", "role_users", "subjects", "users"} {
+	for _, table := range []string{"tasks_users_completions", "integration_jobs", "tasks_teams_logs", "tasks", "sessions", "role_users", "subjects", "policy_consents", "users"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM `"+table+"`"); err != nil {
 			log.Fatalf("clear %s: %v", table, err)
 		}
@@ -56,11 +57,15 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO policy_consents(user_id, terms_version, privacy_version, security_version, display_language, accepted_at)
+			VALUES (?, ?, ?, ?, 'ja', NOW(6))`, id, legal.Version, legal.Version, legal.Version); err != nil {
+			log.Fatal(err)
+		}
 		if user.admin {
-			id, err := res.LastInsertId()
-			if err != nil {
-				log.Fatal(err)
-			}
 			if _, err := tx.ExecContext(ctx, "INSERT INTO role_users(user_id, role) VALUES (?, 'admin')", id); err != nil {
 				log.Fatal(err)
 			}
