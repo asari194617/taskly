@@ -165,6 +165,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			},
 		}),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+				return nil, fmt.Errorf("totp managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -194,6 +197,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"code": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("totp managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -241,6 +247,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["totpDisable"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("totp managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {

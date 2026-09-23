@@ -33,6 +33,8 @@ Status: cutover blocker inventory (2026-09-23)
 
 復旧コードの再発行は認証サービスの `/security` から auth DB で行う。Web の `PUBLIC_AUTH_RECOVERY_URL` は旧再発行ボタンを新画面へのリンクへ変え、API の `AUTH_RECOVERY_EXTERNAL=1` は旧 GraphQL `recoveryGenerate`、REST `/2fa/recovery/generate`、旧 `/auth/login` の復旧コード利用を拒否し、旧方法一覧と MFA 選択肢から復旧コードを外す。フラグは最終コピー後にだけ有効にし、旧 DB と新 DB の所有権を同時に切り替える。
 
+TOTP の設定・有効化・コード確認付き無効化は認証サービスの `/security` から auth DB で行う。既存の `totp_secrets.secret` は同じ `TOTP_ENC_KEY` と暗号形式のままコピーする。Web の `PUBLIC_AUTH_TOTP_URL=https://auth.taskly.iy0306.com/security` は旧設定 UI を新画面へのリンクへ変え、API の `AUTH_TOTP_EXTERNAL=1` は旧 GraphQL `totpSetup` / `totpActivate` / `totpDisable`、REST `/2fa/totp/*`、旧 `/auth/login` の TOTP 利用を拒否し、旧方法一覧と MFA 選択肢から TOTP を外す。フラグは最終コピー後にだけ有効にする。
+
 切り替え時の API 側ゲート `AUTH_PASSKEYS_EXTERNAL=1` は旧 `/webauthn/*` と GraphQL のパスキー登録・名前変更・削除を拒否する。既定値は `0` とし、旧ログインを使う間は有効化しない。このゲートはパスキー以外の認証情報更新や直接 DB 書き込みを止めないため、全認証データの切り替え承認には使わない。
 
 ## 切り替え判定

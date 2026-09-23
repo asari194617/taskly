@@ -64,6 +64,7 @@ export default function SettingsSecurity() {
   const authPasswordURL = import.meta.env.PUBLIC_AUTH_PASSWORD_URL?.trim();
   const authEmailCodeURL = import.meta.env.PUBLIC_AUTH_EMAIL_CODE_URL?.trim();
   const authRecoveryURL = import.meta.env.PUBLIC_AUTH_RECOVERY_URL?.trim();
+  const authTOTPURL = import.meta.env.PUBLIC_AUTH_TOTP_URL?.trim();
   const [auth, setAuth] = React.useState<AuthState | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string>("");
   const [totpUri, setTotpUri] = React.useState<string>("");
@@ -422,7 +423,11 @@ export default function SettingsSecurity() {
         </Card>
         <Card className="p-4 space-y-3">
           <div className="font-medium">{dict.settingsSecurity.totp.title}</div>
-          {auth?.totp_enabled ? (
+          {authTOTPURL ? (
+            <Button asChild variant="secondary">
+              <a href={authTOTPURL}>{dict.settingsSecurity.totp.manage}</a>
+            </Button>
+          ) : auth?.totp_enabled ? (
             <div className="flex items-center gap-3">
               <div className="text-sm text-muted-foreground">
                 {dict.settingsSecurity.totp.enabled}

@@ -240,7 +240,7 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 			hasPassword = true
 		}
 		totpEnabled := false
-		if hasUser {
+		if hasUser && utils.Env("AUTH_TOTP_EXTERNAL", "") != "1" {
 			if ok, _, _ := utils.GetActiveTOTP(u.ID, h.db); ok {
 				totpEnabled = true
 			}
@@ -301,6 +301,9 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		}
 		if body.Recovery != "" && utils.Env("AUTH_RECOVERY_EXTERNAL", "") == "1" {
 			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "recovery codes managed by auth service"})
+		}
+		if body.Totp != "" && utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "totp managed by auth service"})
 		}
 		platform := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
 		if platform == "" {
@@ -435,7 +438,10 @@ func (h *Handler) RegisterAuthRoutes(router fiber.Router) {
 		}
 		if !usingTransaction {
 			hasPassword := u.HashedPassword != nil && *u.HashedPassword != ""
-			totpActive, totpSecret, _ := utils.GetActiveTOTP(u.ID, h.db)
+			totpActive, totpSecret := false, ""
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") != "1" {
+				totpActive, totpSecret, _ = utils.GetActiveTOTP(u.ID, h.db)
+			}
 			var recoveryCount int64
 			_ = h.db.Model(&domain.RecoveryCode{}).Where("user_id = ? AND is_used = 0", u.ID).Count(&recoveryCount).Error
 			allowedMFA := make([]string, 0, 3)

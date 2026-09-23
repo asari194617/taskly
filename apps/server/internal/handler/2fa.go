@@ -17,7 +17,7 @@ import (
 
 func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 	// 2FA: TOTP setup, activate, disable
-	router.Post("/totp/setup", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
+	router.Post("/totp/setup", rejectExternalTOTP, mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		// generate base32 secret
 		secret, err := utils.GenerateBase32Secret()
@@ -34,7 +34,7 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 		otpauth := fmt.Sprintf("otpauth://totp/%s?secret=%s&issuer=%s", utils.UrlEncode(label), secret, utils.UrlEncode(issuer))
 		return c.JSON(fiber.Map{"secret": secret, "otpauth": otpauth})
 	})
-	router.Post("/totp/activate", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
+	router.Post("/totp/activate", rejectExternalTOTP, mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var body struct {
 			Code string `json:"code"`
@@ -79,7 +79,7 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 		}
 		return c.SendStatus(204)
 	})
-	router.Post("/totp/disable", mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
+	router.Post("/totp/disable", rejectExternalTOTP, mw.AuthRequired, mw.Audit, func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var ts domain.TOTPSecret
 		if err := h.db.Where("user_id = ?", u.ID).First(&ts).Error; errors.Is(err, gorm.ErrRecordNotFound) {
@@ -122,4 +122,11 @@ func (h *Handler) Register2FARoutes(router fiber.Router, mw *mw.Middleware) {
 		}
 		return c.JSON(fiber.Map{"codes": codes})
 	})
+}
+
+func rejectExternalTOTP(c *fiber.Ctx) error {
+	if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "totp managed by auth service"})
+	}
+	return c.Next()
 }

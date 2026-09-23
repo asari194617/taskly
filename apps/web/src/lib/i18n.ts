@@ -534,6 +534,7 @@ export const t = (lang: Lang) => ({
     },
     totp: {
       title: "TOTP",
+      manage: lang === "ja" ? "設定" : "Configure",
       enabled: lang === "ja" ? "有効になっています" : "Enabled",
       disable: lang === "ja" ? "無効化" : "Disable",
       disabled: lang === "ja" ? "TOTPを無効化しました" : "TOTP disabled",
