@@ -35,6 +35,7 @@ jobs:
       REDIS_ADDR: 127.0.0.1:6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: taskly_e2e_password
+      REDIS_CONTAINER: taskly-e2e-redis-${{ github.run_id }}-${{ github.run_attempt }}
       JWT_SECRET: taskly-e2e-isolated-secret-at-least-32-characters
       API_PORT: "3063"
       API_CORS_ORIGINS: http://localhost:4321
@@ -52,7 +53,12 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Start isolated Redis
-        run: docker run -d --name taskly-e2e-redis -p 6379:6379 redis:7-alpine redis-server --requirepass taskly_e2e_password
+        run: |
+          docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+          docker run -d --name "$REDIS_CONTAINER" -p 127.0.0.1::6379 redis:7-alpine redis-server --requirepass taskly_e2e_password
+          redis_port="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed 's/.*://')"
+          test -n "$redis_port"
+          echo "REDIS_ADDR=127.0.0.1:$redis_port" >> "$GITHUB_ENV"
       - name: Migrate and build API and reset helper
         working-directory: apps/server
         run: |
@@ -87,3 +93,6 @@ jobs:
             apps/web/test-results/
             apps/web/playwright-report/
           retention-days: 7
+      - name: Stop isolated Redis
+        if: always()
+        run: docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
