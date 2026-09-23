@@ -4,24 +4,9 @@ on:
   pull_request:
 
 jobs:
-  select-runner:
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.fbk.outputs.use-runner || '["ubuntu-latest"]' }}
-    steps:
-      - id: fbk
-        name: Select self-hosted with fallback
-        uses: dodi-smart/runner-fallback-action@v2
-        continue-on-error: true
-        with:
-          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
-          primary-runner: self-hosted
-          fallback-runner: ubuntu-latest
-
   build:
     name: email-compose-build
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/email-compose

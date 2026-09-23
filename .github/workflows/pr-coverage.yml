@@ -4,23 +4,8 @@ on:
   pull_request:
 
 jobs:
-  select-runner:
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.fbk.outputs.use-runner || '["ubuntu-latest"]' }}
-    steps:
-      - id: fbk
-        name: Select self-hosted with fallback
-        uses: dodi-smart/runner-fallback-action@v2
-        continue-on-error: true
-        with:
-          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
-          primary-runner: self-hosted
-          fallback-runner: ubuntu-latest
-
   metadata:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     permissions: {}
     steps:
       - uses: actions/github-script@v8
@@ -39,10 +24,9 @@ jobs:
           path: pr.json
 
   go:
-    needs: select-runner
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -88,10 +72,9 @@ jobs:
           if-no-files-found: ignore
 
   web:
-    needs: select-runner
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
@@ -119,10 +102,9 @@ jobs:
           if-no-files-found: ignore
 
   mcp:
-    needs: select-runner
     permissions:
       contents: read
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/mcp
@@ -149,12 +131,12 @@ jobs:
           if-no-files-found: ignore
 
   comment:
-    needs: [select-runner, go, web, mcp]
-    if: always() && needs.select-runner.result == 'success' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [go, web, mcp]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       actions: read
       pull-requests: write
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
         continue-on-error: true

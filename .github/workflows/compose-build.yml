@@ -22,13 +22,14 @@ jobs:
     outputs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
-      runner: ${{ steps.fallback.outputs.use-runner || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Test image path mapping
         run: .github/scripts/test-image-matrix.sh
+      - name: Test runner trust boundaries
+        run: .github/scripts/test-runner-boundaries.sh
       - name: Test production environment deployment
         run: .github/scripts/test-prod-env-deploy.sh
       - name: Test interrupted production deployment guard
@@ -67,19 +68,10 @@ jobs:
           echo "count=$(jq '.include | length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
           echo "Changed files: ${files[*]}"
           echo "Image matrix: $matrix"
-      - id: fallback
-        name: Select self-hosted with fallback
-        uses: dodi-smart/runner-fallback-action@v2
-        continue-on-error: true
-        with:
-          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
-          primary-runner: self-hosted
-          fallback-runner: ubuntu-latest
-
   build-images:
     needs: plan
     if: needs.plan.outputs.count != '0'
-    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}

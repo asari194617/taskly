@@ -53,7 +53,7 @@
 - `.github/scripts/check-prod-airflow.sh`
 - `.github/workflows/deploy-prod.yml`
 
-手動実行も可能で、`full_build=true` が既定です。通常は利用可能な Runner を自動選択します。セルフホスト Runner の作業領域に問題がある場合は `runner_override=ubuntu-latest`、GitHub hosted runner の利用制限時は `runner_override=self-hosted` を指定できます。`plan` ジョブは GitHub hosted runner で実行されます。
+手動実行も可能で、`full_build=true` が既定です。画像の build と release は通常、ジョブごとに作成して終了時に破棄する `taskly-ci` JIT runner で実行します。runner pool を使えない場合は `runner_override=ubuntu-latest` を指定できます。`plan` と runner の払い出しは GitHub-hosted runner、本番反映は `taskly-prod` 専用 runner で実行します。
 
 ### デプロイの流れ
 

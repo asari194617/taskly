@@ -7,22 +7,8 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  select-runner:
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.fbk.outputs.use-runner || '["ubuntu-latest"]' }}
-    steps:
-      - id: fbk
-        name: Select self-hosted with fallback
-        uses: dodi-smart/runner-fallback-action@v2
-        continue-on-error: true
-        with:
-          github-token: ${{ secrets.RUNNER_FALLBACK_TOKEN || secrets.GITHUB_TOKEN }}
-          primary-runner: self-hosted
-          fallback-runner: ubuntu-latest
   build-linux-win:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
@@ -95,8 +81,8 @@ jobs:
           path: artifacts/*
 
   publish:
-    needs: [select-runner, build-linux-win, build-macos]
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    needs: [build-linux-win, build-macos]
+    runs-on: ubuntu-latest
     env:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
