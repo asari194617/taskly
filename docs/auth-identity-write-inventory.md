@@ -29,6 +29,8 @@ Status: cutover blocker inventory (2026-09-23)
 
 `AUTH_PASSWORD_EXTERNAL=1` は旧 GraphQL `setPassword` を拒否する。既定値は `0` で、旧ログインを使う間は有効化しない。REST 設定はパスワード自体を更新しないが、メールコード許可を旧 DB へ書くため別の移管が必要。
 
+`AUTH_BLOCKS_EXTERNAL=1` は管理者のブロック・解除を app DB へ確定した後、認証サービスの internal API へ同じ状態を同期する。ブロック同期の失敗時は app 側が先に拒否し、解除同期の失敗時は auth 側が拒否を継続するため、通信障害でアクセスを広げない。同期 API は冪等とし、ブロック時に auth session と OAuth token 系列を失効する。`AUTH_BLOCK_SYNC_URL` と共有 token が揃い、最終コピー後の再送試験が成功するまではフラグを有効にしない。
+
 メールコード許可設定の本人操作は、認証サービスの `/security` から auth DB の `users.email_code_allowed` を更新する。Web の `PUBLIC_AUTH_EMAIL_CODE_URL` は旧トグルを新画面のリンクへ変え、API の `AUTH_EMAIL_SETTINGS_EXTERNAL=1` は旧 GraphQL `setAuthSettings` と REST `POST /settings/auth` を拒否する。管理者更新と旧ログインのコード使用は別の経路であり、このフラグだけでは所有権を移せない。
 
 復旧コードの再発行は認証サービスの `/security` から auth DB で行う。Web の `PUBLIC_AUTH_RECOVERY_URL` は旧再発行ボタンを新画面へのリンクへ変え、API の `AUTH_RECOVERY_EXTERNAL=1` は旧 GraphQL `recoveryGenerate`、REST `/2fa/recovery/generate`、旧 `/auth/login` の復旧コード利用を拒否し、旧方法一覧と MFA 選択肢から復旧コードを外す。フラグは最終コピー後にだけ有効にし、旧 DB と新 DB の所有権を同時に切り替える。
