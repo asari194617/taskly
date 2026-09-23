@@ -32,14 +32,31 @@ running_sha() {
   printf '%s\n' "$sha"
 }
 
-deployment_sha() {
+application_sha() {
   local expected='' actual service
-  for service in server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor; do
+  for service in server email-compose mcp; do
     actual=$(running_sha "$service") || return 1
-    [[ -z $expected || $actual == "$expected" ]] || fail "application images have mixed release SHAs"
+    [[ -z $expected || $actual == "$expected" ]] || fail "core application images have mixed release SHAs"
     expected=$actual
   done
   printf '%s\n' "$expected"
+}
+
+airflow_sha() {
+  local expected='' actual service
+  for service in airflow-webserver airflow-scheduler airflow-dag-processor; do
+    actual=$(running_sha "$service") || return 1
+    [[ -z $expected || $actual == "$expected" ]] || fail "Airflow images have mixed release SHAs"
+    expected=$actual
+  done
+  printf '%s\n' "$expected"
+}
+
+deployment_images() {
+  local application airflow
+  application=$(application_sha) || return 1
+  airflow=$(airflow_sha) || return 1
+  printf 'application=%s airflow=%s\n' "$application" "$airflow"
 }
 
 migration_digest() {
@@ -81,27 +98,29 @@ case "$action" in
       if [[ ${state[0]} == in_progress ]]; then
         # A failed run may have stopped Airflow or changed the schema. Show the
         # observed state, but never infer that an automatic retry is safe.
-        observed_sha=$(deployment_sha 2>&1) || observed_sha="unhealthy or inconsistent: $observed_sha"
+        observed_sha=$(deployment_images 2>&1) || observed_sha="unhealthy or inconsistent: $observed_sha"
         observed_migrations=$(migration_digest 2>&1) || observed_migrations="unavailable: $observed_migrations"
         fail "previous deployment of ${state[2]} is unfinished (last known SHA ${state[1]}, current images: $observed_sha, current migrations: $observed_migrations)"
       fi
     fi
-    current=$(deployment_sha)
+    current=$(application_sha)
+    airflow=$(airflow_sha)
     digest=$(migration_digest)
     if [[ -e $state_file ]]; then
       [[ $current == "${state[1]}" && $digest == "${state[3]}" ]] || fail 'running SHA or migration history differs from the last successful deployment'
     fi
     write_state in_progress "$current" "$release" "$digest"
-    echo "Deployment started: current=$current target=$release migration_digest=$digest"
+    echo "Deployment started: current=$current target=$release airflow=$airflow migration_digest=$digest"
     ;;
   complete)
     read_state
     [[ ${state[0]} == in_progress && ${state[2]} == "$release" ]] || fail 'deployment marker does not match this release'
-    current=$(deployment_sha)
+    current=$(application_sha)
     [[ $current == "$release" ]] || fail "running SHA $current differs from target $release"
+    airflow=$(airflow_sha)
     digest=$(migration_digest)
     write_state committed "$release" "$release" "$digest"
-    echo "Deployment complete: sha=$release migration_digest=$digest"
+    echo "Deployment complete: sha=$release airflow=$airflow migration_digest=$digest"
     ;;
   *) echo 'Expected begin or complete' >&2; exit 2 ;;
 esac

@@ -21,7 +21,7 @@
 
 ## デプロイ失敗と migration の切り戻し
 
-GitHub Actions の本番更新は `deploy-production` concurrency group で直列化し、実行中の run は後続 push でキャンセルしない。更新前に `infra/ops/deploy-state.sh begin` が稼働中のアプリ各サービスのイメージ SHA と `migrations` の名前一覧の digest を確認し、`<PROD_WORKDIR>/.deploy-state` に `in_progress` を記録する。更新後のヘルス確認とサービス確認がすべて成功すると `complete` が `committed` を記録する。`.deploy-state` は rsync の削除対象から除外される。
+GitHub Actions の本番更新は `deploy-production` concurrency group で直列化し、実行中の run は後続 push でキャンセルしない。更新前に `infra/ops/deploy-state.sh begin` が稼働中の API・email-compose・MCP の共通リリース SHA、同一リリースで稼働する Airflow 3サービスの SHA と health、`migrations` の名前一覧の digest を確認し、`<PROD_WORKDIR>/.deploy-state` に `in_progress` を記録する。更新後のヘルス確認とサービス確認がすべて成功すると `complete` が `committed` を記録する。Airflowを変更しない通常リリースでは、AirflowのSHAはアプリ3サービスと異なってよい。`.deploy-state` は rsync の削除対象から除外される。
 
 運用スクリプトだけの変更では画像ビルドをスキップする。`release-images` が既存画像を新 SHA に付け替えて成功した後は、ビルドのスキップに関係なく `deploy` を実行する。run がキャンセルされた場合は開始しない。
 
