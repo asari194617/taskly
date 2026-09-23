@@ -204,6 +204,55 @@ test("モバイルの新規作成ボタンを名前で見つけて作成画面�
   await expect(page.getByRole("dialog").getByText("新規課題の作成")).toBeVisible();
 });
 
+test("TOTP無効化とリカバリーコード再発行は確認後だけ実行する", async ({ page }) => {
+  await mockApi(page, { authenticated: true });
+  let totpDisableCalls = 0;
+  let recoveryGenerateCalls = 0;
+  await page.route("http://localhost:3063/graphql", async (route) => {
+    const query = route.request().postDataJSON()?.query || "";
+    const respond = (data: unknown) => route.fulfill({ json: { data } });
+    if (query.includes("authSettings{")) {
+      return respond({
+        authSettings: {
+          email_login_enabled: true,
+          has_password: true,
+          totp_enabled: true,
+          passkey_count: 0,
+          recovery_codes_count: 2,
+        },
+        myPasskeys: [],
+      });
+    }
+    if (query.includes("totpDisable")) {
+      totpDisableCalls += 1;
+      return respond({ totpDisable: true });
+    }
+    if (query.includes("recoveryGenerate")) {
+      recoveryGenerateCalls += 1;
+      return respond({ recoveryGenerate: ["code-one", "code-two"] });
+    }
+    return route.fallback();
+  });
+  await page.goto("/settings/security");
+
+  await page.getByRole("button", { name: "無効化", exact: true }).click();
+  await expect(page.getByRole("alertdialog").getByText("TOTPを無効化しますか？")).toBeVisible();
+  expect(totpDisableCalls).toBe(0);
+  await page.getByRole("button", { name: "キャンセル" }).click();
+  expect(totpDisableCalls).toBe(0);
+
+  await page.getByRole("button", { name: "無効化", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "無効化" }).click();
+  await expect.poll(() => totpDisableCalls).toBe(1);
+
+  await page.getByRole("button", { name: "リカバリーコードを再発行" }).click();
+  await expect(page.getByRole("alertdialog").getByText("リカバリーコードを再発行しますか？")).toBeVisible();
+  expect(recoveryGenerateCalls).toBe(0);
+  await page.getByRole("alertdialog").getByRole("button", { name: "リカバリーコードを再発行" }).click();
+  await expect.poll(() => recoveryGenerateCalls).toBe(1);
+  await expect(page.getByText("code-one")).toBeVisible();
+});
+
 test("課題ごとの完了チェックボックスをキーボードで操作でき、他のボタンは状態を変えない", async ({ page }) => {
   const api = await mockApi(page, { authenticated: true });
   api.tasks.push(
