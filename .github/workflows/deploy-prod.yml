@@ -44,7 +44,6 @@ jobs:
       redis_acl_changed: ${{ steps.matrix.outputs.redis_acl_changed }}
       airflow_changed: ${{ steps.matrix.outputs.airflow_changed }}
       runner: ${{ inputs.runner_override == 'ubuntu-latest' && '["ubuntu-latest"]' || '["self-hosted","taskly-ci"]' }}
-      use_runner_pool: ${{ inputs.runner_override != 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -85,26 +84,9 @@ jobs:
           echo "airflow_changed=$airflow_changed" >> "$GITHUB_OUTPUT"
           echo "Image matrix: $matrix"
 
-  provision-build-runners:
-    needs: plan
-    if: needs.plan.outputs.count != '0' && needs.plan.outputs.use_runner_pool == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Start one ephemeral runner per image
-        env:
-          GH_TOKEN: ${{ secrets.RUNNER_FALLBACK_TOKEN }}
-          RUNNER_COUNT: ${{ needs.plan.outputs.count }}
-          RUNNER_PREFIX: build
-          RUNNER_POOL_HOST: ${{ secrets.RUNNER_POOL_HOST }}
-          RUNNER_POOL_USER: ${{ secrets.RUNNER_POOL_USER }}
-          RUNNER_POOL_PORT: ${{ secrets.RUNNER_POOL_PORT }}
-          RUNNER_POOL_SSH_KEY: ${{ secrets.RUNNER_POOL_SSH_KEY }}
-        run: .github/scripts/provision-jit-runners.sh
-
   publish-images:
-    needs: [plan, provision-build-runners]
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.count != '0' && (needs.provision-build-runners.result == 'success' || needs.provision-build-runners.result == 'skipped') }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
     runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     permissions:
       contents: read
@@ -142,26 +124,9 @@ jobs:
           echo "### ${{ matrix.service }} image" >> "$GITHUB_STEP_SUMMARY"
           echo "Build, push, and cache: ${elapsed}s" >> "$GITHUB_STEP_SUMMARY"
 
-  provision-release-runner:
-    needs: [plan, publish-images]
-    if: ${{ always() && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') && needs.plan.outputs.use_runner_pool == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Start ephemeral release runner
-        env:
-          GH_TOKEN: ${{ secrets.RUNNER_FALLBACK_TOKEN }}
-          RUNNER_COUNT: "1"
-          RUNNER_PREFIX: release
-          RUNNER_POOL_HOST: ${{ secrets.RUNNER_POOL_HOST }}
-          RUNNER_POOL_USER: ${{ secrets.RUNNER_POOL_USER }}
-          RUNNER_POOL_PORT: ${{ secrets.RUNNER_POOL_PORT }}
-          RUNNER_POOL_SSH_KEY: ${{ secrets.RUNNER_POOL_SSH_KEY }}
-        run: .github/scripts/provision-jit-runners.sh
-
   release-images:
-    needs: [plan, publish-images, provision-release-runner]
-    if: ${{ always() && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') && (needs.provision-release-runner.result == 'success' || needs.provision-release-runner.result == 'skipped') }}
+    needs: [plan, publish-images]
+    if: ${{ always() && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
     runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     permissions:
       contents: read

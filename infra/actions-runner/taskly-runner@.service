@@ -1,0 +1,16 @@
+[Unit]
+Description=Taskly single-job GitHub Actions runner slot %i
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=nishikawa
+Group=nishikawa
+ExecStart=/opt/taskly-runner/run-slot.sh %i
+Restart=always
+RestartSec=2
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

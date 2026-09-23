@@ -31,7 +31,7 @@ GitHub Actions の本番更新は `deploy-production` concurrency group で直�
 
 `main` の ruleset は `api-build`、`api-empty-database`、`web-build-and-test`、`mcp-build`、`email-compose-build`、`compose-build` を必須チェックとする。これらのワークフローは全 PR で実行する。必要承認数は 0 で、自己レビューでマージできる運用とする。例外権限は設定しない。必須チェックの変更時は、ruleset とこの一覧を同時に更新する。
 
-外部コードを実行する PR CI は GitHub-hosted runner のみに置く。`deploy-prod` の画像 build と release は `taskly-ci` ラベルの1ジョブ限定JITコンテナを必要数だけ作成し、本番反映は `taskly-prod` ラベルの専用runnerで実行する。JIT runner はホストのDocker socketを利用できるため、PR workflowから `taskly-ci` または汎用 `self-hosted` ラベルを指定してはならない。runner poolを利用できない緊急時は、手動実行で `runner_override=ubuntu-latest` を選択する。
+外部コードを実行するPR CIはGitHub-hosted runnerのみに置く。`deploy-prod` の画像buildとreleaseは `taskly-ci` ラベルの4スロットで実行し、各スロットは1ジョブ後にコンテナとworkspaceを破棄して再作成する。本番反映は `taskly-prod` ラベルの専用runnerで実行する。`taskly-ci` はホストのDocker socketを利用できるため、PR workflowから `taskly-ci` または汎用 `self-hosted` ラベルを指定してはならない。runner poolを利用できない緊急時は、手動実行で `runner_override=ubuntu-latest` を選択する。
 
 リリース前に担当者は変更された `apps/server/migrations/NNNN_*.sql` を列挙し、旧 API イメージが新スキーマで動くか、旧スキーマへ戻す必要があるかを PR に記録する。追加だけの変更でも、旧 API の読み書き経路を検証する。列削除や型変更がある場合は原則として先に互換期間を設け、旧イメージへの即時切り戻しを「不可」と判定する。
 
