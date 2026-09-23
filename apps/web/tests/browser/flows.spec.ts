@@ -8,7 +8,7 @@ type Task = {
   is_completed: boolean;
 };
 
-async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean; authenticated?: boolean } = {}) {
+async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean; authenticated?: boolean; meDelayMs?: number } = {}) {
   await page.addInitScript(() => {
     if (!localStorage.getItem("display_lang")) localStorage.setItem("display_lang", "ja");
   });
@@ -30,6 +30,9 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     if (url.pathname !== "/graphql") return respond({ error: "unexpected API path" }, 404);
     const { query, variables = {} } = route.request().postDataJSON();
     if (query.includes("me{")) {
+      if (options.meDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.meDelayMs));
+      }
       if (!authenticated) return respond({ errors: [{ message: "unauthorized" }] }, 401);
       return respond({ data: { me: { id: 1, email: "browser@example.test", display_name: "Browser Tester", is_agreed_policies: true, is_admin: !!options.admin, is_manager: false } } });
     }
@@ -269,6 +272,25 @@ test("モバイルの設定メニューをロゴ横の明確なボタンから�
   const mobileSidebar = page.locator('[data-mobile="true"]');
   await expect(mobileSidebar).toBeVisible();
   await expect(mobileSidebar.getByRole("link", { name: "セキュリティ設定" })).toBeVisible();
+});
+
+test("ヘッダーロゴは認証確認中も有効で、ログイン確認後にホームを指す", async ({ page }) => {
+  await mockApi(page, { authenticated: true, meDelayMs: 700 });
+  await page.goto("/platform/android");
+
+  const logo = page.locator("header").getByRole("link", { name: "Taskly" });
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute("href", "/");
+  await expect(logo).toHaveAttribute("href", "/home", { timeout: 5_000 });
+});
+
+test("未ログイン時のヘッダーロゴは公開トップを指す", async ({ page }) => {
+  await mockApi(page, { authenticated: false });
+  await page.goto("/platform/android");
+
+  const logo = page.locator("header").getByRole("link", { name: "Taskly" });
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute("href", "/");
 });
 
 test("課題ごとの完了チェックボックスをキーボードで操作でき、他のボタンは状態を変えない", async ({ page }) => {
