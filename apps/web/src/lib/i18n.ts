@@ -249,6 +249,10 @@ export const t = (lang: Lang) => ({
   },
   settings: {
     title: lang === "ja" ? "設定" : "Settings",
+    openMenu:
+      lang === "ja" ? "設定メニューを開く" : "Open settings menu",
+    toggleMenu:
+      lang === "ja" ? "設定メニューを切り替える" : "Toggle settings menu",
     description:
       lang === "ja"
         ? "プロフィール、セキュリティ、通知、APIキー、iCalの設定を行います。"
