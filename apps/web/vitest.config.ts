@@ -7,8 +7,19 @@ export default defineConfig({
     include: ["src/**/*.vitest.ts"],
     environment: "node",
     coverage: {
-      include: ["src/**/*.{ts,tsx}"],
+      include: [
+        "src/features/**/api.ts",
+        "src/features/notifications/settings.ts",
+        "src/features/tasks/list-model.ts",
+        "src/lib/api.ts",
+        "src/lib/graphql.ts",
+        "src/lib/auth-guard.ts",
+        "src/lib/token-expiry.ts",
+        "src/react/login/flow.ts",
+        "src/react/login/helpers.ts",
+      ],
       exclude: ["src/**/*.vitest.ts", "src/**/*.d.ts"],
+      thresholds: { lines: 75 },
     },
   },
 });

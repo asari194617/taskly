@@ -39,3 +39,41 @@ func TestBuildComposePayloadEnglish(t *testing.T) {
 		t.Fatalf("unexpected English badges: %#v", badges)
 	}
 }
+
+func TestBuildComposePayloadPreservesJapaneseAndOptionalFields(t *testing.T) {
+	items := []dcCommon.QueueItem{
+		{
+			WhenLabel: "9/22 2限まで", Subject: "数学", Title: "宿題", Body: "締切: 9/22 2限まで\n",
+			Meta:   sql.NullString{String: `{"task_id":1}`, Valid: true},
+			Badges: sql.NullString{String: `[{"label":"小テスト"},{"label":"unknown"}]`, Valid: true},
+		},
+		{Badges: sql.NullString{String: "not-json", Valid: true}},
+	}
+	payload := buildComposePayload("ja", "Taskly", items)
+	if len(payload.Items) != 2 || payload.Items[0]["when_label"] != "9/22 2限まで" || payload.Items[0]["meta"] != `{"task_id":1}` {
+		t.Fatalf("unexpected Japanese payload: %#v", payload)
+	}
+	if _, ok := payload.Items[1]["badges"]; ok {
+		t.Fatalf("invalid badges should be omitted: %#v", payload.Items[1])
+	}
+}
+
+func TestBuildComposePayloadTranslatesEveryBadge(t *testing.T) {
+	labels := []string{"オンライン", "対面", "小テスト", "発表", "自主学習", "提出必須", "自己採点", "unknown"}
+	badges := "["
+	for i, label := range labels {
+		if i > 0 {
+			badges += ","
+		}
+		badges += `{"label":"` + label + `"}`
+	}
+	badges += "]"
+	payload := buildComposePayload("en", "Taskly", []dcCommon.QueueItem{{Badges: sql.NullString{String: badges, Valid: true}}})
+	got := payload.Items[0]["badges"].([]map[string]any)
+	want := []string{"Online", "In person", "Quiz", "Presentation", "Self study", "Submission required", "Self check", "unknown"}
+	for i := range want {
+		if got[i]["label"] != want[i] {
+			t.Fatalf("badge %d = %#v, want %q", i, got[i]["label"], want[i])
+		}
+	}
+}

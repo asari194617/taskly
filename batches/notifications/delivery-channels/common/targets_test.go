@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -25,6 +26,102 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 	}
 	if len(tasks) != 1 || tasks[0].ID != 1 || tasks[0].Description != nil || !tasks[0].IsSelfCheckRequired {
 		t.Fatalf("tasks=%+v", tasks)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCoreFormattingHelpers(t *testing.T) {
+	if got := BuildDSN(MySQLConfig{User: "taskly", Password: "secret", Database: "app"}); got != "taskly:secret@tcp(localhost:3306)/app?parseTime=true&charset=utf8mb4&loc=Local" {
+		t.Fatalf("BuildDSN() = %q", got)
+	}
+	if got := HostPort("db", "3307"); got != "db:3307" {
+		t.Fatalf("HostPort() = %q", got)
+	}
+	if ValueOr("  ", "fallback") != "fallback" || ValueOr("value", "fallback") != "value" {
+		t.Fatal("ValueOr did not apply blank-value defaults")
+	}
+
+	for input, want := range map[string]int{"P1": 1, " p12 ": 12, "P0": 0, "lunch": 0} {
+		if got := PeriodIndex(input); got != want {
+			t.Errorf("PeriodIndex(%q) = %d, want %d", input, got, want)
+		}
+	}
+	for input, want := range map[string]string{
+		"ONLINE": "オンライン", "face_to_face": "対面", "QUIZ": "小テスト",
+		"PRESENTATION": "発表", "SELF_STUDY": "自主学習", "OTHER": "",
+	} {
+		if got := DisplayTaskTypeJaLocal(input); got != want {
+			t.Errorf("DisplayTaskTypeJaLocal(%q) = %q, want %q", input, got, want)
+		}
+	}
+	badges := BuildBadges("QUIZ", true, true)
+	if got := BadgeLabels(badges); len(got) != 3 || got[0] != "小テスト" || got[2] != "自己採点" {
+		t.Fatalf("BadgeLabels() = %v", got)
+	}
+	if got := BadgesToJSON(badges); got != `[{"label":"小テスト","variant":"gray"},{"label":"提出必須","variant":"red"},{"label":"自己採点","variant":"blue"}]` {
+		t.Fatalf("BadgesToJSON() = %s", got)
+	}
+}
+
+func TestDeadlineLabels(t *testing.T) {
+	deadline := time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct{ since, until, want string }{
+		{"", "MORNING", "9/24 朝まで"},
+		{"", "LUNCH", "9/24 昼休みまで"},
+		{"", "AFTER_SCHOOL", "9/24 放課後まで"},
+		{"", "P3", "9/24 3限まで"},
+		{"P2", "P4", "9/24 2〜4限まで"},
+		{"P4", "P2", "9/24 まで"},
+	} {
+		if got := DeadlineLabel(tc.since, tc.until, deadline); got != tc.want {
+			t.Errorf("DeadlineLabel(%q, %q) = %q, want %q", tc.since, tc.until, got, tc.want)
+		}
+	}
+}
+
+func TestLoadEligibleUserAndPrefs(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, _, eligible, err := LoadEligibleUserAndPrefs(db, 0, UserDevicePrefs{}, nil); err != nil || eligible {
+		t.Fatalf("zero user eligible=%v err=%v", eligible, err)
+	}
+	mock.ExpectQuery("SELECT id, is_deleted FROM users WHERE id = \\?").WithArgs(uint(7)).WillReturnRows(sqlmock.NewRows([]string{"id", "is_deleted"}).AddRow(7, false))
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM blocks").WithArgs(uint(7)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("SELECT user_id, platform, MAX\\(is_enabled\\) FROM notification_devices WHERE user_id = \\?").WithArgs(uint(7)).WillReturnRows(sqlmock.NewRows([]string{"user_id", "platform", "enabled"}).AddRow(7, "email", false))
+	mock.ExpectQuery("SELECT user_id, notification_type, is_enabled FROM notification_type_prefs WHERE user_id = \\?").WithArgs(uint(7)).WillReturnRows(sqlmock.NewRows([]string{"user_id", "type", "enabled"}).AddRow(7, " task ", false))
+	device, prefs, eligible, err := LoadEligibleUserAndPrefs(db, 7, UserDevicePrefs{Email: true, WebPush: true}, map[string]bool{"TASK": true})
+	if err != nil || !eligible || device.Email || !device.WebPush || prefs["TASK"] {
+		t.Fatalf("device=%+v prefs=%v eligible=%v err=%v", device, prefs, eligible, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDatabaseErrorsAreReturned(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	want := errors.New("database unavailable")
+	mock.ExpectQuery("FROM tasks").WillReturnError(want)
+	if _, err := FetchDueTasks(db, time.Now()); !errors.Is(err, want) {
+		t.Fatalf("FetchDueTasks error = %v", err)
+	}
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM blocks").WithArgs(uint(9)).WillReturnError(want)
+	if _, err := IsUserBlocked(db, 9); !errors.Is(err, want) {
+		t.Fatalf("IsUserBlocked error = %v", err)
+	}
+	mock.ExpectQuery("SELECT id, is_deleted FROM users").WillReturnError(want)
+	if _, _, _, err := LoadEligibleUsersAndPrefs(db, UserDevicePrefs{}, nil); !errors.Is(err, want) {
+		t.Fatalf("LoadEligibleUsersAndPrefs error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
