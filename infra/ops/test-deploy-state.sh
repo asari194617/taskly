@@ -8,6 +8,7 @@ touch "$temp/host/infra/.env"
 old=1111111111111111111111111111111111111111
 new=2222222222222222222222222222222222222222
 printf '%s\n' "$old" > "$temp/running-sha"
+printf '%s\n' "$old" > "$temp/airflow-sha"
 printf '0019_email_suppressions\n0028_notification_delivery.sql\n' > "$temp/migrations"
 cat > "$temp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
@@ -21,7 +22,15 @@ case "$1 $2" in
     ;;
   'inspect --format')
     case "$3" in
-      '{{.Config.Image}}') printf 'ghcr.io/asari194617/taskly/api:%s\n' "$(cat "$MOCK_SHA")" ;;
+      '{{.Config.Image}}')
+        if [[ $4 == airflow-dag-processor && -n ${MOCK_AIRFLOW_DAG_SHA:-} ]]; then
+          printf 'ghcr.io/asari194617/taskly/airflow:%s\n' "$MOCK_AIRFLOW_DAG_SHA"
+        elif [[ $4 == airflow-* ]]; then
+          printf 'ghcr.io/asari194617/taskly/airflow:%s\n' "$(cat "$MOCK_AIRFLOW_SHA")"
+        else
+          printf 'ghcr.io/asari194617/taskly/api:%s\n' "$(cat "$MOCK_SHA")"
+        fi
+        ;;
       '{{.State.Status}}') printf '%s\n' "${MOCK_STATUS:-running}" ;;
       *) printf 'healthy\n' ;;
     esac
@@ -30,7 +39,7 @@ case "$1 $2" in
 esac
 MOCK
 chmod +x "$temp/bin/docker"
-export PATH="$temp/bin:$PATH" MOCK_SHA="$temp/running-sha" MOCK_MIGRATIONS="$temp/migrations"
+export PATH="$temp/bin:$PATH" MOCK_SHA="$temp/running-sha" MOCK_AIRFLOW_SHA="$temp/airflow-sha" MOCK_MIGRATIONS="$temp/migrations"
 guard="$root/infra/ops/deploy-state.sh"
 
 # Historic production records omit .sql; malformed names must still fail.
@@ -64,9 +73,18 @@ if bash "$guard" complete "$temp/host" "$new" >"$temp/output" 2>&1; then
 fi
 grep -q 'differs from target' "$temp/output"
 
-# Once all services run the new release, completion records its migration state.
+# A normal release updates the core applications while keeping healthy Airflow
+# containers on their previous release. Completion must record that state.
 printf '%s\n' "$new" > "$temp/running-sha"
 bash "$guard" complete "$temp/host" "$new"
+
+# The three Airflow services must still be healthy and use one release.
+if MOCK_AIRFLOW_DAG_SHA=3333333333333333333333333333333333333333 \
+  bash "$guard" begin "$temp/host" "$old" >"$temp/output" 2>&1; then
+  echo 'Mixed Airflow images were accepted' >&2; exit 1
+fi
+grep -q 'Airflow images have mixed release SHAs' "$temp/output"
+
 printf '0030_unexpected.sql\n' >> "$temp/migrations"
 if bash "$guard" begin "$temp/host" "$old" >"$temp/output" 2>&1; then
   echo 'Migration drift was accepted' >&2; exit 1
