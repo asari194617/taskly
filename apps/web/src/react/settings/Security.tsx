@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -57,6 +68,8 @@ export default function SettingsSecurity() {
   const [totpStep, setTotpStep] = React.useState<1 | 2>(1);
   const [recoveryOpen, setRecoveryOpen] = React.useState(false);
   const [recoveryCodes, setRecoveryCodes] = React.useState<string[]>([]);
+  const [disablingTotp, setDisablingTotp] = React.useState(false);
+  const [generatingRecovery, setGeneratingRecovery] = React.useState(false);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [pwOpen, setPwOpen] = React.useState(false);
   const [pwCurrent, setPwCurrent] = React.useState("");
@@ -120,15 +133,28 @@ export default function SettingsSecurity() {
     }
   }
   async function disableTotp() {
+    setDisablingTotp(true);
     try {
       await disableTotpSetup();
       setAuth((s) => (s ? { ...s, totp_enabled: false } : s));
-    } catch {}
+      toast({ title: dict.settingsSecurity.totp.disabled });
+    } catch {
+      toast({ variant: "destructive", title: dict.toast.updateFailed });
+    } finally {
+      setDisablingTotp(false);
+    }
   }
 
   async function generateRecovery() {
-    setRecoveryCodes(await generateRecoveryCodes());
-    setRecoveryOpen(true);
+    setGeneratingRecovery(true);
+    try {
+      setRecoveryCodes(await generateRecoveryCodes());
+      setRecoveryOpen(true);
+    } catch {
+      toast({ variant: "destructive", title: dict.toast.updateFailed });
+    } finally {
+      setGeneratingRecovery(false);
+    }
   }
 
   async function registerPasskey() {
@@ -359,9 +385,33 @@ export default function SettingsSecurity() {
               <div className="text-sm text-muted-foreground">
                 {dict.settingsSecurity.totp.enabled}
               </div>
-              <Button variant="secondary" onClick={disableTotp}>
-                {dict.settingsSecurity.totp.disable}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="secondary">
+                    {dict.settingsSecurity.totp.disable}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {dict.settingsSecurity.totp.disableConfirmTitle}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {dict.settingsSecurity.totp.disableConfirmDesc}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{dict.common.cancel}</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={disablingTotp}
+                      onClick={disableTotp}
+                    >
+                      {dict.settingsSecurity.totp.disable}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           ) : (
             <div className="space-y-3">
@@ -734,11 +784,38 @@ export default function SettingsSecurity() {
           <div className="text-sm text-muted-foreground">
             {dict.settingsSecurity.recovery.desc}
           </div>
-          <Button onClick={generateRecovery}>
-            {auth?.recovery_codes_count && auth.recovery_codes_count > 0
-              ? dict.settingsSecurity.recovery.reissue
-              : dict.settingsSecurity.recovery.generate}
-          </Button>
+          {auth?.recovery_codes_count && auth.recovery_codes_count > 0 ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button disabled={generatingRecovery}>
+                  {dict.settingsSecurity.recovery.reissue}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {dict.settingsSecurity.recovery.reissueConfirmTitle}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {dict.settingsSecurity.recovery.reissueConfirmDesc}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{dict.common.cancel}</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={generatingRecovery}
+                    onClick={generateRecovery}
+                  >
+                    {dict.settingsSecurity.recovery.reissue}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : (
+            <Button disabled={generatingRecovery} onClick={generateRecovery}>
+              {dict.settingsSecurity.recovery.generate}
+            </Button>
+          )}
           <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
             <DialogContent>
               <DialogHeader>

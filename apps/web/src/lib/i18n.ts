@@ -527,6 +527,13 @@ export const t = (lang: Lang) => ({
       title: "TOTP",
       enabled: lang === "ja" ? "有効になっています" : "Enabled",
       disable: lang === "ja" ? "無効化" : "Disable",
+      disabled: lang === "ja" ? "TOTPを無効化しました" : "TOTP disabled",
+      disableConfirmTitle:
+        lang === "ja" ? "TOTPを無効化しますか？" : "Disable TOTP?",
+      disableConfirmDesc:
+        lang === "ja"
+          ? "認証アプリのコードをログインに使用できなくなります。"
+          : "Authenticator app codes will no longer be available for sign-in.",
       begin: lang === "ja" ? "セットアップを開始" : "Begin setup",
       setupTitle: lang === "ja" ? "二段階認証をセットアップ" : "Set up 2FA",
       setupDesc:
@@ -568,6 +575,12 @@ export const t = (lang: Lang) => ({
         lang === "ja"
           ? "新しいコードを発行すると、以前の未使用コードは無効になります。"
           : "Issuing new codes invalidates previous unused codes.",
+      reissueConfirmTitle:
+        lang === "ja" ? "リカバリーコードを再発行しますか？" : "Reissue recovery codes?",
+      reissueConfirmDesc:
+        lang === "ja"
+          ? "現在の未使用コードはすべて無効になります。"
+          : "All current unused recovery codes will become invalid.",
       generate:
         lang === "ja" ? "リカバリーコードを発行" : "Generate recovery codes",
       reissue:
