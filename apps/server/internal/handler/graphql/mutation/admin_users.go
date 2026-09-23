@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
@@ -296,9 +297,11 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				uid := uint(p.Args["user_id"].(int))
 				var expPtr *time.Time
 				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
-					if t, err := time.Parse(time.RFC3339, s); err == nil {
-						expPtr = &t
+					t, err := time.Parse(time.RFC3339, s)
+					if err != nil {
+						return false, fmt.Errorf("invalid expires_at")
 					}
+					expPtr = &t
 				}
 				var reasonPtr *string
 				if s, ok := p.Args["reason"].(string); ok && strings.TrimSpace(s) != "" {
@@ -310,6 +313,9 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					return false, fmt.Errorf("db")
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)})
+				if err := authsync.SyncBlock(p.Context, uid, true, reasonPtr, expPtr); err != nil {
+					return false, fmt.Errorf("authentication block synchronization pending")
+				}
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -332,6 +338,9 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					return false, fmt.Errorf("db")
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)})
+				if err := authsync.SyncBlock(p.Context, uid, false, nil, nil); err != nil {
+					return false, fmt.Errorf("authentication block synchronization pending")
+				}
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
