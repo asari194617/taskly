@@ -74,12 +74,12 @@ jobs:
             }
             const marker = '<!-- taskly-pr-coverage -->';
             const rows = [
-              ['API (Go statements)', 'server'],
-              ['Batches (Go statements)', 'batches'],
-              ['Batch email (Go statements)', 'batch-email'],
-              ['Batch web push (Go statements)', 'batch-web-push'],
-              ['Web (Vitest lines)', 'web'],
-              ['MCP (Node lines)', 'mcp'],
+              ['API core (Go statements)', 'server'],
+              ['Notification core (Go statements)', 'batches'],
+              ['Email core (Go statements)', 'batch-email'],
+              ['Web push core (Go statements)', 'batch-web-push'],
+              ['Web logic (Vitest lines)', 'web'],
+              ['MCP runtime (Node lines)', 'mcp'],
             ].map(([label, id]) => {
               let value = 'Unavailable (test or setup failed)';
               try {
@@ -95,7 +95,7 @@ jobs:
             });
             const body = [marker, '### Test coverage', '',
               '| Test group | Coverage |', '| --- | ---: |', ...rows, '',
-              `Results for ${metadata.sha.slice(0, 7)}. Go reports statement coverage; Web and MCP report line coverage.`,
+              `Results for ${metadata.sha.slice(0, 7)}. The core scope in \`docs/testing/coverage.md\` has a 75% minimum. Go reports statement coverage; Web and MCP report line coverage.`,
               `[Workflow run](${run.html_url})`,
             ].join('\n');
             const comments = await github.paginate(github.rest.issues.listComments, {

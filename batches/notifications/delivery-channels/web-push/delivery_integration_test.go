@@ -9,6 +9,23 @@ import (
 	dcCommon "github.com/asari194617/taskly/batches/notifications/delivery-channels/common"
 )
 
+func TestNotificationKeyAndSlotType(t *testing.T) {
+	if got := notificationKey(dcCommon.QueueItem{ID: 42}); got != "queue:42" {
+		t.Fatalf("notificationKey fallback = %q", got)
+	}
+	if got := notificationKey(dcCommon.QueueItem{EventKey: sql.NullString{String: "event:1", Valid: true}}); got != "event:1" {
+		t.Fatalf("notificationKey event = %q", got)
+	}
+	for slot, want := range map[string]string{"morning": "TASK_MORNING", "evening": "TASK_EVENING", "": "TASK"} {
+		if got := slotType(sql.NullString{String: slot, Valid: slot != ""}); got != want {
+			t.Errorf("slotType(%q) = %q, want %q", slot, got, want)
+		}
+	}
+	if eligible, err := webPushEligible(nil, dcCommon.QueueItem{}); err != nil || eligible {
+		t.Fatalf("missing user eligible=%v err=%v", eligible, err)
+	}
+}
+
 func TestWebPushEligibilitySettingsAndBlocks(t *testing.T) {
 	for _, tc := range []struct {
 		name, kind, slot, disabled   string

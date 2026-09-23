@@ -49,12 +49,20 @@ jobs:
         include:
           - id: server
             directory: apps/server
+            packages: ./internal/tasklist ./internal/handler/graphql
+            include: ""
           - id: batches
-            directory: batches
+            directory: batches/notifications/delivery-channels/common
+            packages: ./...
+            include: ""
           - id: batch-email
             directory: batches/notifications/delivery-channels/email
+            packages: ./...
+            include: coverage_core\.go$
           - id: batch-web-push
             directory: batches/notifications/delivery-channels/web-push
+            packages: ./...
+            include: coverage_core\.go$
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,9 +78,8 @@ jobs:
       - name: Test with coverage
         working-directory: ${{ matrix.directory }}
         run: |
-          go test -coverprofile=coverage.out ./...
-          go tool cover -func=coverage.out > coverage.txt
-          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go coverage.txt "$GITHUB_WORKSPACE/${{ matrix.id }}.json"
+          go test -coverprofile=coverage.out ${{ matrix.packages }}
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go-profile coverage.out "$GITHUB_WORKSPACE/${{ matrix.id }}.json" 75 '${{ matrix.include }}'
       - if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -98,11 +105,12 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - run: node --test "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.test.mjs"
       - run: npm ci
       - name: Test with coverage
         run: |
           npx vitest run --coverage --coverage.reporter=json-summary
-          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/web.json"
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/web.json" 75
       - if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -131,8 +139,8 @@ jobs:
       - run: npm ci --legacy-peer-deps --no-audit --no-fund
       - name: Test with coverage
         run: |
-          npx c8 --all --reporter=json-summary --include='dist/**/*.js' --include='dist-test/**/*.js' --exclude='**/__tests__/**' npm test
-          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/mcp.json"
+          npx c8 --all --reporter=json-summary --include='dist-test/**/*.js' --include='dist/stdio.js' --exclude='**/__tests__/**' npm test
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/mcp.json" 75
       - if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -169,12 +177,12 @@ jobs:
             }
             const marker = '<!-- taskly-pr-coverage -->';
             const rows = [
-              ['API (Go statements)', 'server'],
-              ['Batches (Go statements)', 'batches'],
-              ['Batch email (Go statements)', 'batch-email'],
-              ['Batch web push (Go statements)', 'batch-web-push'],
-              ['Web (Vitest lines)', 'web'],
-              ['MCP (Node lines)', 'mcp'],
+              ['API core (Go statements)', 'server'],
+              ['Notification core (Go statements)', 'batches'],
+              ['Email core (Go statements)', 'batch-email'],
+              ['Web push core (Go statements)', 'batch-web-push'],
+              ['Web logic (Vitest lines)', 'web'],
+              ['MCP runtime (Node lines)', 'mcp'],
             ].map(([label, id]) => {
               let value = 'Unavailable (test or setup failed)';
               try {
@@ -190,7 +198,7 @@ jobs:
             });
             const body = [marker, '### Test coverage', '',
               '| Test group | Coverage |', '| --- | ---: |', ...rows, '',
-              `Results for ${process.env.EXPECTED_SHA.slice(0, 7)}. Go reports statement coverage; Web and MCP report line coverage.`,
+              `Results for ${process.env.EXPECTED_SHA.slice(0, 7)}. The core scope in \`docs/testing/coverage.md\` has a 75% minimum. Go reports statement coverage; Web and MCP report line coverage.`,
               `[Workflow run](${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId})`,
             ].join('\n');
             const comments = await github.paginate(github.rest.issues.listComments, {
