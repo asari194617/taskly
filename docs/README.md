@@ -12,6 +12,7 @@ ones are retained as historical design material.
 - [`ical-feed.md`](ical-feed.md): public iCal feed scope, errors, and performance verification
 - [`features/security-destructive-action-confirmations.md`](features/security-destructive-action-confirmations.md): confirmation rules for destructive security settings
 - [`features/settings-mobile-navigation.md`](features/settings-mobile-navigation.md): mobile settings sidebar trigger placement and accessibility
+- [`features/header-logo-navigation.md`](features/header-logo-navigation.md): authenticated and fallback destinations for the header logo
 - [`mcp-docs.md`](mcp-docs.md): MCP usage and client configuration
 - [`initial-settings.md`](initial-settings.md): CI/CD and production deployment
 - [`operations/recovery-drill.md`](operations/recovery-drill.md): recovery targets, database restore, rollback, notification failures, and drills
