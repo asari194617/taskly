@@ -69,6 +69,8 @@ print("API metrics endpoint: required series present")
 failure='Airflow metrics exporter is unavailable or missing DAG metrics'
 docker compose exec -T airflow-scheduler curl --fail --silent --show-error --max-time 10 \
   http://127.0.0.1:9470/metrics | grep -q '^taskly_airflow_dag_last_run_timestamp_seconds'
+docker compose exec -T airflow-scheduler curl --fail --silent --show-error --max-time 10 \
+  http://127.0.0.1:9470/metrics | grep -q '^taskly_airflow_dag_active'
 echo 'Airflow metrics exporter: required series present'
 
 for name in API MCP Airflow; do

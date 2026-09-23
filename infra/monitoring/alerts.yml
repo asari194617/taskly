@@ -63,8 +63,14 @@ groups:
         annotations:
           summary: "Notification batch failed: {{ $labels.channel }}"
       - alert: TasklyAirflowDAGStale
-        expr: time() - taskly_airflow_dag_last_run_timestamp_seconds{outcome="success",dag!="backup_mysql"} > 129600
+        expr: (time() - taskly_airflow_dag_last_run_timestamp_seconds{outcome="success",dag!="backup_mysql"} > 129600) and on(dag) (taskly_airflow_dag_last_run_timestamp_seconds{outcome="success",dag!="backup_mysql"} > 0) and on(dag) (taskly_airflow_dag_active == 1)
         for: 10m
         labels: {severity: warning}
         annotations:
           summary: "Airflow DAG has no success in 36 hours: {{ $labels.dag }}"
+      - alert: TasklyAirflowDAGInactive
+        expr: taskly_airflow_dag_active == 0
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "Airflow DAG is paused or unavailable: {{ $labels.dag }}"

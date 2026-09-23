@@ -311,6 +311,10 @@ jobs:
           if [ "$AIRFLOW_CHANGED" = true ] || [ -z "\$(docker compose ps -q airflow-webserver)" ] || [ -z "\$(docker compose ps -q airflow-scheduler)" ] || [ -z "\$(docker compose ps -q airflow-dag-processor)" ]; then
             docker compose up -d --no-deps --wait --wait-timeout 600 --no-build airflow-webserver airflow-scheduler airflow-dag-processor
           fi
+          # Retention enforcement must never remain paused after deployment.
+          docker compose exec -T airflow-scheduler airflow dags unpause account_erasure </dev/null
+          docker compose exec -T airflow-scheduler airflow dags details account_erasure -o plain </dev/null \
+            | grep -Eq '^is_paused +False$'
           ./ops/verify-deploy-health.sh
           docker compose exec -T server curl --fail --silent --show-error \
             --unix-socket /var/run/datadog/apm.socket http://localhost/info </dev/null >/dev/null
