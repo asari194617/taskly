@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         with:
           script: |
             const fs = require('node:fs');
@@ -144,7 +144,7 @@ jobs:
           pattern: coverage-*
           merge-multiple: true
           path: coverage-results
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         with:
