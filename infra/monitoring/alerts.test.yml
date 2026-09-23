@@ -51,3 +51,37 @@ tests:
           - exp_labels: {channel: email, severity: critical}
             exp_annotations:
               summary: 'Notification batch failed: email'
+  - interval: 1m
+    input_series:
+      - series: 'taskly_airflow_dag_last_run_timestamp_seconds{dag="account_erasure",outcome="success"}'
+        values: '0x12'
+      - series: 'taskly_airflow_dag_active{dag="account_erasure"}'
+        values: '1x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TasklyAirflowDAGStale
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'taskly_airflow_dag_last_run_timestamp_seconds{dag="account_erasure",outcome="success"}'
+        values: '1x2180'
+      - series: 'taskly_airflow_dag_active{dag="account_erasure"}'
+        values: '1x2180'
+    alert_rule_test:
+      - eval_time: 36h20m
+        alertname: TasklyAirflowDAGStale
+        exp_alerts:
+          - exp_labels: {dag: account_erasure, outcome: success, severity: warning}
+            exp_annotations:
+              summary: 'Airflow DAG has no success in 36 hours: account_erasure'
+  - interval: 1m
+    input_series:
+      - series: 'taskly_airflow_dag_active{dag="account_erasure"}'
+        values: '0x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: TasklyAirflowDAGInactive
+        exp_alerts:
+          - exp_labels: {dag: account_erasure, severity: critical}
+            exp_annotations:
+              summary: 'Airflow DAG is paused or unavailable: account_erasure'

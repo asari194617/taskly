@@ -13,6 +13,9 @@ with DAG(
     schedule="30 17 * * *",  # 02:30 JST
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    # Account retention must not depend on an operator noticing Airflow's
+    # default "paused on first registration" state.
+    is_paused_upon_creation=False,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=10)},
     tags=["taskly", "privacy"],
     on_failure_callback=discord_failure_callback,

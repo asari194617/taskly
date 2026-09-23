@@ -29,6 +29,10 @@ class DagImportTest(unittest.TestCase):
             },
         )
 
+    def test_account_erasure_is_active_on_first_registration(self):
+        bag = DagBag(dag_folder=str(DAGS), safe_mode=False)
+        self.assertFalse(bag.dags["account_erasure"].is_paused_upon_creation)
+
 
 if __name__ == "__main__":
     unittest.main()

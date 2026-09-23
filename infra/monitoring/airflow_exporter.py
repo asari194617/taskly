@@ -52,6 +52,12 @@ def collect() -> bytes:
             )
             latest = {(dag, outcome): float(ts) for dag, outcome, ts in cursor if ts is not None}
             cursor.execute(
+                "SELECT dag_id, is_paused FROM dag "
+                f"WHERE dag_id IN ({placeholders})",
+                DAGS,
+            )
+            active = {dag: not bool(is_paused) for dag, is_paused in cursor}
+            cursor.execute(
                 "SELECT task_id, state, UNIX_TIMESTAMP(MAX(end_date)) "
                 "FROM task_instance WHERE dag_id = 'notifications' "
                 "AND task_id IN ('email_delivery', 'webpush_delivery', 'discord_delivery') "
@@ -77,6 +83,12 @@ def collect() -> bytes:
                 f'taskly_airflow_dag_last_run_timestamp_seconds{{dag="{dag}",outcome="{outcome}"}} '
                 f"{latest.get((dag, outcome), 0):.0f}"
             )
+    lines.extend([
+        "# HELP taskly_airflow_dag_active Whether a fixed DAG is registered and unpaused.",
+        "# TYPE taskly_airflow_dag_active gauge",
+    ])
+    for dag in DAGS:
+        lines.append(f'taskly_airflow_dag_active{{dag="{dag}"}} {int(active.get(dag, False))}')
     lines.extend([
         "# HELP taskly_notification_batch_last_run_timestamp_seconds Last notification batch task run by channel and outcome.",
         "# TYPE taskly_notification_batch_last_run_timestamp_seconds gauge",
