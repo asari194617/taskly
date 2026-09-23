@@ -253,6 +253,24 @@ test("TOTP無効化とリカバリーコード再発行は確認後だけ実行�
   await expect(page.getByText("code-one")).toBeVisible();
 });
 
+test("モバイルの設定メニューをロゴ横の明確なボタンから開ける", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { authenticated: true });
+  await page.goto("/settings");
+
+  const menuButton = page.getByRole("button", { name: "設定メニューを開く" });
+  await expect(menuButton).toBeVisible();
+  await expect(menuButton).toContainText("メニュー");
+  const box = await menuButton.boundingBox();
+  expect(box?.y).toBeLessThan(60);
+  expect(box?.width).toBeGreaterThanOrEqual(72);
+
+  await menuButton.click();
+  const mobileSidebar = page.locator('[data-mobile="true"]');
+  await expect(mobileSidebar).toBeVisible();
+  await expect(mobileSidebar.getByRole("link", { name: "セキュリティ設定" })).toBeVisible();
+});
+
 test("課題ごとの完了チェックボックスをキーボードで操作でき、他のボタンは状態を変えない", async ({ page }) => {
   const api = await mockApi(page, { authenticated: true });
   api.tasks.push(
