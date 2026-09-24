@@ -7,7 +7,7 @@ Status: cutover blocker inventory (2026-09-23)
 | データ | 現行の書き込み経路 | 切り替え前に必要な対応 |
 | --- | --- | --- |
 | `users.hashed_password`, `email_code_allowed`, `is_registered` | GraphQL `setPassword`, `setAuthSettings`; REST `/settings`; 旧ログイン成功時 | credential とログイン許可設定は auth DB で更新。旧ログインを併用する期間は両経路の整合性を保証する。 |
-| `users.email` | GraphQL `adminUserUpdate`, `adminUserCreate`, `adminUserBulkCreate` | メールの一意性とユーザー ID の採番を auth 側で確定し、同じ ID の app 側 shadow record を作成・更新する。片方だけ成功した場合の補償と再試行を用意する。 |
+| `users.email` | GraphQL `adminUserUpdate`, `adminUserCreate`, `adminUserBulkCreate` | [ユーザー作成・プロフィール同期](auth-user-projection-sync.md)に従い、メールの一意性とユーザー ID の採番を auth 側で確定し、同じ ID の app 側 shadow record を作成・更新する。片方だけ成功した場合は同じメール・IDで再試行する。 |
 | `users.is_deleted`, `deleted_at` / 退会後の消去 | REST `/users/me`; GraphQL `deleteMe`, `adminUserDelete`; Airflow `account_erasure` | [退会・消去同期](auth-account-lifecycle-sync.md)に従い、退会後に auth 側のログインとトークンを失効する。期限後は auth DB を先に消去し、再実行可能なまま app DB を消去する。`deleted_at` を両 DB に保持し、保留・復元時の再消去も整合させる。 |
 | `policy_consents` | REST `/consent`; GraphQL `agreePolicies`; app API の認可ゲート | 同意イベントは app DB に保持し、OAuth から作成した app session でも現行版への同意を確認する。退会後の保存期間と `users` への外部キーを、app 側の消去処理および auth 側のユーザー削除と整合させる。 |
 | `users.display_name`, `notification_lang`, `is_agreed_policies` | REST `/users/me`, `/settings`; GraphQL `updateMe`, `agreePolicies`, `adminUserUpdate` | app 側プロフィールを正本とする場合も、auth UI が必要とする値の読み取りまたは同期を用意する。 |
