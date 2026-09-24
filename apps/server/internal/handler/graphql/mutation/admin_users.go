@@ -51,7 +51,10 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if len(updates) == 0 {
 					return true, nil
 				}
-				if err := h.db.Model(&domain.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+				if err := h.updateAdminUser(p.Context, uint(id), updates); err != nil {
+					if errors.Is(err, authsync.ErrUserSync) || errors.Is(err, errUserProjectionConflict) {
+						return false, fmt.Errorf("auth user synchronization pending")
+					}
 					return false, fmt.Errorf("db")
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.update:%d", id)})
@@ -81,11 +84,15 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				}
 				dn, _ := p.Args["display_name"].(string)
 				lang, _ := p.Args["notification_lang"].(string)
-				rec := domain.User{Email: email, DisplayName: dn, NotificationLang: strings.ToLower(strings.TrimSpace(lang))}
-				if rec.NotificationLang == "" {
-					rec.NotificationLang = "ja"
+				lang = strings.ToLower(strings.TrimSpace(lang))
+				if lang == "" {
+					lang = "ja"
 				}
-				if err := h.db.Create(&rec).Error; err != nil {
+				rec, _, err := h.createAdminUser(p.Context, email, dn, lang)
+				if err != nil {
+					if errors.Is(err, authsync.ErrUserSync) || errors.Is(err, errUserProjectionConflict) {
+						return nil, fmt.Errorf("auth user synchronization pending")
+					}
 					// 重複メールなどの一般的なh.dbエラーを判別して、人間が読める文言を返す
 					msg := err.Error()
 					if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
@@ -139,8 +146,12 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					if len(parts) > 2 {
 						lang = strings.ToLower(strings.TrimSpace(parts[2]))
 					}
-					rec := domain.User{Email: email, DisplayName: dn, NotificationLang: lang}
-					if err := h.db.Create(&rec).Error; err != nil {
+					_, wasCreated, err := h.createAdminUser(p.Context, email, dn, lang)
+					if err != nil {
+						if errors.Is(err, authsync.ErrUserSync) || errors.Is(err, errUserProjectionConflict) {
+							errs = append(errs, fmt.Sprintf("line %d: auth user synchronization pending", i+1))
+							continue
+						}
 						msg := err.Error()
 						if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
 							errs = append(errs, fmt.Sprintf("line %d: duplicate email", i+1))
@@ -149,7 +160,11 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 						}
 						continue
 					}
-					created++
+					if wasCreated {
+						created++
+					} else {
+						errs = append(errs, fmt.Sprintf("line %d: duplicate email", i+1))
+					}
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.bulk_create:%d", created)})
 				return map[string]any{"created": created, "errors": errs}, nil

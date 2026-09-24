@@ -147,6 +147,11 @@ func (h *Handler) oauthCallback(c *fiber.Ctx) error {
 	if !strings.EqualFold(user.Email, email) {
 		return c.SendStatus(403)
 	}
+	if !user.IsRegistered {
+		if err := h.db.Model(&domain.User{}).Where("id = ? AND is_registered = 0", user.ID).Update("is_registered", true).Error; err != nil {
+			return c.SendStatus(503)
+		}
+	}
 	if err := h.issueSession(c, user.ID, "web", time.Now()); err != nil {
 		return err
 	}

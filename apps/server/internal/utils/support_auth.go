@@ -200,16 +200,21 @@ func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Cl
 	}); err != nil {
 		return err
 	}
-	if RDB != nil {
-		key := fmt.Sprintf("user_sessions:%d", userID)
-		if tokens, err := RDB.SMembers(ctx, key).Result(); err == nil {
-			for _, token := range tokens {
-				_ = RDB.Del(ctx, "session:"+token).Err()
-			}
-		}
-		_ = RDB.Del(ctx, key).Err()
-	}
+	ClearUserSessionCache(ctx, userID, RDB)
 	return authsync.SyncDeleted(ctx, userID, deletedAt)
+}
+
+func ClearUserSessionCache(ctx context.Context, userID uint, RDB *redis.Client) {
+	if RDB == nil {
+		return
+	}
+	key := fmt.Sprintf("user_sessions:%d", userID)
+	if tokens, err := RDB.SMembers(ctx, key).Result(); err == nil {
+		for _, token := range tokens {
+			_ = RDB.Del(ctx, "session:"+token).Err()
+		}
+	}
+	_ = RDB.Del(ctx, key).Err()
 }
 
 func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
