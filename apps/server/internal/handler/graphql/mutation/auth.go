@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/legal"
@@ -147,6 +148,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				if err := utils.SoftDeleteUser(p.Context, u.ID, h.db, h.rdb); err != nil {
+					if errors.Is(err, authsync.ErrLifecycleSync) {
+						utils.ClearSessionCookie(c)
+						return false, fmt.Errorf("auth service synchronization pending")
+					}
 					return false, err
 				}
 				utils.ClearSessionCookie(c)

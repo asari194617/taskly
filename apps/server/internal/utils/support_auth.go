@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pquerna/otp/totp"
@@ -181,8 +182,9 @@ func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *re
 // SoftDeleteUser revokes persisted credentials together with the account update.
 // Redis cleanup is best effort: every authentication path also checks is_deleted.
 func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Client) error {
+	deletedAt := time.Now().UTC().Truncate(time.Second)
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&domain.User{}).Where("id = ? AND is_deleted = 0", userID).Updates(map[string]any{"is_deleted": true, "deleted_at": time.Now().UTC()}).Error; err != nil {
+		if err := tx.Model(&domain.User{}).Where("id = ? AND is_deleted = 0", userID).Updates(map[string]any{"is_deleted": true, "deleted_at": deletedAt}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("user_id = ?", userID).Delete(&domain.Session{}).Error; err != nil {
@@ -207,7 +209,7 @@ func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Cl
 		}
 		_ = RDB.Del(ctx, key).Err()
 	}
-	return nil
+	return authsync.SyncDeleted(ctx, userID, deletedAt)
 }
 
 func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {

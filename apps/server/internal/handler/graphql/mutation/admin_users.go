@@ -216,11 +216,38 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				id := p.Args["user_id"].(int)
 				hard, _ := p.Args["hard"].(bool)
 				if hard {
+					if authsync.LifecycleEnabled() {
+						var target domain.User
+						if err := h.db.Select("id", "is_deleted", "deleted_at").First(&target, id).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						if !target.IsDeleted {
+							if err := utils.SoftDeleteUser(p.Context, uint(id), h.db, h.rdb); err != nil {
+								return false, fmt.Errorf("auth service synchronization pending")
+							}
+						}
+						err := authsync.Erase(p.Context, uint(id))
+						if errors.Is(err, authsync.ErrLifecycleNotDeleted) {
+							deletedAt := time.Now().UTC().Truncate(time.Second)
+							if target.DeletedAt != nil {
+								deletedAt = target.DeletedAt.UTC()
+							}
+							if err = authsync.SyncDeleted(p.Context, uint(id), deletedAt); err == nil {
+								err = authsync.Erase(p.Context, uint(id))
+							}
+						}
+						if err != nil {
+							return false, fmt.Errorf("auth service synchronization pending")
+						}
+					}
 					if err := h.db.Delete(&domain.User{}, id).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else {
 					if err := utils.SoftDeleteUser(p.Context, uint(id), h.db, h.rdb); err != nil {
+						if errors.Is(err, authsync.ErrLifecycleSync) {
+							return false, fmt.Errorf("auth service synchronization pending")
+						}
 						return false, fmt.Errorf("db")
 					}
 				}

@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"strings"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -13,7 +15,7 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 	router.Patch("/me", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var body struct {
-			DisplayName *string `json:"display_name"`
+			DisplayName      *string `json:"display_name"`
 			NotificationLang *string `json:"notification_lang"`
 		}
 		if err := utils.ParseJSONStrict(c, &body); err != nil {
@@ -47,6 +49,10 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 	router.Delete("/me", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		if err := utils.SoftDeleteUser(c.Context(), u.ID, h.db, h.rdb); err != nil {
+			if errors.Is(err, authsync.ErrLifecycleSync) {
+				utils.ClearSessionCookie(c)
+				return c.Status(503).JSON(fiber.Map{"error": "auth synchronization pending"})
+			}
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		utils.ClearSessionCookie(c)
