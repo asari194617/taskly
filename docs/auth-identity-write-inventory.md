@@ -23,6 +23,8 @@ Status: cutover blocker inventory (2026-09-23)
 
 2026-09-23 の本番読み取り専用確認では、`taskly.users` 47行と `taskly_auth.users` 0行のどちらにも `deleted_at` はまだなかった。2026-09-24 に Taskly 側の migration 適用を確認し、その後0行の認証 DB に `deleted_at DATETIME NULL` を追加した。両 DB で ordinal position 13、nullable が一致し、利用者件数は47行と0行のままである。実ユーザーのコピーはまだ実行していない。
 
+同日、新しい隔離リハーサル DB へ7テーブルを再コピーし、件数 `47, 1, 10, 1, 23, 69, 2` と各行ハッシュが一致した。直後の read-only verify も一致したが、旧サービスの書き込みは停止していない。本番切り替え先は0ユーザーを維持し、最終コピーはまだ実行していない。
+
 新認証サービスのパスキー管理画面が利用可能になった切り替え時には、Web ビルドの `PUBLIC_AUTH_PASSKEY_URL=https://auth.taskly.iy0306.com/passkeys` を設定し、設定画面から同画面へ移す。このフラグが空の間は従来の管理 UI を維持する。フラグを有効化しても旧 API の GraphQL/REST 書き込み口は残るため、全クライアントとバックグラウンド経路を含めた書き込み所有権の移管が終わるまで最終コピー・公開切り替えをしない。
 
 パスワード管理画面を切り替える Web ビルド設定は `PUBLIC_AUTH_PASSWORD_URL=https://auth.taskly.iy0306.com/security`。空なら旧設定ダイアログを維持する。新画面では直近10分の認証と既存パスワードの照合後に更新し、auth セッションと OAuth トークンを失効させる。旧 GraphQL `setPassword` と REST 設定経路は別途停止する必要があり、このリンクだけで切り替え可能にはならない。
