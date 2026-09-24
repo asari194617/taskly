@@ -13,7 +13,9 @@ docker_gid=$(stat -c '%g' /var/run/docker.sock)
 # Share the complete runner directory (including externals and _temp) with
 # sibling containers at an identical, per-job path. Never reuse a workspace.
 workspace=$(mktemp -d /tmp/taskly-ci-slot-$slot.XXXXXX)
-chmod 0777 "$workspace"
+chmod 0755 "$workspace"
+docker run --rm --user root --volume "$workspace:/workspace" --entrypoint sh "$image" \
+  -c 'mkdir /workspace/runner; chown 1001:1001 /workspace/runner'
 cleanup() {
   # Container jobs may leave root-owned files; remove only this job's directory.
   docker run --rm --user root --volume "$workspace:/cleanup" --entrypoint sh "$image" \
@@ -26,7 +28,7 @@ docker run --rm \
   --name "taskly-ci-slot-$slot" \
   --hostname "taskly-ci-slot-$slot" \
   --network host \
-  --workdir "$workspace" \
+  --workdir "$workspace/runner" \
   --volume "$workspace:$workspace" \
   --label taskly.actions-runner=single-job \
   --cpus 3 \

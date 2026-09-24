@@ -1,4 +1,5 @@
 name: runner-diagnostics
+# One-time pool preparation; removed before merge.
 on:
   pull_request:
     paths: [".github/workflows/runner-diagnostics.yml"]

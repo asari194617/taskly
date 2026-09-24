@@ -37,6 +37,11 @@ jobs:
           fetch-depth: 0
       - name: Test image path mapping
         run: .github/scripts/test-image-matrix.sh
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Test runner selection
+        run: node --test .github/scripts/runner-selection.test.mjs
       - name: Test runner trust boundaries
         run: .github/scripts/test-runner-boundaries.sh
       - name: Test production environment deployment

@@ -30,6 +30,7 @@ RUN apt-get update \
       zip \
       zlib1g \
     && rm -rf /var/lib/apt/lists/* \
+    && userdel --remove pwuser \
     && useradd --create-home --uid 1001 --shell /bin/bash runner \
     && install -d -o runner -g runner /home/runner/actions-runner \
     && curl --fail --location --retry 5 \
