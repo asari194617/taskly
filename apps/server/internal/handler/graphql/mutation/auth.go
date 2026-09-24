@@ -66,7 +66,15 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				if len(dn) > 255 {
 					dn = dn[:255]
 				}
+				if authsync.UsersEnabled() {
+					if err := authsync.UpdateUser(p.Context, u.ID, authsync.UserUpdate{DisplayName: &dn}); err != nil {
+						return false, fmt.Errorf("auth user synchronization pending")
+					}
+				}
 				if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("display_name", dn).Error; err != nil {
+					if authsync.UsersEnabled() {
+						return false, fmt.Errorf("auth user synchronization pending")
+					}
 					return false, err
 				}
 				return true, nil

@@ -10,7 +10,7 @@ Status: cutover blocker inventory (2026-09-23)
 | `users.email` | GraphQL `adminUserUpdate`, `adminUserCreate`, `adminUserBulkCreate` | [ユーザー作成・プロフィール同期](auth-user-projection-sync.md)を実装済み。`AUTH_USERS_EXTERNAL=1` でメールの一意性とユーザー ID の採番を auth 側で確定し、同じ ID の app 側 shadow record を作成・更新する。片方だけ成功した場合は同じメール・IDで再試行する。フラグは最終コピーまで無効。 |
 | `users.is_deleted`, `deleted_at` / 退会後の消去 | REST `/users/me`; GraphQL `deleteMe`, `adminUserDelete`; Airflow `account_erasure` | [退会・消去同期](auth-account-lifecycle-sync.md)に従い、退会後に auth 側のログインとトークンを失効する。期限後は auth DB を先に消去し、再実行可能なまま app DB を消去する。`deleted_at` を両 DB に保持し、保留・復元時の再消去も整合させる。 |
 | `policy_consents` | REST `/consent`; GraphQL `agreePolicies`; app API の認可ゲート | 同意イベントは app DB に保持し、OAuth から作成した app session でも現行版への同意を確認する。退会後の保存期間と `users` への外部キーを、app 側の消去処理および auth 側のユーザー削除と整合させる。 |
-| `users.display_name`, `notification_lang`, `is_agreed_policies` | REST `/users/me`, `/settings`; GraphQL `updateMe`, `agreePolicies`, `adminUserUpdate` | app 側プロフィールを正本とする場合も、auth UI が必要とする値の読み取りまたは同期を用意する。 |
+| `users.display_name`, `notification_lang`, `is_agreed_policies` | REST `/users/me`, `/settings`; GraphQL `updateMe`, `agreePolicies`, `adminUserUpdate` | 表示名と通知言語は `AUTH_USERS_EXTERNAL=1` で auth を先に更新し、app shadow に同期する。同意イベントと `is_agreed_policies` は app DB の認可データとして維持する。 |
 | `login_codes` | REST 旧 `/auth` の発行、使用、試行回数・ロック更新 | 新ログインの発行と検証は auth DB に一本化。旧ログインを残す間は旧 DB のコードを新サービスが誤って受け付けないようにする。 |
 | `totp_secrets`, `recovery_codes` | REST `/2fa`; GraphQL TOTP 有効化/無効化、復旧コード再生成; `utils.ConsumeRecoveryCode` | 設定・再生成・使用を auth DB に一本化し、旧認証経路との併存期間中の二重使用を防ぐ。 |
 | `passkeys` | REST `/webauthn` 登録・認証回数更新; GraphQL 登録・名前変更・削除 | 新 UI を旧 RP ID `taskly.iy0306.com` のサブドメインに置き、同じ RP ID で既存クレデンシャルを検証する。両 DB の署名カウンタ・名前・削除を整合させる。 |

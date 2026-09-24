@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -120,7 +121,15 @@ func (h *Handler) RegisterSettingsRoutes(router fiber.Router) {
 			if v != "ja" && v != "en" {
 				return c.Status(400).JSON(fiber.Map{"error": "invalid notification_lang"})
 			}
+			if authsync.UsersEnabled() {
+				if err := authsync.UpdateUser(c.Context(), u.ID, authsync.UserUpdate{NotificationLang: &v}); err != nil {
+					return c.Status(503).JSON(fiber.Map{"error": "auth synchronization pending"})
+				}
+			}
 			if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("notification_lang", v).Error; err != nil {
+				if authsync.UsersEnabled() {
+					return c.Status(503).JSON(fiber.Map{"error": "auth synchronization pending"})
+				}
 				return settingsDBError(c)
 			}
 		}

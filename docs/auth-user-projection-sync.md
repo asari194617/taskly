@@ -24,7 +24,7 @@ GraphQL `adminUserCreate`, `adminUserBulkCreate`, `adminUserUpdate` のうち、
 - 認証更新後に app DB が失敗した場合は安全な認証状態を戻さず、同期保留を返す。同じ値の再送で収束させる。
 - メール変更時は認証サービスが旧 session、challenge、code、OAuth token を失効する。Taskly の既存 session も対象利用者単位で削除して再認証を要求する。
 - 初回ログイン時は認証サービスが `is_registered=1` を保存し、OAuth callback が同じ利用者 ID の app shadow 行も登録済みにする。
-- `display_name` と `notification_lang` の日常的な本人更新は引き続き app DB を正本とし、認証 UI に必要な値の同期は別途扱う。ここでは管理者経路を先に閉じる。
+- REST `/users/me`、GraphQL `updateMe`、REST `/settings/lang` の本人更新も同じ internal API を先に呼び、認証 UI と OAuth userinfo の表示名・通知言語を app shadow と同期する。
 
 ## 設定と切り替え
 
