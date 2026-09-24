@@ -5,27 +5,21 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  prepare-pool:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/self-hosted-default-runner'
     runs-on: [self-hosted, taskly-ci]
     steps:
-      - name: Inspect runner prerequisites
+      - uses: actions/checkout@v7
+      - name: Build CI-ready runner image
+        run: docker build --tag taskly-actions-runner:2.337.0-ci infra/actions-runner
+      - name: Verify runner tools
         run: |
-          id
-          command -v python3 || true
-          docker compose version || true
-          docker inspect "$HOSTNAME" --format '{{json .Mounts}}'
-      - name: Check runner host maintenance access
-        env:
-          POOL_HOST: ${{ secrets.RUNNER_POOL_HOST }}
-          POOL_USER: ${{ secrets.RUNNER_POOL_USER }}
-          POOL_PORT: ${{ secrets.RUNNER_POOL_PORT }}
-          POOL_KEY: ${{ secrets.RUNNER_POOL_SSH_KEY }}
+          docker run --rm --entrypoint bash taskly-actions-runner:2.337.0-ci -ec 'python3 --version; python3 -m venv /tmp/check; docker compose version; test -d /ms-playwright'
+      - name: Install slot launcher
         run: |
-          set -euo pipefail
-          test -n "$POOL_HOST"
-          key=$(mktemp)
-          trap 'rm -f "$key"' EXIT
-          chmod 600 "$key"
-          printf '%s\n' "$POOL_KEY" > "$key"
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$key" -p "${POOL_PORT:-22}" "$POOL_USER@$POOL_HOST" 'id; free -m; ls -l /opt/taskly-runner; sudo -n -l'
+          # Target only the runner launcher, preserving registration and prod runner.
+          docker run --rm -i --user root --entrypoint sh \
+            --volume /opt/taskly-runner:/target \
+            taskly-actions-runner:2.337.0-ci \
+            -c 'cp /target/run-slot.sh /target/run-slot.sh.before-ci; cat > /target/run-slot.sh; chmod 0755 /target/run-slot.sh' < infra/actions-runner/run-slot.sh
+          echo 'Launcher installed. Idle slots must be recycled before re-running CI.'

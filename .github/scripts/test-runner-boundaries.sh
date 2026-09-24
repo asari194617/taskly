@@ -5,7 +5,7 @@ pr_workflows=(api web mcp email-compose e2e compose-build pr-coverage)
 for name in "${pr_workflows[@]}"; do
   workflow=".github/workflows/$name.yml"
   grep -Fq 'uses: ./.github/workflows/select-runner.yml' "$workflow"
-  if grep -Eq 'self-hosted|runner-fallback|taskly-prod|runs-on: ubuntu-latest' "$workflow"; then
+  if grep -Eq 'runs-on:.*(self-hosted|taskly-prod|ubuntu-latest)|runner-fallback' "$workflow"; then
     echo "PR jobs must use the shared runner selector: $workflow" >&2
     exit 1
   fi

@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
 
 ARG RUNNER_VERSION=2.337.0
 ARG RUNNER_SHA256=70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613
@@ -10,6 +10,11 @@ RUN apt-get update \
       ca-certificates \
       curl \
       docker.io \
+      docker-compose-v2 \
+      build-essential \
+      python3 \
+      python3-venv \
+      zstd \
       git \
       jq \
       libcurl4 \

@@ -3,6 +3,10 @@ name: compose-build-ci
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   select-runner:
     uses: ./.github/workflows/select-runner.yml
@@ -83,6 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: image=moby/buildkit:v0.26.2@sha256:de10faf919fc71ba4eb1dd7bd6449566d012b0c9436b1c61bfee21d621b009aa
       - name: Record build start
         run: echo "BUILD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - name: Build ${{ matrix.service }}

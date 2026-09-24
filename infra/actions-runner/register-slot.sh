@@ -2,7 +2,7 @@
 set -euo pipefail
 
 slot=${1:?runner slot is required}
-image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0}
+image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
 repository_url=${TASKLY_REPOSITORY_URL:-https://github.com/asari194617/taskly}
 
 if [[ ! "$slot" =~ ^[1-4]$ ]]; then
