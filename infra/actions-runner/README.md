@@ -1,6 +1,6 @@
 # Single-job GitHub Actions runner pool
 
-Production image jobs use four containerized runners with the `taskly-ci`
+Trusted same-repository PRs and production image jobs use four containerized runners with the `taskly-ci`
 label. GitHub registrations are persistent, but every runner process accepts
 only one job (`run.sh --once`). systemd then starts a new container from the
 pinned image, so the workspace and container filesystem are discarded between
@@ -11,9 +11,14 @@ Each slot:
 - runs in a fresh container with 3 CPUs, 7 GiB memory, and a process limit;
 - keeps only its GitHub runner credentials in a read-only Docker volume;
 - mounts the host Docker socket for trusted image build jobs;
-- must never run pull-request code.
+- accepts only trusted repository code; external fork PRs stay on GitHub-hosted runners.
 
-Pull-request workflows stay on GitHub-hosted runners. The persistent host runner
+The reusable `select-runner` workflow defaults to `self-hosted, taskly-ci`, including
+its own selection job, so it does not require GitHub-hosted minutes to start.
+External fork PRs select `ubuntu-latest`. Set the repository variable `CI_RUNNER`
+to `ubuntu-latest` for an explicit hosted override (normal billing applies).
+There is no automatic paid fallback: an offline pool leaves trusted jobs queued.
+The persistent host runner
 uses the separate `taskly-prod` label and is reserved for the production deploy
 job.
 
@@ -47,4 +52,6 @@ done
 The credential volumes are copied into each fresh container rather than mounted
 writable. A job therefore cannot persist changes to its runner registration or
 workspace. The Docker socket remains equivalent to host-level access, which is
-why only trusted `main` image jobs may select `taskly-ci`.
+why only trusted same-repository code may select `taskly-ci`. Container recycling
+is not a security boundary against malicious code with Docker access. External
+fork code must not be copied into a trusted branch without review.

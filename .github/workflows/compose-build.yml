@@ -4,8 +4,12 @@ on:
   pull_request:
 
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   test-batches:
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -18,7 +22,8 @@ jobs:
         run: go test ./...
 
   plan:
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     outputs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -69,9 +74,9 @@ jobs:
           echo "Changed files: ${files[*]}"
           echo "Image matrix: $matrix"
   build-images:
-    needs: plan
+    needs: [select-runner, plan]
     if: needs.plan.outputs.count != '0'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -118,9 +123,9 @@ jobs:
 
   build:
     name: compose-build
-    needs: [plan, build-images, test-batches]
-    if: always()
-    runs-on: ubuntu-latest
+    needs: [select-runner, plan, build-images, test-batches]
+    if: always() && needs.select-runner.result == 'success'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - name: Check image builds
         env:

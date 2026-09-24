@@ -6,10 +6,15 @@ on:
       - "apps/server/**"
       - "apps/web/**"
       - ".github/workflows/e2e.yml"
+      - ".github/workflows/select-runner.yml"
 
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   web-api-db:
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     services:
       mysql:
         image: mysql:8.4

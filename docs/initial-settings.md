@@ -53,7 +53,7 @@
 - `.github/scripts/check-prod-airflow.sh`
 - `.github/workflows/deploy-prod.yml`
 
-手動実行も可能で、`full_build=true` が既定です。画像の build と release は通常、1ジョブごとにコンテナを作り直す4スロットの `taskly-ci` runner poolで実行します。runner poolを使えない場合は `runner_override=ubuntu-latest` を指定できます。`plan` はGitHub-hosted runner、本番反映は `taskly-prod` 専用runnerで実行します。
+手動実行も可能で、`full_build=true` が既定です。画像の build と release は通常、1ジョブごとにコンテナを作り直す4スロットの `taskly-ci` runner poolで実行します。runner poolを使えない場合は `runner_override=ubuntu-latest` を指定できます。`select-runner` と `plan` も既定でself-hosted runner、本番反映は `taskly-prod` 専用runnerで実行します。
 
 ### デプロイの流れ
 

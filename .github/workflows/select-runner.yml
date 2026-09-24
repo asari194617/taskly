@@ -1,0 +1,27 @@
+name: select-runner
+
+on:
+  workflow_call:
+    inputs:
+      runner_override:
+        type: string
+        default: auto
+    outputs:
+      label:
+        description: JSON runner labels for downstream jobs
+        value: ${{ jobs.select.outputs.label }}
+
+permissions: {}
+
+jobs:
+  select:
+    # Bootstrap on the selected runner too: exhausted hosted budgets must not
+    # prevent trusted CI from reaching the self-hosted pool. Never run PR code here.
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || inputs.runner_override == 'ubuntu-latest' || vars.CI_RUNNER == 'ubuntu-latest') && '["ubuntu-latest"]' || '["self-hosted","taskly-ci"]') }}
+    outputs:
+      label: ${{ steps.runner.outputs.label }}
+    steps:
+      - id: runner
+        env:
+          LABEL: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || inputs.runner_override == 'ubuntu-latest' || vars.CI_RUNNER == 'ubuntu-latest') && '["ubuntu-latest"]' || '["self-hosted","taskly-ci"]' }}
+        run: echo "label=$LABEL" >> "$GITHUB_OUTPUT"

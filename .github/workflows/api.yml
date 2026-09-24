@@ -4,9 +4,13 @@ on:
   pull_request:
 
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   build:
     name: api-build
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -25,7 +29,8 @@ jobs:
 
   empty-database:
     name: api-empty-database
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     services:
       mysql:
         image: mysql:8.4
