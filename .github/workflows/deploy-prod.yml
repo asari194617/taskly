@@ -98,6 +98,8 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # The pool shares host disk with PR jobs.
+      max-parallel: 1
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:

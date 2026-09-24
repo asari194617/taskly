@@ -14,7 +14,7 @@ Each slot:
   including runner externals and temporary scripts needed by child containers;
 - uses the host network so published service ports are reachable at localhost;
   MySQL/Redis use random loopback ports, and real-API E2E jobs are serialized;
-- serializes PR image builds to limit peak disk use and removes the loaded
+- serializes each workflow's image builds to limit peak disk use and removes the loaded
   CI-only Airflow image after verification;
 - keeps only its GitHub runner credentials in a read-only Docker volume;
 - mounts the host Docker socket for trusted image build jobs;
