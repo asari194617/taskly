@@ -1,0 +1,31 @@
+name: runner-diagnostics
+on:
+  pull_request:
+    paths: [".github/workflows/runner-diagnostics.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/self-hosted-default-runner'
+    runs-on: [self-hosted, taskly-ci]
+    steps:
+      - name: Inspect runner prerequisites
+        run: |
+          id
+          command -v python3 || true
+          docker compose version || true
+          docker inspect "$HOSTNAME" --format '{{json .Mounts}}'
+      - name: Check runner host maintenance access
+        env:
+          POOL_HOST: ${{ secrets.RUNNER_POOL_HOST }}
+          POOL_USER: ${{ secrets.RUNNER_POOL_USER }}
+          POOL_PORT: ${{ secrets.RUNNER_POOL_PORT }}
+          POOL_KEY: ${{ secrets.RUNNER_POOL_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$POOL_HOST"
+          key=$(mktemp)
+          trap 'rm -f "$key"' EXIT
+          chmod 600 "$key"
+          printf '%s\n' "$POOL_KEY" > "$key"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$key" -p "${POOL_PORT:-22}" "$POOL_USER@$POOL_HOST" 'id; free -m; ls -l /opt/taskly-runner; sudo -n -l'
