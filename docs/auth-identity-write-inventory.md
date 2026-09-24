@@ -21,7 +21,7 @@ Status: cutover blocker inventory (2026-09-23)
 
 2026-09-23 に main へ追加された `deleted_at` は、既存の移行ツールが `SELECT *` で全列をコピーするため認証 DB にも必要となる。すでに作成済みの空の認証 DB には、列の有無と順序を確認してからスキーマを適用する。`policy_consents` はアプリ側の同意履歴であり認証 DB へ単純コピーしない。Airflow の消去処理が app DB だけを削除する現状では auth DB の認証行が残るため、消去連携と復元試験を切り替え条件に追加する。
 
-同日の本番読み取り専用確認では、`taskly.users` 47行と `taskly_auth.users` 0行のどちらにも `deleted_at` はまだない。Taskly 側の本番 DB migration を先に適用・確認してから、空の認証 DB に列を追加する。この順序が揃うまで認証データコピーを再実行しない。
+2026-09-23 の本番読み取り専用確認では、`taskly.users` 47行と `taskly_auth.users` 0行のどちらにも `deleted_at` はまだなかった。2026-09-24 に Taskly 側の migration 適用を確認し、その後0行の認証 DB に `deleted_at DATETIME NULL` を追加した。両 DB で ordinal position 13、nullable が一致し、利用者件数は47行と0行のままである。実ユーザーのコピーはまだ実行していない。
 
 新認証サービスのパスキー管理画面が利用可能になった切り替え時には、Web ビルドの `PUBLIC_AUTH_PASSKEY_URL=https://auth.taskly.iy0306.com/passkeys` を設定し、設定画面から同画面へ移す。このフラグが空の間は従来の管理 UI を維持する。フラグを有効化しても旧 API の GraphQL/REST 書き込み口は残るため、全クライアントとバックグラウンド経路を含めた書き込み所有権の移管が終わるまで最終コピー・公開切り替えをしない。
 
