@@ -3,10 +3,18 @@ name: mcp-ci
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   build:
     name: mcp-build
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

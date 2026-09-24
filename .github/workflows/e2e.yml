@@ -6,10 +6,22 @@ on:
       - "apps/server/**"
       - "apps/web/**"
       - ".github/workflows/e2e.yml"
+      - ".github/workflows/select-runner.yml"
+      - "infra/actions-runner/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   web-api-db:
-    runs-on: ubuntu-latest
+    # The browser server uses fixed ports on the self-hosted machine.
+    concurrency: taskly-real-api-e2e
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     services:
       mysql:
         image: mysql:8.4
@@ -19,7 +31,7 @@ jobs:
           MYSQL_USER: taskly
           MYSQL_PASSWORD: taskly_e2e_password
         ports:
-          - 3306:3306
+          - 127.0.0.1::3306
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
           --health-interval=10s --health-timeout=5s --health-retries=12
@@ -30,7 +42,6 @@ jobs:
       MYSQL_PASSWORD: taskly_e2e_password
       MYSQL_DATABASE: taskly_e2e
       DB_HOST: 127.0.0.1
-      DB_PORT: "3306"
       MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
       REDIS_ADDR: 127.0.0.1:6379
       REDIS_USERNAME: default
@@ -42,6 +53,10 @@ jobs:
       NODE_ENV: development
       DD_TRACE_ENABLED: "false"
     steps:
+      - name: Select isolated MySQL port
+        env:
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+        run: echo "DB_PORT=$MYSQL_PORT" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
@@ -79,7 +94,11 @@ jobs:
         working-directory: apps/web
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          if [[ "$RUNNER_ENVIRONMENT" == self-hosted ]]; then
+            npx playwright install chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
       - name: Run real API browser tests
         working-directory: apps/web
         run: npm run test:e2e

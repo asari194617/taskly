@@ -3,9 +3,17 @@ name: pr-coverage
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   metadata:
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     permissions: {}
     steps:
       - uses: actions/github-script@v9
@@ -26,7 +34,8 @@ jobs:
   go:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +83,8 @@ jobs:
   web:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     defaults:
       run:
         working-directory: apps/web
@@ -104,7 +114,8 @@ jobs:
   mcp:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     defaults:
       run:
         working-directory: apps/mcp
@@ -131,12 +142,12 @@ jobs:
           if-no-files-found: ignore
 
   comment:
-    needs: [go, web, mcp]
-    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [select-runner, go, web, mcp]
+    if: always() && needs.select-runner.result == 'success' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       actions: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/download-artifact@v8
         continue-on-error: true

@@ -3,10 +3,18 @@ name: api-ci
 on:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   build:
     name: api-build
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -25,7 +33,8 @@ jobs:
 
   empty-database:
     name: api-empty-database
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     services:
       mysql:
         image: mysql:8.4
@@ -35,7 +44,7 @@ jobs:
           MYSQL_USER: taskly
           MYSQL_PASSWORD: taskly_ci_password
         ports:
-          - 3306:3306
+          - 127.0.0.1::3306
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
           --health-interval=10s --health-timeout=5s --health-retries=12
@@ -44,14 +53,18 @@ jobs:
       MYSQL_PASSWORD: taskly_ci_password
       MYSQL_DATABASE: taskly_ci
       DB_HOST: 127.0.0.1
-      DB_PORT: "3306"
       MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
       REDIS_USERNAME: default
       REDIS_PASSWORD: taskly_ci_password
+      REDIS_CONTAINER: taskly-baseline-redis-${{ github.run_id }}-${{ github.run_attempt }}
       JWT_SECRET: taskly-ci-baseline-secret-at-least-32-characters
       TEST_MIGRATION_DB: "1"
       TEST_API_SMOKE: "1"
     steps:
+      - name: Select isolated MySQL port
+        env:
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+        run: echo "DB_PORT=$MYSQL_PORT" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
@@ -67,23 +80,31 @@ jobs:
           /tmp/taskly-erasure-venv/bin/pip install pymysql==1.1.2
           TEST_ACCOUNT_ERASURE_DB=1 /tmp/taskly-erasure-venv/bin/python -m unittest infra.airflow.tests.test_account_erasure_integration -v
       - name: Start test Redis
-        run: docker run -d --name taskly-ci-redis -p 6379:6379 redis:7-alpine redis-server --requirepass taskly_ci_password
+        run: |
+          docker run -d --name "$REDIS_CONTAINER" -p 127.0.0.1::6379 redis:7-alpine redis-server --requirepass taskly_ci_password
+          redis_port=$(docker port "$REDIS_CONTAINER" 6379/tcp | sed 's/.*://')
+          test -n "$redis_port"
+          echo "REDIS_ADDR=127.0.0.1:$redis_port" >> "$GITHUB_ENV"
       - name: Start API and check database-backed route
         working-directory: apps/server
         run: |
+          export API_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
           go run ./cmd/server > /tmp/taskly-api.log 2>&1 &
           api_pid=$!
           trap 'kill "$api_pid" 2>/dev/null || true; cat /tmp/taskly-api.log' EXIT
           for attempt in $(seq 1 120); do
-            if curl --fail --silent http://127.0.0.1:8080/healthz | grep -qx ok; then
+            if curl --fail --silent http://127.0.0.1:$API_PORT/healthz | grep -qx ok; then
               break
             fi
             sleep 2
           done
-          curl --fail --silent http://127.0.0.1:8080/healthz | grep -qx ok
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/ical/no-such-token.ics)" = 404
-          curl --fail --silent --show-error -X POST http://127.0.0.1:8080/tasks \
+          curl --fail --silent http://127.0.0.1:$API_PORT/healthz | grep -qx ok
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:$API_PORT/ical/no-such-token.ics)" = 404
+          curl --fail --silent --show-error -X POST http://127.0.0.1:$API_PORT/tasks \
             -H 'Content-Type: application/json' -H 'X-API-Key: taskly-baseline-ci-key' \
             -d '{"title":"baseline API smoke","subject_id":359,"deadline":"2026-10-01"}'
-          curl --fail --silent --show-error http://127.0.0.1:8080/tasks \
+          curl --fail --silent --show-error http://127.0.0.1:$API_PORT/tasks \
             -H 'X-API-Key: taskly-baseline-ci-key' | grep -q 'baseline API smoke'
+      - name: Stop isolated Redis
+        if: always()
+        run: docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true

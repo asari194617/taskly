@@ -6,12 +6,16 @@ on:
     types: [completed]
 
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   comment:
     if: github.event.workflow_run.event == 'pull_request'
     permissions:
       actions: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/download-artifact@v8
         continue-on-error: true

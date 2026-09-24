@@ -7,8 +7,12 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  select-runner:
+    uses: ./.github/workflows/select-runner.yml
+
   build-linux-win:
-    runs-on: ubuntu-latest
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -81,8 +85,8 @@ jobs:
           path: artifacts/*
 
   publish:
-    needs: [build-linux-win, build-macos]
-    runs-on: ubuntu-latest
+    needs: [select-runner, build-linux-win, build-macos]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     env:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
