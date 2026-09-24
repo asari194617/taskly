@@ -87,6 +87,8 @@ jobs:
     if: needs.plan.outputs.count != '0'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     strategy:
+      # Image builders share host disk with Go and browser jobs.
+      max-parallel: 1
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
@@ -125,6 +127,11 @@ jobs:
             --entrypoint python \
             "taskly-ci-airflow:${{ github.sha }}" \
             -m unittest discover -s /opt/airflow/ci/tests -v
+      - name: Remove CI-only Airflow image
+        if: always() && matrix.service == 'airflow'
+        env:
+          CI_IMAGE: taskly-ci-airflow:${{ github.sha }}
+        run: docker image rm "$CI_IMAGE" || true
       - name: Build timing
         if: always()
         run: |

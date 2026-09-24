@@ -7,6 +7,7 @@ on:
       - "apps/web/**"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/select-runner.yml"
+      - "infra/actions-runner/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
