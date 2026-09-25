@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pquerna/otp/totp"
@@ -158,22 +160,31 @@ func RequireCookieCSRF(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *redis.Client) {
+func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *redis.Client) error {
 	if strings.TrimSpace(token) == "" {
-		return
+		return nil
 	}
-	_ = RDB.Del(c.Context(), "session:"+token).Err()
+	var failures []error
+	if err := DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error; err != nil {
+		failures = append(failures, fmt.Errorf("delete persisted session: %w", err))
+	}
+	if err := RDB.Del(c.Context(), "session:"+token).Err(); err != nil {
+		failures = append(failures, fmt.Errorf("delete cached session: %w", err))
+	}
 	if userID != 0 {
-		_ = RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", userID), token).Err()
+		if err := RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", userID), token).Err(); err != nil {
+			failures = append(failures, fmt.Errorf("remove session index: %w", err))
+		}
 	}
-	_ = DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error
+	return errors.Join(failures...)
 }
 
 // SoftDeleteUser revokes persisted credentials together with the account update.
 // Redis cleanup is best effort: every authentication path also checks is_deleted.
 func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Client) error {
+	deletedAt := time.Now().UTC().Truncate(time.Second)
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&domain.User{}).Where("id = ? AND is_deleted = 0", userID).Updates(map[string]any{"is_deleted": true, "deleted_at": time.Now().UTC()}).Error; err != nil {
+		if err := tx.Model(&domain.User{}).Where("id = ? AND is_deleted = 0", userID).Updates(map[string]any{"is_deleted": true, "deleted_at": deletedAt}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("user_id = ?", userID).Delete(&domain.Session{}).Error; err != nil {
@@ -189,16 +200,21 @@ func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Cl
 	}); err != nil {
 		return err
 	}
-	if RDB != nil {
-		key := fmt.Sprintf("user_sessions:%d", userID)
-		if tokens, err := RDB.SMembers(ctx, key).Result(); err == nil {
-			for _, token := range tokens {
-				_ = RDB.Del(ctx, "session:"+token).Err()
-			}
-		}
-		_ = RDB.Del(ctx, key).Err()
+	ClearUserSessionCache(ctx, userID, RDB)
+	return authsync.SyncDeleted(ctx, userID, deletedAt)
+}
+
+func ClearUserSessionCache(ctx context.Context, userID uint, RDB *redis.Client) {
+	if RDB == nil {
+		return
 	}
-	return nil
+	key := fmt.Sprintf("user_sessions:%d", userID)
+	if tokens, err := RDB.SMembers(ctx, key).Result(); err == nil {
+		for _, token := range tokens {
+			_ = RDB.Del(ctx, "session:"+token).Err()
+		}
+	}
+	_ = RDB.Del(ctx, key).Err()
 }
 
 func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
@@ -216,48 +232,33 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 		return false
 	}
 	headerPlat := strings.ToLower(strings.TrimSpace(c.Get("X-Client-Platform")))
-	uidStr, err := RDB.Get(c.Context(), "session:"+token).Result()
-	if err != nil || strings.TrimSpace(uidStr) == "" {
-		var session domain.Session
-		if dbErr := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; dbErr != nil {
-			if debugAuth {
-				log.Printf("[auth] %s %s redis:miss db:miss", c.Method(), sanitizeURLPath(c.Path()))
-			}
-			return false
-		}
-		if headerPlat != "" && session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
-			if debugAuth {
-				log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
-			}
-			return false
-		}
-		ttl := SessionTTL
-		if session.ExpiresAt != nil {
-			rem := time.Until(*session.ExpiresAt)
-			if rem > 0 && rem < ttl {
-				ttl = rem
-			}
-		}
-		_ = RDB.Set(c.Context(), "session:"+token, fmt.Sprintf("%d", session.UserID), ttl).Err()
-		uidStr = fmt.Sprintf("%d", session.UserID)
+	// The persisted row is authoritative. A cached Redis entry may outlive a
+	// revocation or be repopulated after cleanup, so it cannot grant access.
+	var session domain.Session
+	if err := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; err != nil {
+		_ = RDB.Del(c.Context(), "session:"+token).Err()
 		if debugAuth {
-			log.Printf("[auth] %s %s redis:miss db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
+			log.Printf("[auth] %s %s db:miss", c.Method(), sanitizeURLPath(c.Path()))
 		}
-	} else {
-		if headerPlat != "" {
-			var session domain.Session
-			if err := DB.Where("hashed_token = ?", Sha256Hex([]byte(token))).Order("id DESC").First(&session).Error; err == nil {
-				if session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
-					if debugAuth {
-						log.Printf("[auth] %s %s redis:hit platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
-					}
-					return false
-				}
-			}
-		}
+		return false
+	}
+	if headerPlat != "" && session.ClientPlatform != "" && !strings.EqualFold(headerPlat, session.ClientPlatform) {
 		if debugAuth {
-			log.Printf("[auth] %s %s redis:hit user=%s plat_header=%q", c.Method(), sanitizeURLPath(c.Path()), strings.TrimSpace(uidStr), headerPlat)
+			log.Printf("[auth] %s %s platform mismatch header=%q db=%q", c.Method(), sanitizeURLPath(c.Path()), headerPlat, session.ClientPlatform)
 		}
+		return false
+	}
+	uidStr := fmt.Sprintf("%d", session.UserID)
+	ttl := SessionTTL
+	if session.ExpiresAt != nil {
+		rem := time.Until(*session.ExpiresAt)
+		if rem > 0 && rem < ttl {
+			ttl = rem
+		}
+	}
+	_ = RDB.Set(c.Context(), "session:"+token, uidStr, ttl).Err()
+	if debugAuth {
+		log.Printf("[auth] %s %s db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
 	}
 	var u domain.User
 	blockSubquery := DB.Model(&domain.Block{}).
@@ -295,18 +296,31 @@ func GenerateSessionToken(uid uint, platform string) (string, error) {
 	return fmt.Sprintf("sess_%d_%s_%s", uid, platform, enc), nil
 }
 
-func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) {
+func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gorm.DB, RDB *redis.Client) error {
+	curHash := Sha256Hex([]byte(currentToken))
+	if err := DB.Where("user_id = ? AND hashed_token <> ? AND hashed_token <> ?", userID, curHash, currentToken).Delete(&domain.Session{}).Error; err != nil {
+		return fmt.Errorf("delete other persisted sessions: %w", err)
+	}
+	// Cached entries do not grant access without a persisted row. Clean them up
+	// best effort after the database operation succeeds.
 	key := fmt.Sprintf("user_sessions:%d", userID)
-	toks, _ := RDB.SMembers(c.Context(), key).Result()
+	toks, err := RDB.SMembers(c.Context(), key).Result()
+	if err != nil {
+		CaptureError(fmt.Errorf("list cached sessions for cleanup: %w", err))
+		return nil
+	}
 	for _, t := range toks {
 		if t == currentToken || strings.TrimSpace(t) == "" {
 			continue
 		}
-		_ = RDB.Del(c.Context(), "session:"+t).Err()
-		_ = RDB.SRem(c.Context(), key, t).Err()
+		if err := RDB.Del(c.Context(), "session:"+t).Err(); err != nil {
+			CaptureError(fmt.Errorf("delete cached session: %w", err))
+		}
+		if err := RDB.SRem(c.Context(), key, t).Err(); err != nil {
+			CaptureError(fmt.Errorf("remove cached session index: %w", err))
+		}
 	}
-	curHash := Sha256Hex([]byte(currentToken))
-	_ = DB.Where("user_id = ? AND hashed_token <> ?", userID, curHash).Delete(&domain.Session{}).Error
+	return nil
 }
 
 func UserFromAPIKey(c *fiber.Ctx, DB *gorm.DB) bool {

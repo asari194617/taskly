@@ -6,10 +6,60 @@ Each account is processed in its own transaction; failures leave it due for retr
 
 import os
 from datetime import datetime, timedelta, timezone
+from urllib import error, parse, request
 
 import pymysql
 
 RETENTION_DAYS = 30
+
+
+class _NoRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_auth_opener = request.build_opener(_NoRedirect())
+
+
+def erase_auth_user(user_id):
+    if os.environ.get("AUTH_ACCOUNT_LIFECYCLE_EXTERNAL") != "1":
+        return
+    base_url = os.environ.get("AUTH_LIFECYCLE_SYNC_URL", "").strip().rstrip("/")
+    token = os.environ.get("AUTH_INTERNAL_TOKEN", "")
+    parsed = parse.urlparse(base_url)
+    if (
+        not base_url
+        or not token
+        or parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("auth lifecycle synchronization is not configured safely")
+    if os.environ.get("NODE_ENV", "").lower() == "production":
+        private_http = parsed.scheme == "http" and parsed.hostname in ("auth", "localhost", "127.0.0.1")
+        if (parsed.scheme != "https" and not private_http) or len(token) < 32:
+            raise RuntimeError("auth lifecycle synchronization is not configured safely")
+    req = request.Request(
+        f"{base_url}/internal/users/{int(user_id)}",
+        headers={"Authorization": f"Bearer {token}"},
+        method="DELETE",
+    )
+    try:
+        response = _auth_opener.open(req, timeout=5)
+        status = response.status
+        response.close()
+    except error.HTTPError as exc:
+        if exc.fp is not None:
+            exc.close()
+        raise RuntimeError(f"auth lifecycle synchronization returned status {exc.code}") from None
+    except error.URLError:
+        raise RuntimeError("auth lifecycle synchronization request failed") from None
+    if status != 204:
+        raise RuntimeError(f"auth lifecycle synchronization returned status {status}")
 
 
 def erase_due_accounts(connection, now=None):
@@ -33,6 +83,9 @@ def erase_due_accounts(connection, now=None):
                     connection.rollback()
                     break
                 user_id, email = row
+                # Erase credentials first. If the app transaction later fails,
+                # the still-present soft-deleted row makes the next run retryable.
+                erase_auth_user(user_id)
                 # Clear queued and historical jobs containing this user's task
                 # data before deleting the task rows used for the lookup.
                 cursor.execute(

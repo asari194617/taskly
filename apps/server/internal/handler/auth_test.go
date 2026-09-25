@@ -363,6 +363,77 @@ func TestCookieSessionCSRFAndLogoutRevokesDatabaseFallback(t *testing.T) {
 	}
 }
 
+func TestStaleRedisSessionCannotAuthenticateAfterDatabaseRevocation(t *testing.T) {
+	app, mr, db, user := newAuthTransactionTestApp(t)
+	const token = "stale-session"
+	if err := db.Create(&domain.Session{UserID: user.ID, HashedToken: utils.Sha256Hex([]byte(token)), ClientPlatform: "ios"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	mr.Set("session:"+token, fmt.Sprint(user.ID))
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app.Get("/session-check", func(c *fiber.Ctx) error {
+		if !utils.UserFromSession(c, db, rdb) {
+			return c.SendStatus(fiber.StatusUnauthorized)
+		}
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+	check := func() int {
+		req := httptest.NewRequest(fiber.MethodGet, "/session-check", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Client-Platform", "ios")
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := check(); got != fiber.StatusNoContent {
+		t.Fatalf("valid session status=%d", got)
+	}
+	if err := db.Where("user_id = ?", user.ID).Delete(&domain.Session{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !mr.Exists("session:" + token) {
+		t.Fatal("test requires a stale Redis entry")
+	}
+	if got := check(); got != fiber.StatusUnauthorized {
+		t.Fatalf("revoked session status=%d", got)
+	}
+}
+
+func TestLogoutReportsRedisRevocationFailure(t *testing.T) {
+	t.Setenv("API_CORS_ORIGINS", "https://taskly.example")
+	app, mr, db, user := newAuthTransactionTestApp(t)
+	if err := db.Model(&user).Update("email_code_allowed", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	rw, body, err := doJSONRequest(app, fiber.MethodPost, "/auth/login", map[string]string{
+		"email": "mfa@example.com", "password": "correct-password",
+	}, map[string]string{"X-Client-Platform": "web", "Origin": "https://taskly.example"})
+	if err != nil || rw.Code != fiber.StatusOK {
+		t.Fatalf("login status=%d err=%v body=%s", rw.Code, err, body)
+	}
+	cookie := rw.Result().Cookies()[0]
+	mr.Close()
+	req := httptest.NewRequest(fiber.MethodPost, "/auth/logout", nil)
+	req.AddCookie(cookie)
+	req.Header.Set("Origin", "https://taskly.example")
+	req.Header.Set(utils.CSRFHeaderName, utils.CSRFHeaderValue)
+	response, err := app.Test(req, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != fiber.StatusServiceUnavailable {
+		t.Fatalf("logout status=%d, want 503", response.StatusCode)
+	}
+	if len(response.Cookies()) != 0 {
+		t.Fatal("logout cleared the cookie despite failed revocation")
+	}
+}
+
 func doJSONRequest(app *fiber.App, method, path string, body any, headers map[string]string) (*httptest.ResponseRecorder, []byte, error) {
 	var buf bytes.Buffer
 	if body != nil {

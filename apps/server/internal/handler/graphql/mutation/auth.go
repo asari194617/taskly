@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/legal"
@@ -65,7 +66,15 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				if len(dn) > 255 {
 					dn = dn[:255]
 				}
+				if authsync.UsersEnabled() {
+					if err := authsync.UpdateUser(p.Context, u.ID, authsync.UserUpdate{DisplayName: &dn}); err != nil {
+						return false, fmt.Errorf("auth user synchronization pending")
+					}
+				}
 				if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("display_name", dn).Error; err != nil {
+					if authsync.UsersEnabled() {
+						return false, fmt.Errorf("auth user synchronization pending")
+					}
 					return false, err
 				}
 				return true, nil
@@ -80,6 +89,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"email_login_enabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_EMAIL_SETTINGS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("email code settings managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -122,7 +134,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("unauthorized")
 				}
 				if tok, ok := c.Locals("token").(string); ok && tok != "" {
-					utils.RevokeSession(c, tok, c.Locals("user").(*domain.User).ID, h.db, h.rdb)
+					if err := utils.RevokeSession(c, tok, c.Locals("user").(*domain.User).ID, h.db, h.rdb); err != nil {
+						utils.CaptureError(err)
+						return false, fmt.Errorf("session revocation failed")
+					}
 				}
 				utils.ClearSessionCookie(c)
 				return true, nil
@@ -141,6 +156,10 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 				}
 				u := c.Locals("user").(*domain.User)
 				if err := utils.SoftDeleteUser(p.Context, u.ID, h.db, h.rdb); err != nil {
+					if errors.Is(err, authsync.ErrLifecycleSync) {
+						utils.ClearSessionCookie(c)
+						return false, fmt.Errorf("auth service synchronization pending")
+					}
 					return false, err
 				}
 				utils.ClearSessionCookie(c)
@@ -159,6 +178,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			},
 		}),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+				return nil, fmt.Errorf("totp managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -188,6 +210,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"code": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("totp managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -235,6 +260,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["totpDisable"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_TOTP_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("totp managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -260,6 +288,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["recoveryGenerate"] = &graphql.Field{
 		Type: graphql.NewList(graphql.String),
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_RECOVERY_EXTERNAL", "") == "1" {
+				return nil, fmt.Errorf("recovery codes managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -295,6 +326,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 	fields["webauthnRegisterBegin"] = &graphql.Field{
 		Type: graphql.String,
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return "", fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -325,6 +359,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -373,6 +410,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -405,6 +445,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSKEYS_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("passkeys managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -428,6 +471,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 			"next":    &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 		},
 		Resolve: func(p graphql.ResolveParams) (any, error) {
+			if utils.Env("AUTH_PASSWORD_EXTERNAL", "") == "1" {
+				return false, fmt.Errorf("password managed by auth service")
+			}
 			h := h.withContext(p.Context)
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
@@ -453,11 +499,16 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 					return false, fmt.Errorf("hash")
 				}
 				hs := string(hash)
-				if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
+				curTok, _ := c.Locals("token").(string)
+				if err := h.db.Transaction(func(tx *gorm.DB) error {
+					if err := tx.Model(&domain.User{}).Where("id = ?", u.ID).Update("hashed_password", &hs).Error; err != nil {
+						return err
+					}
+					return utils.RevokeOtherSessions(c, u.ID, curTok, tx, h.rdb)
+				}); err != nil {
+					utils.CaptureError(err)
 					return false, fmt.Errorf("db")
 				}
-				curTok, _ := c.Locals("token").(string)
-				utils.RevokeOtherSessions(c, u.ID, curTok, h.db, h.rdb)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

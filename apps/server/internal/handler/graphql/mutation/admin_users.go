@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
@@ -50,7 +51,10 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if len(updates) == 0 {
 					return true, nil
 				}
-				if err := h.db.Model(&domain.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+				if err := h.updateAdminUser(p.Context, uint(id), updates); err != nil {
+					if errors.Is(err, authsync.ErrUserSync) || errors.Is(err, errUserProjectionConflict) {
+						return false, fmt.Errorf("auth user synchronization pending")
+					}
 					return false, fmt.Errorf("db")
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.update:%d", id)})
@@ -80,11 +84,15 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				}
 				dn, _ := p.Args["display_name"].(string)
 				lang, _ := p.Args["notification_lang"].(string)
-				rec := domain.User{Email: email, DisplayName: dn, NotificationLang: strings.ToLower(strings.TrimSpace(lang))}
-				if rec.NotificationLang == "" {
-					rec.NotificationLang = "ja"
+				lang = strings.ToLower(strings.TrimSpace(lang))
+				if lang == "" {
+					lang = "ja"
 				}
-				if err := h.db.Create(&rec).Error; err != nil {
+				rec, _, err := h.createAdminUser(p.Context, email, dn, lang)
+				if err != nil {
+					if errors.Is(err, authsync.ErrUserSync) || errors.Is(err, errUserProjectionConflict) {
+						return nil, fmt.Errorf("auth user synchronization pending")
+					}
 					// 重複メールなどの一般的なh.dbエラーを判別して、人間が読める文言を返す
 					msg := err.Error()
 					if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
@@ -138,8 +146,12 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					if len(parts) > 2 {
 						lang = strings.ToLower(strings.TrimSpace(parts[2]))
 					}
-					rec := domain.User{Email: email, DisplayName: dn, NotificationLang: lang}
-					if err := h.db.Create(&rec).Error; err != nil {
+					_, wasCreated, err := h.createAdminUser(p.Context, email, dn, lang)
+					if err != nil {
+						if errors.Is(err, authsync.ErrUserSync) || errors.Is(err, errUserProjectionConflict) {
+							errs = append(errs, fmt.Sprintf("line %d: auth user synchronization pending", i+1))
+							continue
+						}
 						msg := err.Error()
 						if strings.Contains(strings.ToLower(msg), "duplicate") && strings.Contains(strings.ToLower(msg), "email") {
 							errs = append(errs, fmt.Sprintf("line %d: duplicate email", i+1))
@@ -148,7 +160,11 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 						}
 						continue
 					}
-					created++
+					if wasCreated {
+						created++
+					} else {
+						errs = append(errs, fmt.Sprintf("line %d: duplicate email", i+1))
+					}
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.user.bulk_create:%d", created)})
 				return map[string]any{"created": created, "errors": errs}, nil
@@ -215,11 +231,38 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				id := p.Args["user_id"].(int)
 				hard, _ := p.Args["hard"].(bool)
 				if hard {
+					if authsync.LifecycleEnabled() {
+						var target domain.User
+						if err := h.db.Select("id", "is_deleted", "deleted_at").First(&target, id).Error; err != nil {
+							return false, fmt.Errorf("db")
+						}
+						if !target.IsDeleted {
+							if err := utils.SoftDeleteUser(p.Context, uint(id), h.db, h.rdb); err != nil {
+								return false, fmt.Errorf("auth service synchronization pending")
+							}
+						}
+						err := authsync.Erase(p.Context, uint(id))
+						if errors.Is(err, authsync.ErrLifecycleNotDeleted) {
+							deletedAt := time.Now().UTC().Truncate(time.Second)
+							if target.DeletedAt != nil {
+								deletedAt = target.DeletedAt.UTC()
+							}
+							if err = authsync.SyncDeleted(p.Context, uint(id), deletedAt); err == nil {
+								err = authsync.Erase(p.Context, uint(id))
+							}
+						}
+						if err != nil {
+							return false, fmt.Errorf("auth service synchronization pending")
+						}
+					}
 					if err := h.db.Delete(&domain.User{}, id).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else {
 					if err := utils.SoftDeleteUser(p.Context, uint(id), h.db, h.rdb); err != nil {
+						if errors.Is(err, authsync.ErrLifecycleSync) {
+							return false, fmt.Errorf("auth service synchronization pending")
+						}
 						return false, fmt.Errorf("db")
 					}
 				}
@@ -296,9 +339,11 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				uid := uint(p.Args["user_id"].(int))
 				var expPtr *time.Time
 				if s, ok := p.Args["expires_at"].(string); ok && strings.TrimSpace(s) != "" {
-					if t, err := time.Parse(time.RFC3339, s); err == nil {
-						expPtr = &t
+					t, err := time.Parse(time.RFC3339, s)
+					if err != nil {
+						return false, fmt.Errorf("invalid expires_at")
 					}
+					expPtr = &t
 				}
 				var reasonPtr *string
 				if s, ok := p.Args["reason"].(string); ok && strings.TrimSpace(s) != "" {
@@ -310,6 +355,9 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					return false, fmt.Errorf("db")
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.block:%d", uid)})
+				if err := authsync.SyncBlock(p.Context, uid, true, reasonPtr, expPtr); err != nil {
+					return false, fmt.Errorf("authentication block synchronization pending")
+				}
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
@@ -332,6 +380,9 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 					return false, fmt.Errorf("db")
 				}
 				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: fmt.Sprintf("admin.unblock:%d", uid)})
+				if err := authsync.SyncBlock(p.Context, uid, false, nil, nil); err != nil {
+					return false, fmt.Errorf("authentication block synchronization pending")
+				}
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")

@@ -17,6 +17,8 @@ service name on the Compose `default` network.
 | `3067/tcp` | `127.0.0.1` only | Grafana dashboard via SSH tunnel |
 | `3068/tcp` | `127.0.0.1` only | Prometheus query and readiness |
 | `3069/tcp` | `127.0.0.1` only | Alertmanager readiness and test alerts |
+| `3070/tcp` | `127.0.0.1` only | Planned auth API upstream |
+| `3071/tcp` | `127.0.0.1` only | Planned auth UI upstream |
 
 MySQL (`3306`), Redis (`6379`), and email-compose gRPC (`50051`)
 have no host port mapping. Containers reach them as `db:3306`, `redis:6379`,
@@ -24,7 +26,7 @@ and `email-compose:50051`.
 
 The host and cloud firewalls should deny unsolicited inbound traffic by
 default. Allow `80/tcp` and `443/tcp` publicly, and limit `22/tcp` to trusted
-administration sources where practical. Ports `3060` through `3069` must not
+administration sources where practical. Ports `3060` through `3071` must not
 be allowed from external networks.
 
 ## Verification
@@ -44,12 +46,12 @@ docker compose --file infra/docker-compose.yml --file infra/docker-compose.prod.
 ss -lnt
 ```
 
-The Docker mappings for `3063` through `3069` must show `127.0.0.1`; there
+The Docker mappings for `3063` through `3071` must show `127.0.0.1`; there
 must be no host mappings for MySQL, Redis, or email-compose. From a machine
 outside the production network, scan the formerly published range:
 
 ```bash
-for port in 3060 3061 3063 3064 3065 3066 3067 3068 3069; do
+for port in 3060 3061 3063 3064 3065 3066 3067 3068 3069 3070 3071; do
   nc -z -w 2 <production-host> "$port" && echo "$port unexpectedly open"
 done
 ```

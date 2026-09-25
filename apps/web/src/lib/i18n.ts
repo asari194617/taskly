@@ -522,13 +522,19 @@ export const t = (lang: Lang) => ({
     },
     emailLogin: {
       title: lang === "ja" ? "メールコードでのログイン" : "Email code login",
+      manage: lang === "ja" ? "設定" : "Configure",
       note:
         lang === "ja"
           ? "ONをオフにするには他の認証手段（パスワード/TOTP/パスキー）が必要です。"
           : "To turn this off, you need another auth method (password/TOTP/passkey).",
+      externalNote:
+        lang === "ja"
+          ? "認証サービスで設定します。オフにするにはパスワードかパスキーが必要です。"
+          : "Configure this in the auth service. Turning it off requires a password or passkey.",
     },
     totp: {
       title: "TOTP",
+      manage: lang === "ja" ? "設定" : "Configure",
       enabled: lang === "ja" ? "有効になっています" : "Enabled",
       disable: lang === "ja" ? "無効化" : "Disable",
       disabled: lang === "ja" ? "TOTPを無効化しました" : "TOTP disabled",

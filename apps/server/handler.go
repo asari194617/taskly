@@ -98,6 +98,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		MaxAge:           86400,
 	}))
+	app.Use(pauseForAuthMigration)
 
 	app.Use(utils.RequireCookieCSRF)
 
@@ -124,6 +125,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	/* 認証 */
 	appHandler.RegisterAuthRoutes(app.Group("/auth"))
+	appHandler.RegisterOAuthRoutes(app.Group("/auth/oauth"))
 
 	/* 認証 */
 	appHandler.RegisterPushRoutes(app.Group("/push"), middleware)
@@ -135,7 +137,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 	appHandler.RegisterSettingsRoutes(app.Group("/settings", middleware.AuthRequired, middleware.Audit))
 
 	/* パスキー */
-	appHandler.RegisterWebAuthnRoutes(app.Group("/webauthn"), middleware)
+	appHandler.RegisterWebAuthnRoutes(app.Group("/webauthn", blockLegacyPasskeys), middleware)
 
 	/* APIキー */
 	appHandler.RegisterAPIKeyRoutes(app.Group("/apikeys", middleware.AuthRequired, middleware.Audit))

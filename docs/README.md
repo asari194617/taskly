@@ -36,6 +36,8 @@ These documents are useful background, but they are not authoritative current
 status:
 
 - `legal/terms-issue-404.md`: proposed terms revision and publication procedure; not yet effective
+- [`auth-service-extraction.md`](auth-service-extraction.md): staged OAuth 2.1 and identity database separation specification
+- [`auth-identity-write-inventory.md`](auth-identity-write-inventory.md): legacy identity writes and cutover gates
 - `improvements.md`: point-in-time security review and recommendations
 - `remain.md`: earlier backlog and requirements notes
 - `setup.tmp.md`: migration-specific rollout notes

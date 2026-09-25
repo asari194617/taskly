@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"strings"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -13,7 +15,7 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 	router.Patch("/me", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		var body struct {
-			DisplayName *string `json:"display_name"`
+			DisplayName      *string `json:"display_name"`
 			NotificationLang *string `json:"notification_lang"`
 		}
 		if err := utils.ParseJSONStrict(c, &body); err != nil {
@@ -37,7 +39,22 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 		if len(updates) == 0 {
 			return c.Status(400).JSON(fiber.Map{"error": "no changes"})
 		}
+		if authsync.UsersEnabled() {
+			input := authsync.UserUpdate{}
+			if value, ok := updates["display_name"].(string); ok {
+				input.DisplayName = &value
+			}
+			if value, ok := updates["notification_lang"].(string); ok {
+				input.NotificationLang = &value
+			}
+			if err := authsync.UpdateUser(c.Context(), u.ID, input); err != nil {
+				return c.Status(503).JSON(fiber.Map{"error": "auth synchronization pending"})
+			}
+		}
 		if err := h.db.Model(&domain.User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
+			if authsync.UsersEnabled() {
+				return c.Status(503).JSON(fiber.Map{"error": "auth synchronization pending"})
+			}
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		return c.SendStatus(204)
@@ -47,6 +64,10 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 	router.Delete("/me", func(c *fiber.Ctx) error {
 		u := c.Locals("user").(*domain.User)
 		if err := utils.SoftDeleteUser(c.Context(), u.ID, h.db, h.rdb); err != nil {
+			if errors.Is(err, authsync.ErrLifecycleSync) {
+				utils.ClearSessionCookie(c)
+				return c.Status(503).JSON(fiber.Map{"error": "auth synchronization pending"})
+			}
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
 		utils.ClearSessionCookie(c)

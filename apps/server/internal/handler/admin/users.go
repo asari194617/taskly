@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asari194617/taskly/apps/server/internal/authsync"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	utils "github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -112,13 +113,20 @@ func (h *Handler) RegisterAdminUsersRoutes(router fiber.Router) {
 		if err := h.db.Create(&rec).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
+		if err := authsync.SyncBlock(c.Context(), rec.UserID, true, body.Reason, expPtr); err != nil {
+			return c.Status(502).JSON(fiber.Map{"error": "authentication block synchronization pending"})
+		}
 		return c.SendStatus(201)
 	})
 
 	router.Post("/:id/unblock", func(c *fiber.Ctx) error {
 		now := time.Now()
-		if err := h.db.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", c.Params("id"), now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
+		uid := utils.ToUint(c.Params("id"))
+		if err := h.db.Model(&domain.Block{}).Where("user_id = ? AND (expires_at IS NULL OR expires_at > ?)", uid, now).Updates(map[string]any{"expires_at": now}).Error; err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
+		}
+		if err := authsync.SyncBlock(c.Context(), uid, false, nil, nil); err != nil {
+			return c.Status(502).JSON(fiber.Map{"error": "authentication block synchronization pending"})
 		}
 		return c.SendStatus(204)
 	})
