@@ -23,6 +23,9 @@ func Run() {
 	if os.Getenv("JWT_SECRET") == "" {
 		log.Fatal("FATAL: JWT_SECRET must be set in non-development environments.")
 	}
+	if err := validateAuthMigrationConfig(); err != nil {
+		log.Fatalf("FATAL: auth migration configuration: %v", err)
+	}
 
 	// Start Datadog tracer (reads most settings from env; select the transport explicitly below).
 	serviceName := utils.Env("DD_SERVICE", "taskly-server")
