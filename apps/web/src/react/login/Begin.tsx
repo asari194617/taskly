@@ -8,12 +8,18 @@ import {
 import { Label } from "../../components/ui/label";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
-import { apiBase, clearAuthTransaction, webFetch, withNext } from "./helpers";
+import {
+  apiBase,
+  clearAuthTransaction,
+  getNextParam,
+  webFetch,
+  withNext,
+} from "./helpers";
 
 export default function Begin() {
-  const oauthStart = (import.meta as any).env.PUBLIC_AUTH_OAUTH_START_URL as
-    | string
-    | undefined;
+  const oauthStart = (
+    (import.meta as any).env.PUBLIC_AUTH_OAUTH_START_URL as string | undefined
+  )?.trim();
   const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -88,6 +94,24 @@ export default function Begin() {
     }
   };
 
+  if (oauthStart) {
+    const oauthURL = new URL(oauthStart);
+    const next = getNextParam();
+    if (next) oauthURL.searchParams.set("next", next);
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>ログイン</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <a href={oauthURL.toString()}>Tasklyにログイン</a>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -111,11 +135,6 @@ export default function Begin() {
           </div>
         </div>
         {message && <p className="text-sm text-muted-foreground">{message}</p>}
-        {oauthStart && (
-          <a className="text-sm underline" href={oauthStart}>
-            新しい認証サービスでログイン
-          </a>
-        )}
       </CardContent>
     </Card>
   );

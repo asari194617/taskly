@@ -4,6 +4,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+!apps/web/.env.production
 *.log
 coverage/
 **/test-results/

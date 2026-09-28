@@ -53,6 +53,10 @@ test "$(auth_redis_cli eval "$compare_and_delete" 1 "$lock_key" wrong-token)" = 
 test "$(auth_redis_cli get "$lock_key")" = "lock-token"
 test "$(auth_redis_cli eval "$compare_and_delete" 1 "$lock_key" lock-token)" = "1"
 test "$(auth_redis_cli del "$transaction_key")" = "1"
+oauth_login_key=oauth_login:acl-test
+test "$(auth_redis_cli set "$oauth_login_key" pending EX 60)" = "OK"
+test "$(auth_redis_cli get "$oauth_login_key")" = "pending"
+test "$(auth_redis_cli del "$oauth_login_key")" = "1"
 
 expect_noperm set unrelated:key denied
 expect_noperm eval "$compare_and_delete" 1 unrelated:key lock-token
