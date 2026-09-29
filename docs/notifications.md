@@ -104,9 +104,30 @@ mutation UpdatePrefs($id: Int!) {
 
 ## 運用
 
+- メールが意図しない言語で届いた場合は、下記「メール言語の切り分け」で対象ユーザーの通知言語と全体の分布を確認する。
 - 互換 API や旧設定は段階的に devices/types へ集約。
 - 配信失敗は Airflow タスクを失敗にし、`notification_deliveries.status='error'` と Web Push では `notifications_queue.status='error'` に記録する。Web Push の失敗行は `processed_at` を空のまま保ち、次の実行で失敗した購読だけを再試行する。両 DAG は 5 分間隔で最大 2 回再試行する。
 - `sending` が残った場合は、SMTP や Push サービスが受け付けた直後にプロセスが停止した可能性がある。自動再送はせず、送信先で受信状況を確認してから `sent` または `error` に更新する。SMTP には受信側の冪等 API がないため、この状態の自動的な厳密一回配信は保証できない。
+
+### メール言語の切り分け
+
+課題ダイジェストは配信時に `users.notification_lang` を読み、`en` の場合だけ英語、それ以外は日本語で件名・本文を生成する。ブラウザーの表示言語とは別の設定なので、画面が日本語でもメールが英語になることがある。
+
+1. メールの種類・件名を確認する。課題ダイジェストの件名は日本語では `[Taskly]期限が近い課題`、英語では `[Taskly] Upcoming tasks`。
+2. アプリ DB で対象ユーザーの設定と、削除されていないユーザー全体の分布を読み取り専用で確認する。以下の `?` は調査対象のメールアドレスをバインドするプレースホルダー。
+
+   ```sql
+   SELECT id, notification_lang, is_deleted
+   FROM users WHERE email = ?;
+
+   SELECT notification_lang, COUNT(*) AS active_users
+   FROM users WHERE is_deleted = 0 GROUP BY notification_lang;
+   ```
+
+3. 認証を分離した環境では認証 DB の同じユーザーも照合する。両 DB の値が違う場合は[プロフィール同期](auth-user-projection-sync.md)を調査する。
+4. 利用者が日本語の通知を希望する場合は「設定 → 基本設定 → 配信メールの言語」で日本語を選び、保存する。認証 DB とアプリ DB の片方だけを直接更新しない。
+
+現在の設定だけでは、過去の配信時点の設定や、誰がいつ変更したかは断定できない。調査対象のメールアドレスやメール本文はリポジトリに記録しない。
 
 ## 対象者・設定の判定表
 
