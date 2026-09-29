@@ -128,6 +128,8 @@ func TestGraphQLRejectsExpensiveRequests(t *testing.T) {
 		{"nested list", "query { " + strings.Join(lists, " ") + " }", nil, 400},
 		{"variable page size", "query($n: Int) { tasks(limit: $n) { items { id } } }", map[string]any{"n": 500}, 400},
 		{"very large variable page size", "query($n: Int) { tasks(limit: $n) { items { id } } }", map[string]any{"n": 2000000}, 400},
+		{"oversized day shift groups page", "query($cid:Int!,$page:Int,$size:Int){ adminDayshiftGroupsPaginated(cycle_id:$cid,page:$page,page_size:$size){ items{ id cycle_id position user_ids } total } }", map[string]any{"cid": 7, "page": 1, "size": 100}, 400},
+		{"normal day shift groups page", "query($cid:Int!,$page:Int,$size:Int){ adminDayshiftGroupsPaginated(cycle_id:$cid,page:$page,page_size:$size){ items{ id cycle_id position user_ids } total } }", map[string]any{"cid": 7, "page": 1, "size": 30}, 401},
 		{"normal task page", "query { tasks(limit: 50) { items { id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_completed is_hidden } next_cursor { cursor_deadline cursor_id } } }", nil, 401},
 		{"query size", "query { dayShiftIndex } #" + strings.Repeat("x", maxGraphQLQueryBytes), nil, 413},
 		{"variables size", "query($s: String) { dayShiftIndex }", map[string]any{"s": strings.Repeat("x", maxGraphQLVariablesBytes)}, 413},
