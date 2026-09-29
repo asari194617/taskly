@@ -107,7 +107,8 @@ export default function AdminDayShift() {
     (async () => {
       const all: api.Group[] = [];
       for (let page = 1; ; page++) {
-        const result = (await api.loadGroups(cid, page, 100))
+        // Nested user_ids also count toward the GraphQL complexity limit.
+        const result = (await api.loadGroups(cid, page, 30))
           .adminDayshiftGroupsPaginated;
         all.push(...result.items);
         if (all.length >= result.total || !result.items.length) break;

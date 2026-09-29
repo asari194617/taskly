@@ -20,7 +20,7 @@ async function setup(page: Page, count = 12) {
     mutations: [] as string[],
     failGroup: false,
   };
-  const users = Array.from({ length: 15 }, (_, i) => ({
+  const users = Array.from({ length: Math.max(15, count) }, (_, i) => ({
     id: i + 1,
     display_name: `メンバー${i + 1}`,
     email: `user${i + 1}@example.test`,
@@ -52,11 +52,17 @@ async function setup(page: Page, count = 12) {
         dayShiftCurrentCycle: 7,
       });
     if (q.includes("adminDayshiftGroupsPaginated")) {
-      // Cap pages to 10 to exercise the complete-order loading path.
+      // Match the server cost for items and its nested user_ids list.
+      if (2 + v.size * 24 > 1000)
+        return route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "query too complex" }),
+        });
       const groups = state.groups.filter((g) => g.cycle_id === v.cid);
       return respond({
         adminDayshiftGroupsPaginated: {
-          items: groups.slice((v.page - 1) * 10, v.page * 10),
+          items: groups.slice((v.page - 1) * v.size, v.page * v.size),
           total: groups.length,
         },
       });
@@ -241,4 +247,16 @@ test("担当位置の変更は確認後に保存する", async ({ page }) => {
   await expect(
     page.getByRole("complementary").last().getByRole("listitem").first(),
   ).toContainText("メンバー12");
+});
+
+test("負荷制限内で複数ページのグループとメンバーをすべて読み込む", async ({ page }) => {
+  await setup(page, 65);
+  await expect(
+    page.getByRole("button", { name: /番のグループを編集$/ }),
+  ).toHaveCount(65);
+  await expect(
+    page.getByRole("button", { name: "65番のグループを編集", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByText("メンバー65", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
