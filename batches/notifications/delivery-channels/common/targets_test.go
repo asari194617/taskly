@@ -14,10 +14,10 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 	for _, tc := range []struct {
 		name, today, end string
 	}{
-		{"ordinary", "2026-09-22", "2026-09-26"},
-		{"month boundary", "2026-09-30", "2026-10-04"},
-		{"year boundary", "2026-12-30", "2027-01-03"},
-		{"leap year", "2028-02-27", "2028-03-02"},
+		{"ordinary", "2026-09-22", "2026-09-25"},
+		{"month boundary", "2026-09-30", "2026-10-03"},
+		{"year boundary", "2026-12-30", "2027-01-02"},
+		{"leap year", "2028-02-27", "2028-03-01"},
 	} {
 		for _, hour := range []int{7, 17} {
 			t.Run(fmt.Sprintf("%s/%02d", tc.name, hour), func(t *testing.T) {
@@ -36,13 +36,13 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 				}
 				now := start.Add(time.Duration(hour) * time.Hour)
 				// Require an inclusive start and exclusive end: include today's
-				// midnight and the whole third day, but exclude the fourth day.
+				// midnight and the whole second day ahead, but exclude the third day ahead.
 				// String arguments keep JST dates intact even with a UTC connection.
 				mock.ExpectQuery(`FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? ORDER BY t.deadline ASC`).
 					WithArgs(tc.today, tc.end).WillReturnRows(sqlmock.NewRows([]string{
 					"id", "added_user_id", "subject_id", "subject_name", "type", "title", "description", "deadline", "deadline_since", "deadline_until", "is_require_hand_in", "is_self_check_required",
 				}).AddRow(1, 2, 3, "Math", "OTHER", "Today", nil, start, "", "P5", false, true).
-					AddRow(2, 2, 3, "Math", "OTHER", "Three days ahead", nil, end.Add(-time.Microsecond), "", "P5", false, true))
+					AddRow(2, 2, 3, "Math", "OTHER", "Two days ahead", nil, end.Add(-time.Microsecond), "", "P5", false, true))
 				tasks, err := FetchDueTasks(db, now)
 				if err != nil {
 					t.Fatal(err)

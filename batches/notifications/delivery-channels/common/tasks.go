@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// FetchDueTasks returns tasks due from today through three calendar days ahead,
+// FetchDueTasks returns tasks due from today through two calendar days ahead,
 // including the entire final day, in now's timezone (JST in notification jobs).
 func FetchDueTasks(db *sql.DB, now time.Time) ([]Task, error) {
 	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	endDate := startDate.AddDate(0, 0, 4)
+	endDate := startDate.AddDate(0, 0, 3)
 	// Bind calendar dates as strings: the MySQL driver converts time.Time
 	// parameters to the connection timezone (UTC on the production host),
 	// which would shift JST midnight to the previous day.
