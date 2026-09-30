@@ -19,6 +19,7 @@ async function setup(page: Page, count = 12) {
     index: 10,
     mutations: [] as string[],
     failGroup: false,
+    failCycle: false,
   };
   const users = Array.from({ length: Math.max(15, count) }, (_, i) => ({
     id: i + 1,
@@ -103,6 +104,22 @@ async function setup(page: Page, count = 12) {
     if (q.includes("adminDayshiftDeleteGroup")) {
       state.groups = state.groups.filter((g) => g.id !== v.gid);
       return respond({ adminDayshiftDeleteGroup: true });
+    }
+    if (q.includes("adminDayshiftUpdateCycle")) {
+      if (state.failCycle)
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({ errors: [{ message: "期間の保存エラー" }] }),
+        });
+      Object.assign(
+        state.cycles.find((c) => c.id === v.id)!,
+        {
+          description: v.d,
+          begin_date: v.b,
+          finish_date: v.f,
+        },
+      );
+      return respond({ adminDayshiftUpdateCycle: true });
     }
     if (q.includes("adminDayshiftCreateCycle")) {
       state.cycles.push({
@@ -249,7 +266,9 @@ test("担当位置の変更は確認後に保存する", async ({ page }) => {
   ).toContainText("メンバー12");
 });
 
-test("負荷制限内で複数ページのグループとメンバーをすべて読み込む", async ({ page }) => {
+test("負荷制限内で複数ページのグループとメンバーをすべて読み込む", async ({
+  page,
+}) => {
   await setup(page, 65);
   await expect(
     page.getByRole("button", { name: /番のグループを編集$/ }),
@@ -257,6 +276,56 @@ test("負荷制限内で複数ページのグループとメンバーをすべ�
   await expect(
     page.getByRole("button", { name: "65番のグループを編集", exact: true }),
   ).toBeEnabled();
-  await expect(page.getByText("メンバー65", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText("メンバー65", { exact: true }).first(),
+  ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("運用中の期間を編集し、グループ・担当位置を保持する", async ({ page }) => {
+  const state = await setup(page);
+  const groups = structuredClone(state.groups);
+  await page.getByRole("button", { name: "期間を編集", exact: true }).click();
+  await expect(page.getByLabel("期間名", { exact: true })).toHaveValue("2学期");
+  await expect(page.getByLabel("開始日", { exact: true })).toHaveValue(
+    "2026-09-01",
+  );
+  await expect(page.getByLabel("終了日", { exact: true })).toHaveValue(
+    "2026-12-31",
+  );
+  await page.getByLabel("期間名", { exact: true }).fill("2学期（変更）");
+  await page.getByLabel("開始日", { exact: true }).fill("2026-09-02");
+  await page.getByLabel("終了日", { exact: true }).fill("2026-09-02");
+  await expect(
+    page.getByRole("button", { name: "保存", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("終了日", { exact: true }).fill("2026-12-25");
+  state.failCycle = true;
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "期間の保存エラー",
+  );
+  await expect(page.getByLabel("期間名", { exact: true })).toHaveValue(
+    "2学期（変更）",
+  );
+  expect(state.cycles[0].finish_date).toBe("2026-12-31");
+  state.failCycle = false;
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("期間を更新しました");
+  await expect(page.getByLabel("管理する期間")).toHaveValue("7");
+  await expect(page.getByRole("option", { selected: true })).toHaveText(
+    "2学期（変更）（運用中） / 2026-09-02 〜 2026-12-25",
+  );
+  expect(state.cycles).toHaveLength(1);
+  expect(state.groups).toEqual(groups);
+  expect(state.index).toBe(10);
+  await page.getByRole("button", { name: "期間を編集", exact: true }).click();
+  await page.getByLabel("期間名", { exact: true }).fill("保存しない");
+  const mutations = state.mutations.length;
+  await page.getByRole("button", { name: "キャンセル", exact: true }).click();
+  expect(state.mutations).toHaveLength(mutations);
+  await page.getByRole("button", { name: "期間を作成", exact: true }).click();
+  await expect(page.getByLabel("期間名", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("開始日", { exact: true })).toHaveValue("");
 });
