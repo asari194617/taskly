@@ -37,6 +37,9 @@ export default function AdminDayShift() {
   const [dialog, setDialog] = React.useState<"cycle" | "group" | "csv" | null>(
     null,
   );
+  const [editingCycle, setEditingCycle] = React.useState<api.Cycle | null>(
+    null,
+  );
   const [editing, setEditing] = React.useState<api.Group | null>(null);
   const [selected, setSelected] = React.useState<api.AdminUser[]>([]);
   const [query, setQuery] = React.useState("");
@@ -225,6 +228,8 @@ export default function AdminDayShift() {
         <Button
           variant="outline"
           onClick={() => {
+            setEditingCycle(null);
+            setError("");
             setBegin("");
             setFinish("");
             setDescription("");
@@ -303,6 +308,20 @@ export default function AdminDayShift() {
               {groupsLoading ? "読み込み中…" : `${groups.length} グループ`}
             </p>
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={!ready}
+                onClick={() => {
+                  setEditingCycle(cycle);
+                  setBegin(cycle.begin_date);
+                  setFinish(cycle.finish_date);
+                  setDescription(cycle.description);
+                  setError("");
+                  setDialog("cycle");
+                }}
+              >
+                期間を編集
+              </Button>
               {cid !== currentCid && (
                 <Button
                   disabled={!ready || !groups.length}
@@ -544,7 +563,9 @@ export default function AdminDayShift() {
           <DialogHeader>
             <DialogTitle>
               {dialog === "cycle"
-                ? "期間を作成"
+                ? editingCycle
+                  ? "期間を編集"
+                  : "期間を作成"
                 : dialog === "csv"
                   ? "CSVでグループを追加"
                   : editing
@@ -553,7 +574,9 @@ export default function AdminDayShift() {
             </DialogTitle>
             <DialogDescription>
               {dialog === "cycle"
-                ? "日直を担当する期間と、見分けやすい名前を登録します。"
+                ? editingCycle
+                  ? "期間名・開始日・終了日を変更します。担当グループと順番はそのまま保持されます。"
+                  : "日直を担当する期間と、見分けやすい名前を登録します。"
                 : dialog === "csv"
                   ? "1行が1グループです。ユーザーIDをカンマ区切りで入力してください。"
                   : "一緒に担当するメンバーを選んでください。"}
@@ -594,9 +617,9 @@ export default function AdminDayShift() {
                   disabled={busy}
                 />
               </label>
-              {begin && finish && begin > finish && (
+              {begin && finish && begin >= finish && (
                 <p role="alert" className="text-sm text-destructive">
-                  終了日は開始日以降を選んでください。
+                  終了日は開始日より後の日付を選んでください。
                 </p>
               )}
             </div>
@@ -694,7 +717,7 @@ export default function AdminDayShift() {
               disabled={
                 busy ||
                 (dialog === "cycle"
-                  ? !description.trim() || !begin || !finish || begin > finish
+                  ? !description.trim() || !begin || !finish || begin >= finish
                   : dialog === "group"
                     ? !selected.length
                     : !csv.trim())
@@ -703,12 +726,21 @@ export default function AdminDayShift() {
                 run(
                   async () => {
                     if (dialog === "cycle") {
-                      const result = await api.createCycle(
-                        begin,
-                        finish,
-                        description.trim(),
-                      );
-                      setCid(result.adminDayshiftCreateCycle.id);
+                      if (editingCycle) {
+                        await api.updateCycle(
+                          editingCycle.id,
+                          begin,
+                          finish,
+                          description.trim(),
+                        );
+                      } else {
+                        const result = await api.createCycle(
+                          begin,
+                          finish,
+                          description.trim(),
+                        );
+                        setCid(result.adminDayshiftCreateCycle.id);
+                      }
                     }
                     if (dialog === "group") {
                       if (editing)
@@ -755,7 +787,9 @@ export default function AdminDayShift() {
                     }
                   },
                   dialog === "cycle"
-                    ? "期間を作成しました。グループを追加してください。"
+                    ? editingCycle
+                      ? "期間を更新しました。"
+                      : "期間を作成しました。グループを追加してください。"
                     : "グループを保存しました",
                 )
               }

@@ -2,6 +2,7 @@ package gqlMutation
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
@@ -132,6 +133,53 @@ func (h *Handler) mutationFieldsDayShift() graphql.Fields {
 				return map[string]any{"id": rec.ID}, nil
 			}
 			return nil, fmt.Errorf("context missing")
+		},
+	}
+
+	fields["adminDayshiftUpdateCycle"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"id":          &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+			"begin_date":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"finish_date": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"description": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
+			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+				u, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
+				}
+				bd, err1 := time.Parse("2006-01-02", p.Args["begin_date"].(string))
+				fd, err2 := time.Parse("2006-01-02", p.Args["finish_date"].(string))
+				if err1 != nil || err2 != nil || !bd.Before(fd) {
+					return false, fmt.Errorf("invalid dates")
+				}
+				desc := strings.TrimSpace(p.Args["description"].(string))
+				if desc == "" {
+					return false, fmt.Errorf("description required")
+				}
+				result := h.db.Model(&domain.DayShiftCycle{}).Where("id = ?", p.Args["id"].(int)).Updates(map[string]any{
+					"begin_date": bd, "finish_date": fd, "description": desc,
+				})
+				if result.Error != nil {
+					return false, fmt.Errorf("db")
+				}
+				if result.RowsAffected == 0 {
+					// MySQL also reports zero affected rows when the values are unchanged.
+					var count int64
+					if err := h.db.Model(&domain.DayShiftCycle{}).Where("id = ?", p.Args["id"].(int)).Count(&count).Error; err != nil {
+						return false, fmt.Errorf("db")
+					}
+					if count == 0 {
+						return false, fmt.Errorf("cycle not found")
+					}
+				}
+				h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.dayshift.cycle.update"})
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
 		},
 	}
 

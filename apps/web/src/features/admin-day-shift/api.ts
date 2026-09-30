@@ -66,10 +66,26 @@ export async function loadCurrentCycleId() {
   }
 }
 
-export function createCycle(begin: string, finish: string, description: string) {
+export function createCycle(
+  begin: string,
+  finish: string,
+  description: string,
+) {
   return gql<{ adminDayshiftCreateCycle: { id: number } }>(
     `mutation($b:String!,$f:String!,$d:String!){ adminDayshiftCreateCycle(begin_date:$b, finish_date:$f, description:$d){ id } }`,
     { b: begin, f: finish, d: description },
+  );
+}
+
+export function updateCycle(
+  id: number,
+  begin: string,
+  finish: string,
+  description: string,
+) {
+  return gql<{ adminDayshiftUpdateCycle: boolean }>(
+    `mutation($id:Int!,$b:String!,$f:String!,$d:String!){ adminDayshiftUpdateCycle(id:$id, begin_date:$b, finish_date:$f, description:$d) }`,
+    { id, b: begin, f: finish, d: description },
   );
 }
 
