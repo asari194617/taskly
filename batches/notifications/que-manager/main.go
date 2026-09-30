@@ -65,7 +65,7 @@ func main() {
 	}
 	items := make([]NotifyItem, 0, 256)
 
-	// 期限が近い課題（今日〜あさってまでの「日付」）を抽出（DATEのみ）
+	// 期限が近い課題（今日〜3日後の終日）を抽出
 	tasks, err := dcCommon.FetchDueTasks(db, now)
 	if err != nil {
 		log.Fatal("query tasks (effective window): ", err)
