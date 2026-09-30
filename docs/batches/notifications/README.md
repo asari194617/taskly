@@ -22,6 +22,7 @@
   `users.notification_lang` に従って email-compose の gRPC で本文を生成し、SMTP で送信します。
 - メール配信の締切日時の抽出範囲も同じです。締切日の3日前から当日まで、朝夕の設定に応じて通知します。
   4日後以降の課題と前日以前の課題は対象外です。
+  SQL の境界値は JST の日付文字列で渡し、DB 接続のタイムゾーンによる前日へのずれを防ぎます。
 - Queue Manager・メール・Discord は `delivery-channels/common` の `FetchDueTasks` と
   `LoadEligibleUsersAndPrefs` を使います。Web Push はキュー内の単一ユーザーに対して
   同じ判定を行う `LoadEligibleUserAndPrefs` を使います。課題は期限の昇順で取得します。

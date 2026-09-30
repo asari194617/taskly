@@ -37,8 +37,9 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 				now := start.Add(time.Duration(hour) * time.Hour)
 				// Require an inclusive start and exclusive end: include today's
 				// midnight and the whole third day, but exclude the fourth day.
+				// String arguments keep JST dates intact even with a UTC connection.
 				mock.ExpectQuery(`FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? ORDER BY t.deadline ASC`).
-					WithArgs(start, end).WillReturnRows(sqlmock.NewRows([]string{
+					WithArgs(tc.today, tc.end).WillReturnRows(sqlmock.NewRows([]string{
 					"id", "added_user_id", "subject_id", "subject_name", "type", "title", "description", "deadline", "deadline_since", "deadline_until", "is_require_hand_in", "is_self_check_required",
 				}).AddRow(1, 2, 3, "Math", "OTHER", "Today", nil, start, "", "P5", false, true).
 					AddRow(2, 2, 3, "Math", "OTHER", "Three days ahead", nil, end.Add(-time.Microsecond), "", "P5", false, true))
