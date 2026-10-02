@@ -11,7 +11,7 @@
 
 ## 課題通知
 
-- Queue Manager は JST の当日 00:00 から翌々日 00:00 まで（両端を含む）の締切日時を持つ課題を読み込み、対象ユーザーごとに
+- Queue Manager は JST の当日 00:00 以上、3日後 00:00 未満（2日後の終日まで）の締切日時を持つ課題を読み込み、対象ユーザーごとに
   `channel='webpush'` の行を `notifications_queue` に追加します。`TASK` と実行時間帯の
   `TASK_MORNING` / `TASK_EVENING` 設定、Web Push の有効状態を参照します。
 - Web Push 配信は未処理のキューを最大 200 件読みます。削除済み・ブロック中のユーザー、
@@ -20,8 +20,9 @@
 - メール配信はキューを読みません。実行時に締切が近い課題と対象ユーザーを取得し、
   Email と `TASK`・実行時間帯の設定を確認してユーザーごとにダイジェストを組み立てます。
   `users.notification_lang` に従って email-compose の gRPC で本文を生成し、SMTP で送信します。
-- メール配信の締切日時の抽出範囲も同じです。翌々日の 00:00 より後の課題は
-  現行の SQL では対象外です。
+- メール配信の締切日時の抽出範囲も同じです。締切日の2日前から当日まで、朝夕の設定に応じて通知します。
+  3日後以降の課題と前日以前の課題は対象外です。
+  SQL の境界値は JST の日付文字列で渡し、DB 接続のタイムゾーンによる前日へのずれを防ぎます。
 - Queue Manager・メール・Discord は `delivery-channels/common` の `FetchDueTasks` と
   `LoadEligibleUsersAndPrefs` を使います。Web Push はキュー内の単一ユーザーに対して
   同じ判定を行う `LoadEligibleUserAndPrefs` を使います。課題は期限の昇順で取得します。

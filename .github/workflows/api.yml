@@ -100,9 +100,10 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:$API_PORT/healthz | grep -qx ok
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:$API_PORT/ical/no-such-token.ics)" = 404
+          smoke_deadline=$(date -u -d '+7 days' +%F)
           curl --fail --silent --show-error -X POST http://127.0.0.1:$API_PORT/tasks \
             -H 'Content-Type: application/json' -H 'X-API-Key: taskly-baseline-ci-key' \
-            -d '{"title":"baseline API smoke","subject_id":359,"deadline":"2026-10-01"}'
+            -d "{\"title\":\"baseline API smoke\",\"subject_id\":359,\"deadline\":\"$smoke_deadline\"}"
           curl --fail --silent --show-error http://127.0.0.1:$API_PORT/tasks \
             -H 'X-API-Key: taskly-baseline-ci-key' | grep -q 'baseline API smoke'
       - name: Stop isolated Redis

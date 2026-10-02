@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,26 +10,51 @@ import (
 )
 
 func TestFetchDueTasksWindowAndOrder(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	now := time.Date(2026, 9, 22, 17, 0, 0, 0, time.UTC)
-	start := time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
-	mock.ExpectQuery("FROM tasks t LEFT JOIN subjects s.*ORDER BY t.deadline ASC").WithArgs(start, end).WillReturnRows(sqlmock.NewRows([]string{
-		"id", "added_user_id", "subject_id", "subject_name", "type", "title", "description", "deadline", "deadline_since", "deadline_until", "is_require_hand_in", "is_self_check_required",
-	}).AddRow(1, 2, 3, "Math", "OTHER", "Homework", nil, end, "", "P5", false, true))
-	tasks, err := FetchDueTasks(db, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 || tasks[0].ID != 1 || tasks[0].Description != nil || !tasks[0].IsSelfCheckRequired {
-		t.Fatalf("tasks=%+v", tasks)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
+	jst := time.FixedZone("JST", 9*60*60)
+	for _, tc := range []struct {
+		name, today, end string
+	}{
+		{"ordinary", "2026-09-22", "2026-09-25"},
+		{"month boundary", "2026-09-30", "2026-10-03"},
+		{"year boundary", "2026-12-30", "2027-01-02"},
+		{"leap year", "2028-02-27", "2028-03-01"},
+	} {
+		for _, hour := range []int{7, 17} {
+			t.Run(fmt.Sprintf("%s/%02d", tc.name, hour), func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer db.Close()
+				start, err := time.ParseInLocation(time.DateOnly, tc.today, jst)
+				if err != nil {
+					t.Fatal(err)
+				}
+				end, err := time.ParseInLocation(time.DateOnly, tc.end, jst)
+				if err != nil {
+					t.Fatal(err)
+				}
+				now := start.Add(time.Duration(hour) * time.Hour)
+				// Require an inclusive start and exclusive end: include today's
+				// midnight and the whole second day ahead, but exclude the third day ahead.
+				// String arguments keep JST dates intact even with a UTC connection.
+				mock.ExpectQuery(`FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? ORDER BY t.deadline ASC`).
+					WithArgs(tc.today, tc.end).WillReturnRows(sqlmock.NewRows([]string{
+					"id", "added_user_id", "subject_id", "subject_name", "type", "title", "description", "deadline", "deadline_since", "deadline_until", "is_require_hand_in", "is_self_check_required",
+				}).AddRow(1, 2, 3, "Math", "OTHER", "Today", nil, start, "", "P5", false, true).
+					AddRow(2, 2, 3, "Math", "OTHER", "Two days ahead", nil, end.Add(-time.Microsecond), "", "P5", false, true))
+				tasks, err := FetchDueTasks(db, now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(tasks) != 2 || tasks[0].ID != 1 || tasks[1].ID != 2 || tasks[0].Description != nil || !tasks[0].IsSelfCheckRequired {
+					t.Fatalf("tasks=%+v", tasks)
+				}
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 }
 
