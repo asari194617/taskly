@@ -55,10 +55,11 @@ test "$(auth_redis_cli eval "$compare_and_delete" 1 "$lock_key" lock-token)" = "
 test "$(auth_redis_cli del "$transaction_key")" = "1"
 oauth_login_key=oauth_login:acl-test
 test "$(auth_redis_cli set "$oauth_login_key" pending EX 60)" = "OK"
-test "$(auth_redis_cli get "$oauth_login_key")" = "pending"
-test "$(auth_redis_cli del "$oauth_login_key")" = "1"
+test "$(auth_redis_cli getdel "$oauth_login_key")" = "pending"
+test "$(auth_redis_cli get "$oauth_login_key")" = ""
 
 expect_noperm set unrelated:key denied
+expect_noperm getdel unrelated:key
 expect_noperm eval "$compare_and_delete" 1 unrelated:key lock-token
 auth_redis_cli eval 'return redis.call("FLUSHALL")' 0 | grep -q 'ACL failure in script'
 expect_noperm config get dir
