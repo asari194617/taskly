@@ -21,7 +21,7 @@ chmod 750 /run/redis
 {
   printf '%s\n' 'user default off'
   printf 'user %s reset on #%s resetkeys resetchannels -@all' "$REDIS_USERNAME" "$password_hash"
-  printf ' +ping +select +get +set +del +incr +expire +sadd +smembers +srem +eval'
+  printf ' +ping +select +get +getdel +set +del +incr +expire +sadd +smembers +srem +eval'
   printf ' ~session:* ~user_sessions:* ~totp-setup:* ~webauthn:* ~auth_transaction:* ~oauth_login:*'
   printf ' ~login_code_req_ip:* ~login_code_req_email:*'
   printf ' ~login_attempt_ip:* ~login_attempt_email:* ~graphql_rate:*\n'
