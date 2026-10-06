@@ -286,6 +286,7 @@ export const t = (lang: Lang) => ({
   },
   settingsBasic: {
     heading: lang === "ja" ? "基本設定" : "Basic Settings",
+    authProfileManage: lang === "ja" ? "メールアドレスの確認・表示名の設定" : "Verify email and set display name",
     email: lang === "ja" ? "メールアドレス" : "Email",
     displayName: lang === "ja" ? "表示名" : "Display name",
     notificationLang: lang === "ja" ? "配信メールの言語" : "Email language",

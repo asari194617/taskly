@@ -123,7 +123,7 @@ export default function SettingsBasic() {
           {dict.settingsBasic.heading}
         </h1>
         <Card className="p-4 space-y-3">
-          {authProfileURL ? <p><a className="underline" href={authProfileURL}>メールアドレスの確認・表示名の設定</a></p> : <>
+          {authProfileURL ? <p><a className="underline" href={authProfileURL}>{dict.settingsBasic.authProfileManage}</a></p> : <>
           <div className="space-y-1">
             <Label htmlFor="email">{dict.settingsBasic.email}</Label>
             <Input id="email" value={email} disabled readOnly />
