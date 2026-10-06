@@ -245,7 +245,8 @@ test("TOTP無効化とリカバリーコード再発行は確認後だけ実行�
   expect(totpDisableCalls).toBe(0);
 
   await page.getByRole("button", { name: "無効化", exact: true }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "無効化" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "無効化" }).focus();
+  await page.keyboard.press("Enter");
   await expect.poll(() => totpDisableCalls).toBe(1);
 
   await page.getByRole("button", { name: "リカバリーコードを再発行" }).click();

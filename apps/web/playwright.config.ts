@@ -9,13 +9,14 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     ...devices["Desktop Chrome"],
-    baseURL: `http://127.0.0.1:${port}`,
+    // WebAuthn accepts localhost as a relying-party domain, but not an IP address.
+    baseURL: `http://localhost:${port}`,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `ASTRO_DEV_BACKGROUND=0 npm run dev -- --host 127.0.0.1 --port ${port}`,
-    url: `http://127.0.0.1:${port}/login`,
+    command: `PLAYWRIGHT_TEST=1 ASTRO_DEV_BACKGROUND=0 npm run dev -- --host localhost --port ${port}`,
+    url: `http://localhost:${port}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

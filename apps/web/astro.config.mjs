@@ -9,6 +9,7 @@ export default defineConfig({
   // under a different public origin.
   site: process.env.SITE_URL || "https://taskly.iy0306.com",
   server: { port: 4321 },
+  devToolbar: { enabled: process.env.PLAYWRIGHT_TEST !== "1" },
   integrations: [react()],
 
   vite: {
