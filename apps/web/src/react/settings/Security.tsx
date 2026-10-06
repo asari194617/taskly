@@ -60,6 +60,7 @@ import {
 
 export default function SettingsSecurity() {
   const { dict } = useLang();
+  const authSecurityURL = import.meta.env.PUBLIC_AUTH_SECURITY_URL?.trim();
   const authPasskeyURL = import.meta.env.PUBLIC_AUTH_PASSKEY_URL?.trim();
   const authPasswordURL = import.meta.env.PUBLIC_AUTH_PASSWORD_URL?.trim();
   const authEmailCodeURL = import.meta.env.PUBLIC_AUTH_EMAIL_CODE_URL?.trim();
@@ -87,6 +88,10 @@ export default function SettingsSecurity() {
   } | null>(null);
 
   React.useEffect(() => {
+    if (authSecurityURL) window.location.assign(authSecurityURL);
+  }, [authSecurityURL]);
+
+  React.useEffect(() => {
     if (new URLSearchParams(window.location.search).has("change-password")) {
       if (authPasswordURL) {
         window.location.assign(authPasswordURL);
@@ -97,6 +102,7 @@ export default function SettingsSecurity() {
   }, [authPasswordURL]);
 
   React.useEffect(() => {
+    if (authSecurityURL) return;
     loadSecuritySettings()
       .then((d) => {
         setAuth(d.authSettings);
@@ -105,7 +111,9 @@ export default function SettingsSecurity() {
       .catch(() =>
         toast({ variant: "destructive", title: dict.toast.userInfoFetchError }),
       );
-  }, []);
+  }, [authSecurityURL]);
+
+  if (authSecurityURL) return <SettingsShell><p>認証設定へ移動しています…</p></SettingsShell>;
 
   async function toggleEmailLogin(v: boolean) {
     const prev = auth;

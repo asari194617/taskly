@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -57,6 +58,9 @@ func (h *Handler) mutationFieldsAuth() graphql.Fields {
 		Resolve: func(p graphql.ResolveParams) (any, error) {
 			h := h.withContext(p.Context)
 			displayName, _ := p.Args["display_name"].(string)
+			if os.Getenv("AUTH_PROFILE_EXTERNAL") == "1" {
+				return false, fmt.Errorf("profile managed by auth")
+			}
 			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
 				if !utils.UserFromSession(c, h.db, h.rdb) {
 					return false, fmt.Errorf("unauthorized")
