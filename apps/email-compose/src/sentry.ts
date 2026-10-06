@@ -9,7 +9,8 @@ export function initSentry() {
     dsn,
     environment: process.env.SENTRY_ENV || process.env.NODE_ENV || 'development',
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.05'),
-    profilesSampleRate: Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? '0'),
+    profileSessionSampleRate: Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? '0'),
+    profileLifecycle: 'trace',
     integrations: [nodeProfilingIntegration()],
     beforeSend(event) {
       // Basic scrub of headers/cookies/query
