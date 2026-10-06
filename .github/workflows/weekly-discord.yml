@@ -1,0 +1,32 @@
+name: weekly-discord
+
+on:
+  schedule:
+    # Monday 09:00 JST. Report covers the previous Monday through Sunday.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: weekly-discord
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: [self-hosted, taskly-ci]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Send weekly activity to Discord
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WEEKLY_DISCORD_WEBHOOK_URL: ${{ secrets.WEEKLY_DISCORD_WEBHOOK_URL }}
+        run: node .github/scripts/weekly-discord.mjs
