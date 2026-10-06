@@ -363,8 +363,7 @@ export default function TasksList() {
       <div
         role="group"
         aria-label={dict.tasks.completionFilter}
-        aria-describedby="completion-filter-hint"
-        className="-mt-2 space-y-1"
+        className="-mt-2"
       >
         <div className="flex flex-wrap items-center gap-2">
           {(
@@ -401,9 +400,6 @@ export default function TasksList() {
                 : dict.tasks.completed}
           </span>
         </div>
-        <p id="completion-filter-hint" className="text-xs text-muted-foreground">
-          {dict.tasks.completionFilterHint}
-        </p>
       </div>
 
       {/* New Task Form (responsive dialog/drawer) */}

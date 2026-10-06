@@ -149,7 +149,7 @@ test("完了状態フィルターをキーボードで切り替え、選択と�
   const filters = page.getByRole("group", { name: "完了状態で絞り込み" });
   const incomplete = filters.getByRole("button", { name: "未完了", exact: true });
   const completed = filters.getByRole("button", { name: "完了済み", exact: true });
-  await expect(filters).toContainText("選択中の条件をもう一度押すと、すべて表示します。");
+  await expect(filters).not.toContainText("選択中の条件をもう一度押すと、すべて表示します。");
   await expect(filters.getByRole("status")).toHaveText("表示中: すべて");
   await expect(incomplete).toHaveAttribute("aria-pressed", "false");
   await expect(completed).toHaveAttribute("aria-pressed", "false");
@@ -188,7 +188,7 @@ test("完了状態フィルターをキーボードで切り替え、選択と�
   await expect(englishFilters.getByRole("button", { name: "Incomplete" })).toHaveAttribute("aria-pressed", "false");
   await expect(englishFilters.getByRole("button", { name: "Completed" })).toHaveAttribute("aria-pressed", "false");
   await expect(englishFilters.getByRole("status")).toHaveText("Showing: All");
-  await expect(englishFilters).toContainText("Press the selected filter again to show all tasks.");
+  await expect(englishFilters).not.toContainText("Press the selected filter again to show all tasks.");
   await englishFilters.getByRole("button", { name: "Completed" }).click();
   await expect(englishFilters.getByRole("status")).toHaveText("Showing: Completed");
   await englishFilters.getByRole("button", { name: "Completed" }).click();

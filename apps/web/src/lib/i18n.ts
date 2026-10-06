@@ -180,10 +180,6 @@ export const t = (lang: Lang) => ({
     completed: lang === "ja" ? "完了済み" : "Completed",
     all: lang === "ja" ? "すべて" : "All",
     showingFilter: lang === "ja" ? "表示中" : "Showing",
-    completionFilterHint:
-      lang === "ja"
-        ? "選択中の条件をもう一度押すと、すべて表示します。"
-        : "Press the selected filter again to show all tasks.",
     today: lang === "ja" ? "今日" : "Today",
     tomorrow: lang === "ja" ? "あす" : "Tomorrow",
     dayAfterTomorrow: lang === "ja" ? "あさって" : "Day after tomorrow",
