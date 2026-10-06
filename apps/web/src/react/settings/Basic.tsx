@@ -35,6 +35,8 @@ export default function SettingsBasic() {
     "ja"
   );
   const [loading, setLoading] = React.useState(false);
+  const [closureOpen, setClosureOpen] = React.useState(false);
+  const [closingAccount, setClosingAccount] = React.useState(false);
   const { toast } = useToast();
   const { dict } = useLang();
 
@@ -101,6 +103,8 @@ export default function SettingsBasic() {
   }
 
   async function deleteAccount() {
+    if (closingAccount) return;
+    setClosingAccount(true);
     try {
       await gql<{ deleteMe: boolean }>(`mutation{ deleteMe }`);
       location.href = "/";
@@ -110,6 +114,8 @@ export default function SettingsBasic() {
         title: dict.settingsBasic.deleteFailed,
         description: e?.message || undefined,
       });
+    } finally {
+      setClosingAccount(false);
     }
   }
 
@@ -155,25 +161,26 @@ export default function SettingsBasic() {
             {loading ? dict.common.saving : dict.common.save}
           </Button>
         </Card>
-        <Card className="p-4 space-y-3 border-destructive/30">
-          <div>
-            <div className="font-medium text-destructive">
+        <Card className="space-y-4 border-border p-4">
+          <div className="space-y-2">
+            <h2 className="font-medium">
               {dict.settingsBasic.deleteAccount}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {dict.settingsBasic.irreversible}
-            </div>
+            </h2>
             <p className="text-sm text-muted-foreground">
-              {dict.settingsBasic.erasureInfo}{" "}
-              <a className="underline" href="/account-data">{dict.settingsBasic.erasureLink}</a>
-              {" "}<span aria-hidden="true">·</span>{" "}
-              {dict.settingsBasic.requestContact}: <a className="underline" href="mailto:lyrical_beagles.9r@icloud.com">lyrical_beagles.9r@icloud.com</a>
+              {dict.settingsBasic.closureSummary}
+            </p>
+            <p className="text-sm">
+              <a className="text-muted-foreground underline underline-offset-4 hover:text-foreground" href="/account-data">
+                {dict.settingsBasic.erasureLink}
+              </a>
             </p>
           </div>
-          <AlertDialog>
+          <AlertDialog open={closureOpen} onOpenChange={(open) => {
+            if (!closingAccount) setClosureOpen(open);
+          }}>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive">
-                {dict.settingsBasic.deleteAccount}
+              <Button variant="destructive" className="w-fit">
+                {dict.settingsBasic.startClosure}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -181,18 +188,23 @@ export default function SettingsBasic() {
                 <AlertDialogTitle>
                   {dict.settingsBasic.deleteConfirmTitle}
                 </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {dict.settingsBasic.irreversible}
-                  {" "}<a className="underline" href="/account-data">{dict.settingsBasic.erasureLink}</a>
+                <AlertDialogDescription className="text-left">
+                  <span className="block">{dict.settingsBasic.closureAccess}</span>
+                  <span className="mt-2 block">{dict.settingsBasic.closureData}</span>
+                  <a className="mt-2 inline-block" href="/account-data">{dict.settingsBasic.erasureLink}</a>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>{dict.common.cancel}</AlertDialogCancel>
+                <AlertDialogCancel disabled={closingAccount}>{dict.common.cancel}</AlertDialogCancel>
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={deleteAccount}
+                  disabled={closingAccount}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void deleteAccount();
+                  }}
                 >
-                  {dict.settingsBasic.deleteAccount}
+                  {closingAccount ? dict.settingsBasic.closingAccount : dict.settingsBasic.deleteAccount}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
