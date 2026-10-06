@@ -1,8 +1,8 @@
 # Integration jobs
 
-Migration `0029_integration_job_kind_claim.sql` adds an index for claiming jobs by kind. Apply it before increasing the worker count; it may briefly hold a metadata lock on `integration_jobs`.
+The declarative schema includes an index for claiming jobs by kind. Apply the Atlas plan before increasing the worker count; adding the index may briefly hold a metadata lock on `integration_jobs`.
 
-The server checks and creates the schema in `apps/server/migrations/0025_integration_jobs.sql` on startup; it fails to start if that check fails. The migration can also be applied ahead of deployment. It creates `integration_jobs` and links inbound Teams jobs to their created task. An inbound request returns HTTP 202 only after the job insert commits. A database failure returns HTTP 503. Teams inbound accepts `deadline` in `YYYY-MM-DD` form and uses the reception date when the field is omitted, since the task table requires a date.
+Atlas creates `integration_jobs` from `apps/server/schema.sql` before the API is deployed and links inbound Teams jobs to their created task. An inbound request returns HTTP 202 only after the job insert commits. A database failure returns HTTP 503. Teams inbound accepts `deadline` in `YYYY-MM-DD` form and uses the reception date when the field is omitted, since the task table requires a date.
 
 The server polls due jobs, leases each row, and recovers expired leases after a restart. A job is retried up to three times with increasing delays, then marked `failed`. The admin API provides `GET /admin/integration-jobs?status=failed` (up to 100 newest rows) and `POST /admin/integration-jobs/:id/retry`. Other valid status filters are `pending`, `processing`, and `succeeded`. These routes require an admin session.
 

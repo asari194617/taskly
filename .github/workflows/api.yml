@@ -53,12 +53,11 @@ jobs:
       MYSQL_PASSWORD: taskly_ci_password
       MYSQL_DATABASE: taskly_ci
       DB_HOST: 127.0.0.1
-      MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
       REDIS_USERNAME: default
       REDIS_PASSWORD: taskly_ci_password
       REDIS_CONTAINER: taskly-baseline-redis-${{ github.run_id }}-${{ github.run_attempt }}
       JWT_SECRET: taskly-ci-baseline-secret-at-least-32-characters
-      TEST_MIGRATION_DB: "1"
+      TEST_SCHEMA_DB: "1"
       TEST_API_SMOKE: "1"
     steps:
       - name: Select isolated MySQL port
@@ -71,9 +70,11 @@ jobs:
           go-version: "1.26.5"
           cache: true
           cache-dependency-path: apps/server/go.sum
-      - name: Initialize schema and exercise core tables
+      - name: Apply declarative schema with Atlas
+        run: infra/ops/apply-schema-ci.sh
+      - name: Exercise core tables
         working-directory: apps/server
-        run: go test ./cmd/migrate -run '^TestEmptyDatabaseBaseline$' -count=1 -v
+        run: go test ./internal/schema -run '^TestDeclarativeSchema$' -count=1 -v
       - name: Verify account erasure against MySQL
         run: |
           python3 -m venv /tmp/taskly-erasure-venv

@@ -57,6 +57,17 @@ docker compose -f infra/docker-compose.yml down
 
 Named volumes contain development data and are retained by this command.
 
+Database schema changes are declared in `apps/server/schema.sql`. Apply the
+desired state with Atlas after the database is healthy:
+
+```bash
+infra/ops/apply-schema.sh
+```
+
+The command prints the plan first and refuses destructive changes unless they
+were explicitly reviewed. Historical files in `apps/server/migrations` are kept
+for audit only.
+
 ## Verification
 
 Run the checks relevant to the component you changed:

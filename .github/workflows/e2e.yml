@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "apps/server/**"
+      - "atlas.hcl"
+      - "infra/ops/apply-schema-ci.sh"
       - "apps/web/**"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/select-runner.yml"
@@ -42,7 +44,6 @@ jobs:
       MYSQL_PASSWORD: taskly_e2e_password
       MYSQL_DATABASE: taskly_e2e
       DB_HOST: 127.0.0.1
-      MIGRATIONS_DIR: ${{ github.workspace }}/apps/server/migrations
       REDIS_ADDR: 127.0.0.1:6379
       REDIS_USERNAME: default
       REDIS_PASSWORD: taskly_e2e_password
@@ -75,11 +76,10 @@ jobs:
           test -n "$redis_port"
           echo "REDIS_ADDR=127.0.0.1:$redis_port" >> "$GITHUB_ENV"
       - name: Migrate and build API and reset helper
-        working-directory: apps/server
         run: |
-          go run ./cmd/migrate
-          go build -o server-e2e ./cmd/server
-          go build -o e2e-seed ./cmd/e2e-seed
+          infra/ops/apply-schema-ci.sh
+          (cd apps/server && go build -o server-e2e ./cmd/server)
+          (cd apps/server && go build -o e2e-seed ./cmd/e2e-seed)
       - name: Start API
         working-directory: apps/server
         run: |
