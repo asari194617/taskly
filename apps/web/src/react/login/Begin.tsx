@@ -23,6 +23,16 @@ export default function Begin() {
   const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
+  const [oauthURL, setOauthURL] = React.useState(oauthStart || "");
+
+  React.useEffect(() => {
+    if (!oauthStart) return;
+    const oauthURL = new URL(oauthStart);
+    const next = getNextParam();
+    if (next) oauthURL.searchParams.set("next", next);
+    setOauthURL(oauthURL.toString());
+    window.location.replace(oauthURL.toString());
+  }, [oauthStart]);
 
   const go = async () => {
     setMessage(null);
@@ -95,9 +105,6 @@ export default function Begin() {
   };
 
   if (oauthStart) {
-    const oauthURL = new URL(oauthStart);
-    const next = getNextParam();
-    if (next) oauthURL.searchParams.set("next", next);
     return (
       <Card>
         <CardHeader>
@@ -105,7 +112,7 @@ export default function Begin() {
         </CardHeader>
         <CardContent>
           <Button asChild>
-            <a href={oauthURL.toString()}>Tasklyにログイン</a>
+            <a href={oauthURL}>Tasklyにログイン</a>
           </Button>
         </CardContent>
       </Card>
