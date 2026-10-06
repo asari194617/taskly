@@ -290,14 +290,21 @@ export const t = (lang: Lang) => ({
     displayName: lang === "ja" ? "表示名" : "Display name",
     notificationLang: lang === "ja" ? "配信メールの言語" : "Email language",
     deleteAccount: lang === "ja" ? "退会する" : "Close account",
-    irreversible:
+    startClosure: lang === "ja" ? "退会手続きへ" : "Continue to account closure",
+    closingAccount: lang === "ja" ? "退会処理中..." : "Closing account...",
+    closureSummary:
       lang === "ja"
-        ? "退会するとログインと連携が直ちに停止します。メールアドレス・表示名・共有課題などは請求対応のため30日間保持し、その後の日次処理で消去します。暗号化バックアップには通常さらに14日間残ります。"
-        : "Closing your account immediately disables sign-in and integrations. We retain your email, display name, shared tasks and related data for 30 days to handle requests, then erase them in a daily job. Encrypted backups normally retain copies for a further 14 days.",
-    erasureInfo:
-      lang === "ja" ? "退会と個人データの消去は別の処理です。例外と請求方法は" : "Account closure and personal data erasure are separate. For exceptions and requests, see the",
+        ? "退会すると、ログインと連携はすぐに停止します。課題などのデータは30日後の日次処理で消去されます。"
+        : "Closing your account immediately stops sign-in and integrations. Tasks and other data are erased in a daily job after 30 days.",
+    closureAccess:
+      lang === "ja"
+        ? "ログインと連携がすぐに使えなくなります。"
+        : "You will immediately lose access to sign-in and integrations.",
+    closureData:
+      lang === "ja"
+        ? "共有課題を含むデータは30日間保持され、その後の日次処理で消去されます。"
+        : "Data, including shared tasks, is retained for 30 days, then erased in a daily job.",
     erasureLink: lang === "ja" ? "退会後のデータ取扱い" : "account data policy",
-    requestContact: lang === "ja" ? "退会後の請求窓口" : "Data request contact",
     deleteConfirmTitle:
       lang === "ja" ? "退会しますか？" : "Close your account?",
     emailLanguageSaveFailed:
