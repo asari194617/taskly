@@ -14,11 +14,16 @@ async function mockLogin(page: Page, methods = ["totp", "recovery"]) {
     calls.push({ path, body });
     const reply = (json: unknown, status = 200) => route.fulfill({ status, json });
     if (path === "/auth/options") return reply({ has_password: true, methods: ["password", ...methods] });
+    if (path === "/auth/request-code") return reply({ ok: true });
     if (path === "/auth/login") {
       if (body.password) return reply(body.password === "browser-password"
         ? { mfa_required: true, auth_transaction: "test-transaction", methods, expires_in: 300 }
         : { error: "invalid password" }, body.password === "browser-password" ? 200 : 401);
       if (body.totp === "123456" && body.auth_transaction === "test-transaction") {
+        authenticated = true;
+        return reply({ authenticated: true });
+      }
+      if ((body.code === "123456" || body.recovery_code === "recovery-ok") && body.auth_transaction === "test-transaction") {
         authenticated = true;
         return reply({ authenticated: true });
       }
@@ -76,6 +81,38 @@ test("MFA: 期限切れの取引を破棄し、パスワードへの案内を表
   await page.getByLabel("TOTP").fill("123456");
   await page.getByRole("button", { name: "続行" }).click();
   await expect(page.getByText("認証の有効期限が切れました。パスワードからやり直してください")).toBeVisible();
+});
+
+test("MFA: メールコードを送信し、誤入力と成功を検証する", async ({ page }) => {
+  const { calls } = await mockLogin(page, ["email_code", "recovery"]);
+  await beginPasswordLogin(page);
+  await page.getByRole("button", { name: "メールコードで続行" }).click();
+  await expect(page).toHaveURL(/\/login\/mail-code/);
+  await expect(page.locator('astro-island[component-url*="MailCode"]')).not.toHaveAttribute("ssr", "");
+  expect(calls.some((call) => call.path === "/auth/request-code" && call.body.email === email)).toBe(true);
+  const code = page.getByLabel("メールコード");
+  await code.fill("000000");
+  await page.getByRole("button", { name: "続行" }).click();
+  await expect(page.getByText("invalid code")).toBeVisible();
+  await code.fill("123456");
+  await page.getByRole("button", { name: "続行" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+});
+
+test("MFA: リカバリーコードの誤入力と成功を検証する", async ({ page }) => {
+  const { calls } = await mockLogin(page, ["totp", "recovery"]);
+  await beginPasswordLogin(page);
+  await page.getByRole("button", { name: "リカバリーコードで続行" }).click();
+  await expect(page).toHaveURL(/\/login\/recovery/);
+  await expect(page.locator('astro-island[component-url*="Recovery"]')).not.toHaveAttribute("ssr", "");
+  const code = page.getByLabel("リカバリーコード");
+  await code.fill("recovery-bad");
+  await page.getByRole("button", { name: "続行" }).click();
+  await expect(page.getByText("invalid code")).toBeVisible();
+  await code.fill("recovery-ok");
+  await page.getByRole("button", { name: "続行" }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  expect(calls.filter((call) => call.path === "/auth/login").slice(-1)[0]?.body).toMatchObject({ auth_transaction: "test-transaction", recovery_code: "recovery-ok" });
 });
 
 test("パスキー: 仮想認証器で登録し、ログイン成功とサーバー失敗を確認する", async ({ page, context }) => {
