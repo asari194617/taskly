@@ -338,7 +338,9 @@
 | `expires_at`   | `DATETIME`     | NULL                                | 期限     |
 | `created_at`   | `DATETIME`     | NOT NULL, DEFAULT CURRENT_TIMESTAMP |          |
 
-### `migrations`: マイグレーション追跡
+### `migrations`: 旧マイグレーション履歴
+
+Atlas移行前の適用履歴を監査用に保持する。新しいスキーマ変更の状態管理には使用しない。
 
 | フィールド名 | 型             | 属性                                | 詳細     |
 | ------------ | -------------- | ----------------------------------- | -------- |

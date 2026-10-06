@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "apps/server/**"
+      - "atlas.hcl"
       - "apps/mcp/**"
       - "apps/email-compose/**"
       - "batches/**"
@@ -25,6 +26,10 @@ on:
         type: choice
         options: [auto, ubuntu-latest]
         default: auto
+      allow_destructive_schema:
+        description: Apply a reviewed destructive Atlas plan
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-production
@@ -196,6 +201,7 @@ jobs:
       RELEASE_SHA: ${{ github.sha }}
       REDIS_ACL_CHANGED: ${{ needs.plan.outputs.redis_acl_changed }}
       AIRFLOW_CHANGED: ${{ needs.plan.outputs.airflow_changed }}
+      ATLAS_ALLOW_DESTRUCTIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_destructive_schema || 'false' }}
       PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
       PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
       PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
@@ -288,6 +294,7 @@ jobs:
           export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
           export TASKLY_IMAGE_TAG="$RELEASE_SHA"
+          export ATLAS_ALLOW_DESTRUCTIVE="$ATLAS_ALLOW_DESTRUCTIVE"
           set +x
           export PROD_PUBLIC_API_HEALTH_URL=\$(printf '%s' '$api_health_b64' | base64 -d)
           export PROD_PUBLIC_MCP_HEALTH_URL=\$(printf '%s' '$mcp_health_b64' | base64 -d)
@@ -308,7 +315,7 @@ jobs:
             docker compose up -d --no-build --force-recreate redis
           fi
           docker compose up -d --no-build --wait db redis
-          docker compose run --rm --no-deps --entrypoint /app/migrate server </dev/null
+          ./ops/apply-schema.sh </dev/null
           # A release SHA is assigned to all images, but unchanged Airflow
           # containers must keep running instead of being recreated for its tag.
           if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp prometheus alertmanager blackbox grafana; then

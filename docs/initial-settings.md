@@ -64,7 +64,7 @@
 5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
 7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull する。Redis ACL の entrypoint が変更された場合は Redis を再作成し、DB と Redis の起動を確認する。
-8. 新しい API イメージの `/app/migrate` を一度だけ実行し、成功後にアプリコンテナを更新する。Airflow のイメージまたは Compose 設定が変わった場合だけ Airflow 3サービスを更新する。メタDB移行は通常デプロイでは実行しない。
+8. Atlasで `apps/server/schema.sql` と実DBの差分を表示し、破壊的変更がないことを確認して適用する。成功後にアプリコンテナを更新する。Airflow のイメージまたは Compose 設定が変わった場合だけ Airflow 3サービスを更新する。メタDB移行は通常デプロイでは実行しない。
 9. 更新したコンテナの再作成後、最大10分間 healthcheck を待つ。
 10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
 11. Datadog APM socket への接続と Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
@@ -82,37 +82,25 @@ mountします。通常のローカルCompose起動ではこのoverrideを使い
 本番ホストではイメージをビルドしません。`docker compose up --build` や
 `latest` の直接指定ではなく、ワークフローが配布する commit SHA タグを使用します。
 
-### DB マイグレーション
+### DBスキーマ管理
 
-本番の既存スキーマと `migrations` 表は `0025_integration_jobs.sql` まで照合済みです。
-`0023`〜`0025` はスキーマ変更が先に存在したため、2026-09-21 に適用履歴を補正しました。
-自動実行の対象は `apps/server/migrations/0026_*.sql` 以降です。古い SQL は
-重複した変更を含むため、空DBには `apps/server/baseline.sql` を適用します。
-このベースラインは2026-09-22に本番 MySQL 8.4 のアプリ用35表からデータを除いて取得し、
-`0028_notification_delivery.sql` 適用後のスキーマとして固定したものです。
+`apps/server/schema.sql` がTasklyアプリDBの宣言的な正本です。`atlas.hcl` は接続情報を
+環境変数から組み立て、SQL定義の解析には使い捨てのMySQL 8.4を使います。過去の
+`apps/server/migrations` は監査資料として残しますが、新しい変更は追加しません。
+旧GORM名の `web_push_v_api_ds` は既存Web Push鍵の互換読取に必要なため、Atlasの
+管理対象から除外して保持します。正本テーブルは `web_push_vapid` です。
 
-新規環境では空の MySQL 8.4 データベースを作り、Airflow などが表を作る前に
-API イメージの `/app/migrate` を実行します。ローカル Compose なら DB 起動後に
-`cd infra && docker compose build server` と
-`docker compose run --rm --no-deps --entrypoint /app/migrate server` を順に実行します。
-環境変数 `MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`、`DB_HOST`、`DB_PORT` が必要です。
-マイグレーターは表が一つもない場合に限ってベースラインを作り、`0025`、`0027`、`0028` の
-適用履歴を記録してから、以後の SQL を適用します。再実行は安全です。
+ローカルでは `.env` を設定して `infra/ops/apply-schema.sh` を実行します。スクリプトは
+Atlasのdry-runを先に表示し、`DROP TABLE`、`DROP COLUMN`、`DROP INDEX`、`MODIFY COLUMN`、
+`CHANGE COLUMN` を含む計画を既定で拒否します。互換期間、検証済みbackup、切り戻し手順を
+レビューした場合だけ `ATLAS_ALLOW_DESTRUCTIVE=true` を明示します。本番では通常のpushを
+破壊的変更に使用せず、手動デプロイの `allow_destructive_schema` を有効にします。本番
+デプロイも同じスクリプトを使い、適用後にアプリを更新します。
 
-既存DBではベースラインを実行しません。実行前に
-`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE();` が0以外で、
-`SELECT name FROM migrations WHERE name='0025_integration_jobs.sql';` が1行であることを確認します。
-履歴がない既存DB、またはベースライン適用に失敗して表だけ作られたDBは自動処理を止めます。
-バックアップ復元後もこの識別を行い、履歴を手動で補正する前に実際のスキーマと照合してください。
-MySQL の DDL は全体をロールバックできないため、途中失敗後は使い捨てDBを作り直すか、
-残った表を調査してから復旧します。本番のデータを含むDBを空にして再試行しないでください。
-
-新しいマイグレーションは連番の `NNNN_name.sql` を追加し、一度適用したファイルは
-変更しないでください。デプロイ中に MySQL の名前付きロックを取得し、未適用の
-ファイルを名前順に実行して `migrations` 表へ記録します。失敗した場合は
-アプリの更新を止めます。MySQL の DDL はファイル全体をロールバックできないため、
-失敗後は本番の変更状態を調べてから再実行してください。破壊的な変更はアプリとの
-互換期間を設け、別リリースで適用してください。
+新規環境と既存環境は同じ手順です。Atlasは実DBをinspectし、`schema.sql`との差分だけを
+適用します。CIは空DBへの適用、主要テーブルの読み書き、2回目のdry-runが空になることを
+確認します。MySQL DDLは全体をロールバックできないため、途中失敗後は実スキーマを
+Atlasの計画と照合してから修正リリースまたはbackup復元を選びます。
 
 Teams連携の `status_callback` を使用する場合は、デプロイ前に `PROD_ENV` の
 `TEAMS_CALLBACK_ALLOWED_ORIGINS` に送信先の正規HTTPSオリジンをカンマ区切りで設定します

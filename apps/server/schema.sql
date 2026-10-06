@@ -1,19 +1,8 @@
--- Schema-only snapshot of 35 Taskly application tables from production MySQL 8.4,
--- captured 2026-09-22 after 0028_notification_delivery.sql. No row data included.
--- Historical 0001-0025 SQL contains duplicate changes and must not be replayed here.
+-- Declarative Taskly application schema for MySQL 8.4.
+-- This file is the source of truth applied by Atlas. It contains no row data.
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!50503 SET NAMES utf8mb4 */;
-/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
-/*!40103 SET TIME_ZONE='+00:00' */;
-/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
+SET FOREIGN_KEY_CHECKS=0;
+
 CREATE TABLE `api_action_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned DEFAULT NULL,
@@ -24,9 +13,6 @@ CREATE TABLE `api_action_logs` (
   PRIMARY KEY (`id`),
   KEY `idx_api_action_logs_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `api_keys` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -39,9 +25,6 @@ CREATE TABLE `api_keys` (
   PRIMARY KEY (`id`),
   KEY `idx_api_keys_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `blocks` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -53,18 +36,12 @@ CREATE TABLE `blocks` (
   KEY `idx_blocks_user_id` (`user_id`),
   KEY `idx_blocks_user_id_expires_at` (`user_id`,`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `configs` (
   `key` varchar(128) NOT NULL,
   `value` text,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `day_shift_assignment_users` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `day_shift_assignments_id` bigint unsigned NOT NULL,
@@ -75,9 +52,6 @@ CREATE TABLE `day_shift_assignment_users` (
   CONSTRAINT `fk_asg_users_asg` FOREIGN KEY (`day_shift_assignments_id`) REFERENCES `day_shift_assignments` (`id`),
   CONSTRAINT `fk_asg_users_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `day_shift_assignments` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `date` datetime(3) DEFAULT NULL,
@@ -88,9 +62,6 @@ CREATE TABLE `day_shift_assignments` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `day_shift_cycle_group_members` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `group_id` bigint unsigned NOT NULL,
@@ -100,9 +71,6 @@ CREATE TABLE `day_shift_cycle_group_members` (
   PRIMARY KEY (`id`),
   KEY `idx_day_shift_cycle_group_members_group_id` (`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `day_shift_cycle_groups` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `cycle_id` bigint unsigned NOT NULL,
@@ -111,9 +79,6 @@ CREATE TABLE `day_shift_cycle_groups` (
   PRIMARY KEY (`id`),
   KEY `idx_day_shift_cycle_groups_cycle_id` (`cycle_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `day_shift_cycles` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `begin_date` datetime(3) DEFAULT NULL,
@@ -121,9 +86,6 @@ CREATE TABLE `day_shift_cycles` (
   `description` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `email_suppressions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `email` varchar(255) NOT NULL,
@@ -135,9 +97,6 @@ CREATE TABLE `email_suppressions` (
   KEY `idx_email_suppressions_email` (`email`),
   KEY `idx_email_suppressions_until` (`suspended_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `flagged_contents` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `task_id` bigint unsigned NOT NULL,
@@ -153,9 +112,6 @@ CREATE TABLE `flagged_contents` (
   PRIMARY KEY (`id`),
   KEY `idx_flagged_contents_task_id` (`task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `ical_keys` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -167,9 +123,6 @@ CREATE TABLE `ical_keys` (
   UNIQUE KEY `idx_ical_keys_token` (`token`),
   KEY `idx_ical_keys_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `integration_jobs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `kind` varchar(32) NOT NULL,
@@ -184,11 +137,9 @@ CREATE TABLE `integration_jobs` (
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_integration_dedup` (`dedup_key`),
-  KEY `idx_integration_claim` (`status`,`available_at`,`lease_until`)
+  KEY `idx_integration_claim` (`status`,`available_at`,`lease_until`),
+  KEY `idx_integration_kind_claim` (`kind`,`status`,`available_at`,`lease_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `login_codes` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `email` varchar(255) NOT NULL,
@@ -202,9 +153,6 @@ CREATE TABLE `login_codes` (
   KEY `idx_login_codes_email` (`email`),
   KEY `idx_login_codes_expires_at` (`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned DEFAULT NULL,
@@ -213,9 +161,6 @@ CREATE TABLE `logs` (
   PRIMARY KEY (`id`),
   KEY `idx_logs_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `mcps` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned DEFAULT NULL,
@@ -226,9 +171,6 @@ CREATE TABLE `mcps` (
   PRIMARY KEY (`id`),
   KEY `idx_mcps_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `migrations` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) NOT NULL,
@@ -236,9 +178,6 @@ CREATE TABLE `migrations` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_migrations_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `notification_deliveries` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `delivery_key` varchar(191) NOT NULL,
@@ -253,9 +192,6 @@ CREATE TABLE `notification_deliveries` (
   UNIQUE KEY `uniq_delivery_key` (`delivery_key`),
   KEY `idx_delivery_status` (`status`,`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `notification_devices` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -268,9 +204,6 @@ CREATE TABLE `notification_devices` (
   PRIMARY KEY (`id`),
   KEY `idx_notification_devices_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `notification_type_prefs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -280,9 +213,6 @@ CREATE TABLE `notification_type_prefs` (
   PRIMARY KEY (`id`),
   KEY `idx_notification_type_prefs_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `notifications_queue` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `kind` varchar(32) NOT NULL,
@@ -303,9 +233,6 @@ CREATE TABLE `notifications_queue` (
   KEY `idx_processed_at` (`processed_at`),
   KEY `idx_notification_pending` (`channel`,`status`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `passkeys` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -319,9 +246,6 @@ CREATE TABLE `passkeys` (
   UNIQUE KEY `idx_passkeys_credential_id` (`credential_id`),
   KEY `idx_passkeys_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `permissions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -334,9 +258,6 @@ CREATE TABLE `permissions` (
   KEY `idx_permissions_user_id` (`user_id`),
   KEY `idx_permissions_user_target_method` (`user_id`,`target`,`method`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `recovery_codes` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -346,9 +267,6 @@ CREATE TABLE `recovery_codes` (
   PRIMARY KEY (`id`),
   KEY `idx_recovery_codes_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `role_users` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -358,9 +276,6 @@ CREATE TABLE `role_users` (
   KEY `idx_role_users_user_id` (`user_id`),
   KEY `idx_role_users_user_id_role` (`user_id`,`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sessions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -374,9 +289,6 @@ CREATE TABLE `sessions` (
   KEY `idx_sessions_user` (`user_id`),
   KEY `idx_sessions_hashed_token` (`hashed_token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `subjects` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name_ja` varchar(255) NOT NULL,
@@ -386,9 +298,6 @@ CREATE TABLE `subjects` (
   PRIMARY KEY (`id`),
   KEY `idx_subjects_expires_at_id` (`expires_at`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `tasks` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `added_user_id` bigint unsigned NOT NULL,
@@ -412,9 +321,6 @@ CREATE TABLE `tasks` (
   KEY `idx_tasks_effective_deadline_id` (`effective_deadline`,`id`),
   FULLTEXT KEY `ft_tasks_title_desc` (`title`,`description`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `tasks_teams_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `task_id` bigint unsigned NOT NULL,
@@ -432,9 +338,6 @@ CREATE TABLE `tasks_teams_logs` (
   UNIQUE KEY `uniq_teams_inbound_job` (`inbound_job_id`),
   KEY `idx_tasks_teams_logs_task_id` (`task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `tasks_users_completions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -444,9 +347,6 @@ CREATE TABLE `tasks_users_completions` (
   UNIQUE KEY `uniq_user_task` (`user_id`,`task_id`),
   KEY `idx_task_user` (`task_id`,`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `totp_secrets` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -456,9 +356,6 @@ CREATE TABLE `totp_secrets` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_totp_secrets_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_reports` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `reporter_user_id` bigint unsigned DEFAULT NULL,
@@ -470,9 +367,6 @@ CREATE TABLE `user_reports` (
   KEY `idx_user_reports_reporter_user_id` (`reporter_user_id`),
   KEY `idx_user_reports_task_id` (`task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `users` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `email` varchar(255) NOT NULL,
@@ -486,12 +380,11 @@ CREATE TABLE `users` (
   `created_at` datetime(3) DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `display_lang` varchar(5) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'ja',
+  `deleted_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `idx_users_email` (`email`)
+  UNIQUE KEY `idx_users_email` (`email`),
+  KEY `idx_users_erasure_due` (`is_deleted`,`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `web_push_subscriptions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `user_id` bigint unsigned NOT NULL,
@@ -503,9 +396,6 @@ CREATE TABLE `web_push_subscriptions` (
   PRIMARY KEY (`id`),
   KEY `idx_web_push_subscriptions_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `web_push_vapid` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `public_key` varchar(255) NOT NULL,
@@ -513,13 +403,25 @@ CREATE TABLE `web_push_vapid` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+CREATE TABLE `account_erasure_holds` (
+  `user_id` bigint unsigned NOT NULL,
+  `reason` varchar(255) NOT NULL,
+  `review_at` datetime NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`),
+  CONSTRAINT `account_erasure_holds_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `policy_consents` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `terms_version` varchar(32) NOT NULL,
+  `privacy_version` varchar(32) NOT NULL,
+  `security_version` varchar(32) NOT NULL,
+  `display_language` varchar(5) NOT NULL,
+  `accepted_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_policy_consents_user_time` (`user_id`,`accepted_at`),
+  CONSTRAINT `fk_policy_consents_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
-/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
-/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+SET FOREIGN_KEY_CHECKS=1;
