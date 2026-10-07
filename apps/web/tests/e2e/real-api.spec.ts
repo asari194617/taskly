@@ -10,14 +10,12 @@ test.beforeEach(() => {
 
 async function login(page: Page, email: string) {
   await page.addInitScript(() => localStorage.setItem("display_lang", "ja"));
-  await page.goto("/login");
-  await expect(page.locator('astro-island[component-url*="Begin"]')).not.toHaveAttribute("ssr", "");
-  await page.getByLabel("メールアドレス").fill(email);
-  await page.getByRole("button", { name: "次へ" }).click();
-  await expect(page).toHaveURL(/\/login\/password/);
-  await expect(page.locator('astro-island[component-url*="Password"]')).not.toHaveAttribute("ssr", "");
-  await page.getByLabel("パスワード").fill("e2e-password");
-  await page.getByRole("button", { name: "次へ" }).click();
+  const response = await page.request.post(`${api}/auth/login`, {
+    data: { email, password: "e2e-password" },
+    headers: { "X-Client-Platform": "web", Origin: "http://localhost:4321" },
+  });
+  expect(response.ok()).toBe(true);
+  await page.goto("/home");
   await expect(page).toHaveURL(/\/(home|consent)(?:\?.*)?$/);
   if (new URL(page.url()).pathname === "/consent") {
     const policies = page.getByRole("checkbox");

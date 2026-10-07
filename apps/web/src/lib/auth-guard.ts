@@ -15,7 +15,7 @@ export function loginRedirect(authenticated: boolean | null, path: string): stri
 export function postLoginRedirect(authenticated: boolean | null, search: string, defaultTarget = "/home"): string | null {
   if (!authenticated) return null;
   const raw = new URLSearchParams(search).get("next") || "";
-  return /^\/(?![/\\])/.test(raw) ? raw : defaultTarget;
+  return /^\/(?![/\\])/.test(raw) && !/^\/login(?:\/|[?#]|$)/.test(raw) ? raw : defaultTarget;
 }
 
 export function requireAuth(): void {
