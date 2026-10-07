@@ -1,0 +1,8 @@
+{
+  "subject": "Verify your email address",
+  "code_label": "Verification code:",
+  "greeting": "Hi {{email}}",
+  "intro": "Enter this code to verify your email address.",
+  "expiry": "This code expires in {{minutes}} minutes. If you didn’t request it, you can ignore this email.",
+  "no_share": "Do not share this code with anyone."
+}

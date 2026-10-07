@@ -3,6 +3,8 @@ package emailcompose;
 
 service EmailComposer {
   rpc ComposeLoginCode (ComposeLoginCodeRequest) returns (ComposeResponse) {}
+  rpc ComposeSecurityCode (ComposeAuthCodeRequest) returns (ComposeResponse) {}
+  rpc ComposeEmailVerificationCode (ComposeAuthCodeRequest) returns (ComposeResponse) {}
   rpc ComposeTaskDigest (ComposeTaskDigestRequest) returns (ComposeResponse) {}
   rpc ComposeModerationAlert (ComposeModerationAlertRequest) returns (ComposeResponse) {}
   rpc ComposeDayShift (ComposeDayShiftRequest) returns (ComposeResponse) {}
@@ -14,6 +16,15 @@ message ComposeLoginCodeRequest {
   string email = 2;  // recipient for personalization
   string code = 3;   // login code
   string app_name = 4;
+  int32 expiry_minutes = 5; // omitted by legacy callers: 5 minutes
+}
+
+message ComposeAuthCodeRequest {
+  string locale = 1; // 'en' or 'ja'
+  string email = 2;
+  string code = 3;
+  string app_name = 4;
+  int32 expiry_minutes = 5; // omitted: 10 minutes
 }
 
 message ComposeResponse {

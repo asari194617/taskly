@@ -4,7 +4,8 @@ A small Node.js gRPC service that composes transactional emails using React Emai
 
 Features:
 
-- gRPC API for login codes, task digests, moderation alerts, day shift notices,
+- gRPC API for login, security verification, and email address confirmation codes,
+  task digests, moderation alerts, day shift notices,
   and day shift skips, with locale (en/ja)
 - React Email templates styled similar to shadcn/ui
 - i18n via i18next with filesystem backend
@@ -21,3 +22,7 @@ Environment variables:
 
 Build: npm run build
 Run: node dist/index.js
+
+Code-composition requests accept `expiry_minutes`. Existing `ComposeLoginCode`
+callers that omit it retain the five-minute wording. The two new auth-code RPCs
+default to ten minutes. Callers must set the actual code lifetime explicitly.
