@@ -15,13 +15,21 @@ async function login(page: Page, email: string) {
     headers: { "X-Client-Platform": "web", Origin: "http://localhost:4321" },
   });
   expect(response.ok()).toBe(true);
-  await page.goto("/home");
-  await expect(page).toHaveURL(/\/(home|consent)(?:\?.*)?$/);
-  if (new URL(page.url()).pathname === "/consent") {
+  const profileResponse = await page.request.post(`${api}/graphql`, {
+    data: { query: "query{ me{ is_agreed_policies } }" },
+    headers: { "X-Client-Platform": "web", Origin: "http://localhost:4321" },
+  });
+  expect(profileResponse.ok()).toBe(true);
+  const profile = await profileResponse.json();
+  expect(profile.errors).toBeUndefined();
+  if (!profile.data?.me?.is_agreed_policies) {
+    await page.goto("/consent?next=%2Fhome");
     const policies = page.getByRole("checkbox");
     await expect(policies).toHaveCount(3);
     for (let index = 0; index < 3; index++) await policies.nth(index).click();
     await page.getByRole("button", { name: "同意して進む" }).click();
+  } else {
+    await page.goto("/home");
   }
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");
