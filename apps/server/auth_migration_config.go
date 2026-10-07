@@ -33,6 +33,13 @@ func validateAuthMigrationConfig() error {
 	if paused := strings.TrimSpace(os.Getenv("AUTH_WRITES_PAUSED")); paused != "" && paused != "0" && paused != "1" {
 		return errors.New("AUTH_WRITES_PAUSED must be 0 or 1")
 	}
+	profileExternal := strings.TrimSpace(os.Getenv("AUTH_PROFILE_EXTERNAL"))
+	if profileExternal != "" && profileExternal != "0" && profileExternal != "1" {
+		return errors.New("AUTH_PROFILE_EXTERNAL must be 0 or 1")
+	}
+	if profileExternal == "1" && strings.TrimSpace(os.Getenv("AUTH_USERS_EXTERNAL")) != "1" {
+		return errors.New("AUTH_PROFILE_EXTERNAL requires AUTH_USERS_EXTERNAL=1")
+	}
 
 	oauthKeys := []string{"AUTH_ISSUER", "AUTH_CLIENT_ID", "AUTH_CLIENT_SECRET", "AUTH_REDIRECT_URI"}
 	oauthConfigured := 0

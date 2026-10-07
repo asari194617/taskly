@@ -6,8 +6,8 @@
 
 ## 切り替え
 
-1. [ユーザー移行](auth-user-projection-sync.md)を完了し、auth DB と app DB のユーザー ID、メールアドレス、表示名を照合する。`AUTH_MIGRATION_READY=1` と `AUTH_USERS_EXTERNAL=1` になるまで切り替えない。
-2. auth 側の `TASKLY_PROFILE_SYNC_URL` に Taskly API の内部 origin を設定し、`AUTH_INTERNAL_TOKEN` を両サービスに設定する。内部同期と shadow row 更新を確認する。
+1. [ユーザー移行](auth-user-projection-sync.md)を完了し、auth DB と app DB のユーザー ID、メールアドレス、表示名を照合する。`AUTH_MIGRATION_READY=1` と `AUTH_USERS_EXTERNAL=1` になるまで切り替えない。`AUTH_USERS_EXTERNAL` を含む8つの `AUTH_*_EXTERNAL` 所有権フラグは全て同時に有効化する必要がある。
+2. auth 側の `TASKLY_PROFILE_SYNC_URL` に Taskly API の内部 origin (`http://server:8080`) を設定し、`AUTH_INTERNAL_TOKEN` を両サービスで一致させる。認証 API にプロフィールの各ルートが配備されたことと、内部同期経路を確認する。
 3. Taskly Web に `PUBLIC_AUTH_PROFILE_URL=https://auth.taskly.iy0306.com/profile` と `PUBLIC_AUTH_SECURITY_URL=https://auth.taskly.iy0306.com/security` を設定し、API で `AUTH_PROFILE_EXTERNAL=1` にする。旧 GraphQL `updateMe` と REST `PATCH /users/me` の表示名更新を拒否する。通知言語と退会処理は Taskly に残る。
 4. 確認コード送信、期限、誤入力上限、確認状態、メールアドレス変更後の状態リセットを検証する。
 

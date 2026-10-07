@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sidebar";
 import {
   User,
+  SlidersHorizontal,
   Shield,
   Bell,
   Key,
@@ -32,9 +33,14 @@ type MenuItem = {
 
 function useItems(dict: ReturnType<typeof import("@/lib/i18n").t>) {
   const d = dict.settings;
+  const authProfileURL = import.meta.env.PUBLIC_AUTH_PROFILE_URL?.trim();
+  const authSecurityURL = import.meta.env.PUBLIC_AUTH_SECURITY_URL?.trim();
   const items: MenuItem[] = [
-    { href: "/settings/basic", label: d.basic, icon: User },
-    { href: "/settings/security", label: d.security, icon: Shield },
+    ...(authProfileURL
+      ? [{ href: authProfileURL, label: d.profile, icon: User }]
+      : []),
+    { href: "/settings/basic", label: d.basic, icon: SlidersHorizontal },
+    { href: authSecurityURL || "/settings/security", label: d.security, icon: Shield },
     { href: "/settings/notifications", label: d.notifications, icon: Bell },
     { href: "/settings/api-keys", label: d.apiKeys, icon: Key },
     { href: "/settings/ical", label: d.ical, icon: Calendar },

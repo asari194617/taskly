@@ -7,7 +7,7 @@ import (
 
 func TestValidateAuthMigrationConfig(t *testing.T) {
 	for _, key := range append(append([]string{}, authExternalFlags...),
-		"AUTH_WRITES_PAUSED", "AUTH_ISSUER", "AUTH_CLIENT_ID", "AUTH_CLIENT_SECRET",
+		"AUTH_WRITES_PAUSED", "AUTH_PROFILE_EXTERNAL", "AUTH_ISSUER", "AUTH_CLIENT_ID", "AUTH_CLIENT_SECRET",
 		"AUTH_REDIRECT_URI", "WEB_PUBLIC_URL", "AUTH_INTERNAL_TOKEN",
 		"AUTH_BLOCK_SYNC_URL", "AUTH_LIFECYCLE_SYNC_URL", "AUTH_USER_SYNC_URL") {
 		t.Setenv(key, "")
@@ -34,6 +34,20 @@ func TestValidateAuthMigrationConfig(t *testing.T) {
 		setOAuthClientConfig(t)
 		t.Setenv(authExternalFlags[0], "1")
 		if err := validateAuthMigrationConfig(); err == nil || !strings.Contains(err.Error(), "enabled together") {
+			t.Fatalf("validateAuthMigrationConfig() error = %v", err)
+		}
+	})
+
+	t.Run("profile ownership requires user ownership", func(t *testing.T) {
+		t.Setenv("AUTH_PROFILE_EXTERNAL", "1")
+		if err := validateAuthMigrationConfig(); err == nil || !strings.Contains(err.Error(), "requires AUTH_USERS_EXTERNAL") {
+			t.Fatalf("validateAuthMigrationConfig() error = %v", err)
+		}
+	})
+
+	t.Run("invalid profile ownership flag is rejected", func(t *testing.T) {
+		t.Setenv("AUTH_PROFILE_EXTERNAL", "true")
+		if err := validateAuthMigrationConfig(); err == nil || !strings.Contains(err.Error(), "must be 0 or 1") {
 			t.Fatalf("validateAuthMigrationConfig() error = %v", err)
 		}
 	})

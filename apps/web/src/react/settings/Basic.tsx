@@ -70,9 +70,9 @@ export default function SettingsBasic() {
         }
       } catch {}
     }
-    fetchMe();
+    if (!authProfileURL) fetchMe();
     fetchLang();
-  }, []);
+  }, [authProfileURL]);
 
   async function save() {
     setLoading(true);
@@ -129,22 +129,24 @@ export default function SettingsBasic() {
           {dict.settingsBasic.heading}
         </h1>
         <Card className="p-4 space-y-3">
-          {authProfileURL ? <p><a className="underline" href={authProfileURL}>{dict.settingsBasic.authProfileManage}</a></p> : <>
-          <div className="space-y-1">
-            <Label htmlFor="email">{dict.settingsBasic.email}</Label>
-            <Input id="email" value={email} disabled readOnly />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="display_name">
-              {dict.settingsBasic.displayName}
-            </Label>
-            <Input
-              id="display_name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          </div>
-          </>}
+          {!authProfileURL && (
+            <>
+              <div className="space-y-1">
+                <Label htmlFor="email">{dict.settingsBasic.email}</Label>
+                <Input id="email" value={email} disabled readOnly />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="display_name">
+                  {dict.settingsBasic.displayName}
+                </Label>
+                <Input
+                  id="display_name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                />
+              </div>
+            </>
+          )}
           <div className="space-y-1">
             <Label htmlFor="notification_lang">
               {dict.settingsBasic.notificationLang}
