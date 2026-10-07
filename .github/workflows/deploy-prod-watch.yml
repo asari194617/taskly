@@ -1,0 +1,94 @@
+name: deploy-prod-watch
+
+on:
+  workflow_run:
+    workflows: [deploy-prod]
+    types: [completed]
+  schedule:
+    # Every six hours, offset from the top of the hour to avoid busy schedule slots.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  failed-deploy:
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.WEEKLY_DISCORD_WEBHOOK_URL }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          test -n "$DISCORD_WEBHOOK_URL"
+          payload=$(jq -nc --arg sha "$RUN_SHA" --arg url "$RUN_URL" \
+            '{content: ("🚨 Taskly production deploy failed\nCommit: `" + $sha + "`\n" + $url)}')
+          curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
+  release-drift:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.WEEKLY_DISCORD_WEBHOOK_URL }}
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
+      PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
+    steps:
+      - name: Compare latest release with running API image
+        run: |
+          set -euo pipefail
+          test -n "$DISCORD_WEBHOOK_URL"
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-prod.yml/runs?branch=main&per_page=20")
+          latest=$(jq -c '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")][0]' <<<"$runs")
+          test "$latest" != null
+          status=$(jq -r '.status' <<<"$latest")
+          # A release is still underway; check again at the next scheduled run.
+          if [[ "$status" != completed ]]; then
+            echo "Latest production release is $status; drift check deferred."
+            exit 0
+          fi
+          expected_sha=$(jq -r '.head_sha' <<<"$latest")
+          run_url=$(jq -r '.html_url' <<<"$latest")
+
+          install -m 700 -d ~/.ssh
+          printf '%s' "$PROD_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          eval "$(ssh-agent -s)"
+          if [[ -n "${PROD_SSH_PASSPHRASE:-}" ]]; then
+            printf '#!/bin/sh\nprintf "%%s\\n" "$PROD_SSH_PASSPHRASE"\n' > /tmp/taskly-ssh-askpass.sh
+            chmod 700 /tmp/taskly-ssh-askpass.sh
+            export SSH_ASKPASS=/tmp/taskly-ssh-askpass.sh SSH_ASKPASS_REQUIRE=force DISPLAY=:0
+            setsid -w ssh-add ~/.ssh/id_rsa </dev/null
+          else
+            ssh-add ~/.ssh/id_rsa
+          fi
+          image=$(ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
+            'docker ps --filter label=com.docker.compose.service=server --format "{{.Image}}"' | head -n 1)
+          deployed_sha=${image##*:}
+          if [[ "$deployed_sha" == "$expected_sha" ]]; then
+            echo "Production API image matches latest release: $expected_sha"
+            exit 0
+          fi
+          payload=$(jq -nc --arg expected "$expected_sha" --arg deployed "${deployed_sha:-missing}" \
+            --arg url "$run_url" \
+            '{content: ("⚠️ Taskly production release is behind\nExpected: `" + $expected + "`\nAPI image: `" + $deployed + "`\n" + $url)}')
+          curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
+      - name: Notify Discord if release check itself failed
+        if: failure()
+        run: |
+          set -euo pipefail
+          test -n "$DISCORD_WEBHOOK_URL"
+          payload=$(jq -nc --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{content: ("⚠️ Taskly production release check failed\n" + $url)}')
+          curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"

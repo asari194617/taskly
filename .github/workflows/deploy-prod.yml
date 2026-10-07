@@ -116,6 +116,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check Docker bridge DNS before publishing
+        run: bash .github/scripts/check-build-registry-dns.sh
       - uses: docker/setup-buildx-action@v4
         with:
           # BuildKit 0.32 cannot unpack the Airflow base image on this host.
