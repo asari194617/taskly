@@ -24,9 +24,13 @@ async function login(page: Page, email: string) {
   expect(profile.errors).toBeUndefined();
   if (!profile.data?.me?.is_agreed_policies) {
     await page.goto("/consent?next=%2Fhome");
+    await expect(page.locator('astro-island[component-url*="ConsentPage"]')).not.toHaveAttribute("ssr", "");
     const policies = page.getByRole("checkbox");
     await expect(policies).toHaveCount(3);
-    for (let index = 0; index < 3; index++) await policies.nth(index).click();
+    for (let index = 0; index < 3; index++) {
+      await policies.nth(index).click();
+      await expect(policies.nth(index)).toBeChecked();
+    }
     await page.getByRole("button", { name: "同意して進む" }).click();
   } else {
     await page.goto("/home");
