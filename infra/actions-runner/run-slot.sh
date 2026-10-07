@@ -23,6 +23,7 @@ cleanup() {
   rmdir "$workspace"
 }
 trap cleanup EXIT
+trap 'exit 0' TERM INT
 
 docker run --rm \
   --name "taskly-ci-slot-$slot" \

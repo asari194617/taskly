@@ -79,3 +79,39 @@ Runner startup and selection never automatically consume paid hosted minutes.
 The macOS client build still requires a GitHub-hosted macOS runner and is billed
 normally. Review workflow changes before approving any external fork run;
 a PR can propose changes to its own workflow definitions.
+
+
+## Stop a slot safely
+
+Wait for the slot to become idle before stopping its systemd service. The unit's
+`ExecStop` explicitly stops `taskly-ci-slot-N`; stopping only the Docker client
+can leave the container online and accepting jobs. `KillMode=mixed` and the
+launcher's signal handler allow its EXIT cleanup to remove the temporary
+workspace. A missing container is harmless during a normal single-job exit.
+
+After updating the launcher and unit, run `sudo systemctl daemon-reload`.
+Check both `systemctl is-active taskly-runner@N.service` and
+`docker ps --filter name=taskly-ci-slot-N` after stopping an idle slot.
+
+## Memory corruption incident (2026-10-02)
+
+The runner host produced illegal UTF-8 in freshly downloaded Go modules, Git
+pack/inflate errors, and crashes in unrelated host programs. With all four CI
+containers stopped, `sudo memtester 2G 1` tested 2 GiB of locked memory and
+finished with exit code 6 and 1,391 `FAILURE:` reports, including a stuck-address
+failure. The diagnostic log is `/tmp/taskly-memtest-initial.log` on the host;
+copy it before rebooting because `/tmp` is tmpfs.
+
+This is evidence of memory-subsystem corruption, not proof of which DIMM,
+slot, CPU memory controller, or firmware setting is responsible. Rebuilding
+runner containers or deleting Go caches does not repair it. The four CI services
+were stopped and disabled with owner approval. The separate production-deploy
+runner service was stopped too; its boot-time enablement was left unchanged.
+
+Keep the host out of CI until physical/firmware diagnosis and memory testing
+pass. After repair, test memory across a substantial portion of available RAM
+with multiple passes, then run dependency integrity checks, API build/tests,
+and image builds in a fresh runner environment before restoring all slots.
+Restore CI startup only after these checks with
+`sudo systemctl enable --now taskly-runner@{1..4}.service`. Start the separate
+production-deploy runner only after host verification succeeds.
