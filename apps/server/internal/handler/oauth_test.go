@@ -125,6 +125,50 @@ func TestOAuthCallbackBindsStateAndPreservesUserID(t *testing.T) {
 	}
 }
 
+func TestOAuthCallbackCancellationStopsAtLogin(t *testing.T) {
+	_, mr, db, _ := newAuthTransactionTestApp(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	t.Setenv("AUTH_ISSUER", "http://auth.example.test")
+	t.Setenv("AUTH_CLIENT_ID", "taskly-web")
+	t.Setenv("AUTH_CLIENT_SECRET", "test-secret")
+	t.Setenv("AUTH_REDIRECT_URI", "http://localhost:3063/auth/oauth/callback")
+	t.Setenv("WEB_PUBLIC_URL", "http://localhost:4321")
+	app := fiber.New()
+	NewHandler(db, rdb, nil).RegisterOAuthRoutes(app.Group("/auth/oauth"))
+	start, err := app.Test(httptest.NewRequest(http.MethodGet, "/auth/oauth/start?next=%2Fsettings%2Fsecurity", nil))
+	if err != nil || start.StatusCode != http.StatusFound {
+		t.Fatalf("start: status=%v err=%v", start.StatusCode, err)
+	}
+	authorizeURL, err := url.Parse(start.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stateCookie *http.Cookie
+	for _, cookie := range start.Cookies() {
+		if cookie.Name == oauthStateCookie {
+			stateCookie = cookie
+		}
+	}
+	if stateCookie == nil {
+		t.Fatal("state cookie missing")
+	}
+	callback := "/auth/oauth/callback?state=" + url.QueryEscape(authorizeURL.Query().Get("state")) + "&iss=" + url.QueryEscape("http://auth.example.test") + "&error=access_denied"
+	req := httptest.NewRequest(http.MethodGet, callback, nil)
+	req.AddCookie(stateCookie)
+	response, err := app.Test(req)
+	if err != nil || response.StatusCode != http.StatusFound {
+		t.Fatalf("callback: status=%v err=%v", response.StatusCode, err)
+	}
+	redirect, err := url.Parse(response.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redirect.String() != "http://localhost:4321/login?auth_error=cancelled&next=%2Fsettings%2Fsecurity" {
+		t.Fatalf("cancel redirect=%q", redirect.String())
+	}
+}
+
 func TestSafeOAuthNext(t *testing.T) {
 	for _, raw := range []string{"//example.com", "/\\example.com", "https://example.com", "/\r\nLocation: https://example.com"} {
 		if got := safeOAuthNext(raw); got != "/home" {
