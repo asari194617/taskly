@@ -78,6 +78,16 @@ jobs:
             echo "Production API image matches latest release: $expected_sha"
             exit 0
           fi
+          # The workflow-runs API can briefly lag a completed deploy. A newer
+          # running image is healthy, so do not notify for an older listed run.
+          if [[ "$deployed_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            relation=$(gh api "repos/$GITHUB_REPOSITORY/compare/$expected_sha...$deployed_sha" \
+              --jq '.status' 2>/dev/null || true)
+            if [[ "$relation" == ahead || "$relation" == identical ]]; then
+              echo "Production API image $deployed_sha is ahead of listed release $expected_sha."
+              exit 0
+            fi
+          fi
           payload=$(jq -nc --arg expected "$expected_sha" --arg deployed "${deployed_sha:-missing}" \
             --arg url "$run_url" \
             '{content: ("⚠️ Taskly production release is behind\nExpected: `" + $expected + "`\nAPI image: `" + $deployed + "`\n" + $url)}')
