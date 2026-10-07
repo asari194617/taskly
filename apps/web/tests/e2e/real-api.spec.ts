@@ -10,20 +10,30 @@ test.beforeEach(() => {
 
 async function login(page: Page, email: string) {
   await page.addInitScript(() => localStorage.setItem("display_lang", "ja"));
-  await page.goto("/login");
-  await expect(page.locator('astro-island[component-url*="Begin"]')).not.toHaveAttribute("ssr", "");
-  await page.getByLabel("メールアドレス").fill(email);
-  await page.getByRole("button", { name: "次へ" }).click();
-  await expect(page).toHaveURL(/\/login\/password/);
-  await expect(page.locator('astro-island[component-url*="Password"]')).not.toHaveAttribute("ssr", "");
-  await page.getByLabel("パスワード").fill("e2e-password");
-  await page.getByRole("button", { name: "次へ" }).click();
-  await expect(page).toHaveURL(/\/(home|consent)(?:\?.*)?$/);
-  if (new URL(page.url()).pathname === "/consent") {
+  const response = await page.request.post(`${api}/auth/login`, {
+    data: { email, password: "e2e-password" },
+    headers: { "X-Client-Platform": "web", Origin: "http://localhost:4321" },
+  });
+  expect(response.ok()).toBe(true);
+  const profileResponse = await page.request.post(`${api}/graphql`, {
+    data: { query: "query{ me{ is_agreed_policies } }" },
+    headers: { "X-Client-Platform": "web", Origin: "http://localhost:4321" },
+  });
+  expect(profileResponse.ok()).toBe(true);
+  const profile = await profileResponse.json();
+  expect(profile.errors).toBeUndefined();
+  if (!profile.data?.me?.is_agreed_policies) {
+    await page.goto("/consent?next=%2Fhome");
+    await expect(page.locator('astro-island[component-url*="ConsentPage"]')).not.toHaveAttribute("ssr", "");
     const policies = page.getByRole("checkbox");
     await expect(policies).toHaveCount(3);
-    for (let index = 0; index < 3; index++) await policies.nth(index).click();
+    for (let index = 0; index < 3; index++) {
+      await policies.nth(index).click();
+      await expect(policies.nth(index)).toBeChecked();
+    }
     await page.getByRole("button", { name: "同意して進む" }).click();
+  } else {
+    await page.goto("/home");
   }
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");

@@ -20,12 +20,9 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   await page.route("http://localhost:3063/**", async (route) => {
     const url = new URL(route.request().url());
     const respond = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (url.pathname === "/auth/options") return respond({ has_password: true, methods: ["password"] });
-    if (url.pathname === "/auth/login") {
-      const { password } = route.request().postDataJSON();
-      if (password !== "browser-password") return respond({ error: "invalid password" }, 401);
+    if (url.pathname === "/auth/oauth/start") {
       authenticated = true;
-      return respond({ authenticated: true });
+      return route.fulfill({ status: 302, headers: { Location: `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}/home` }, body: "" });
     }
     if (url.pathname !== "/graphql") return respond({ error: "unexpected API path" }, 404);
     const { query, variables = {} } = route.request().postDataJSON();
@@ -73,13 +70,6 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
 
 async function login(page: Page) {
   await page.goto("/login");
-  await expect(page.locator('astro-island[component-url*="Begin"]')).not.toHaveAttribute("ssr", "");
-  await page.getByLabel("メールアドレス").fill("browser@example.test");
-  await page.getByRole("button", { name: "次へ" }).click();
-  await expect(page).toHaveURL(/\/login\/password/);
-  await expect(page.locator('astro-island[component-url*="Password"]')).not.toHaveAttribute("ssr", "");
-  await page.getByLabel("パスワード").fill("browser-password");
-  await page.getByRole("button", { name: "次へ" }).click();
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");
 }
