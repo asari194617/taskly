@@ -37,13 +37,33 @@ func metricsMiddleware() fiber.Handler {
 		if matched := c.Route(); matched != nil && matched.Path != "" && status != fiber.StatusNotFound {
 			route = matched.Path
 		}
-		method := c.Method()
-		if method != fiber.MethodGet && method != fiber.MethodPost && method != fiber.MethodPut && method != fiber.MethodPatch && method != fiber.MethodDelete && method != fiber.MethodOptions && method != fiber.MethodHead {
-			method = "OTHER"
-		}
+		method := metricMethod(c.Method())
 		code := strconv.Itoa(status)
 		httpRequests.WithLabelValues(method, route, code).Inc()
 		httpDuration.WithLabelValues(method, route, code).Observe(time.Since(start).Seconds())
 		return err
+	}
+}
+
+// Fiber's method string may point into a request buffer that is reused after
+// the response. Return a constant so Prometheus never retains that buffer.
+func metricMethod(method string) string {
+	switch method {
+	case fiber.MethodGet:
+		return fiber.MethodGet
+	case fiber.MethodPost:
+		return fiber.MethodPost
+	case fiber.MethodPut:
+		return fiber.MethodPut
+	case fiber.MethodPatch:
+		return fiber.MethodPatch
+	case fiber.MethodDelete:
+		return fiber.MethodDelete
+	case fiber.MethodOptions:
+		return fiber.MethodOptions
+	case fiber.MethodHead:
+		return fiber.MethodHead
+	default:
+		return "OTHER"
 	}
 }

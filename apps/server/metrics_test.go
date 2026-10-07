@@ -4,10 +4,26 @@ import (
 	"net"
 	"net/http/httptest"
 	"testing"
+	"unsafe"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+func TestMetricMethodDoesNotRetainRequestBuffer(t *testing.T) {
+	for _, want := range []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPut, fiber.MethodPatch, fiber.MethodDelete, fiber.MethodOptions, fiber.MethodHead} {
+		buffer := []byte(want)
+		borrowed := unsafe.String(unsafe.SliceData(buffer), len(buffer))
+		label := metricMethod(borrowed)
+		buffer[0] = 'X'
+		if label != want {
+			t.Fatalf("method label changed after request buffer reuse: got %q, want %q", label, want)
+		}
+	}
+	if got := metricMethod("CUSTOM"); got != "OTHER" {
+		t.Fatalf("unknown method label = %q, want OTHER", got)
+	}
+}
 
 func TestMetricsMiddlewareUsesRoutePattern(t *testing.T) {
 	app := fiber.New()
