@@ -2,12 +2,13 @@
 import * as React from "react";
 import SettingsShell from "@/react/SettingsShell";
 import { Card } from "@/components/ui/card";
-import { User, Shield, Bell, Key, Calendar, Boxes } from "lucide-react";
-import { t, type Lang } from "@/lib/i18n";
+import { User, SlidersHorizontal, Shield, Bell, Key, Calendar, Boxes } from "lucide-react";
 import { useLang } from "@/react/LanguageProvider";
 
 export default function SettingsPage() {
   const { dict } = useLang();
+  const authProfileURL = import.meta.env.PUBLIC_AUTH_PROFILE_URL?.trim();
+  const authSecurityURL = import.meta.env.PUBLIC_AUTH_SECURITY_URL?.trim();
 
   return (
     <SettingsShell>
@@ -19,18 +20,33 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
+          {authProfileURL && (
+            <a href={authProfileURL}>
+              <Card className="p-4 flex items-start gap-3">
+                <User className="h-5 w-5 mt-0.5" />
+                <div>
+                  <div className="font-medium">{dict.settings.profile}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {dict.settings.profileDesc}
+                  </div>
+                </div>
+              </Card>
+            </a>
+          )}
           <a href="/settings/basic">
             <Card className="p-4 flex items-start gap-3">
-              <User className="h-5 w-5 mt-0.5" />
+              <SlidersHorizontal className="h-5 w-5 mt-0.5" />
               <div>
                 <div className="font-medium">{dict.settings.basic}</div>
                 <div className="text-sm text-muted-foreground">
-                  {dict.settings.basicDesc}
+                  {authProfileURL
+                    ? dict.settings.basicDesc
+                    : dict.settings.basicLegacyDesc}
                 </div>
               </div>
             </Card>
           </a>
-          <a href="/settings/security">
+          <a href={authSecurityURL || "/settings/security"}>
             <Card className="p-4 flex items-start gap-3">
               <Shield className="h-5 w-5 mt-0.5" />
               <div>

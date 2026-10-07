@@ -253,11 +253,20 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "プロフィール、セキュリティ、通知、APIキー、iCalの設定を行います。"
         : "Manage profile, security, notifications, API keys, and iCal settings.",
+    profile: lang === "ja" ? "アカウント情報" : "Account profile",
+    profileDesc:
+      lang === "ja"
+        ? "メールアドレスの確認・表示名の設定"
+        : "Verify your email address and set your display name",
     basic: lang === "ja" ? "基本設定" : "Basic Settings",
     basicDesc:
       lang === "ja"
-        ? "表示名・退会"
-        : "Display name, account closure",
+        ? "配信メールの言語・退会"
+        : "Email language, account closure",
+    basicLegacyDesc:
+      lang === "ja"
+        ? "表示名・配信メールの言語・退会"
+        : "Display name, email language, account closure",
     security: lang === "ja" ? "セキュリティ設定" : "Security Settings",
     securityDesc:
       lang === "ja"
@@ -282,7 +291,6 @@ export const t = (lang: Lang) => ({
   },
   settingsBasic: {
     heading: lang === "ja" ? "基本設定" : "Basic Settings",
-    authProfileManage: lang === "ja" ? "メールアドレスの確認・表示名の設定" : "Verify email and set display name",
     email: lang === "ja" ? "メールアドレス" : "Email",
     displayName: lang === "ja" ? "表示名" : "Display name",
     notificationLang: lang === "ja" ? "配信メールの言語" : "Email language",
