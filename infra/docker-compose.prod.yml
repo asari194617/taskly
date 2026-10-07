@@ -12,6 +12,7 @@ services:
   server:
     environment:
       <<: *datadog-environment
+      AUTH_PROFILE_EXTERNAL: ${AUTH_PROFILE_EXTERNAL:-1}
     volumes:
       - *datadog-socket-mount
 
