@@ -3,6 +3,8 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { render } from "@react-email/render";
 import { LoginCodeEmail } from "./templates/LoginCode.js";
+import { SecurityCodeEmail } from "./templates/SecurityCode.js";
+import { EmailVerificationCodeEmail } from "./templates/EmailVerificationCode.js";
 import { ModerationAlertEmail } from "./templates/ModerationAlert.js";
 import { DayShiftSkipEmail } from "./templates/DayShiftSkip.js";
 import { DayShiftEmail } from "./templates/DayShift.js";
@@ -28,6 +30,31 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
     .emailcompose;
 
   const server = new grpc.Server();
+
+  const composeCode = (
+    namespace: "login-code" | "security-code" | "email-verification-code",
+    template: typeof LoginCodeEmail,
+    defaultExpiryMinutes: number,
+  ) => async (
+    call: grpc.ServerUnaryCall<any, any>,
+    callback: grpc.sendUnaryData<any>,
+  ) => {
+    try {
+      const locale = (call.request?.locale as string) || "ja";
+      const email = call.request?.email as string;
+      const code = call.request?.code as string;
+      const requestedExpiry = Number(call.request?.expiry_minutes);
+      const expiryMinutes = Number.isInteger(requestedExpiry) && requestedExpiry > 0
+        ? requestedExpiry : defaultExpiryMinutes;
+      const { t } = await getT(namespace, locale);
+      const element = await template({ code, email, locale, expiryMinutes });
+      const html = await render(element, { pretty: true });
+      const text = await render(element, { plainText: true });
+      callback(null, { subject: t("subject"), html, text });
+    } catch (err) {
+      callback({ code: grpc.status.INTERNAL, message: (err as Error).message } as any, null);
+    }
+  };
 
   const serviceImpl = {
     ComposeDayShift: async (
@@ -60,32 +87,9 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
         );
       }
     },
-    ComposeLoginCode: async (
-      call: grpc.ServerUnaryCall<any, any>,
-      callback: grpc.sendUnaryData<any>,
-    ) => {
-      try {
-        const locale = (call.request?.locale as string) || "ja";
-        const email = call.request?.email as string;
-        const code = call.request?.code as string;
-
-        const { t } = await getT("login-code", locale);
-        const element = await LoginCodeEmail({ code, email, locale });
-        const html = await render(element, { pretty: true });
-        const text = await render(element, { plainText: true });
-        const subject = t("subject");
-
-        callback(null, { subject, html, text });
-      } catch (err) {
-        callback(
-          {
-            code: grpc.status.INTERNAL,
-            message: (err as Error).message,
-          } as any,
-          null,
-        );
-      }
-    },
+    ComposeLoginCode: composeCode("login-code", LoginCodeEmail, 5),
+    ComposeSecurityCode: composeCode("security-code", SecurityCodeEmail, 10),
+    ComposeEmailVerificationCode: composeCode("email-verification-code", EmailVerificationCodeEmail, 10),
     ComposeTaskDigest: async (
       call: grpc.ServerUnaryCall<any, any>,
       callback: grpc.sendUnaryData<any>,

@@ -84,6 +84,21 @@ try {
       { locale: "ja", email: "smoke@example.test", code: "123456" },
     ],
     [
+      "composeLoginCode",
+      { locale: "en", email: "smoke@example.test", code: "654321", expiry_minutes: 10 },
+      "10 minutes",
+    ],
+    [
+      "composeSecurityCode",
+      { locale: "ja", email: "smoke@example.test", code: "123456", expiry_minutes: 10 },
+      "認証設定の変更",
+    ],
+    [
+      "composeEmailVerificationCode",
+      { locale: "en", email: "smoke@example.test", code: "123456", expiry_minutes: 10 },
+      "verify your email address",
+    ],
+    [
       "composeTaskDigest",
       {
         locale: "ja",
@@ -127,9 +142,12 @@ try {
     ],
   ];
 
-  for (const [method, request] of cases) {
+  for (const [method, request, expectedText] of cases) {
     const response = await unary(client, method, request);
     assertResponse(method, response);
+    if (expectedText && !response.text.includes(expectedText)) {
+      throw new Error(`${method} did not render ${expectedText}`);
+    }
   }
 
   client.close();

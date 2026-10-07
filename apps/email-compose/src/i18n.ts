@@ -20,6 +20,8 @@ export async function initI18n(dir?: string) {
       ns: [
         "common",
         "login-code",
+        "security-code",
+        "email-verification-code",
         "moderation-alert",
         "tasks-digest",
         "dayshift-skip",
