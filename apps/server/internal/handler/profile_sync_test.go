@@ -61,4 +61,27 @@ func TestAuthProfileSyncRequiresCutoverAndToken(t *testing.T) {
 	if updated.DisplayName != "After" {
 		t.Fatalf("name = %q", updated.DisplayName)
 	}
+	// SQLite may report one affected row for an unchanged value, unlike MySQL's
+	// default changed-row count. Require the live-user read that makes a retry
+	// independent of that driver difference.
+	livenessReads := 0
+	if err := db.Callback().Query().After("gorm:query").Register("test:profile_sync_liveness", func(tx *gorm.DB) {
+		if tx.Statement.Table == "users" {
+			livenessReads++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := send(token); got != 204 {
+		t.Fatalf("repeat sync: %d", got)
+	}
+	if livenessReads == 0 {
+		t.Fatal("repeat sync did not confirm the user still exists")
+	}
+	if err := db.Model(&user).Update("is_deleted", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := send(token); got != 404 {
+		t.Fatalf("deleted user sync: %d", got)
+	}
 }
