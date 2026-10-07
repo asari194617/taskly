@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"os"
 	"strings"
 
 	"github.com/asari194617/taskly/apps/server/internal/authsync"
@@ -20,6 +21,9 @@ func (h *Handler) RegisterUsersRoutes(router fiber.Router) {
 		}
 		if err := utils.ParseJSONStrict(c, &body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+		}
+		if body.DisplayName != nil && os.Getenv("AUTH_PROFILE_EXTERNAL") == "1" {
+			return c.Status(409).JSON(fiber.Map{"error": "profile managed by auth"})
 		}
 		updates := map[string]any{}
 		if body.DisplayName != nil {

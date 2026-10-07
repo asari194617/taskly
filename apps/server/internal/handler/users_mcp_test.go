@@ -85,4 +85,11 @@ func TestMCPUserProfileDoesNotChangeAccountState(t *testing.T) {
 	if fresh.DisplayName != "Updated" || fresh.NotificationLang != "en" || fresh.IsDeleted || fresh.IsRegistered || fresh.IsAgreedPolicies {
 		t.Fatalf("unexpected user state: %+v", fresh)
 	}
+	t.Setenv("AUTH_PROFILE_EXTERNAL", "1")
+	if got := patch("/users/me", `{"display_name":"Blocked"}`); got != fiber.StatusConflict {
+		t.Fatalf("legacy name update after handoff: status = %d", got)
+	}
+	if got := patch("/users/me", `{"notification_lang":"ja"}`); got != fiber.StatusNoContent {
+		t.Fatalf("notification language after handoff: status = %d", got)
+	}
 }

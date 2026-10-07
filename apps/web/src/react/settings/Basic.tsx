@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 
 export default function SettingsBasic() {
+  const authProfileURL = import.meta.env.PUBLIC_AUTH_PROFILE_URL?.trim();
   const [displayName, setDisplayName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [notificationLang, setNotificationLang] = React.useState<"ja" | "en">(
@@ -76,10 +77,12 @@ export default function SettingsBasic() {
   async function save() {
     setLoading(true);
     try {
-      await gql<{ updateMe: boolean }>(
-        `mutation($name:String!){ updateMe(display_name:$name) }`,
-        { name: displayName }
-      );
+      if (!authProfileURL) {
+        await gql<{ updateMe: boolean }>(
+          `mutation($name:String!){ updateMe(display_name:$name) }`,
+          { name: displayName }
+        );
+      }
       const base = getApiBase();
       const res = await webFetch(`${base}/settings/lang`, {
         method: "POST",
@@ -126,6 +129,7 @@ export default function SettingsBasic() {
           {dict.settingsBasic.heading}
         </h1>
         <Card className="p-4 space-y-3">
+          {authProfileURL ? <p><a className="underline" href={authProfileURL}>{dict.settingsBasic.authProfileManage}</a></p> : <>
           <div className="space-y-1">
             <Label htmlFor="email">{dict.settingsBasic.email}</Label>
             <Input id="email" value={email} disabled readOnly />
@@ -140,6 +144,7 @@ export default function SettingsBasic() {
               onChange={(e) => setDisplayName(e.target.value)}
             />
           </div>
+          </>}
           <div className="space-y-1">
             <Label htmlFor="notification_lang">
               {dict.settingsBasic.notificationLang}
