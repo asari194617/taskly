@@ -1,14 +1,38 @@
 ---
 import Layout from "../layouts/AppLayout.astro";
-import Begin from "../react/login/Begin";
 ---
-<Layout title="Login">
-  <div class="mx-auto max-w-md">
-    <Begin client:load />
-  </div>
+<Layout title="ログイン">
+  <main class="mx-auto max-w-md px-4 py-16 text-center" aria-live="polite">
+    <h1 id="login-title" class="text-xl font-semibold">ログインしています</h1>
+    <p id="login-message" class="mt-3 text-sm text-muted-foreground">認証ページに移動しています。</p>
+    <a id="login-retry" class="mt-6 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline" href="/login" hidden>もう一度ログインする</a>
+  </main>
   <script>
-    import { redirectIfAuthed } from "@/lib/auth-guard";
-    // If already logged in, send user to next or /home
-    redirectIfAuthed("/home");
+    import { checkSession, postLoginRedirect } from "@/lib/auth-guard";
+    import { oauthStartURL } from "@/lib/login-redirect";
+
+    const search = location.search;
+    const oauthURL = oauthStartURL(import.meta.env.PUBLIC_AUTH_OAUTH_START_URL, search);
+    const title = document.getElementById("login-title")!;
+    const message = document.getElementById("login-message")!;
+    const retry = document.getElementById("login-retry") as HTMLAnchorElement;
+    if (oauthURL) retry.href = oauthURL;
+
+    if (new URLSearchParams(search).has("auth_error")) {
+      title.textContent = "ログインを完了できませんでした";
+      message.textContent = "認証が中断されました。もう一度お試しください。";
+      retry.hidden = !oauthURL;
+    } else if (!oauthURL) {
+      title.textContent = "ログインを開始できませんでした";
+      message.textContent = "認証サービスの設定を確認してください。";
+    } else {
+      void checkSession().then((authenticated) => {
+        if (authenticated) {
+          location.replace(postLoginRedirect(true, search) || "/home");
+          return;
+        }
+        location.replace(oauthURL);
+      });
+    }
   </script>
 </Layout>

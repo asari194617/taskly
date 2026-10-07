@@ -124,7 +124,17 @@ func (h *Handler) oauthCallback(c *fiber.Ctx) error {
 		return c.SendStatus(400)
 	}
 	if c.Query("error") != "" {
-		return c.Redirect(cfg.WebURL+"/login", fiber.StatusFound)
+		redirect, err := url.Parse(cfg.WebURL + "/login")
+		if err != nil {
+			return c.SendStatus(fiber.StatusServiceUnavailable)
+		}
+		query := redirect.Query()
+		query.Set("auth_error", "cancelled")
+		if next := safeOAuthNext(pending.Next); next != "/home" {
+			query.Set("next", next)
+		}
+		redirect.RawQuery = query.Encode()
+		return c.Redirect(redirect.String(), fiber.StatusFound)
 	}
 	code := c.Query("code")
 	if code == "" {

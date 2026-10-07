@@ -35,6 +35,7 @@ it("accepts only a local post-login destination", () => {
   expect(postLoginRedirect(true, "?next=%2Ftasks%3Fq%3Da")).toBe("/tasks?q=a");
   expect(postLoginRedirect(true, "?next=%2F%2Fevil.example")).toBe("/home");
   expect(postLoginRedirect(true, "?next=%2F%5Cevil.example")).toBe("/home");
+  expect(postLoginRedirect(true, "?next=%2Flogin")).toBe("/home");
   expect(postLoginRedirect(false, "?next=%2Ftasks")).toBeNull();
 });
 
