@@ -46,9 +46,21 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$DISCORD_WEBHOOK_URL"
-          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-prod.yml/runs?branch=main&per_page=20")
-          latest=$(jq -c '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")][0]' <<<"$runs")
+          # Filter at the API as well as in jq. An unbounded workflow-runs
+          # response has returned an August run ahead of October runs.
+          since=$(date -u -d '30 days ago' +%Y-%m-%d)
+          latest=null
+          for attempt in 1 2 3; do
+            if runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-prod.yml/runs?branch=main&created=%3E%3D$since&per_page=100"); then
+              echo "Filtered deploy run pages: $(jq 'length' <<<"$runs"), runs: $(jq '[.[].workflow_runs[]] | length' <<<"$runs")"
+              latest=$(jq -c '[.[].workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | max_by(.created_at) // null' <<<"$runs")
+              [[ "$latest" != null ]] && break
+            fi
+            echo "Deploy run lookup returned no recent run (attempt $attempt/3)." >&2
+            if (( attempt < 3 )); then sleep 5; fi
+          done
           test "$latest" != null
+          echo "Latest production release run: $(jq -r '.created_at + " " + .head_sha' <<<"$latest")"
           status=$(jq -r '.status' <<<"$latest")
           # A release is still underway; check again at the next scheduled run.
           if [[ "$status" != completed ]]; then
