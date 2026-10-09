@@ -62,6 +62,34 @@ def erase_auth_user(user_id):
         raise RuntimeError(f"auth lifecycle synchronization returned status {status}")
 
 
+def erase_task_images(user_id):
+    names = ("R2_ENDPOINT", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+    config = {name: os.environ.get(name, "").strip() for name in names}
+    if not any(config.values()):
+        return
+    if not all(config.values()):
+        raise RuntimeError("R2 task image settings are incomplete")
+
+    import boto3
+
+    client = boto3.client(
+        "s3",
+        endpoint_url=config["R2_ENDPOINT"],
+        aws_access_key_id=config["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=config["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+    )
+    prefix = f"task-images/{user_id}/"
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=config["R2_BUCKET"], Prefix=prefix):
+        objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+        if objects:
+            client.delete_objects(
+                Bucket=config["R2_BUCKET"],
+                Delete={"Objects": objects, "Quiet": True},
+            )
+
+
 def erase_due_accounts(connection, now=None):
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff = now - timedelta(days=RETENTION_DAYS)
@@ -86,6 +114,9 @@ def erase_due_accounts(connection, now=None):
                 # Erase credentials first. If the app transaction later fails,
                 # the still-present soft-deleted row makes the next run retryable.
                 erase_auth_user(user_id)
+                # Remove external objects before the rows identifying their owner.
+                # A failure aborts this account so the next run retries cleanup.
+                erase_task_images(user_id)
                 # Clear queued and historical jobs containing this user's task
                 # data before deleting the task rows used for the lookup.
                 cursor.execute(

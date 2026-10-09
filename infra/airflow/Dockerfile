@@ -54,7 +54,8 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     pymysql \
     icalendar \
     python-dateutil \
-    python-dotenv
+	python-dotenv \
+	boto3
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/

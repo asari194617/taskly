@@ -142,6 +142,11 @@ export const t = (lang: Lang) => ({
     deadline: lang === "ja" ? "期限" : "Deadline",
     noDeadline: lang === "ja" ? "期限なし" : "No deadline",
     description: lang === "ja" ? "説明" : "Description",
+    image: lang === "ja" ? "画像" : "Image",
+    imageHelp:
+      lang === "ja"
+        ? "JPEG・PNG・WebP・GIF（最大10 MiB）"
+        : "JPEG, PNG, WebP, or GIF (up to 10 MiB)",
     type: lang === "ja" ? "タイプ" : "Type",
     requireHandIn: lang === "ja" ? "提出必須" : "Submission required",
     selfCheckRequired: lang === "ja" ? "自己採点が必要" : "Self-check required",

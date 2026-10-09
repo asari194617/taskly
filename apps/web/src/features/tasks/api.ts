@@ -1,4 +1,5 @@
 import { gql } from "@/lib/graphql";
+import { getApiBase, webFetch } from "@/lib/api";
 
 export type Task = {
   id: number;
@@ -13,6 +14,7 @@ export type Task = {
   is_self_check_required?: boolean;
   is_completed?: boolean;
   is_hidden?: boolean;
+  image_url?: string | null;
 };
 
 export type Subject = {
@@ -31,10 +33,41 @@ export type TaskInput = {
   deadline_until?: string;
   description?: string;
   type?: string;
+  image_key?: string;
 };
 
-const taskFields = `id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_completed is_hidden`;
-const taskMutationFields = `id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required`;
+const taskFields = `id title subject_id deadline deadline_since deadline_until description image_url type is_require_hand_in is_self_check_required is_completed is_hidden`;
+const taskMutationFields = `id title subject_id deadline deadline_since deadline_until description image_url type is_require_hand_in is_self_check_required`;
+
+export const TASK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+export const TASK_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+export async function uploadTaskImage(file: File): Promise<string> {
+  if (!TASK_IMAGE_TYPES.includes(file.type)) {
+    throw new Error("unsupported_image_type");
+  }
+  if (file.size <= 0 || file.size > TASK_IMAGE_MAX_BYTES) {
+    throw new Error("image_too_large");
+  }
+  const presignResponse = await webFetch(`${getApiBase()}/task-images/presign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content_type: file.type, size: file.size }),
+  });
+  const presign = await presignResponse.json();
+  if (!presignResponse.ok) {
+    throw new Error(presign?.error || "image_presign_failed");
+  }
+  const uploadResponse = await fetch(presign.upload_url, {
+    method: "PUT",
+    headers: presign.headers,
+    body: file,
+  });
+  if (!uploadResponse.ok) {
+    throw new Error("image_upload_failed");
+  }
+  return presign.key;
+}
 
 export async function loadSubjects() {
   const result = await gql<{ subjects: Subject[] }>(
@@ -68,7 +101,7 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     // Keep compatibility during rolling deployments with an older API schema.
-    if (!/Cannot query field "is_completed"/i.test(message)) throw error;
+    if (!/Cannot query field "(is_completed|image_url)"/i.test(message)) throw error;
     const result = await gql<{
       tasks: { items: Omit<Task, "is_completed">[]; next_cursor: TaskCursor | null };
     }>(
@@ -85,8 +118,8 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
 
 export async function createTask(input: TaskInput) {
   const result = await gql<{ createTask: Task }>(
-    `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
-      createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ ${taskMutationFields} }
+    `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String,$image_key:String){
+      createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type, image_key:$image_key){ ${taskMutationFields} }
     }`,
     input,
   );

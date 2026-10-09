@@ -145,6 +145,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	/* 課題 */
 	appHandler.RegisterTasksRoutes(app.Group("/tasks", middleware.AuthRequired, middleware.Audit))
+	appHandler.RegisterTaskImageRoutes(app.Group("/task-images", middleware.AuthRequired, middleware.Audit))
 
 	/* 通報 */
 	appHandler.RegisterReportRoutes(app.Group("reports", middleware.AuthRequired, middleware.Audit))

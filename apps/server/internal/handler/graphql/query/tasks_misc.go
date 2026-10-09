@@ -7,6 +7,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/legal"
+	"github.com/asari194617/taskly/apps/server/internal/taskimage"
 	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
@@ -82,12 +83,14 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 						}
 					}
 					outItems := make([]map[string]any, 0, len(items))
+					images, _ := taskimage.NewFromEnv()
 					for _, it := range items {
 						out := map[string]any{
 							"id":                     it.ID,
 							"title":                  it.Title,
 							"subject_id":             it.SubjectID,
 							"description":            it.Description,
+							"image_url":              nil,
 							"type":                   it.Type,
 							"is_require_hand_in":     it.IsRequireHandIn,
 							"is_self_check_required": it.IsSelfCheckRequired,
@@ -99,6 +102,11 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 						out["is_completed"] = completed[it.ID]
 						out["created_at"] = it.CreatedAt.Format(time.RFC3339)
 						out["updated_at"] = it.UpdatedAt.Format(time.RFC3339)
+						if images != nil && it.ImageKey != nil {
+							if url, err := images.PresignView(p.Context, *it.ImageKey); err == nil {
+								out["image_url"] = url
+							}
+						}
 						outItems = append(outItems, out)
 					}
 					return map[string]any{"items": outItems, "next_cursor": nextCursor}, nil

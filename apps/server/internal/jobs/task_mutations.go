@@ -17,6 +17,12 @@ func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, des
 		if err != nil {
 			return err
 		}
+		if deadline.ImageKey != nil {
+			created.ImageKey = deadline.ImageKey
+			if err := tx.Exec("UPDATE tasks SET image_key = ? WHERE id = ?", deadline.ImageKey, created.ID).Error; err != nil {
+				return err
+			}
+		}
 		return EnqueueTaskNotices(tx, "created", created, actor, "", "")
 	})
 	return created, err

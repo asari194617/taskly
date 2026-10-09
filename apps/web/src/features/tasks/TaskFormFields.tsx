@@ -22,6 +22,7 @@ export type TaskFormValues = {
   selfCheck: boolean;
   type: string;
   description: string;
+  imageFile?: File | null;
 };
 
 export type TaskFormSetters = {
@@ -33,6 +34,7 @@ export type TaskFormSetters = {
   selfCheck: (value: boolean) => void;
   type: (value: string) => void;
   description: (value: string) => void;
+  imageFile?: (value: File | null) => void;
 };
 
 export function TaskFormFields({
@@ -138,6 +140,22 @@ export function TaskFormFields({
           onChange={(event) => set.description(event.target.value)}
         />
       </div>
+      {mode === "create" && (
+        <div className="col-span-2">
+          <Label htmlFor={`${id}-image`}>
+            {dict.tasks.image} {dict.tasks.optional}
+          </Label>
+          <Input
+            id={`${id}-image`}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={(event) => set.imageFile?.(event.target.files?.[0] ?? null)}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {dict.tasks.imageHelp}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

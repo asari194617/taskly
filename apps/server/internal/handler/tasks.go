@@ -10,6 +10,7 @@ import (
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
+	"github.com/asari194617/taskly/apps/server/internal/taskimage"
 	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"github.com/gofiber/fiber/v2"
@@ -84,6 +85,7 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			Title           string  `json:"title"`
 			SubjectID       uint    `json:"subject_id"`
 			Description     *string `json:"description"`
+			ImageKey        *string `json:"image_key"`
 			Type            *string `json:"type"`
 			IsRequireHandIn *bool   `json:"is_require_hand_in"`
 			Deadline        string  `json:"deadline"`       // YYYY-MM-DD, required
@@ -100,6 +102,17 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid deadline"})
 		}
 		rec := domain.Task{AddedUserID: u.ID, Title: body.Title, SubjectID: body.SubjectID, Description: body.Description, Deadline: utils.DateOnly(dead), DeadlineSince: "NONE", DeadlineUntil: "NONE"}
+		if body.ImageKey != nil && strings.TrimSpace(*body.ImageKey) != "" {
+			key := strings.TrimSpace(*body.ImageKey)
+			images, imageErr := taskimage.NewFromEnv()
+			if imageErr != nil {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "image upload unavailable"})
+			}
+			if imageErr := images.ValidateUploaded(c.UserContext(), u.ID, key); imageErr != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid image upload"})
+			}
+			rec.ImageKey = &key
+		}
 		if body.Type != nil {
 			rec.Type = utils.NormalizeTaskType(*body.Type)
 		}
@@ -261,10 +274,11 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if !allowed {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		_, err = jobs.DeleteTask(h.db, rec.ID, u.Email)
+		deleted, err := jobs.DeleteTask(h.db, rec.ID, u.Email)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
+		deleteTaskImage(c.UserContext(), deleted.ImageKey)
 		return c.SendStatus(204)
 	})
 }

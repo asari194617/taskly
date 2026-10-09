@@ -172,6 +172,24 @@ export function TaskCard({
                 {t.description}
               </p>
             )}
+            {t.image_url && (
+              <a
+                href={t.image_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 block"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <img
+                  src={t.image_url}
+                  alt={`${t.title} - ${dict.tasks.image}`}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  className="max-h-72 max-w-full rounded-md border object-contain"
+                />
+              </a>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {/* Unified actions via Popover across sizes */}
