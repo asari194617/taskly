@@ -481,6 +481,9 @@ test("設定詳細画面と日時選択の文言が英語・日本語に切り�
 
   await page.goto("/settings/mcp");
   await expect(page.getByRole("heading", { name: "MCP Settings" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to Taskly" })).toBeVisible();
+  await expect(page.getByText("https://mcp.taskly.iy0306.com", { exact: true })).toBeVisible();
+  await expect(page.getByText("TASKLY_MCP_TOKEN", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Update expiration" }).click();
   await expect(page.getByRole("dialog").getByText("Expiration (optional)")).toBeVisible();
   await page.evaluate(() => {
@@ -488,4 +491,9 @@ test("設定詳細画面と日時選択の文言が英語・日本語に切り�
     window.dispatchEvent(new Event("languagechange"));
   });
   await expect(page.getByRole("dialog").getByText("有効期限(任意)")).toBeVisible();
+
+  await page.goto("/guide/mcp");
+  await expect(page.getByRole("heading", { name: "接続までの流れ" })).toBeVisible();
+  await expect(page.getByText("https://mcp.taskly.iy0306.com", { exact: true }).last()).toBeVisible();
+  await expect(page.getByText("接続できないとき", { exact: true })).toBeVisible();
 });

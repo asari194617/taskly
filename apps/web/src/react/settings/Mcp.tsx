@@ -34,6 +34,11 @@ import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { CircleHelp as CircleQuestionMark } from "lucide-react";
 import { formatYmdHm } from "@/lib/utils";
 import { expiryFromLocalInput, expiryToLocalInput, InvalidTokenExpiryError } from "@/lib/token-expiry";
+import {
+  TASKLY_MCP_BASE_URL,
+  TASKLY_MCP_COMMAND,
+  tasklyMcpClientConfig,
+} from "@/lib/mcp-connection";
 
 type McpInfo = {
   enabled: boolean;
@@ -53,7 +58,9 @@ export default function SettingsMcp() {
   const [expires, setExpires] = React.useState<string>(""); // local input
   const [editExpires, setEditExpires] = React.useState<string>("");
   const [openIssue, setOpenIssue] = React.useState(false);
-  const HELP_URL = "https://ritzy-lift-e38.notion.site/MCP-290a3874f8c880a08c31f53116cb2ead?source=copy_link";
+  const [copiedConfig, setCopiedConfig] = React.useState(false);
+  const HELP_URL = "/guide/mcp";
+  const clientConfig = tasklyMcpClientConfig();
 
   async function loadInfo() {
     try {
@@ -169,7 +176,7 @@ export default function SettingsMcp() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <a href={HELP_URL} target="_blank" rel="noreferrer">
+                  <a href={HELP_URL}>
                     <Button variant="ghost" size="icon" aria-label={dict.settingsDetail.help}>
                       <CircleQuestionMark />
                     </Button>
@@ -184,6 +191,68 @@ export default function SettingsMcp() {
           <AlertTitle>{dict.common.warning}</AlertTitle>
           <AlertDescription>{dict.settingsMcp.shareWarning}</AlertDescription>
         </Alert>
+        <Card className="p-5 space-y-5">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold">{dict.settingsMcp.setup.title}</h2>
+            <p className="text-sm text-muted-foreground">
+              {dict.settingsMcp.setup.description}
+            </p>
+          </div>
+          <ol className="grid gap-4 md:grid-cols-3">
+            {[
+              [dict.settingsMcp.setup.installTitle, dict.settingsMcp.setup.installDescription],
+              [dict.settingsMcp.setup.tokenTitle, dict.settingsMcp.setup.tokenDescription],
+              [dict.settingsMcp.setup.configureTitle, dict.settingsMcp.setup.configureDescription],
+            ].map(([title, description], index) => (
+              <li key={title} className="flex gap-3">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                  {index + 1}
+                </span>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">{title}</div>
+                  <p className="text-sm text-muted-foreground">{description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+            <h3 className="font-medium">{dict.settingsMcp.setup.detailsTitle}</h3>
+            <dl className="grid gap-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
+              <dt className="text-muted-foreground">{dict.settingsMcp.setup.command}</dt>
+              <dd><code className="break-all">{TASKLY_MCP_COMMAND}</code></dd>
+              <dt className="text-muted-foreground">{dict.settingsMcp.setup.baseUrl}</dt>
+              <dd><code className="break-all">{TASKLY_MCP_BASE_URL}</code></dd>
+              <dt className="text-muted-foreground">{dict.settingsMcp.setup.tokenVariable}</dt>
+              <dd><code className="break-all">TASKLY_MCP_TOKEN</code></dd>
+            </dl>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-medium">{dict.settingsMcp.setup.configTitle}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {dict.settingsMcp.setup.configDescription}
+              </p>
+            </div>
+            <pre className="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-5"><code>{clientConfig}</code></pre>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(clientConfig);
+                    setCopiedConfig(true);
+                    window.setTimeout(() => setCopiedConfig(false), 1200);
+                  } catch {}
+                }}
+              >
+                {copiedConfig ? dict.common.copied : dict.settingsMcp.setup.copyConfig}
+              </Button>
+              <Button asChild variant="outline">
+                <a href={HELP_URL}>{dict.settingsMcp.setup.openGuide}</a>
+              </Button>
+            </div>
+          </div>
+        </Card>
         <Card className="p-4 space-y-3">
           {disabled ? (
             <div className="text-sm text-muted-foreground">
@@ -329,6 +398,12 @@ export default function SettingsMcp() {
                                 {dict.common.close}
                               </Button>
                             </div>
+                            <p className="text-sm text-muted-foreground">
+                              {dict.settingsMcp.setup.nextStep}{" "}
+                              <a className="font-medium text-primary underline-offset-4 hover:underline" href={HELP_URL}>
+                                {dict.settingsMcp.setup.openGuide}
+                              </a>
+                            </p>
                           </div>
                         ) : (
                           <div className="space-y-3">
