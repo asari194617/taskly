@@ -84,8 +84,9 @@ mutation UpdatePrefs($id: Int!) {
 ## バッチ（Queue/Delivery）
 
 課題の対象範囲は JST 基準で共通です。朝（07:00）は今日・明日、夕方（17:00）は
-今日の放課後まで（`deadline_until=AFTER_SCHOOL`）または時間指定なし（`NONE`）の課題と、
-明日・明後日の課題です。Queue Manager、Email、Discord に同じ範囲を適用します。
+今日の放課後まで（`deadline_until=AFTER_SCHOOL`）の課題と、明日・明後日の課題です。
+`deadline_until=NONE`（時間指定なし）の課題は朝夕とも通知しません。
+Queue Manager、Email、Discord に同じ範囲を適用します。
 
 - Queue Manager（`batches/notifications/que-manager`）:
   - 対象課題を Web Push キューに投入。`TASK` と時間帯に応じた `TASK_MORNING`/`TASK_EVENING` を適用。

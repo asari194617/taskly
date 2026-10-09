@@ -12,8 +12,9 @@
 ## 課題通知
 
 - Queue Manager・メール・Discord は JST の日付で同じ課題を抽出します。朝（07:00）は今日と明日、
-  夕方（17:00）は今日の `deadline_until` が `AFTER_SCHOOL`（放課後まで）または
-  `NONE`（時間指定なし）の課題と、明日・明後日の課題が対象です。前日以前と3日後以降は対象外です。
+  夕方（17:00）は今日の `deadline_until` が `AFTER_SCHOOL`（放課後まで）の課題と、
+  明日・明後日の課題が対象です。`deadline_until=NONE`（時間指定なし）の課題は朝夕とも対象外です。
+  前日以前と3日後以降も対象外です。
 - Queue Manager は対象課題について、対象ユーザーごとに `channel='webpush'` の行を
   `notifications_queue` に追加します。`TASK` と実行時間帯の
   `TASK_MORNING` / `TASK_EVENING` 設定、Web Push の有効状態を参照します。
