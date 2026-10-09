@@ -123,7 +123,7 @@ test("課題の詳細に入力した改行を一覧表示でも保持する", as
   await dialog.getByLabel("説明 （任意）").fill("1行目\n2行目");
   await dialog.getByRole("button", { name: "作成" }).click();
 
-  const description = page.getByText("1行目\n2行目");
+  const description = page.locator("p.whitespace-pre-line", { hasText: "1行目" });
   await expect(description).toBeVisible();
   await expect(description).toHaveCSS("white-space", "pre-line");
   await expect(description).toHaveJSProperty("innerText", "1行目\n2行目");
