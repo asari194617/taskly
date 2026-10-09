@@ -110,6 +110,13 @@ try {
             body: "問題集を解く",
             meta: "今日まで",
             badges: [{ label: "宿題", variant: "blue" }],
+            completed: true,
+          },
+          {
+            when_label: "今日",
+            subject: "英語",
+            title: "未完了の課題",
+            body: "従来どおり表示する",
           },
         ],
       },
@@ -147,6 +154,13 @@ try {
     assertResponse(method, response);
     if (expectedText && !response.text.includes(expectedText)) {
       throw new Error(`${method} did not render ${expectedText}`);
+    }
+    if (
+      method === "composeTaskDigest" &&
+      (response.html.match(/background-color:rgb\(243,244,246\)/g) ?? [])
+        .length !== 1
+    ) {
+      throw new Error(`${method} did not gray out only the completed task`);
     }
   }
 

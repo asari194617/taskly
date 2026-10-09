@@ -18,6 +18,7 @@ type QueueItem struct {
 	Meta      sql.NullString
 	Badges    sql.NullString // JSON
 	UserID    sql.NullInt64
+	Completed bool
 }
 
 type Task struct {

@@ -106,6 +106,7 @@ export async function startGrpcServer({ host, port }: GrpcServerOptions) {
           body: it.body,
           meta: it.meta,
           badges: it.badges,
+          completed: it.completed ?? false,
         }));
 
         const { t } = await getT("tasks-digest", locale);

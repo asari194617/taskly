@@ -36,12 +36,18 @@ func TestDigestRecipientsRespectSettingsAndBlocks(t *testing.T) {
 				sqlmock.NewRows([]string{"user_id", "platform", "is_enabled"}).AddRow(3, "EMAIL", false))
 			mock.ExpectQuery("SELECT user_id, notification_type, is_enabled FROM notification_type_prefs").WillReturnRows(
 				sqlmock.NewRows([]string{"user_id", "notification_type", "is_enabled"}).AddRow(2, tc.disabled, false))
+			mock.ExpectQuery("SELECT user_id, task_id FROM tasks_users_completions").
+				WithArgs(uint(1), uint(1)).
+				WillReturnRows(sqlmock.NewRows([]string{"user_id", "task_id"}).AddRow(1, 1))
 			groups, err := computeLiveDigestGroupsAt(db, now)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(groups) != 1 || len(groups[1]) != 1 {
 				t.Fatalf("wanted only eligible user 1, got %v", groups)
+			}
+			if !groups[1][0].Completed {
+				t.Fatalf("completed task should be marked in recipient digest: %v", groups[1][0])
 			}
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Fatal(err)

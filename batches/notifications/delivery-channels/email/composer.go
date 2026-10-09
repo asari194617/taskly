@@ -65,6 +65,9 @@ func composeTaskDigestGRPC(locale, appName string, items []dcCommon.QueueItem) (
 		if v, ok := it["meta"]; ok {
 			itm.SetFieldByName("meta", v)
 		}
+		if v, ok := it["completed"]; ok {
+			itm.SetFieldByName("completed", v)
+		}
 		if v, ok := it["badges"]; ok {
 			if arr, ok := v.([]map[string]any); ok {
 				bdMsgDesc := itmMsgDesc.FindFieldByName("badges").GetMessageType()

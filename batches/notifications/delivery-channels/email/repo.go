@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -25,7 +26,7 @@ func computeLiveDigestGroupsAt(db *sql.DB, now time.Time) (map[int64][]dcCommon.
 	if now.Hour() < 12 {
 		slot = "TASK_MORNING"
 	}
-	groups := make(map[int64][]dcCommon.QueueItem, len(ids))
+	recipientIDs := make([]uint, 0, len(ids))
 	for _, uid := range ids {
 		dp := devicePrefs[uid]
 		if !dp.Email {
@@ -42,6 +43,14 @@ func computeLiveDigestGroupsAt(db *sql.DB, now time.Time) (map[int64][]dcCommon.
 		if enabled, ok := tp[slot]; ok && !enabled {
 			continue
 		}
+		recipientIDs = append(recipientIDs, uid)
+	}
+	completedTasks, err := loadCompletedTasks(db, recipientIDs, tasks)
+	if err != nil {
+		return nil, err
+	}
+	groups := make(map[int64][]dcCommon.QueueItem, len(recipientIDs))
+	for _, uid := range recipientIDs {
 		items := make([]dcCommon.QueueItem, 0, len(tasks))
 		for _, t := range tasks {
 			items = append(items, dcCommon.QueueItem{
@@ -53,6 +62,7 @@ func computeLiveDigestGroupsAt(db *sql.DB, now time.Time) (map[int64][]dcCommon.
 				Meta:      sql.NullString{Valid: t.Description != nil && strings.TrimSpace(*t.Description) != "", String: dcCommon.ValueOr(ptrStr(t.Description), "")},
 				Badges:    sql.NullString{Valid: true, String: buildBadgesJSON(t)},
 				UserID:    sql.NullInt64{Valid: true, Int64: int64(uid)},
+				Completed: completedTasks[completionKey{userID: uid, taskID: t.ID}],
 			})
 		}
 		if len(items) > 0 {
@@ -60,6 +70,47 @@ func computeLiveDigestGroupsAt(db *sql.DB, now time.Time) (map[int64][]dcCommon.
 		}
 	}
 	return groups, nil
+}
+
+type completionKey struct {
+	userID uint
+	taskID uint
+}
+
+func loadCompletedTasks(db *sql.DB, userIDs []uint, tasks []dcCommon.Task) (map[completionKey]bool, error) {
+	completed := make(map[completionKey]bool)
+	if len(userIDs) == 0 || len(tasks) == 0 {
+		return completed, nil
+	}
+
+	args := make([]any, 0, len(userIDs)+len(tasks))
+	for _, userID := range userIDs {
+		args = append(args, userID)
+	}
+	for _, task := range tasks {
+		args = append(args, task.ID)
+	}
+	query := fmt.Sprintf(
+		"SELECT user_id, task_id FROM tasks_users_completions WHERE user_id IN (%s) AND task_id IN (%s)",
+		placeholders(len(userIDs)), placeholders(len(tasks)),
+	)
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key completionKey
+		if err := rows.Scan(&key.userID, &key.taskID); err != nil {
+			return nil, err
+		}
+		completed[key] = true
+	}
+	return completed, rows.Err()
+}
+
+func placeholders(count int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }
 
 func resolveRecipientEmail(db *sql.DB, userID sql.NullInt64) (string, string, error) {

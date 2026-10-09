@@ -14,6 +14,7 @@ export interface TaskDigestItem {
     label: string;
     variant?: "gray" | "red" | "blue";
   }[]; // 先頭のバッジ行（任意）
+  completed?: boolean;
 }
 
 // 重複した"まで まで"を1つにまとめる
@@ -111,7 +112,11 @@ export async function TaskDigestEmail({
               {list.map((x, idx) => (
                 <div
                   key={idx}
-                  className="border border-gray-200 rounded-[10px] p-4 mb-3"
+                  className={`border rounded-[10px] p-4 mb-3 ${
+                    x.completed
+                      ? "border-gray-300 bg-gray-100 text-gray-500"
+                      : "border-gray-200"
+                  }`}
                 >
                   {/* badges row (optional) */}
                   {x.badges && x.badges.length > 0 ? (
@@ -130,7 +135,13 @@ export async function TaskDigestEmail({
                   ) : null}
 
                   {/* title */}
-                  <Text className="m-0 text-base font-semibold">{x.title}</Text>
+                  <Text
+                    className={`m-0 text-base font-semibold ${
+                      x.completed ? "text-gray-500" : ""
+                    }`}
+                  >
+                    {x.title}
+                  </Text>
 
                   {/* meta line: subject + date text */}
                   <Text className="m-0 mt-1 text-gray-500">

@@ -27,6 +27,7 @@ func buildComposePayload(locale, appName string, items []dcCommon.QueueItem) com
 			"subject":    it.Subject,
 			"title":      it.Title,
 			"body":       body,
+			"completed":  it.Completed,
 		}
 		if it.Meta.Valid {
 			m["meta"] = it.Meta.String

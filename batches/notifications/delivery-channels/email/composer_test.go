@@ -28,11 +28,15 @@ func TestBuildComposePayloadEnglish(t *testing.T) {
 		WhenLabel: "9/22 朝まで",
 		Body:      "締切: 9/22 朝まで\n",
 		Badges:    sql.NullString{String: `[{"label":"提出必須","variant":"red"}]`, Valid: true},
+		Completed: true,
 	}}
 	payload := buildComposePayload("en", "Taskly", items)
 	item := payload.Items[0]
 	if item["when_label"] != "9/22 by morning" || item["body"] != "Due: 9/22 by morning\n" {
 		t.Fatalf("unexpected English task: %#v", item)
+	}
+	if item["completed"] != true {
+		t.Fatalf("completed state was not preserved: %#v", item)
 	}
 	badges := item["badges"].([]map[string]any)
 	if badges[0]["label"] != "Submission required" {

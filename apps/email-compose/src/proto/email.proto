@@ -45,6 +45,7 @@ message TaskDigestItem {
   string body = 4;
   string meta = 5;
   repeated TaskDigestBadge badges = 6;
+  bool completed = 7;
 }
 
 message ComposeTaskDigestRequest {

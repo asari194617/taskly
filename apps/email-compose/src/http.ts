@@ -72,6 +72,7 @@ export function startHttpServer(port: number) {
           body: it.body,
           meta: it.meta,
           badges: it.badges,
+          completed: it.completed ?? false,
         }));
         const { t } = await getT("tasks-digest", locale);
         const element = await TaskDigestEmail({ items, locale });
