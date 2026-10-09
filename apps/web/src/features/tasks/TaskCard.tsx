@@ -13,7 +13,6 @@ import {
   type TaskFormSetters,
 } from "./TaskFormFields";
 import type { Subject, Task } from "./api";
-import { deriveLabelFromEnums } from "@/components/DeadlinePicker";
 import { useLang } from "@/react/LanguageProvider";
 import { t } from "@/lib/i18n";
 
@@ -70,21 +69,6 @@ export function TaskCard({
   onReport: (id: number) => void;
 }) {
   const { lang, dict } = useLang();
-  const deadline = !t.deadline
-    ? dict.tasks.noDeadline
-    : (() => {
-        const match = t.deadline!.match(/^(\d{4})-(\d{2})-(\d{2})/);
-        const date = match
-          ? `${match[1]}/${match[2]}/${match[3]}`
-          : t.deadline!;
-        const label = deriveLabelFromEnums(
-          t.deadline!,
-          t.deadline_since,
-          t.deadline_until,
-          lang,
-        );
-        return label ? `${date} ${label}` : date;
-      })();
   return (
     <li
       key={t.id}
@@ -161,7 +145,7 @@ export function TaskCard({
                 : `${dict.tasks.subjectId}: ${t.subject_id}`;
               return (
                 <div className="text-sm text-muted-foreground">
-                  {subjectTitle} {deadline}
+                  {subjectTitle}
                 </div>
               );
             })()}
