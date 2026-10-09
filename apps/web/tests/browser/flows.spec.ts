@@ -5,6 +5,7 @@ type Task = {
   title: string;
   subject_id: number;
   deadline: string;
+  description?: string;
   is_completed: boolean;
 };
 
@@ -41,7 +42,7 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     if (query.includes("adminSubjects")) return respond({ data: { adminSubjects: subjects } });
     if (query.includes("subjects{")) return respond({ data: { subjects } });
     if (query.includes("createTask(")) {
-      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, is_completed: false };
+      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, is_completed: false };
       tasks.push(task);
       return respond({ data: { createTask: task } });
     }
@@ -103,6 +104,30 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await expect(page.getByText("編集済み課題")).toBeVisible();
   await page.getByPlaceholder("課題を検索 (タイトル/説明)").fill("存在しない課題");
   await expect(page.getByText("検索結果がありません")).toBeVisible();
+});
+
+test("課題の詳細に入力した改行を一覧表示でも保持する", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  await page.goto("/home");
+  await expect(page.locator('astro-island[component-url*="TasksList"]')).not.toHaveAttribute("ssr", "");
+
+  await page.getByRole("button", { name: "新規作成" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("タイトル").fill("改行を含む課題");
+  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await page.getByRole("menuitem", { name: "数学" }).click();
+  await dialog.getByRole("button", { name: "未設定" }).click();
+  await page.getByRole("button", { name: "日付", exact: true }).click();
+  await page.locator(".rdp-today button").click();
+  await page.getByRole("button", { name: "適用" }).click();
+  await dialog.getByLabel("説明 （任意）").fill("1行目\n2行目");
+  await dialog.getByRole("button", { name: "作成" }).click();
+
+  const description = page.getByText("1行目\n2行目");
+  await expect(description).toBeVisible();
+  await expect(description).toHaveCSS("white-space", "pre-line");
+  await expect(description).toHaveJSProperty("innerText", "1行目\n2行目");
+  await expect.poll(() => api.tasks[0]?.description).toBe("1行目\n2行目");
 });
 
 test("課題検索欄と新規作成ボタンの名前を日本語・英語と両画面幅で取得できる", async ({ page }) => {
