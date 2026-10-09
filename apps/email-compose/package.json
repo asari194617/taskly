@@ -32,9 +32,12 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@react-email/ui": "^6.11.0",
+    "@react-email/ui": "6.11.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "next": "16.3.8"
   }
 }

@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   select-runner:
     uses: ./.github/workflows/select-runner.yml
@@ -14,10 +17,10 @@ jobs:
     needs: select-runner
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: "npm"
@@ -42,7 +45,7 @@ jobs:
           ls -la artifacts
 
       - name: Upload build artifacts (linux)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: artifacts-linux
           path: artifacts/*
@@ -50,10 +53,10 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: "npm"
@@ -76,7 +79,7 @@ jobs:
           Get-ChildItem artifacts
 
       - name: Upload build artifacts (windows)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: artifacts-windows
           path: artifacts/*
@@ -84,10 +87,10 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: "npm"
@@ -112,7 +115,7 @@ jobs:
           ls -la artifacts
 
       - name: Upload build artifacts (macos)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: artifacts-macos
           path: artifacts/*
@@ -128,10 +131,10 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: artifacts
           merge-multiple: true
@@ -155,7 +158,7 @@ jobs:
           echo "{\"tag\":\"${TAG}\"}" > upload/docs/mcp/clients/latest.json
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.x"
 

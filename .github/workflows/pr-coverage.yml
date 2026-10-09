@@ -16,7 +16,7 @@ jobs:
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     permissions: {}
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require('node:fs');
@@ -26,7 +26,7 @@ jobs:
               sha: pr.head.sha,
               repository: pr.head.repo.full_name,
             }));
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-pr
           path: pr.json
@@ -57,15 +57,15 @@ jobs:
             packages: ./...
             include: coverage_core\.go$
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.26.5"
           cache-dependency-path: ${{ matrix.directory }}/go.sum
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
       - name: Test with coverage
@@ -74,7 +74,7 @@ jobs:
           go test -coverprofile=coverage.out ${{ matrix.packages }}
           node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go-profile coverage.out "$GITHUB_WORKSPACE/${{ matrix.id }}.json" 75 '${{ matrix.include }}'
       - if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-${{ matrix.id }}
           path: ${{ matrix.id }}.json
@@ -89,11 +89,11 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
@@ -105,7 +105,7 @@ jobs:
           npx vitest run --coverage --coverage.reporter=json-summary
           node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/web.json" 75
       - if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-web
           path: web.json
@@ -120,11 +120,11 @@ jobs:
       run:
         working-directory: apps/mcp
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
@@ -135,7 +135,7 @@ jobs:
           npx c8 --all --reporter=json-summary --include='dist-test/**/*.js' --include='dist/stdio.js' --exclude='**/__tests__/**' npm test
           node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" istanbul coverage/coverage-summary.json "$GITHUB_WORKSPACE/mcp.json" 75
       - if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-mcp
           path: mcp.json
@@ -149,13 +149,13 @@ jobs:
       pull-requests: write
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         continue-on-error: true
         with:
           pattern: coverage-*
           merge-multiple: true
           path: coverage-results
-      - uses: actions/github-script@v9
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         with:

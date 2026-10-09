@@ -46,6 +46,7 @@ __pycache__/
 *.out
 
 batches/backup-mysql/backup-mysql
+batches/que-manager
 batches/day-shift-rotations/day-shift-rotations
 batches/moderation/moderation
 batches/que-manager/que-manager
@@ -54,4 +55,7 @@ batches/notifications/delivery-channels/discord/discord
 batches/notifications/delivery-channels/email/email
 batches/notifications/delivery-channels/web-push/web-push
 
+apps/api/api
+apps/dmarc-processor/dmarc-processor
+apps/server/api
 apps/server/server

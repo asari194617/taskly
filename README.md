@@ -102,3 +102,14 @@ with the commit SHA, synchronizes the repository to the host, checks disk
 capacity, and deploys that exact image tag with Docker Compose. Production
 deployments should use this workflow rather than running a local Compose build
 on the server.
+
+## Source availability and licensing
+
+This repository is publicly viewable source, but it is not currently offered
+under an open-source license. Unless a file or directory contains its own
+license, all rights are reserved by its copyright holders. In particular,
+`apps/mcp-client-files` is separately available under the MIT License contained
+in that directory.
+
+See [`LICENSE`](LICENSE) for the scope of these terms and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing a contribution.

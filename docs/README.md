@@ -20,7 +20,7 @@ ones are retained as historical design material.
 - [`operations/network-ports.md`](operations/network-ports.md): production port exposure and verification
 - [`operations/metrics-monitoring.md`](operations/metrics-monitoring.md): metric collection, dashboard, alerts, and response
 - [`redis-acl-operations.md`](redis-acl-operations.md): Redis ACL rollout, rotation, and recovery
-- [`legal/privacy-data-inventory.md`](legal/privacy-data-inventory.md): Issue #401 data-flow inventory and publication checks
+- [`legal/privacy-data-inventory.md`](legal/privacy-data-inventory.md): public data-flow inventory
 - [`legal/privacy-policy.md`](legal/privacy-policy.md): text of the published privacy policy
 - [`../apps/docs/openapi/openapi.yaml`](../apps/docs/openapi/openapi.yaml): OpenAPI definition used by the documentation app
 - [`batches/notifications/README.md`](batches/notifications/README.md): notification batch behavior
@@ -36,11 +36,9 @@ These documents are useful background, but they are not authoritative current
 status:
 
 - `legal/terms-issue-404.md`: proposed terms revision and publication procedure; not yet effective
-- [`auth-service-extraction.md`](auth-service-extraction.md): staged OAuth 2.1 and identity database separation specification
 - [`auth-identity-write-inventory.md`](auth-identity-write-inventory.md): legacy identity writes and cutover gates
 - `improvements.md`: point-in-time security review and recommendations
 - `remain.md`: earlier backlog and requirements notes
-- `setup.tmp.md`: migration-specific rollout notes
 - `new-day-shift.md` and `features/`: design proposals
 
 Update the current references in the same pull request whenever behavior,

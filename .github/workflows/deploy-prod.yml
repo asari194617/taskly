@@ -40,6 +40,9 @@ env:
   # The production host was verified as x86_64 on 2026-09-21.
   PRODUCTION_PLATFORM: linux/amd64
 
+permissions:
+  contents: read
+
 jobs:
   select-runner:
     uses: ./.github/workflows/select-runner.yml
@@ -56,7 +59,7 @@ jobs:
       airflow_changed: ${{ steps.matrix.outputs.airflow_changed }}
       runner: ${{ needs.select-runner.outputs.label }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - id: matrix
@@ -110,15 +113,15 @@ jobs:
     steps:
       - name: Restore workspace ownership
         run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" alpine:3.20 chown -R "$(id -u):$(id -g)" /workspace
-      - uses: actions/checkout@v7
-      - uses: docker/login-action@v4.6.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Check Docker bridge DNS before publishing
         run: bash .github/scripts/check-build-registry-dns.sh
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
         with:
           # BuildKit 0.32 cannot unpack the Airflow base image on this host.
           # Keep an isolated builder per runner, pinned to the verified version.
@@ -127,7 +130,7 @@ jobs:
       - name: Record build start
         run: echo "BUILD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - name: Build and push ${{ matrix.service }} image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -152,12 +155,12 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: docker/login-action@v4.6.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
         with:
           driver: docker-container
           driver-opts: image=moby/buildkit:v0.26.2@sha256:de10faf919fc71ba4eb1dd7bd6449566d012b0c9436b1c61bfee21d621b009aa
@@ -210,7 +213,7 @@ jobs:
     steps:
       - name: Restore workspace ownership
         run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" alpine:3.20 chown -R "$(id -u):$(id -g)" /workspace
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Require production environment
         run: .github/scripts/require-prod-env.sh
       - name: Record deploy start
