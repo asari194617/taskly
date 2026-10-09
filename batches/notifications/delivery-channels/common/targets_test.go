@@ -20,7 +20,7 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 		{"year boundary", "2026-12-30", "2027-01-01", "2027-01-02"},
 		{"leap year", "2028-02-27", "2028-02-29", "2028-03-01"},
 	} {
-		for _, hour := range []int{7, 17} {
+		for _, hour := range []int{7, 11, 12, 17} {
 			t.Run(fmt.Sprintf("%s/%02d", tc.name, hour), func(t *testing.T) {
 				db, mock, err := sqlmock.New()
 				if err != nil {
@@ -32,12 +32,12 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 					t.Fatal(err)
 				}
 				endDate := tc.morningEnd
-				query := `FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? ORDER BY t.deadline ASC`
+				query := `FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? AND t.deadline_until <> 'NONE' ORDER BY t.deadline ASC`
 				args := []driver.Value{tc.today, endDate}
 				todayUntil := "P5"
-				if hour == 17 {
+				if hour >= 12 {
 					endDate = tc.eveningEnd
-					query = `FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? AND \(t.deadline > \? OR t.deadline_until IN \('AFTER_SCHOOL', 'NONE'\)\) ORDER BY t.deadline ASC`
+					query = `FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id WHERE t.deadline >= \? AND t.deadline < \? AND t.deadline_until <> 'NONE' AND \(t.deadline > \? OR t.deadline_until = 'AFTER_SCHOOL'\) ORDER BY t.deadline ASC`
 					args = []driver.Value{tc.today, endDate, tc.today}
 					todayUntil = "AFTER_SCHOOL"
 				}
@@ -47,9 +47,9 @@ func TestFetchDueTasksWindowAndOrder(t *testing.T) {
 				}
 				now := start.Add(time.Duration(hour) * time.Hour)
 				// The exclusive end includes tomorrow in the morning and the day
-				// after tomorrow in the evening. Today evening keeps only deadlines
-				// marked after school or with no time specified. Date strings preserve
-				// JST calendar boundaries even if the DB connection uses UTC.
+				// after tomorrow in the evening. No-time deadlines are excluded in
+				// both slots; today evening keeps only after-school deadlines.
+				// Date strings preserve JST boundaries even with a UTC DB connection.
 				mock.ExpectQuery(query).
 					WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{
 					"id", "added_user_id", "subject_id", "subject_name", "type", "title", "description", "deadline", "deadline_since", "deadline_until", "is_require_hand_in", "is_self_check_required",
