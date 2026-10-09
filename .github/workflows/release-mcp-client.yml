@@ -10,7 +10,7 @@ jobs:
   select-runner:
     uses: ./.github/workflows/select-runner.yml
 
-  build-linux-win:
+  build-linux:
     needs: select-runner
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     steps:
@@ -23,7 +23,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: apps/mcp/package-lock.json
 
-      - name: Build stdio and package (linux/windows)
+      - name: Build stdio and package (linux)
         run: |
           set -eux
           npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
@@ -35,17 +35,50 @@ jobs:
           esbuild apps/mcp/src/stdio.ts --bundle --platform=node --format=cjs --target=node22 --outfile=.tmp/mcp-release/taskly-mcp.cjs
           pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-linux-x64   --output artifacts/taskly-mcp-linux-amd64
           pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-linux-arm64 --output artifacts/taskly-mcp-linux-arm64
-          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-win-x64     --output artifacts/taskly-mcp-windows-amd64.exe
           case "$(uname -m)" in
             x86_64|amd64) node apps/mcp/tests/verify-binary.mjs "$(pwd)/artifacts/taskly-mcp-linux-amd64" ;;
             arm64|aarch64) node apps/mcp/tests/verify-binary.mjs "$(pwd)/artifacts/taskly-mcp-linux-arm64" ;;
           esac
           ls -la artifacts
 
-      - name: Upload build artifacts (linux/windows)
+      - name: Upload build artifacts (linux)
         uses: actions/upload-artifact@v7
         with:
-          name: artifacts-linux-win
+          name: artifacts-linux
+          path: artifacts/*
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: apps/mcp/package-lock.json
+
+      # pkg bytecode is V8- and OS-specific. Building this executable on Linux
+      # produces Linux bytecode that the embedded Windows V8 rejects at startup.
+      - name: Build and verify stdio package (windows)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
+          npm -C apps/mcp run build
+          npm install --global esbuild@0.25.10 @yao-pkg/pkg@6.22.0
+          pkg --version
+          New-Item -ItemType Directory -Force artifacts, .tmp/mcp-release | Out-Null
+          esbuild apps/mcp/src/stdio.ts --bundle --platform=node --format=cjs --target=node22 --outfile=.tmp/mcp-release/taskly-mcp.cjs
+          pkg .tmp/mcp-release/taskly-mcp.cjs --targets node22-win-x64 --output artifacts/taskly-mcp-windows-amd64.exe
+          node apps/mcp/tests/verify-binary.mjs "$PWD/artifacts/taskly-mcp-windows-amd64.exe"
+          Get-ChildItem artifacts
+
+      - name: Upload build artifacts (windows)
+        uses: actions/upload-artifact@v7
+        with:
+          name: artifacts-windows
           path: artifacts/*
 
   build-macos:
@@ -85,7 +118,8 @@ jobs:
           path: artifacts/*
 
   publish:
-    needs: [select-runner, build-linux-win, build-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [select-runner, build-linux, build-windows, build-macos]
     runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
     env:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
