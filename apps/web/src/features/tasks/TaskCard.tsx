@@ -167,7 +167,7 @@ export function TaskCard({
             })()}
             {t.description && (
               <p
-                className="text-sm text-muted-foreground mt-1"
+                className="mt-1 whitespace-pre-line text-sm text-muted-foreground"
                 style={{
                   display: "-webkit-box",
                   WebkitLineClamp: 3,
