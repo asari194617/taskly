@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/graphql", () => ({ gql: vi.fn() }));
 
 import { gql } from "@/lib/graphql";
-import { createTask, deleteTask, reportTask, searchTasks, updateTask, setTaskCompleted } from "./api";
+import { createTask, deleteTask, reportTask, searchTasks, updateTask, setTaskCompleted, uploadTaskImage, TASK_IMAGE_MAX_BYTES } from "./api";
 import { appendTaskPage, visibleTasks } from "./list-model";
 import { runOptimisticMutation, scheduleTaskCompletion } from "./state.mjs";
 
@@ -16,6 +16,32 @@ afterEach(() => {
 });
 
 describe("task search and update", () => {
+  it("uploads supported images directly with the signed R2 request", async () => {
+    const request = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        key: "task-images/1/550e8400-e29b-41d4-a716-446655440000",
+        upload_url: "https://r2.example.test/signed",
+        headers: { "Content-Type": "image/png", "x-amz-meta-owner-id": "1" },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    const file = new File([new Uint8Array([1, 2, 3])], "proof.png", { type: "image/png" });
+
+    await expect(uploadTaskImage(file)).resolves.toContain("550e8400");
+    expect(request).toHaveBeenNthCalledWith(2, "https://r2.example.test/signed", expect.objectContaining({
+      method: "PUT",
+      body: file,
+    }));
+  });
+
+  it("rejects oversized or unsafe images before requesting a URL", async () => {
+    const request = vi.spyOn(globalThis, "fetch");
+    const oversized = { type: "image/png", size: TASK_IMAGE_MAX_BYTES + 1 } as File;
+    const svg = { type: "image/svg+xml", size: 10 } as File;
+    await expect(uploadTaskImage(oversized)).rejects.toThrow("image_too_large");
+    await expect(uploadTaskImage(svg)).rejects.toThrow("unsupported_image_type");
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("keeps the create, delete, and report request contracts", async () => {
     const input = {
       title: "report",

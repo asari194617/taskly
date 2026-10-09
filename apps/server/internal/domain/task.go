@@ -16,6 +16,7 @@ type Task struct {
 	Title               string  `gorm:"size:255;not null"`
 	SubjectID           uint    `gorm:"index;not null"`
 	Description         *string `gorm:"type:text"`
+	ImageKey            *string `gorm:"->;column:image_key"`
 	Type                string  `gorm:"type:ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER');not null;default:'OTHER'"`
 	IsRequireHandIn     bool    `gorm:"not null;default:0"`
 	IsSelfCheckRequired bool    `gorm:"not null;default:0"`

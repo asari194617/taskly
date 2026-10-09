@@ -17,13 +17,25 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   let nextId = 2;
   let searchFailures = options.failFirstSearch ? 1 : 0;
   const tasks: Task[] = [];
+  const uploadedKeys: string[] = [];
   const subjects = [{ id: 1, name_ja: "数学", name_en: "Math", created_at: "2026-01-01T00:00:00Z", expires_at: null }];
+  await page.route("https://r2.example.test/**", async (route) => {
+    uploadedKeys.push(route.request().url());
+    return route.fulfill({ status: 200, body: "" });
+  });
   await page.route("http://localhost:3063/**", async (route) => {
     const url = new URL(route.request().url());
     const respond = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (url.pathname === "/auth/oauth/start") {
       authenticated = true;
       return route.fulfill({ status: 302, headers: { Location: `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}/home` }, body: "" });
+    }
+    if (url.pathname === "/task-images/presign") {
+      return respond({
+        key: "task-images/1/550e8400-e29b-41d4-a716-446655440000",
+        upload_url: "https://r2.example.test/signed-upload",
+        headers: { "Content-Type": "image/png", "X-Amz-Meta-Owner-Id": "1" },
+      });
     }
     if (url.pathname !== "/graphql") return respond({ error: "unexpected API path" }, 404);
     const { query, variables = {} } = route.request().postDataJSON();
@@ -42,7 +54,7 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     if (query.includes("adminSubjects")) return respond({ data: { adminSubjects: subjects } });
     if (query.includes("subjects{")) return respond({ data: { subjects } });
     if (query.includes("createTask(")) {
-      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, is_completed: false };
+      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, image_key: variables.image_key, is_completed: false };
       tasks.push(task);
       return respond({ data: { createTask: task } });
     }
@@ -66,7 +78,7 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     }
     throw new Error(`Unmocked GraphQL operation: ${query}`);
   });
-  return { tasks, subjects };
+  return { tasks, subjects, uploadedKeys };
 }
 
 async function login(page: Page) {
@@ -104,6 +116,30 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await expect(page.getByText("編集済み課題")).toBeVisible();
   await page.getByPlaceholder("課題を検索 (タイトル/説明)").fill("存在しない課題");
   await expect(page.getByText("検索結果がありません")).toBeVisible();
+});
+
+test("課題作成時に画像をR2へ直接アップロードする", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  await page.goto("/home");
+  await page.getByRole("button", { name: "新規作成" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("タイトル").fill("画像つき課題");
+  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await page.getByRole("menuitem", { name: "数学" }).click();
+  await dialog.getByRole("button", { name: "未設定" }).click();
+  await page.getByRole("button", { name: "日付", exact: true }).click();
+  await page.locator(".rdp-today button").click();
+  await page.getByRole("button", { name: "適用" }).click();
+  await dialog.getByLabel("画像 （任意）").setInputFiles({
+    name: "proof.png",
+    mimeType: "image/png",
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  });
+  await dialog.getByRole("button", { name: "作成" }).click();
+
+  await expect(page.getByText("画像つき課題")).toBeVisible();
+  await expect.poll(() => api.uploadedKeys.length).toBe(1);
+  await expect.poll(() => (api.tasks[0] as Task & { image_key?: string }).image_key).toContain("550e8400");
 });
 
 test("課題の詳細に入力した改行を一覧表示でも保持する", async ({ page }) => {

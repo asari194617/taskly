@@ -8,6 +8,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
+	"github.com/asari194617/taskly/apps/server/internal/taskimage"
 	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
@@ -25,6 +26,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 			"title":                  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
 			"subject_id":             &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			"description":            &graphql.ArgumentConfig{Type: graphql.String},
+			"image_key":              &graphql.ArgumentConfig{Type: graphql.String},
 			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
 			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
@@ -54,6 +56,19 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if strings.TrimSpace(desc) != "" {
 					descPtr = &desc
 				}
+				imageKey, _ := p.Args["image_key"].(string)
+				imageKey = strings.TrimSpace(imageKey)
+				var imageKeyPtr *string
+				if imageKey != "" {
+					images, err := taskimage.NewFromEnv()
+					if err != nil {
+						return nil, fmt.Errorf("image upload unavailable")
+					}
+					if err := images.ValidateUploaded(p.Context, u.ID, imageKey); err != nil {
+						return nil, fmt.Errorf("invalid image upload")
+					}
+					imageKeyPtr = &imageKey
+				}
 				typ, _ := p.Args["type"].(string)
 				typ = utils.NormalizeTaskType(typ)
 				irh, _ := p.Args["is_require_hand_in"].(bool)
@@ -73,7 +88,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err != nil {
 					return nil, err
 				}
-				recCreated, err := jobs.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}, u.Email)
+				recCreated, err := jobs.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until, ImageKey: imageKeyPtr}, u.Email)
 				if err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -82,6 +97,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					"title":                  recCreated.Title,
 					"subject_id":             recCreated.SubjectID,
 					"description":            recCreated.Description,
+					"image_url":              taskImageURL(p.Context, recCreated.ImageKey),
 					"type":                   recCreated.Type,
 					"is_require_hand_in":     recCreated.IsRequireHandIn,
 					"is_self_check_required": recCreated.IsSelfCheckRequired,
@@ -231,11 +247,12 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
 				}
-				if _, err := jobs.DeleteTask(h.db, rec.ID, u.Email); err != nil {
+				deleted, err := jobs.DeleteTask(h.db, rec.ID, u.Email)
+				if err != nil {
 					return false, fmt.Errorf("db")
-				} else {
-					return true, nil
 				}
+				deleteTaskImage(p.Context, deleted.ImageKey)
+				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
 		},

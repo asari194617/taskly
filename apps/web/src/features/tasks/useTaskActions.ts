@@ -10,6 +10,7 @@ import {
   deleteTask as deleteTaskRequest,
   reportTask,
   updateTask as updateTaskRequest,
+  uploadTaskImage,
   type Task,
 } from "./api";
 import { runOptimisticMutation } from "./state.mjs";
@@ -29,6 +30,7 @@ export function useTaskActions(
   const [newSelfCheck, setNewSelfCheck] = React.useState(false);
   const [newType, setNewType] = React.useState("");
   const [newDesc, setNewDesc] = React.useState("");
+  const [newImageFile, setNewImageFile] = React.useState<File | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
@@ -49,6 +51,9 @@ export function useTaskActions(
     }
     setCreating(true);
     try {
+      const imageKey = newImageFile
+        ? await uploadTaskImage(newImageFile)
+        : undefined;
       const created = await createTaskRequest({
         title: newTitle.trim(),
         subject_id: parseInt(newSubjectId, 10),
@@ -58,6 +63,7 @@ export function useTaskActions(
         ...sinceUntilFromMeta(newDate, newMeta), // enums
         description: newDesc || undefined,
         type: newType || undefined,
+        image_key: imageKey,
       });
       setItems((prev) => (prev ? [created, ...prev] : [created]));
       setNewTitle("");
@@ -68,6 +74,7 @@ export function useTaskActions(
       setNewSelfCheck(false);
       setNewType("");
       setNewDesc("");
+      setNewImageFile(null);
       setCreateOpen(false);
       toast({ title: dict.toast.created });
     } catch (e: any) {
@@ -209,6 +216,7 @@ export function useTaskActions(
     selfCheck: newSelfCheck,
     type: newType,
     description: newDesc,
+    imageFile: newImageFile,
   };
   const createSetters = {
     title: setNewTitle,
@@ -219,6 +227,7 @@ export function useTaskActions(
     selfCheck: setNewSelfCheck,
     type: setNewType,
     description: setNewDesc,
+    imageFile: setNewImageFile,
   };
   const editValues = {
     title: editTitle,
@@ -229,6 +238,7 @@ export function useTaskActions(
     selfCheck: editSelfCheck,
     type: editType,
     description: editDesc,
+    imageFile: null,
   };
   const editSetters = {
     title: setEditTitle,
@@ -239,6 +249,7 @@ export function useTaskActions(
     selfCheck: setEditSelfCheck,
     type: setEditType,
     description: setEditDesc,
+    imageFile: () => {},
   };
 
   return {
