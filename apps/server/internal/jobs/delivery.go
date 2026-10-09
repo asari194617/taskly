@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,6 +45,39 @@ type CallbackPolicy struct {
 	Client   *http.Client
 }
 
+var ErrTeamsMessagePending = errors.New("Teams message ID is pending")
+
+func shouldDeferTeamsReply(db *gorm.DB, job Job) (bool, error) {
+	if job.Kind != "task_email" {
+		return false, nil
+	}
+	var notice TaskNotice
+	if err := json.Unmarshal([]byte(job.Payload), &notice); err != nil {
+		return false, nil // Deliver records malformed payloads as ordinary failures.
+	}
+	if (notice.Action != "updated" && notice.Action != "deleted") || notice.Task.ID == 0 {
+		return false, nil
+	}
+	// Multiple workers can claim different jobs concurrently. A later reply
+	// waits until every earlier email for this task has finished.
+	var earlier Job
+	result := db.Model(&Job{}).Select("id").Where(
+		"kind = ? AND id < ? AND status IN ? AND JSON_EXTRACT(payload, '$.task.ID') = ?",
+		"task_email", job.ID, []string{"pending", "processing"}, notice.Task.ID,
+	).Limit(1).Find(&earlier)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected != 0 {
+		return true, nil
+	}
+	if notice.MessageID != "" {
+		return false, nil
+	}
+	messageID, err := teamsMessageID(db, notice.Task.ID)
+	return messageID == "", err
+}
+
 func Deliver(db *gorm.DB, job Job, policy CallbackPolicy) error {
 	switch job.Kind {
 	case "teams_inbound":
@@ -69,7 +103,18 @@ func Deliver(db *gorm.DB, job Job, policy CallbackPolicy) error {
 		if payload.Action == "created" {
 			return utils.SendTeamsNotifyEmailForTaskSync(payload.Task, db)
 		}
-		return utils.SendTeamsReplyEmailSync(payload.Task.ID, payload.MessageID, payload.Message)
+		messageID := payload.MessageID
+		if messageID == "" {
+			var err error
+			messageID, err = teamsMessageID(db, payload.Task.ID)
+			if err != nil {
+				return err
+			}
+			if messageID == "" {
+				return ErrTeamsMessagePending
+			}
+		}
+		return utils.SendTeamsReplyEmailSync(payload.Task.ID, messageID, payload.Message)
 	default:
 		return fmt.Errorf("unknown job kind %q", job.Kind)
 	}
@@ -160,7 +205,7 @@ func EnqueueTaskNotices(tx *gorm.DB, action string, task domain.Task, actor, mes
 			return err
 		}
 	}
-	if strings.TrimSpace(os.Getenv("TEAMS_NOTIFY_EMAIL")) != "" && (action == "created" || messageID != "") {
+	if strings.TrimSpace(os.Getenv("TEAMS_NOTIFY_EMAIL")) != "" && (action == "created" || messageID != "" || message != "") {
 		_, err := Enqueue(tx, "task_email", TaskNotice{Task: task, Action: action, MessageID: messageID, Message: message}, nil)
 		return err
 	}
