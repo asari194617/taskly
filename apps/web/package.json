@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "test:canonical": "node --test scripts/canonical-url.test.mjs && node scripts/check-canonical-urls.mjs",
     "test:security-headers": "node scripts/check-security-headers.mjs",
-    "test:unit": "node --test src/features/tasks/state.test.mjs && vitest run",
+    "test:unit": "node --test src/features/tasks/state.test.mjs scripts/bimi-logo.test.mjs && vitest run",
     "test:browser": "playwright test",
     "test:e2e": "playwright test -c playwright.e2e.config.ts",
     "storybook": "storybook dev -p 6006",

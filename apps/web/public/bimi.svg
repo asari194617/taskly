@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" version="1.2" baseProfile="tiny-ps">
+  <title>Taskly</title>
+  <desc>Taskly brand mark</desc>
+  <rect width="96" height="96" fill="#ffffff"/>
+  <rect x="18" y="18" width="60" height="46" rx="9" fill="none" stroke="#111111" stroke-width="7"/>
+  <path d="M27 64v5c0 5 4 9 9 9h24c5 0 9-4 9-9v-5" fill="none" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
+</svg>
