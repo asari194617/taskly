@@ -395,6 +395,43 @@ export const t = (lang: Lang) => ({
       lang === "ja"
         ? "アプリ連携用のMCPトークンを発行・無効化できます。トークンは一度しか表示されません。"
         : "You can issue/revoke MCP tokens for integrations. Token is shown only once.",
+    setup: {
+      title: lang === "ja" ? "接続手順" : "Connect to Taskly",
+      description:
+        lang === "ja"
+          ? "Taskly は接続用プログラム（taskly-mcp）を経由して利用します。接続先URLをクライアントへ直接追加する方式ではありません。"
+          : "Taskly connects through the taskly-mcp helper. Do not add the destination URL directly as a remote MCP server.",
+      installTitle: lang === "ja" ? "接続用プログラムをインストール" : "Install the connection helper",
+      installDescription:
+        lang === "ja"
+          ? "macOS・Linux はガイドのコマンドでインストールできます。Windows の手順もガイドにあります。"
+          : "Use the guide command on macOS or Linux. The guide also includes Windows instructions.",
+      tokenTitle: lang === "ja" ? "この画面でトークンを発行" : "Issue a token on this page",
+      tokenDescription:
+        lang === "ja"
+          ? "表示されたトークンは一度だけコピーできます。接続設定が終わるまで安全に保管してください。"
+          : "You can copy the token only when it is shown. Keep it secure until setup is complete.",
+      configureTitle: lang === "ja" ? "クライアントに設定を追加" : "Add the client configuration",
+      configureDescription:
+        lang === "ja"
+          ? "下の設定値を使い、クライアントを再起動して Taskly のツールが表示されることを確認します。"
+          : "Use the values below, restart your client, and confirm that the Taskly tools appear.",
+      detailsTitle: lang === "ja" ? "接続に使う設定値" : "Connection settings",
+      command: lang === "ja" ? "実行コマンド" : "Command",
+      baseUrl: lang === "ja" ? "接続先URL" : "Destination URL",
+      tokenVariable: lang === "ja" ? "トークンの設定名" : "Token variable",
+      configTitle: lang === "ja" ? "設定例（JSON形式）" : "Example configuration (JSON)",
+      configDescription:
+        lang === "ja"
+          ? "<issued token> を、この画面で発行したトークンに置き換えてください。設定ファイルの場所はクライアントごとに異なります。"
+          : "Replace <issued token> with the token issued on this page. The configuration file location varies by client.",
+      copyConfig: lang === "ja" ? "設定例をコピー" : "Copy example",
+      openGuide: lang === "ja" ? "詳しい接続ガイドを開く" : "Open the detailed setup guide",
+      nextStep:
+        lang === "ja"
+          ? "次に、接続ガイドの設定例へこのトークンを入力してください。"
+          : "Next, put this token into the configuration shown in the setup guide.",
+    },
     issueToken: lang === "ja" ? "トークンを発行" : "Issue token",
     revokeToken: lang === "ja" ? "トークンを無効化" : "Revoke token",
     revokedMsg: lang === "ja" ? "MCPトークンを無効化しました" : "MCP token revoked",

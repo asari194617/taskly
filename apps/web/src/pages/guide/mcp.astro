@@ -1,5 +1,13 @@
 ---
 import Layout from "../../layouts/AppLayout.astro";
+import {
+  TASKLY_MCP_BASE_URL,
+  TASKLY_MCP_COMMAND,
+  TASKLY_MCP_INSTALL_COMMAND,
+  tasklyMcpClientConfig,
+} from "../../lib/mcp-connection";
+
+const clientConfig = tasklyMcpClientConfig();
 ---
 
 <Layout title="MCP サーバー | Taskly ガイド" description="Taskly MCP サーバーの接続案内">
@@ -9,18 +17,74 @@ import Layout from "../../layouts/AppLayout.astro";
       <h1 class="text-3xl font-bold tracking-tight">MCP サーバー</h1>
       <p class="text-muted-foreground">対応する MCP クライアントから、Taskly の課題を確認・操作できます。</p>
     </header>
-    <section class="space-y-4" aria-labelledby="mcp-steps">
+    <div class="rounded-lg border border-primary/30 bg-primary/5 p-5 text-sm leading-7">
+      <h2 class="font-semibold">最初に知っておきたいこと</h2>
+      <p class="mt-2 text-muted-foreground">
+        Taskly は、接続用プログラム <code class="rounded bg-muted px-1 py-0.5">{TASKLY_MCP_COMMAND}</code> を経由して利用します。
+        <code class="rounded bg-muted px-1 py-0.5">{TASKLY_MCP_BASE_URL}</code> を「リモート MCP サーバー」として直接追加する方式ではありません。
+      </p>
+    </div>
+    <section class="space-y-5" aria-labelledby="mcp-steps">
       <h2 id="mcp-steps" class="text-xl font-semibold">接続までの流れ</h2>
-      <ol class="list-decimal space-y-3 pl-6 text-sm leading-7">
-        <li><a href="/settings/mcp" class="font-medium text-primary underline-offset-4 hover:underline">設定 → MCP</a> を開きます。ログインが必要です。</li>
-        <li>MCP トークンを発行して、安全な場所に保存します。発行時に表示されたトークンを控えてください。</li>
-        <li>利用するクライアントに Taskly の MCP サーバー URL とトークンを設定し、接続を確認します。</li>
+      <ol class="space-y-6 text-sm leading-7">
+        <li class="grid gap-3 sm:grid-cols-[2rem_1fr]">
+          <span class="flex size-8 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground">1</span>
+          <div class="space-y-2">
+            <h3 class="font-semibold">接続用プログラムをインストール</h3>
+            <p class="text-muted-foreground">macOS・Linux のターミナルで、次のコマンドを実行します。</p>
+            <pre class="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs"><code>{TASKLY_MCP_INSTALL_COMMAND}</code></pre>
+            <p class="text-muted-foreground">Windows は PowerShell で次の 2 行を実行します。</p>
+            <pre class="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-5"><code>Invoke-WebRequest https://cdn.taskly.iy0306.com/docs/mcp/clients/install.ps1 -OutFile install.ps1
+.\install.ps1</code></pre>
+          </div>
+        </li>
+        <li class="grid gap-3 sm:grid-cols-[2rem_1fr]">
+          <span class="flex size-8 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground">2</span>
+          <div class="space-y-2">
+            <h3 class="font-semibold">MCP トークンを発行</h3>
+            <p class="text-muted-foreground"><a href="/settings/mcp" class="font-medium text-primary underline-offset-4 hover:underline">設定 → MCP</a> を開き、「トークンを発行」を選びます。トークンは発行直後の一度しか表示されないため、その場でコピーしてください。</p>
+          </div>
+        </li>
+        <li class="grid gap-3 sm:grid-cols-[2rem_1fr]">
+          <span class="flex size-8 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground">3</span>
+          <div class="space-y-2">
+            <h3 class="font-semibold">MCP クライアントへ設定を追加</h3>
+            <p class="text-muted-foreground">クライアントの MCP 設定へ次の内容を追加し、<code class="rounded bg-muted px-1 py-0.5">&lt;issued token&gt;</code> を発行したトークンに置き換えます。設定ファイルの場所はクライアントごとに異なります。</p>
+            <pre class="overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-5"><code>{clientConfig}</code></pre>
+          </div>
+        </li>
+        <li class="grid gap-3 sm:grid-cols-[2rem_1fr]">
+          <span class="flex size-8 items-center justify-center rounded-full bg-primary font-semibold text-primary-foreground">4</span>
+          <div class="space-y-2">
+            <h3 class="font-semibold">再起動して接続を確認</h3>
+            <p class="text-muted-foreground">MCP クライアントを再起動または再読み込みし、Taskly のツールが表示されることを確認します。最初は「Taskly の課題一覧を表示して」と依頼すると確認しやすいです。</p>
+          </div>
+        </li>
       </ol>
+    </section>
+    <section class="space-y-3" aria-labelledby="mcp-values">
+      <h2 id="mcp-values" class="text-xl font-semibold">接続に使う設定値</h2>
+      <dl class="grid gap-3 rounded-lg border bg-card p-5 text-sm sm:grid-cols-[10rem_minmax(0,1fr)]">
+        <dt class="text-muted-foreground">実行コマンド</dt>
+        <dd><code class="break-all">{TASKLY_MCP_COMMAND}</code></dd>
+        <dt class="text-muted-foreground">接続先 URL</dt>
+        <dd><code class="break-all">{TASKLY_MCP_BASE_URL}</code></dd>
+        <dt class="text-muted-foreground">トークンの設定名</dt>
+        <dd><code class="break-all">TASKLY_MCP_TOKEN</code></dd>
+      </dl>
     </section>
     <div class="rounded-lg border bg-card p-5 text-sm leading-7">
       <h2 class="font-semibold">トークンの取り扱い</h2>
       <p class="mt-2 text-muted-foreground">トークンは第三者に共有しないでください。不要になった場合は MCP 設定画面から無効にできます。</p>
     </div>
-    <a href="https://ritzy-lift-e38.notion.site/MCP-290a3874f8c880a08c31f53116cb2ead?source=copy_link" target="_blank" rel="noopener noreferrer" class="inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">クライアントごとの詳しい接続手順を見る ↗</a>
+    <section class="space-y-3" aria-labelledby="mcp-trouble">
+      <h2 id="mcp-trouble" class="text-xl font-semibold">接続できないとき</h2>
+      <ul class="list-disc space-y-2 pl-6 text-sm leading-7 text-muted-foreground">
+        <li>macOS・Linux では <code class="rounded bg-muted px-1 py-0.5">command -v {TASKLY_MCP_COMMAND}</code> を実行し、インストール先が表示されるか確認します。</li>
+        <li>設定名が <code class="rounded bg-muted px-1 py-0.5">TASKLY_MCP_BASE_URL</code> と <code class="rounded bg-muted px-1 py-0.5">TASKLY_MCP_TOKEN</code> になっているか確認します。</li>
+        <li>接続先 URL の末尾に <code class="rounded bg-muted px-1 py-0.5">/mcp</code> や <code class="rounded bg-muted px-1 py-0.5">/readyz</code> を追加せず、上記の URL をそのまま設定します。</li>
+        <li>トークンの有効期限が切れている場合は、<a href="/settings/mcp" class="font-medium text-primary underline-offset-4 hover:underline">設定 → MCP</a> で再発行します。</li>
+      </ul>
+    </section>
   </div>
 </Layout>
