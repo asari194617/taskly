@@ -98,13 +98,15 @@ func (h *Handler) handleTeamsStatus(strictBody bool) fiber.Handler {
 		}
 		payload := parseTeamsStatusPayload(raw)
 		if payload.TaskID != 0 {
-			_ = h.db.Table("tasks_teams_logs").Create(map[string]any{
+			if err := h.db.Table("tasks_teams_logs").Create(map[string]any{
 				"task_id":               payload.TaskID,
 				"is_success":            payload.IsSuccess,
 				"teams_message_id":      optionalString(payload.MessageID),
 				"teams_conversation_id": optionalString(payload.ConversationID),
 				"last_status":           "callback_received",
-			}).Error
+			}).Error; err != nil {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "database unavailable"})
+			}
 		}
 		return c.SendStatus(fiber.StatusOK)
 	}

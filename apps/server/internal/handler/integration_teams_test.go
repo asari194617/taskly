@@ -46,6 +46,37 @@ func TestParseTeamsStatusPayload(t *testing.T) {
 	}
 }
 
+func TestTeamsStatusReturnsRetryableErrorWhenLogWriteFails(t *testing.T) {
+	t.Setenv("TEAMS_INTEGRATION_SECRET", "test-secret")
+	db, err := gorm.Open(sqlite.Open("file:teams-callback-db-error?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	app := fiber.New()
+	NewHandler(db, nil, nil).registerTeamsIntegrationRoutes(app.Group("/integrations"))
+	for _, path := range []string{"/integrations/teams/callback", "/integrations/teams/status"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path,
+				strings.NewReader(`{"is_success":true,"task_id":42,"message_id":"posted"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Teams-Integration-Secret", "test-secret")
+			resp, err := app.Test(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503 so Power Automate can retry", resp.StatusCode)
+			}
+		})
+	}
+}
+
 func TestTeamsInboundAcceptsOnlyCommittedJob(t *testing.T) {
 	t.Setenv("TEAMS_INTEGRATION_SECRET", "test-secret")
 	db, err := gorm.Open(sqlite.Open("file:teams-inbound-route?mode=memory&cache=shared"), &gorm.Config{})

@@ -12,6 +12,7 @@ import (
 )
 
 const maxAttempts = 3
+const teamsMessagePollInterval = 15 * time.Second
 
 var ErrIdempotencyConflict = errors.New("idempotency key used for a different request")
 
@@ -144,6 +145,26 @@ func (w *Worker) RunOne() (bool, error) {
 		return false, err
 	}
 	for _, candidate := range candidates {
+		waiting, err := shouldDeferTeamsReply(w.DB, candidate)
+		if err != nil {
+			return false, err
+		}
+		if waiting {
+			attempts := candidate.Attempts
+			if candidate.Status == "processing" && attempts > 0 {
+				attempts-- // The missing ID means no delivery was attempted.
+			}
+			result := w.DB.Model(&Job{}).Where("id = ? AND kind = ? AND attempts = ? AND ((status = ? AND available_at <= ?) OR (status = ? AND lease_until <= ?))",
+				candidate.ID, candidate.Kind, candidate.Attempts, "pending", now, "processing", now).
+				Updates(map[string]any{"status": "pending", "attempts": attempts, "lease_until": nil, "available_at": time.Now().Add(teamsMessagePollInterval)})
+			if result.Error != nil {
+				return false, result.Error
+			}
+			if result.RowsAffected != 0 {
+				return true, nil
+			}
+			continue
+		}
 		if candidate.Attempts >= maxAttempts {
 			result := w.DB.Model(&Job{}).Where("id = ? AND status = ? AND lease_until <= ? AND attempts >= ?", candidate.ID, "processing", now, maxAttempts).
 				Updates(map[string]any{"status": "failed", "lease_until": nil, "last_error": "lease expired after final attempt; delivery outcome unknown"})
@@ -167,8 +188,17 @@ func (w *Worker) RunOne() (bool, error) {
 		candidate.Attempts++
 		waitSeconds.WithLabelValues(metricKind(candidate.Kind)).Observe(max(0, now.Sub(candidate.AvailableAt).Seconds()))
 		started := time.Now()
-		err := w.Deliver(candidate)
+		err = w.Deliver(candidate)
 		deliverySeconds.WithLabelValues(metricKind(candidate.Kind)).Observe(time.Since(started).Seconds())
+		if errors.Is(err, ErrTeamsMessagePending) {
+			updateErr := w.DB.Model(&Job{}).Where("id = ? AND status = ? AND attempts = ?", candidate.ID, "processing", candidate.Attempts).
+				Updates(map[string]any{"status": "pending", "attempts": candidate.Attempts - 1, "lease_until": nil,
+					"available_at": time.Now().Add(teamsMessagePollInterval), "last_error": nil}).Error
+			if updateErr != nil {
+				return true, updateErr
+			}
+			return true, nil
+		}
 		outcome := "succeeded"
 		if err != nil {
 			outcome = "failed"

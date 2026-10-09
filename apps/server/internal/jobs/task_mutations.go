@@ -1,6 +1,8 @@
 package jobs
 
 import (
+	"strings"
+
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"gorm.io/gorm"
@@ -33,7 +35,14 @@ func UpdateTask(db *gorm.DB, id uint, modifier func(*domain.Task) error, actor s
 			return err
 		}
 		message := ""
-		if mid != "" {
+		notify := mid != ""
+		if !notify && strings.TrimSpace(utils.Env("TEAMS_NOTIFY_EMAIL", "")) != "" {
+			notify, err = hasOutboundTeamsPost(tx, after.ID)
+			if err != nil {
+				return err
+			}
+		}
+		if notify {
 			message = utils.BuildTaskUpdateMessageJa(before, after, tx)
 		}
 		return EnqueueTaskNotices(tx, "updated", after, actor, mid, message)
@@ -48,12 +57,19 @@ func DeleteTask(db *gorm.DB, id uint, actor string) (domain.Task, error) {
 		if err != nil {
 			return err
 		}
+		notify := mid != ""
+		if !notify && strings.TrimSpace(utils.Env("TEAMS_NOTIFY_EMAIL", "")) != "" {
+			notify, err = hasOutboundTeamsPost(tx, id)
+			if err != nil {
+				return err
+			}
+		}
 		deleted, err = domain.DeleteTask(tx, id, actor)
 		if err != nil {
 			return err
 		}
 		message := ""
-		if mid != "" {
+		if notify {
 			message = utils.BuildTaskDeleteMessageJa(deleted)
 		}
 		return EnqueueTaskNotices(tx, "deleted", deleted, actor, mid, message)
@@ -64,7 +80,20 @@ func DeleteTask(db *gorm.DB, id uint, actor string) (domain.Task, error) {
 func teamsMessageID(tx *gorm.DB, taskID uint) (string, error) {
 	var row struct{ TeamsMessageID string }
 	err := tx.Table("tasks_teams_logs").Select("teams_message_id").
-		Where("task_id = ? AND teams_message_id IS NOT NULL AND teams_message_id <> ''", taskID).
+		Where("task_id = ? AND is_success = ? AND teams_message_id IS NOT NULL AND teams_message_id <> ''", taskID, true).
 		Order("id DESC").Limit(1).Scan(&row).Error
 	return row.TeamsMessageID, err
+}
+
+// The durable create job identifies tasks that have an outbound Teams post.
+// Teams-originated tasks do not have one and must not wait for a message ID.
+func hasOutboundTeamsPost(tx *gorm.DB, taskID uint) (bool, error) {
+	var job Job
+	result := tx.Model(&Job{}).Select("id").
+		Where("kind = ? AND JSON_EXTRACT(payload, '$.task.ID') = ? AND JSON_EXTRACT(payload, '$.action') LIKE ?", "task_email", taskID, "%created%").
+		Limit(1).Find(&job)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected != 0, nil
 }
