@@ -83,8 +83,12 @@ mutation UpdatePrefs($id: Int!) {
 
 ## バッチ（Queue/Delivery）
 
+課題の対象範囲は JST 基準で共通です。朝（07:00）は今日・明日、夕方（17:00）は
+今日の放課後まで（`deadline_until=AFTER_SCHOOL`）または時間指定なし（`NONE`）の課題と、
+明日・明後日の課題です。Queue Manager、Email、Discord に同じ範囲を適用します。
+
 - Queue Manager（`batches/notifications/que-manager`）:
-  - タスク（JST の今日 00:00 以上、3日後 00:00 未満。締切日の2日前から当日まで）を Web Push キューに投入。`TASK` と時間帯に応じた `TASK_MORNING`/`TASK_EVENING` を適用。
+  - 対象課題を Web Push キューに投入。`TASK` と時間帯に応じた `TASK_MORNING`/`TASK_EVENING` を適用。
   - 日直は 08:30 の日直 DAG が担当者を確定してキューに投入する。
   - Email はキュー投入せず、配信時に対象課題とユーザーを取得する。
 - Web Push Delivery（`batches/notifications/delivery-channels/web-push`）:
