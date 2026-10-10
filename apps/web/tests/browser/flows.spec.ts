@@ -6,6 +6,8 @@ type Task = {
   subject_id: number;
   deadline: string;
   description?: string;
+  image_keys?: string[];
+  image_urls?: string[];
   is_completed: boolean;
 };
 
@@ -18,9 +20,10 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   let searchFailures = options.failFirstSearch ? 1 : 0;
   const tasks: Task[] = [];
   const uploadedKeys: string[] = [];
+  let presignCount = 0;
   const subjects = [{ id: 1, name_ja: "数学", name_en: "Math", created_at: "2026-01-01T00:00:00Z", expires_at: null }];
   await page.route("https://r2.example.test/**", async (route) => {
-    uploadedKeys.push(route.request().url());
+    if (route.request().method() === "PUT") uploadedKeys.push(route.request().url());
     return route.fulfill({ status: 200, body: "" });
   });
   await page.route("http://localhost:3063/**", async (route) => {
@@ -31,9 +34,11 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
       return route.fulfill({ status: 302, headers: { Location: `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}/home` }, body: "" });
     }
     if (url.pathname === "/task-images/presign") {
+      presignCount += 1;
+      const suffix = String(presignCount).padStart(12, "0");
       return respond({
-        key: "task-images/1/550e8400-e29b-41d4-a716-446655440000",
-        upload_url: "https://r2.example.test/signed-upload",
+        key: `task-images/1/550e8400-e29b-41d4-a716-${suffix}`,
+        upload_url: `https://r2.example.test/signed-upload-${presignCount}`,
         headers: { "Content-Type": "image/png", "X-Amz-Meta-Owner-Id": "1" },
       });
     }
@@ -54,14 +59,14 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     if (query.includes("adminSubjects")) return respond({ data: { adminSubjects: subjects } });
     if (query.includes("subjects{")) return respond({ data: { subjects } });
     if (query.includes("createTask(")) {
-      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, image_key: variables.image_key, is_completed: false };
+      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, image_keys: variables.image_keys || [], image_urls: (variables.image_keys || []).map((key: string) => `https://r2.example.test/view/${key}`), is_completed: false };
       tasks.push(task);
       return respond({ data: { createTask: task } });
     }
     if (query.includes("updateTask(")) {
       const task = tasks.find((item) => item.id === variables.id)!;
-      Object.assign(task, { title: variables.title, subject_id: variables.subject_id || task.subject_id });
-      return respond({ data: { updateTask: { id: task.id } } });
+      Object.assign(task, { title: variables.title, subject_id: variables.subject_id || task.subject_id, image_keys: variables.image_keys ?? task.image_keys, image_urls: (variables.image_keys ?? task.image_keys ?? []).map((key: string) => `https://r2.example.test/view/${key}`) });
+      return respond({ data: { updateTask: task } });
     }
     if (query.includes("uncompleteTask(")) {
       tasks.find((item) => item.id === variables.id)!.is_completed = false;
@@ -130,7 +135,7 @@ test("課題作成時に画像をR2へ直接アップロードする", async ({ 
   await page.getByRole("button", { name: "日付", exact: true }).click();
   await page.locator(".rdp-today button").click();
   await page.getByRole("button", { name: "適用" }).click();
-  await dialog.getByLabel("画像 （任意）").setInputFiles({
+  await dialog.locator('input[type="file"]').setInputFiles({
     name: "proof.png",
     mimeType: "image/png",
     buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
@@ -139,7 +144,38 @@ test("課題作成時に画像をR2へ直接アップロードする", async ({ 
 
   await expect(page.getByText("画像つき課題")).toBeVisible();
   await expect.poll(() => api.uploadedKeys.length).toBe(1);
-  await expect.poll(() => (api.tasks[0] as Task & { image_key?: string }).image_key).toContain("550e8400");
+  await expect.poll(() => api.tasks[0].image_keys?.[0]).toContain("550e8400");
+});
+
+test("課題編集で画像を複数ドラッグ&ドロップして保存する", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  await page.goto("/home");
+  await page.getByRole("button", { name: "新規作成" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("タイトル").fill("編集画像テスト");
+  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await page.getByRole("menuitem", { name: "数学" }).click();
+  await dialog.getByRole("button", { name: "未設定" }).click();
+  await page.getByRole("button", { name: "日付", exact: true }).click();
+  await page.locator(".rdp-today button").click();
+  await page.getByRole("button", { name: "適用" }).click();
+  await dialog.getByRole("button", { name: "作成" }).click();
+
+  await page.getByRole("button", { name: "アクション" }).click();
+  await page.getByRole("button", { name: "編集" }).click();
+  await page.evaluate(() => {
+    const target = document.querySelector('[data-testid="ed-2-image-dropzone"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array([1])], "first.png", { type: "image/png" }));
+    transfer.items.add(new File([new Uint8Array([2])], "second.webp", { type: "image/webp" }));
+    target?.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
+  });
+  await expect(page.getByRole("button", { name: /画像を削除/ })).toHaveCount(2);
+  await page.getByRole("button", { name: "保存" }).click();
+
+  await expect.poll(() => api.uploadedKeys.length).toBe(2);
+  await expect.poll(() => api.tasks[0].image_keys?.length).toBe(2);
+  await expect(page.getByRole("img", { name: /編集画像テスト - 画像/ })).toHaveCount(2);
 });
 
 test("課題の詳細に入力した改行を一覧表示でも保持する", async ({ page }) => {

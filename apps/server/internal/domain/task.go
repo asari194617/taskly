@@ -11,15 +11,16 @@ type Subject struct {
 }
 
 type Task struct {
-	ID                  uint    `gorm:"primaryKey"`
-	AddedUserID         uint    `gorm:"index;not null"`
-	Title               string  `gorm:"size:255;not null"`
-	SubjectID           uint    `gorm:"index;not null"`
-	Description         *string `gorm:"type:text"`
-	ImageKey            *string `gorm:"->;column:image_key" json:"-"`
-	Type                string  `gorm:"type:ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER');not null;default:'OTHER'"`
-	IsRequireHandIn     bool    `gorm:"not null;default:0"`
-	IsSelfCheckRequired bool    `gorm:"not null;default:0"`
+	ID                  uint     `gorm:"primaryKey"`
+	AddedUserID         uint     `gorm:"index;not null"`
+	Title               string   `gorm:"size:255;not null"`
+	SubjectID           uint     `gorm:"index;not null"`
+	Description         *string  `gorm:"type:text"`
+	ImageKey            *string  `gorm:"->;column:image_key" json:"-"`
+	ImageKeys           []string `gorm:"-" json:"-"`
+	Type                string   `gorm:"type:ENUM('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER');not null;default:'OTHER'"`
+	IsRequireHandIn     bool     `gorm:"not null;default:0"`
+	IsSelfCheckRequired bool     `gorm:"not null;default:0"`
 	// Moderation: auto-hide flagged content from non-admin views
 	IsHidden bool `gorm:"not null;default:0"`
 	// Deadline date (required)

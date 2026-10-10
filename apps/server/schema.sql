@@ -323,6 +323,18 @@ CREATE TABLE `tasks` (
   KEY `idx_tasks_effective_deadline_id` (`effective_deadline`,`id`),
   FULLTEXT KEY `ft_tasks_title_desc` (`title`,`description`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `task_images` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `task_id` bigint unsigned NOT NULL,
+  `image_key` varchar(128) NOT NULL,
+  `position` smallint unsigned NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_task_images_image_key` (`image_key`),
+  UNIQUE KEY `idx_task_images_task_position` (`task_id`,`position`),
+  KEY `idx_task_images_task_id` (`task_id`),
+  CONSTRAINT `fk_task_images_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tasks_teams_logs` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `task_id` bigint unsigned NOT NULL,

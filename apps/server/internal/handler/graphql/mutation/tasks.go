@@ -8,7 +8,6 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql/shared"
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
-	"github.com/asari194617/taskly/apps/server/internal/taskimage"
 	"github.com/asari194617/taskly/apps/server/internal/tasklist"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
@@ -27,6 +26,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 			"subject_id":             &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
 			"description":            &graphql.ArgumentConfig{Type: graphql.String},
 			"image_key":              &graphql.ArgumentConfig{Type: graphql.String},
+			"image_keys":             &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
 			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
 			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
@@ -56,18 +56,18 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if strings.TrimSpace(desc) != "" {
 					descPtr = &desc
 				}
-				imageKey, _ := p.Args["image_key"].(string)
-				imageKey = strings.TrimSpace(imageKey)
-				var imageKeyPtr *string
-				if imageKey != "" {
-					images, err := taskimage.NewFromEnv()
+				var imageKeys []string
+				var err error
+				if raw, supplied := p.Args["image_keys"]; supplied {
+					imageKeys, err = parseTaskImageKeys(raw)
 					if err != nil {
-						return nil, fmt.Errorf("image upload unavailable")
+						return nil, err
 					}
-					if err := images.ValidateUploaded(p.Context, u.ID, imageKey); err != nil {
-						return nil, fmt.Errorf("invalid image upload")
-					}
-					imageKeyPtr = &imageKey
+				} else if imageKey, ok := p.Args["image_key"].(string); ok && strings.TrimSpace(imageKey) != "" {
+					imageKeys = []string{strings.TrimSpace(imageKey)}
+				}
+				if err := validateTaskImageKeys(p.Context, u.ID, imageKeys); err != nil {
+					return nil, err
 				}
 				typ, _ := p.Args["type"].(string)
 				typ = utils.NormalizeTaskType(typ)
@@ -88,16 +88,19 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err != nil {
 					return nil, err
 				}
-				recCreated, err := jobs.CreateTask(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until, ImageKey: imageKeyPtr}, u.Email)
+				recCreated, err := jobs.CreateTaskWithImages(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}, imageKeys, u.Email)
 				if err != nil {
 					return nil, fmt.Errorf("db")
 				}
+				imageURL, imageURLs := taskImageFields(p.Context, imageKeys)
 				out := map[string]any{
 					"id":                     recCreated.ID,
 					"title":                  recCreated.Title,
 					"subject_id":             recCreated.SubjectID,
 					"description":            recCreated.Description,
-					"image_url":              taskImageURL(p.Context, recCreated.ImageKey),
+					"image_url":              imageURL,
+					"image_keys":             imageKeys,
+					"image_urls":             imageURLs,
 					"type":                   recCreated.Type,
 					"is_require_hand_in":     recCreated.IsRequireHandIn,
 					"is_self_check_required": recCreated.IsSelfCheckRequired,
@@ -120,6 +123,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 			"title":                  &graphql.ArgumentConfig{Type: graphql.String},
 			"subject_id":             &graphql.ArgumentConfig{Type: graphql.Int},
 			"description":            &graphql.ArgumentConfig{Type: graphql.String},
+			"image_keys":             &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
 			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
 			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
@@ -146,8 +150,20 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !allowed {
 					return nil, fmt.Errorf("forbidden")
 				}
+				previousImageKeys := taskKeys(h.db, target)
+				var imageKeys *[]string
+				if raw, supplied := p.Args["image_keys"]; supplied {
+					keys, err := parseTaskImageKeys(raw)
+					if err != nil {
+						return nil, err
+					}
+					if err := validateTaskImageKeys(p.Context, u.ID, keys); err != nil {
+						return nil, err
+					}
+					imageKeys = &keys
+				}
 				// perform update via domain service
-				_, after, err := jobs.UpdateTask(h.db, uint(id), func(r *domain.Task) error {
+				_, after, err := jobs.UpdateTaskWithImages(h.db, uint(id), func(r *domain.Task) error {
 					if v, ok := p.Args["title"].(string); ok {
 						if strings.TrimSpace(v) == "" {
 							return fmt.Errorf("invalid title")
@@ -199,15 +215,24 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					}
 					r.DeadlineSince, r.DeadlineUntil = since, until
 					return nil
-				}, u.Email)
+				}, imageKeys, u.Email)
 				if err != nil {
 					return nil, err
 				}
+				finalImageKeys := previousImageKeys
+				if imageKeys != nil {
+					finalImageKeys = *imageKeys
+					deleteTaskImages(p.Context, removedTaskImageKeys(previousImageKeys, finalImageKeys))
+				}
+				imageURL, imageURLs := taskImageFields(p.Context, finalImageKeys)
 				out := map[string]any{
 					"id":                     after.ID,
 					"title":                  after.Title,
 					"subject_id":             after.SubjectID,
 					"description":            after.Description,
+					"image_url":              imageURL,
+					"image_keys":             finalImageKeys,
+					"image_urls":             imageURLs,
 					"type":                   after.Type,
 					"is_require_hand_in":     after.IsRequireHandIn,
 					"is_self_check_required": after.IsSelfCheckRequired,
@@ -247,11 +272,12 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
 				}
-				deleted, err := jobs.DeleteTask(h.db, rec.ID, u.Email)
+				imageKeys := taskKeys(h.db, rec)
+				_, err = jobs.DeleteTask(h.db, rec.ID, u.Email)
 				if err != nil {
 					return false, fmt.Errorf("db")
 				}
-				deleteTaskImage(p.Context, deleted.ImageKey)
+				deleteTaskImages(p.Context, imageKeys)
 				return true, nil
 			}
 			return false, fmt.Errorf("context missing")
