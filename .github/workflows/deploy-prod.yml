@@ -192,6 +192,9 @@ jobs:
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.release-images.result == 'success' }}
     runs-on: [self-hosted, taskly-prod]
     environment: production
+    permissions:
+      contents: read
+      packages: read
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
