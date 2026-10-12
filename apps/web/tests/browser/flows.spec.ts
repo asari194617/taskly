@@ -435,7 +435,7 @@ test("課題ごとの完了チェックボックスをキーボードで操作�
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {
   await mockApi(page, { failFirstSearch: true });
   await login(page);
-  await expect(page.getByText("temporary outage")).toBeVisible();
+  await expect(page.getByText("temporary outage", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "再読み込み" }).click();
   await expect(page.getByRole("button", { name: "新規作成" }).first()).toBeVisible();
 });
@@ -645,7 +645,7 @@ test("登録失敗後も入力を保持し、再試行で一件だけ登録す�
   await page.getByLabel("日付", { exact: true }).fill("2099-10-16");
   await page.getByRole("button", { name: "適用" }).click();
   await page.getByRole("button", { name: "新規作成", exact: true }).click();
-  await expect(page.getByText("temporary outage")).toBeVisible();
+  await expect(page.getByText("temporary outage", { exact: true })).toBeVisible();
   await expect(page.getByLabel("タイトル", { exact: true })).toHaveValue("再試行の課題");
   await expect(page).toHaveURL(/\/tasks\/new$/);
   await page.getByRole("button", { name: "新規作成", exact: true }).click();

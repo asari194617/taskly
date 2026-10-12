@@ -45,9 +45,9 @@ test("実 API と DB でログイン・課題の作成・一覧・編集・完�
   await page.getByRole("button", { name: "新規作成" }).first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("タイトル").fill("E2E 課題");
-  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await dialog.getByLabel("サブジェクト", { exact: true }).click();
   await page.getByRole("menuitem", { name: "数学" }).click();
-  await dialog.getByRole("button", { name: "未設定" }).click();
+  await dialog.getByLabel("期限", { exact: true }).click();
   await page.getByRole("button", { name: "日付", exact: true }).click();
   await page.locator(".rdp-today button").click();
   await page.getByRole("button", { name: "適用" }).click();
