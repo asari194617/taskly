@@ -73,7 +73,7 @@ func (p *teamsProcessor) Start() {
 		fallback.Start()
 		close(p.started)
 		go func() {
-			ticker := time.NewTicker(15 * time.Second)
+			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
 			for {
 				if err := jobs.ObserveBacklog(p.db, integrationJobKinds); err != nil {
