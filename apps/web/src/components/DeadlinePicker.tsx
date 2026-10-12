@@ -60,6 +60,7 @@ export function DeadlinePicker({
             ? "range"
             : "outside",
   );
+  const [selectingRangeEnd, setSelectingRangeEnd] = React.useState(false);
   const [tmpDate, setTmpDate] = React.useState(date);
   const [outside, setOutside] = React.useState<"朝" | "昼休み" | "放課後">(
     meta?.kind === "outside" ? meta.slot : "朝",
@@ -78,6 +79,7 @@ export function DeadlinePicker({
   );
 
   React.useEffect(() => {
+    setSelectingRangeEnd(false);
     setTmpDate(date);
     setTab(meta?.kind && meta.kind !== "none" ? meta.kind : "outside");
     setOutside(meta?.kind === "outside" ? meta.slot : "朝");
@@ -201,7 +203,7 @@ export function DeadlinePicker({
               value={outside}
               onValueChange={(v: string) => setOutside(v as any)}
             >
-              <SelectTrigger>
+              <SelectTrigger className={inline ? "min-h-11 w-full text-base" : undefined}>
                 <SelectValue placeholder="選択" />
               </SelectTrigger>
               <SelectContent>
@@ -223,7 +225,7 @@ export function DeadlinePicker({
               value={String(one)}
               onValueChange={(v: string) => setOne(parseInt(v, 10) as any)}
             >
-              <SelectTrigger>
+              <SelectTrigger className={inline ? "min-h-11 w-full text-base" : undefined}>
                 <SelectValue placeholder="選択" />
               </SelectTrigger>
               <SelectContent>
@@ -242,7 +244,7 @@ export function DeadlinePicker({
           <Label>コマ</Label>
           <div className="mt-1">
             <Select value={two} onValueChange={(v: string) => setTwo(v as any)}>
-              <SelectTrigger>
+              <SelectTrigger className={inline ? "min-h-11 w-full text-base" : undefined}>
                 <SelectValue placeholder="選択" />
               </SelectTrigger>
               <SelectContent>
@@ -266,6 +268,7 @@ export function DeadlinePicker({
                 <button
                   key={s}
                   type="button"
+                  aria-pressed={selected}
                   className={
                     "h-11 rounded-md border text-sm px-2 " +
                     (selected
@@ -273,20 +276,14 @@ export function DeadlinePicker({
                       : "bg-background")
                   }
                   onClick={() => {
-                    if (start === end) {
-                      if (s < start) setStart(s);
-                      else if (s > start) setEnd(s);
-                      else {
-                        setStart(s);
-                        setEnd(s);
-                      }
+                    if (!selectingRangeEnd) {
+                      setStart(s);
+                      setEnd(s);
+                      setSelectingRangeEnd(true);
                     } else {
-                      if (s < start) setStart(s);
-                      else if (s > end) setEnd(s);
-                      else {
-                        setStart(s);
-                        setEnd(s);
-                      }
+                      setStart(Math.min(start, s) as typeof start);
+                      setEnd(Math.max(start, s) as typeof end);
+                      setSelectingRangeEnd(false);
                     }
                   }}
                 >

@@ -589,9 +589,14 @@ for (const width of [320, 390]) {
     await page.getByRole("button", { name: "6限", exact: true }).click();
     await page.getByRole("button", { name: "適用" }).click();
     await expect(page.getByLabel("期限", { exact: true })).toContainText("5〜6限まで");
+    await page.getByLabel("期限", { exact: true }).click();
+    await page.getByLabel("日付", { exact: true }).fill("2099-10-17");
+    await page.getByRole("button", { name: "閉じる", exact: true }).click();
+    await expect(page.getByLabel("期限", { exact: true })).toContainText("2099-10-16");
+
     await page.getByText("詳細を追加（任意）", { exact: true }).click();
     await page.getByLabel("説明 （任意）").fill("長い説明\n".repeat(100));
-    await page.locator('input[type="file"]').setInputFiles({ name: "notice.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await page.locator('input[type="file"]').setInputFiles({ name: "notice.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") });
     // Reduced available height models the layout constraint while a phone keyboard is open.
     await page.setViewportSize({ width, height: 360 });
     await page.getByLabel("タイトル", { exact: true }).focus();

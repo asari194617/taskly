@@ -185,7 +185,7 @@ export function TaskFormFields({
             <Select value={values.type} onValueChange={set.type}>
               <SelectTrigger
                 id={`${id}-type`}
-                className={compact ? "h-11 w-full text-base" : undefined}
+                className={compact ? "min-h-11 w-full text-base" : undefined}
               >
                 <SelectValue placeholder={dict.tasks.selectPlaceholder} />
               </SelectTrigger>
@@ -228,12 +228,12 @@ export function TaskFormFields({
               }}
             >
               <ImagePlus className="mb-1 h-5 w-5 text-muted-foreground" />
-              <span className="text-sm">{dict.tasks.imageDrop}</span>
+              <span className="text-sm">{compact ? (lang === "ja" ? "通知や課題の画像を選択" : "Choose a task or notification image") : dict.tasks.imageDrop}</span>
               <span className="text-xs text-muted-foreground">
                 {dict.tasks.imageHelp}
               </span>
             </label>
-            <Input
+            <input
               id={`${id}-images`}
               className="sr-only"
               type="file"

@@ -23,7 +23,7 @@ export default function AppShell() {
   React.useEffect(() => {
     // Only run on protected routes to avoid redirect loops
     const path = location.pathname;
-    const isProtected = ["/home", "/settings", "/admin"].some(
+    const isProtected = ["/home", "/tasks", "/settings", "/admin"].some(
       (p) => path === p || path.startsWith(p + "/")
     );
     if (!isProtected) return;
