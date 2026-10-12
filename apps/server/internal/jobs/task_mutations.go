@@ -4,11 +4,20 @@ import (
 	"strings"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/taskimage"
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	"gorm.io/gorm"
 )
 
 func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, actor string) (domain.Task, error) {
+	keys := deadline.ImageKeys
+	if len(keys) == 0 && deadline.ImageKey != nil {
+		keys = []string{*deadline.ImageKey}
+	}
+	return CreateTaskWithImages(db, addedUserID, title, subjectID, description, typ, handIn, selfCheck, deadline, keys, actor)
+}
+
+func CreateTaskWithImages(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, imageKeys []string, actor string) (domain.Task, error) {
 	var created domain.Task
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var err error
@@ -17,9 +26,10 @@ func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, des
 		if err != nil {
 			return err
 		}
-		if deadline.ImageKey != nil {
-			created.ImageKey = deadline.ImageKey
-			if err := tx.Exec("UPDATE tasks SET image_key = ? WHERE id = ?", deadline.ImageKey, created.ID).Error; err != nil {
+		if len(imageKeys) > 0 {
+			created.ImageKey = &imageKeys[0]
+			created.ImageKeys = append([]string(nil), imageKeys...)
+			if err := taskimage.Replace(tx, created.ID, imageKeys); err != nil {
 				return err
 			}
 		}
@@ -29,12 +39,26 @@ func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, des
 }
 
 func UpdateTask(db *gorm.DB, id uint, modifier func(*domain.Task) error, actor string) (domain.Task, domain.Task, error) {
+	return UpdateTaskWithImages(db, id, modifier, nil, actor)
+}
+
+func UpdateTaskWithImages(db *gorm.DB, id uint, modifier func(*domain.Task) error, imageKeys *[]string, actor string) (domain.Task, domain.Task, error) {
 	var before, after domain.Task
 	err := db.Transaction(func(tx *gorm.DB) error {
 		var err error
 		before, after, err = domain.UpdateTask(tx, id, modifier, actor)
 		if err != nil {
 			return err
+		}
+		if imageKeys != nil {
+			if err := taskimage.Replace(tx, after.ID, *imageKeys); err != nil {
+				return err
+			}
+			after.ImageKeys = append([]string(nil), (*imageKeys)...)
+			after.ImageKey = nil
+			if len(*imageKeys) > 0 {
+				after.ImageKey = &(*imageKeys)[0]
+			}
 		}
 		mid, err := teamsMessageID(tx, after.ID)
 		if err != nil {

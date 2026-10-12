@@ -33,6 +33,7 @@ describe("TaskCard", () => {
             selfCheck: false,
             type: "",
             description: "",
+            images: [],
           },
           editSetters: {
             title: noop,
@@ -43,6 +44,7 @@ describe("TaskCard", () => {
             selfCheck: noop,
             type: noop,
             description: noop,
+            images: noop,
           },
           toggleWithPending: noop,
           saveEdit: noop,

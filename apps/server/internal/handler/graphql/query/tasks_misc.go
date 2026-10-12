@@ -84,13 +84,24 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					}
 					outItems := make([]map[string]any, 0, len(items))
 					images, _ := taskimage.NewFromEnv()
+					taskIDs := make([]uint, 0, len(items))
+					for _, item := range items {
+						taskIDs = append(taskIDs, item.ID)
+					}
+					imageKeysByTask, _ := taskimage.KeysForTasks(h.db, taskIDs)
 					for _, it := range items {
+						imageKeys := imageKeysByTask[it.ID]
+						if len(imageKeys) == 0 && it.ImageKey != nil {
+							imageKeys = []string{*it.ImageKey}
+						}
 						out := map[string]any{
 							"id":                     it.ID,
 							"title":                  it.Title,
 							"subject_id":             it.SubjectID,
 							"description":            it.Description,
 							"image_url":              nil,
+							"image_keys":             imageKeys,
+							"image_urls":             []string{},
 							"type":                   it.Type,
 							"is_require_hand_in":     it.IsRequireHandIn,
 							"is_self_check_required": it.IsSelfCheckRequired,
@@ -102,9 +113,23 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 						out["is_completed"] = completed[it.ID]
 						out["created_at"] = it.CreatedAt.Format(time.RFC3339)
 						out["updated_at"] = it.UpdatedAt.Format(time.RFC3339)
-						if images != nil && it.ImageKey != nil {
-							if url, err := images.PresignView(p.Context, *it.ImageKey); err == nil {
-								out["image_url"] = url
+						if images != nil {
+							imageURLs := make([]string, 0, len(imageKeys))
+							allSigned := true
+							for _, key := range imageKeys {
+								if url, err := images.PresignView(p.Context, key); err == nil {
+									imageURLs = append(imageURLs, url)
+								} else {
+									allSigned = false
+									break
+								}
+							}
+							if !allSigned {
+								imageURLs = []string{}
+							}
+							out["image_urls"] = imageURLs
+							if len(imageURLs) > 0 {
+								out["image_url"] = imageURLs[0]
 							}
 						}
 						outItems = append(outItems, out)

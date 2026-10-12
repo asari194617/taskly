@@ -78,6 +78,7 @@ export function TaskCard({
         lang,
       )
     : "";
+  const imageURLs = t.image_urls?.length ? t.image_urls : t.image_url ? [t.image_url] : [];
   return (
     <li
       key={t.id}
@@ -172,23 +173,27 @@ export function TaskCard({
                 {t.description}
               </p>
             )}
-            {t.image_url && (
-              <a
-                href={t.image_url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 block"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <img
-                  src={t.image_url}
-                  alt={`${t.title} - ${dict.tasks.image}`}
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  className="max-h-72 max-w-full rounded-md border object-contain"
-                />
-              </a>
+            {imageURLs.length > 0 && (
+              <div className="mt-3 grid max-w-2xl grid-cols-2 gap-2 sm:grid-cols-3">
+                {imageURLs.map((url, index) => (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <img
+                      src={url}
+                      alt={`${t.title} - ${dict.tasks.image} ${index + 1}`}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      className="h-40 w-full rounded-md border object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2">

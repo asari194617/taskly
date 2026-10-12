@@ -120,6 +120,8 @@ func (h *Handler) createGQLTypes() *gqlShared.GqlTypes {
 			"subject_id":             &graphql.Field{Type: graphql.Int},
 			"description":            &graphql.Field{Type: graphql.String},
 			"image_url":              &graphql.Field{Type: graphql.String},
+			"image_keys":             &graphql.Field{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+			"image_urls":             &graphql.Field{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
 			"type":                   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"is_require_hand_in":     &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
 			"is_self_check_required": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},

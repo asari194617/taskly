@@ -91,7 +91,7 @@ func countSelections(set *ast.SelectionSet, parent *graphql.Object, depth, multi
 				if definition := parent.Fields()[node.Name.Value]; definition != nil {
 					childType, _ = graphql.GetNamed(definition.Type).(*graphql.Object)
 					if isListType(definition.Type) {
-						childMultiplier *= listSize(node.Arguments, variables, pageSize)
+						childMultiplier *= listSize(node.Name.Value, node.Arguments, variables, pageSize)
 						childPageSize = 0
 					} else if childType != nil {
 						// Paginated wrappers carry the page size on the parent
@@ -150,13 +150,19 @@ func isListType(t graphql.Type) bool {
 	}
 }
 
-func listSize(args []*ast.Argument, variables map[string]any, inherited int) int {
+func listSize(fieldName string, args []*ast.Argument, variables map[string]any, inherited int) int {
 	size := defaultListSize
 	if inherited > size {
 		size = inherited
 	}
 	if requested := requestedListSize(args, variables); requested > size {
 		size = requested
+	}
+	// Task image lists are validated and persisted with a hard maximum of five
+	// entries. Charging the generic default of twenty for each nested list would
+	// reject the normal task page without reflecting the actual fan-out.
+	if (fieldName == "image_keys" || fieldName == "image_urls") && size > 5 {
+		size = 5
 	}
 	return size
 }

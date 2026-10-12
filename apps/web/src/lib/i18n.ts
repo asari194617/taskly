@@ -143,10 +143,22 @@ export const t = (lang: Lang) => ({
     noDeadline: lang === "ja" ? "期限なし" : "No deadline",
     description: lang === "ja" ? "説明" : "Description",
     image: lang === "ja" ? "画像" : "Image",
+    images: lang === "ja" ? "画像" : "Images",
+    imageDrop:
+      lang === "ja"
+        ? "画像をドラッグ&ドロップ、またはクリックして選択"
+        : "Drag and drop images, or click to choose",
+    removeImage: lang === "ja" ? "画像を削除" : "Remove image",
+    imageInvalid:
+      lang === "ja"
+        ? "対応形式の10 MiB以下の画像を選択してください。"
+        : "Choose a supported image no larger than 10 MiB.",
+    imageTooMany:
+      lang === "ja" ? "画像は最大5枚までです。" : "You can attach up to 5 images.",
     imageHelp:
       lang === "ja"
-        ? "JPEG・PNG・WebP・GIF（最大10 MiB）"
-        : "JPEG, PNG, WebP, or GIF (up to 10 MiB)",
+        ? "JPEG・PNG・WebP・GIF（1枚10 MiB、最大5枚）"
+        : "JPEG, PNG, WebP, or GIF (10 MiB each, up to 5)",
     type: lang === "ja" ? "タイプ" : "Type",
     requireHandIn: lang === "ja" ? "提出必須" : "Submission required",
     selfCheckRequired: lang === "ja" ? "自己採点が必要" : "Self-check required",

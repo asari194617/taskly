@@ -15,6 +15,8 @@ export type Task = {
   is_completed?: boolean;
   is_hidden?: boolean;
   image_url?: string | null;
+  image_keys?: string[];
+  image_urls?: string[];
 };
 
 export type Subject = {
@@ -34,12 +36,14 @@ export type TaskInput = {
   description?: string;
   type?: string;
   image_key?: string;
+  image_keys?: string[];
 };
 
-const taskFields = `id title subject_id deadline deadline_since deadline_until description image_url type is_require_hand_in is_self_check_required is_completed is_hidden`;
-const taskMutationFields = `id title subject_id deadline deadline_since deadline_until description image_url type is_require_hand_in is_self_check_required`;
+const taskFields = `id title subject_id deadline deadline_since deadline_until description image_url image_keys image_urls type is_require_hand_in is_self_check_required is_completed is_hidden`;
+const taskMutationFields = `id title subject_id deadline deadline_since deadline_until description image_url image_keys image_urls type is_require_hand_in is_self_check_required`;
 
 export const TASK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+export const TASK_IMAGE_MAX_COUNT = 5;
 export const TASK_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 export async function uploadTaskImage(file: File): Promise<string> {
@@ -93,7 +97,7 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
   const variables = { q: q || undefined, ...cursor };
   try {
     const result = await gql<{ tasks: { items: Task[]; next_cursor: TaskCursor | null } }>(
-      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:50, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ ${taskFields} } next_cursor{ cursor_deadline cursor_id } } }`,
+      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:15, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ ${taskFields} } next_cursor{ cursor_deadline cursor_id } } }`,
       variables,
       { signal },
     );
@@ -101,11 +105,11 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     // Keep compatibility during rolling deployments with an older API schema.
-    if (!/Cannot query field "(is_completed|image_url)"/i.test(message)) throw error;
+    if (!/Cannot query field "(is_completed|image_url|image_keys|image_urls)"/i.test(message)) throw error;
     const result = await gql<{
       tasks: { items: Omit<Task, "is_completed">[]; next_cursor: TaskCursor | null };
     }>(
-      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:50, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_hidden } next_cursor{ cursor_deadline cursor_id } } }`,
+      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:15, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_hidden } next_cursor{ cursor_deadline cursor_id } } }`,
       variables,
       { signal },
     );
@@ -118,21 +122,22 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
 
 export async function createTask(input: TaskInput) {
   const result = await gql<{ createTask: Task }>(
-    `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String,$image_key:String){
-      createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type, image_key:$image_key){ ${taskMutationFields} }
+    `mutation($title:String!,$subject_id:Int!,$is:Boolean,$scr:Boolean,$deadline:String!,$deadline_since:String,$deadline_until:String,$description:String,$type:String,$image_keys:[String!]){
+      createTask(title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type, image_keys:$image_keys){ ${taskMutationFields} }
     }`,
     input,
   );
   return result.createTask;
 }
 
-export function updateTask(id: number, input: Partial<TaskInput>) {
-  return gql<{ updateTask: Pick<Task, "id"> }>(
-    `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_since:String,$deadline_until:String,$description:String,$type:String){
-      updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type){ id }
+export async function updateTask(id: number, input: Partial<TaskInput>) {
+  const result = await gql<{ updateTask: Task }>(
+    `mutation($id:Int!,$title:String,$subject_id:Int,$is:Boolean,$scr:Boolean,$deadline:String,$deadline_since:String,$deadline_until:String,$description:String,$type:String,$image_keys:[String!]){
+      updateTask(id:$id, title:$title, subject_id:$subject_id, is_require_hand_in:$is, is_self_check_required:$scr, deadline:$deadline, deadline_since:$deadline_since, deadline_until:$deadline_until, description:$description, type:$type, image_keys:$image_keys){ ${taskMutationFields} }
     }`,
     { id, ...input },
   );
+  return result.updateTask;
 }
 
 export function deleteTask(id: number) {

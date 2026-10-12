@@ -34,8 +34,8 @@ func TestDeclarativeSchema(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if tables != 37 {
-		t.Fatalf("expected 37 application tables, got %d", tables)
+	if tables != 38 {
+		t.Fatalf("expected 38 application tables, got %d", tables)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)

@@ -274,11 +274,20 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		if !allowed {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
-		deleted, err := jobs.DeleteTask(h.db, rec.ID, u.Email)
+		imageKeys, imageKeysErr := taskimage.KeysForTask(h.db, rec.ID)
+		if imageKeysErr != nil || len(imageKeys) == 0 {
+			if rec.ImageKey != nil {
+				imageKeys = []string{*rec.ImageKey}
+			}
+		}
+		_, err = jobs.DeleteTask(h.db, rec.ID, u.Email)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
-		deleteTaskImage(c.UserContext(), deleted.ImageKey)
+		for _, key := range imageKeys {
+			key := key
+			deleteTaskImage(c.UserContext(), &key)
+		}
 		return c.SendStatus(204)
 	})
 }

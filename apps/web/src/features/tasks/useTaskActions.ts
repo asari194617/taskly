@@ -14,6 +14,7 @@ import {
   type Task,
 } from "./api";
 import { runOptimisticMutation } from "./state.mjs";
+import type { TaskFormImage } from "./TaskFormFields";
 
 export function useTaskActions(
   items: Task[] | null,
@@ -30,7 +31,7 @@ export function useTaskActions(
   const [newSelfCheck, setNewSelfCheck] = React.useState(false);
   const [newType, setNewType] = React.useState("");
   const [newDesc, setNewDesc] = React.useState("");
-  const [newImageFile, setNewImageFile] = React.useState<File | null>(null);
+  const [newImages, setNewImages] = React.useState<TaskFormImage[]>([]);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
@@ -41,6 +42,7 @@ export function useTaskActions(
   const [editSelfCheck, setEditSelfCheck] = React.useState(false);
   const [editType, setEditType] = React.useState("");
   const [editDesc, setEditDesc] = React.useState("");
+  const [editImages, setEditImages] = React.useState<TaskFormImage[]>([]);
   async function createTask() {
     if (!newTitle.trim() || !newSubjectId.trim() || !newDate.trim()) {
       toast({
@@ -51,9 +53,9 @@ export function useTaskActions(
     }
     setCreating(true);
     try {
-      const imageKey = newImageFile
-        ? await uploadTaskImage(newImageFile)
-        : undefined;
+      const imageKeys = await Promise.all(
+        newImages.flatMap((image) => image.file ? [uploadTaskImage(image.file)] : []),
+      );
       const created = await createTaskRequest({
         title: newTitle.trim(),
         subject_id: parseInt(newSubjectId, 10),
@@ -63,7 +65,7 @@ export function useTaskActions(
         ...sinceUntilFromMeta(newDate, newMeta), // enums
         description: newDesc || undefined,
         type: newType || undefined,
-        image_key: imageKey,
+        image_keys: imageKeys,
       });
       setItems((prev) => (prev ? [created, ...prev] : [created]));
       setNewTitle("");
@@ -74,7 +76,7 @@ export function useTaskActions(
       setNewSelfCheck(false);
       setNewType("");
       setNewDesc("");
-      setNewImageFile(null);
+      setNewImages([]);
       setCreateOpen(false);
       toast({ title: dict.toast.created });
     } catch (e: any) {
@@ -98,6 +100,13 @@ export function useTaskActions(
     setEditSelfCheck(!!t.is_self_check_required);
     setEditType(t.type || "");
     setEditDesc(t.description || "");
+    const keys = t.image_keys ?? [];
+    const urls = t.image_urls ?? (t.image_url ? [t.image_url] : []);
+    setEditImages(keys.map((key, index) => ({
+      id: key,
+      key,
+      url: urls[index],
+    })));
   }
   function cancelEdit() {
     setEditingId(null);
@@ -106,38 +115,32 @@ export function useTaskActions(
     setEditDate("");
     setEditMeta(null);
     setEditRequire(false);
+    setEditSelfCheck(false);
+    setEditType("");
+    setEditDesc("");
+    setEditImages([]);
   }
   async function saveEdit(id: number) {
-    const prev = items?.slice() || [];
-    // optimistic update
-    const optimistic = prev.map((x) =>
-      x.id === id
-        ? {
-            ...x,
-            title: editTitle,
-            subject_id: parseInt(editSubjectId || "0", 10) || x.subject_id,
-            deadline: editDate || null,
-            // keep since/until in local state if needed (not shown here)
-            is_require_hand_in: editRequire,
-            is_self_check_required: editSelfCheck,
-            type: editType,
-            description: editDesc,
-          }
-        : x,
-    );
     try {
-      await runOptimisticMutation(prev, optimistic, setItems, () =>
-        updateTaskRequest(id, {
-          title: editTitle,
-          subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
-          is: editRequire,
-          scr: editSelfCheck,
-          deadline: editDate || undefined,
-          ...sinceUntilFromMeta(editDate, editMeta),
-          description: editDesc,
-          type: editType,
-        }),
+      const uploadedKeys = await Promise.all(
+        editImages.flatMap((image) => image.file ? [uploadTaskImage(image.file)] : []),
       );
+      const imageKeys = [
+        ...editImages.flatMap((image) => image.key ? [image.key] : []),
+        ...uploadedKeys,
+      ];
+      const updated = await updateTaskRequest(id, {
+        title: editTitle,
+        subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
+        is: editRequire,
+        scr: editSelfCheck,
+        deadline: editDate || undefined,
+        ...sinceUntilFromMeta(editDate, editMeta),
+        description: editDesc,
+        type: editType,
+        image_keys: imageKeys,
+      });
+      setItems((current) => current?.map((task) => task.id === id ? { ...task, ...updated } : task) ?? null);
       toast({ title: dict.toast.updated });
       cancelEdit();
     } catch (e: any) {
@@ -216,7 +219,7 @@ export function useTaskActions(
     selfCheck: newSelfCheck,
     type: newType,
     description: newDesc,
-    imageFile: newImageFile,
+    images: newImages,
   };
   const createSetters = {
     title: setNewTitle,
@@ -227,7 +230,7 @@ export function useTaskActions(
     selfCheck: setNewSelfCheck,
     type: setNewType,
     description: setNewDesc,
-    imageFile: setNewImageFile,
+    images: setNewImages,
   };
   const editValues = {
     title: editTitle,
@@ -238,7 +241,7 @@ export function useTaskActions(
     selfCheck: editSelfCheck,
     type: editType,
     description: editDesc,
-    imageFile: null,
+    images: editImages,
   };
   const editSetters = {
     title: setEditTitle,
@@ -249,7 +252,7 @@ export function useTaskActions(
     selfCheck: setEditSelfCheck,
     type: setEditType,
     description: setEditDesc,
-    imageFile: () => {},
+    images: setEditImages,
   };
 
   return {

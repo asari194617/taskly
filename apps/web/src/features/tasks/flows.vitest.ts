@@ -108,7 +108,7 @@ describe("task search and update", () => {
     expect(visibleTasks(results, "", "all", new Date(2026, 8, 21)).map((task) => task.id))
       .toEqual([51]);
     expect(query).toHaveBeenLastCalledWith(
-      expect.stringContaining("tasks(limit:50, q:$q"),
+      expect.stringContaining("tasks(limit:15, q:$q"),
       { q: "needle", ...cursor },
       { signal: undefined },
     );
