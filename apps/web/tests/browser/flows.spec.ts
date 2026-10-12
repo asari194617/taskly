@@ -1,5 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Mocked API requests must stay visible to Playwright, including in WebKit.
+test.use({ serviceWorkers: "block" });
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}`,
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Allow-Headers": "Content-Type, X-Client-Platform, X-Amz-Meta-Owner-Id",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+};
+
 type Task = {
   id: number;
   title: string;
@@ -24,11 +34,12 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   const subjects = [{ id: 1, name_ja: "数学", name_en: "Math", created_at: "2026-01-01T00:00:00Z", expires_at: null }];
   await page.route("https://r2.example.test/**", async (route) => {
     if (route.request().method() === "PUT") uploadedKeys.push(route.request().url());
-    return route.fulfill({ status: 200, body: "" });
+    return route.fulfill({ status: 200, headers: corsHeaders, body: "" });
   });
   await page.route("http://localhost:3063/**", async (route) => {
     const url = new URL(route.request().url());
-    const respond = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    const respond = (body: unknown, status = 200) => route.fulfill({ status, headers: corsHeaders, contentType: "application/json", body: JSON.stringify(body) });
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: corsHeaders });
     if (url.pathname === "/auth/oauth/start") {
       authenticated = true;
       return route.fulfill({ status: 302, headers: { Location: `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}/home` }, body: "" });
@@ -622,7 +633,7 @@ test("登録失敗後も入力を保持し、再試行で一件だけ登録す�
   await page.route("http://localhost:3063/graphql", async (route) => {
     if (fail && route.request().postDataJSON()?.query.includes("createTask(")) {
       fail = false;
-      return route.fulfill({ status: 503, json: { errors: [{ message: "temporary outage" }] } });
+      return route.fulfill({ status: 503, headers: corsHeaders, json: { errors: [{ message: "temporary outage" }] } });
     }
     return route.fallback();
   });
