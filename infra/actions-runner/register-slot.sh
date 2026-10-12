@@ -2,13 +2,22 @@
 set -euo pipefail
 
 slot=${1:?runner slot is required}
+env_file=${TASKLY_RUNNER_ENV_FILE:-/etc/taskly-runner/runner.env}
+if [[ -r "$env_file" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+fi
 image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
 repository_url=${TASKLY_REPOSITORY_URL:-https://github.com/asari194617/taskly}
+runner_name_prefix=${TASKLY_RUNNER_NAME_PREFIX:-taskly-ci-slot}
+runner_ci_label=${TASKLY_RUNNER_CI_LABEL:-taskly-ci}
 
 case "$slot" in
   [1-4])
-    runner_name="taskly-ci-slot-$slot"
-    runner_labels=taskly-ci
+    runner_name="$runner_name_prefix-$slot"
+    runner_labels=$runner_ci_label
     ;;
   prod)
     runner_name=taskly-prod

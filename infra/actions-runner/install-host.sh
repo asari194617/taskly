@@ -13,6 +13,15 @@ runner_memory=${TASKLY_RUNNER_MEMORY:-7g}
 runner_pids_limit=${TASKLY_RUNNER_PIDS_LIMIT:-2048}
 image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
 workspace_root=${TASKLY_RUNNER_WORK_ROOT:-/var/lib/taskly-runner/work}
+runner_name_prefix=${TASKLY_RUNNER_NAME_PREFIX:-taskly-ci-slot}
+runner_ci_label=${TASKLY_RUNNER_CI_LABEL:-taskly-ci}
+
+for value in "$runner_name_prefix" "$runner_ci_label"; do
+  if [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Runner names and labels may contain only letters, digits, dots, underscores, and hyphens" >&2
+    exit 1
+  fi
+done
 
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update
@@ -44,6 +53,8 @@ TASKLY_RUNNER_CPUS=$runner_cpus
 TASKLY_RUNNER_MEMORY=$runner_memory
 TASKLY_RUNNER_PIDS_LIMIT=$runner_pids_limit
 TASKLY_RUNNER_WORK_ROOT=$workspace_root
+TASKLY_RUNNER_NAME_PREFIX=$runner_name_prefix
+TASKLY_RUNNER_CI_LABEL=$runner_ci_label
 EOF
 chmod 0644 /etc/taskly-runner/runner.env
 

@@ -1,0 +1,19 @@
+name: runner-health-secondary
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: runner-health-secondary
+  cancel-in-progress: true
+
+jobs:
+  heartbeat:
+    runs-on: [self-hosted, taskly-ci-secondary]
+    timeout-minutes: 5
+    steps:
+      - run: echo "Secondary runner pool is healthy"

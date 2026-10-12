@@ -1,0 +1,19 @@
+name: runner-health-primary
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: runner-health-primary
+  cancel-in-progress: true
+
+jobs:
+  heartbeat:
+    runs-on: [self-hosted, taskly-ci-primary]
+    timeout-minutes: 5
+    steps:
+      - run: echo "Primary runner pool is healthy"

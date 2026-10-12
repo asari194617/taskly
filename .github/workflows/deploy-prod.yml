@@ -24,7 +24,7 @@ on:
       runner_override:
         description: Runner for image build and release jobs
         type: choice
-        options: [auto, ubuntu-latest]
+        options: [auto, primary, secondary, ubuntu-latest]
         default: auto
       allow_destructive_schema:
         description: Apply a reviewed destructive Atlas plan
@@ -41,6 +41,7 @@ env:
   PRODUCTION_PLATFORM: linux/amd64
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
