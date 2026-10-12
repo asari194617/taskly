@@ -40,11 +40,6 @@ export default function TaskCreatePage() {
       </a>
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">{dict.tasks.createTaskTitle}</h1>
-        <p className="text-sm text-muted-foreground">
-          {lang === "ja"
-            ? "タイトル・教科・期限だけで登録できます。詳細は後から編集できます。"
-            : "Start with a title, subject and deadline. You can edit the details later."}
-        </p>
       </div>
       {error && (
         <div role="alert" className="space-y-2">
