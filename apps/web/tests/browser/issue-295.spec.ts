@@ -72,14 +72,14 @@ test("Web Push: 購読・解除と API 失敗時の表示を検証する", async
   const push = page.getByRole("switch", { name: "Webプッシュ通知" });
   await push.click();
   await expect(push).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText("プッシュ通知を有効化しました")).toBeVisible();
+  await expect(page.getByText("プッシュ通知を有効化しました", { exact: true })).toBeVisible();
   await push.click();
   await expect(push).toHaveAttribute("aria-checked", "false");
-  await expect(page.getByText("プッシュ通知を無効化しました")).toBeVisible();
+  await expect(page.getByText("プッシュ通知を無効化しました", { exact: true })).toBeVisible();
   expect(changes).toEqual(["/push/subscribe", "/push/unsubscribe"]);
   failRegistration = true;
   await push.click();
-  await expect(page.getByText("サーバー登録に失敗しました")).toBeVisible();
+  await expect(page.getByText("サーバー登録に失敗しました", { exact: true })).toBeVisible();
   await expect(push).toHaveAttribute("aria-checked", "false");
 });
 
