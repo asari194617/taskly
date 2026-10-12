@@ -12,6 +12,7 @@ runner_cpus=${TASKLY_RUNNER_CPUS:-3}
 runner_memory=${TASKLY_RUNNER_MEMORY:-7g}
 runner_pids_limit=${TASKLY_RUNNER_PIDS_LIMIT:-2048}
 image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
+workspace_root=${TASKLY_RUNNER_WORK_ROOT:-/var/lib/taskly-runner/work}
 
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update
@@ -23,6 +24,7 @@ if ! id "$runner_user" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$runner_user"
 fi
 usermod --append --groups docker "$runner_user"
+install -d -o "$runner_user" -g "$runner_user" -m 0755 "$workspace_root"
 
 docker build --tag "$image" "$root/infra/actions-runner"
 
@@ -41,6 +43,7 @@ TASKLY_RUNNER_IMAGE=$image
 TASKLY_RUNNER_CPUS=$runner_cpus
 TASKLY_RUNNER_MEMORY=$runner_memory
 TASKLY_RUNNER_PIDS_LIMIT=$runner_pids_limit
+TASKLY_RUNNER_WORK_ROOT=$workspace_root
 EOF
 chmod 0644 /etc/taskly-runner/runner.env
 

@@ -6,6 +6,7 @@ image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
 runner_cpus=${TASKLY_RUNNER_CPUS:-3}
 runner_memory=${TASKLY_RUNNER_MEMORY:-7g}
 runner_pids_limit=${TASKLY_RUNNER_PIDS_LIMIT:-2048}
+workspace_root=${TASKLY_RUNNER_WORK_ROOT:-/tmp}
 
 case "$slot" in
   [1-4]) container_name="taskly-ci-slot-$slot" ;;
@@ -19,18 +20,19 @@ esac
 docker_gid=$(stat -c '%g' /var/run/docker.sock)
 # Share the complete runner directory (including externals and _temp) with
 # sibling containers at an identical, per-job path. Never reuse a workspace.
-workspace=$(mktemp -d /tmp/taskly-ci-slot-$slot.XXXXXX)
+workspace=$(mktemp -d "$workspace_root/taskly-ci-slot-$slot.XXXXXX")
 chmod 0755 "$workspace"
-docker run --rm --user root --volume "$workspace:/workspace" --entrypoint sh "$image" \
-  -c 'mkdir /workspace/runner; chown 1001:1001 /workspace/runner'
 cleanup() {
+  [[ -d "$workspace" ]] || return 0
   # Container jobs may leave root-owned files; remove only this job's directory.
   docker run --rm --user root --volume "$workspace:/cleanup" --entrypoint sh "$image" \
-    -c 'find /cleanup -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +'
-  rmdir "$workspace"
+    -c 'find /cleanup -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' || true
+  rmdir "$workspace" || true
 }
 trap cleanup EXIT
 trap 'exit 0' TERM INT
+docker run --rm --user root --volume "$workspace:/workspace" --entrypoint sh "$image" \
+  -c 'mkdir /workspace/runner; chown 1001:1001 /workspace/runner'
 
 runner_args=(
   --rm

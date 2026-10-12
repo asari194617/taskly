@@ -39,6 +39,12 @@ pinned image, and installs the root-owned launchers and systemd unit:
 sudo infra/actions-runner/install-host.sh
 ```
 
+Job workspaces are created below `/var/lib/taskly-runner/work` by default. This
+keeps runner binaries, checkouts, and child-container bind mounts off `/tmp`,
+which is a small tmpfs on some Ubuntu installations. The launcher installs its
+cleanup trap before populating a workspace, so a failed initialization does not
+leak disk space.
+
 The default per-job limits are 3 CPUs and 7 GiB. Override them while installing
 on a smaller host. For example, a 2-vCPU host can run one CI slot with:
 
@@ -83,8 +89,9 @@ current job with the old launcher; systemd picks up the new launcher on their
 next start. Allow active jobs to complete before restarting an idle slot.
 Keep the previous image and launcher until CI is verified for rollback.
 
-The host bind directory is created under `/tmp/taskly-ci-slot-N.*`, with a
-runner-owned subdirectory. The launcher removes it when the job finishes,
+The host bind directory is created under the configured
+`TASKLY_RUNNER_WORK_ROOT`, with a runner-owned subdirectory. The launcher
+removes it when the job finishes,
 including files left by root in job containers. After a forced host shutdown,
 remove stale directories only after checking no runner/container uses them.
 
