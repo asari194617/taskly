@@ -1,15 +1,16 @@
 # Single-job GitHub Actions runner pool
 
-Trusted same-repository PRs and production image jobs use containerized runners with the `taskly-ci`
-label. Up to four CI slots are supported. GitHub registrations are persistent, but every runner process accepts
+Trusted same-repository PRs and production image jobs use containerized runners. The primary
+pool has the `taskly-ci-primary` label and the existing fallback host has the
+`taskly-ci-secondary` label. Up to four CI slots per host are supported. GitHub registrations are persistent, but every runner process accepts
 only one job (`run.sh --once`). systemd then starts a new container from the
 pinned image, so the workspace and container filesystem are discarded between
 jobs. The image includes Playwright browser dependencies, Python/venv, build
 tools, and Docker Compose for the CI jobs.
 
-Each slot:
+Each slot on the primary host:
 
-- runs in a fresh container with 3 CPUs, 7 GiB memory, and a process limit;
+- runs in a fresh container with 1.25 CPUs, 7 GiB memory, and a process limit;
 - shares a unique temporary runner directory at the same host/container path,
   including runner externals and temporary scripts needed by child containers;
 - uses the host network so published service ports are reachable at localhost;
@@ -20,11 +21,14 @@ Each slot:
 - mounts the host Docker socket for trusted image build jobs;
 - accepts only trusted repository code; external fork PRs stay on GitHub-hosted runners.
 
-The reusable `select-runner` workflow defaults to `self-hosted, taskly-ci`, including
-its own selection job, so it does not require GitHub-hosted minutes to start.
-External fork PRs select `ubuntu-latest`. Set the repository variable `CI_RUNNER`
-to `ubuntu-latest` for an explicit hosted override (normal billing applies).
-There is no automatic paid fallback: an offline pool leaves trusted jobs queued.
+The reusable `select-runner` workflow checks fresh heartbeat runs and selects the
+primary pool first, the secondary pool second, then `ubuntu-latest`. Its small
+selection job runs on GitHub-hosted infrastructure so it cannot be stranded by
+either self-hosted pool. A heartbeat is fresh for 15 minutes; a busy or offline
+pool naturally becomes ineligible when it cannot complete the scheduled check.
+External fork PRs always select `ubuntu-latest`. Set the repository variable
+`CI_RUNNER` to `primary`, `secondary`, or `ubuntu-latest` for an explicit override
+(hosted billing applies to the last option).
 The production deploy runner uses the separate `taskly-prod` label and its own
 registration volume. It is recycled after every deploy job in the same way as
 the CI slots.
@@ -45,11 +49,22 @@ which is a small tmpfs on some Ubuntu installations. The launcher installs its
 cleanup trap before populating a workspace, so a failed initialization does not
 leak disk space.
 
-The default per-job limits are 3 CPUs and 7 GiB. Override them while installing
-on a smaller host. For example, a 2-vCPU host can run one CI slot with:
+The default per-job limits are 3 CPUs and 7 GiB. Override them for the host's
+capacity. The 5-vCPU/32-GiB primary host runs four slots with:
+
+```bash
+sudo env TASKLY_RUNNER_CPUS=1.25 TASKLY_RUNNER_MEMORY=7g \
+  TASKLY_RUNNER_NAME_PREFIX=taskly-ci-primary-slot \
+  TASKLY_RUNNER_CI_LABEL=taskly-ci-primary \
+  infra/actions-runner/install-host.sh
+```
+
+The existing 2-vCPU secondary host runs one slot with:
 
 ```bash
 sudo env TASKLY_RUNNER_CPUS=2 TASKLY_RUNNER_MEMORY=2300m \
+  TASKLY_RUNNER_NAME_PREFIX=taskly-ci-secondary-slot \
+  TASKLY_RUNNER_CI_LABEL=taskly-ci-secondary \
   infra/actions-runner/install-host.sh
 ```
 
@@ -66,9 +81,9 @@ for slot in 1 prod; do
 done
 ```
 
-CI slots register as `taskly-ci-slot-N` with the `taskly-ci` label. The
-production slot registers as `taskly-prod` with the `taskly-prod` label. Check
-both registrations and services after installation:
+CI slot names and labels come from `TASKLY_RUNNER_NAME_PREFIX` and
+`TASKLY_RUNNER_CI_LABEL`. The production slot always registers as `taskly-prod`
+with the `taskly-prod` label. Check registrations and services after installation:
 
 ```bash
 systemctl is-active taskly-runner@1.service taskly-runner@prod.service
@@ -78,7 +93,7 @@ docker ps --filter label=taskly.actions-runner=single-job
 The credential volumes are copied into each fresh container rather than mounted
 writable. A job therefore cannot persist changes to its runner registration or
 workspace. The Docker socket remains equivalent to host-level access, which is
-why only trusted same-repository code may select `taskly-ci`. Container recycling
+why only trusted same-repository code may select either CI pool. Container recycling
 is not a security boundary against malicious code with Docker access. External
 fork code must not be copied into a trusted branch without review.
 
@@ -95,9 +110,9 @@ removes it when the job finishes,
 including files left by root in job containers. After a forced host shutdown,
 remove stale directories only after checking no runner/container uses them.
 
-Runner startup and selection never automatically consume paid hosted minutes.
-The macOS client build still requires a GitHub-hosted macOS runner and is billed
-normally. Review workflow changes before approving any external fork run;
+Runner selection and the final fallback consume GitHub-hosted minutes. The macOS
+client build also requires a GitHub-hosted macOS runner and is billed normally.
+Review workflow changes before approving any external fork run;
 a PR can propose changes to its own workflow definitions.
 
 

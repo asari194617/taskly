@@ -11,17 +11,68 @@ on:
         description: JSON runner labels for downstream jobs
         value: ${{ jobs.select.outputs.label }}
 
-permissions: {}
+permissions:
+  actions: read
 
 jobs:
   select:
-    # Bootstrap on the selected runner too: exhausted hosted budgets must not
-    # prevent trusted CI from reaching the self-hosted pool. Never run PR code here.
-    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || inputs.runner_override == 'ubuntu-latest' || vars.CI_RUNNER == 'ubuntu-latest') && '["ubuntu-latest"]' || '["self-hosted","taskly-ci"]') }}
+    # Selection has to run independently of both self-hosted pools so it can
+    # fall through to the next tier when a pool is unavailable.
+    runs-on: ubuntu-latest
     outputs:
       label: ${{ steps.runner.outputs.label }}
     steps:
       - id: runner
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
-          LABEL: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || inputs.runner_override == 'ubuntu-latest' || vars.CI_RUNNER == 'ubuntu-latest') && '["ubuntu-latest"]' || '["self-hosted","taskly-ci"]' }}
-        run: echo "label=$LABEL" >> "$GITHUB_OUTPUT"
+          RUNNER_OVERRIDE: ${{ inputs.runner_override }}
+          REPOSITORY_RUNNER_OVERRIDE: ${{ vars.CI_RUNNER }}
+          EXTERNAL_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        with:
+          script: |
+            const labels = {
+              primary: ['self-hosted', 'taskly-ci-primary'],
+              secondary: ['self-hosted', 'taskly-ci-secondary'],
+              'ubuntu-latest': ['ubuntu-latest'],
+            };
+            const inputOverride = process.env.RUNNER_OVERRIDE || 'auto';
+            const repositoryOverride = process.env.REPOSITORY_RUNNER_OVERRIDE || 'auto';
+            const override = inputOverride !== 'auto' ? inputOverride : repositoryOverride;
+
+            if (process.env.EXTERNAL_FORK === 'true') {
+              core.setOutput('label', JSON.stringify(labels['ubuntu-latest']));
+              return;
+            }
+            if (override !== 'auto') {
+              if (!Object.hasOwn(labels, override)) {
+                core.setFailed(`Unsupported runner override: ${override}`);
+                return;
+              }
+              core.setOutput('label', JSON.stringify(labels[override]));
+              return;
+            }
+
+            const freshnessMs = 15 * 60 * 1000;
+            async function isHealthy(workflowId) {
+              try {
+                const response = await github.rest.actions.listWorkflowRuns({
+                  ...context.repo,
+                  workflow_id: workflowId,
+                  status: 'success',
+                  per_page: 1,
+                });
+                const latest = response.data.workflow_runs[0];
+                return Boolean(latest && Date.now() - Date.parse(latest.updated_at) <= freshnessMs);
+              } catch (error) {
+                core.warning(`Could not read ${workflowId}: ${error.message}`);
+                return false;
+              }
+            }
+
+            let selected = labels['ubuntu-latest'];
+            if (await isHealthy('runner-health-primary.yml')) {
+              selected = labels.primary;
+            } else if (await isHealthy('runner-health-secondary.yml')) {
+              selected = labels.secondary;
+            }
+            core.setOutput('label', JSON.stringify(selected));
