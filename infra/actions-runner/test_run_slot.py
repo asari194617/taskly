@@ -3,6 +3,15 @@ import os, pathlib, signal, subprocess, tempfile, time, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 class RunnerStopTest(unittest.TestCase):
+    def test_rejects_unknown_slot(self):
+        proc = subprocess.run(
+            ['bash', str(ROOT/'infra/actions-runner/run-slot.sh'), 'unknown'],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('or prod', proc.stderr)
+
     def test_term_cleans_workspace(self):
         with tempfile.TemporaryDirectory() as temp:
             d = pathlib.Path(temp)
@@ -41,6 +50,64 @@ elif '/cleanup' in ' '.join(a):
             finally:
                 if proc.poll() is None:
                     proc.kill(); proc.wait()
+
+    def test_initialization_failure_cleans_workspace(self):
+        with tempfile.TemporaryDirectory() as temp:
+            d = pathlib.Path(temp)
+            (d/'stat').write_text('#!/bin/sh\necho 1001\n')
+            (d/'mktemp').write_text('#!/bin/sh\nmkdir "$CASE_DIR/work"\necho "$CASE_DIR/work"\n')
+            (d/'docker').write_text('''#!/usr/bin/env python3
+import os, pathlib, shutil, sys
+p = pathlib.Path(os.environ['CASE_DIR'])
+a = sys.argv[1:]
+if '/workspace' in ' '.join(a):
+    (p/'work'/'partial').write_text('fixture')
+    raise SystemExit(1)
+if '/cleanup' in ' '.join(a):
+    for child in (p/'work').iterdir():
+        if child.is_dir(): shutil.rmtree(child)
+        else: child.unlink()
+''')
+            for name in ['stat','mktemp','docker']: (d/name).chmod(0o755)
+            env = dict(os.environ, PATH=str(d)+':'+os.environ['PATH'], CASE_DIR=str(d))
+            proc = subprocess.run(
+                ['bash',str(ROOT/'infra/actions-runner/run-slot.sh'),'1'],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertFalse((d/'work').exists())
+
+    def test_prod_uses_dedicated_container_and_config(self):
+        with tempfile.TemporaryDirectory() as temp:
+            d = pathlib.Path(temp)
+            (d/'stat').write_text('#!/bin/sh\necho 1001\n')
+            (d/'mktemp').write_text('#!/bin/sh\nmkdir "$CASE_DIR/work"\necho "$CASE_DIR/work"\n')
+            (d/'docker').write_text('''#!/usr/bin/env python3
+import os, pathlib, sys
+p = pathlib.Path(os.environ['CASE_DIR'])
+a = sys.argv[1:]
+if '--name' in a:
+    (p/'args').write_text('\\n'.join(a))
+elif '/workspace' in ' '.join(a):
+    (p/'work'/'runner').mkdir()
+elif '/cleanup' in ' '.join(a):
+    import shutil
+    shutil.rmtree(p/'work'/'runner')
+''')
+            for name in ['stat','mktemp','docker']: (d/name).chmod(0o755)
+            env = dict(os.environ, PATH=str(d)+':'+os.environ['PATH'], CASE_DIR=str(d))
+            proc = subprocess.run(
+                ['bash',str(ROOT/'infra/actions-runner/run-slot.sh'),'prod'],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, (proc.stdout, proc.stderr))
+            args = (d/'args').read_text()
+            self.assertIn('taskly-prod', args)
+            self.assertIn('source=taskly-runner-config-prod', args)
 
 if __name__ == '__main__':
     unittest.main()

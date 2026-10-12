@@ -5,10 +5,20 @@ slot=${1:?runner slot is required}
 image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
 repository_url=${TASKLY_REPOSITORY_URL:-https://github.com/asari194617/taskly}
 
-if [[ ! "$slot" =~ ^[1-4]$ ]]; then
-  echo "Runner slot must be between 1 and 4" >&2
-  exit 1
-fi
+case "$slot" in
+  [1-4])
+    runner_name="taskly-ci-slot-$slot"
+    runner_labels=taskly-ci
+    ;;
+  prod)
+    runner_name=taskly-prod
+    runner_labels=taskly-prod
+    ;;
+  *)
+    echo "Runner slot must be between 1 and 4, or prod" >&2
+    exit 1
+    ;;
+esac
 
 secret_dir=$(mktemp -d /tmp/taskly-runner-registration.XXXXXX)
 trap 'rm -rf "$secret_dir"' EXIT
@@ -21,7 +31,8 @@ docker volume create "$volume" >/dev/null
 docker run --rm \
   --user root \
   --env RUNNER_ALLOW_RUNASROOT=1 \
-  --env RUNNER_SLOT="$slot" \
+  --env RUNNER_NAME="$runner_name" \
+  --env RUNNER_LABELS="$runner_labels" \
   --env REPOSITORY_URL="$repository_url" \
   --mount "type=volume,source=$volume,target=/runner-config" \
   --mount "type=bind,source=$secret_dir/token,target=/run/secrets/registration-token,readonly" \
@@ -32,8 +43,8 @@ docker run --rm \
     ./config.sh \
       --url "$REPOSITORY_URL" \
       --token "$token" \
-      --name "taskly-ci-slot-$RUNNER_SLOT" \
-      --labels taskly-ci \
+      --name "$RUNNER_NAME" \
+      --labels "$RUNNER_LABELS" \
       --work _work \
       --unattended \
       --replace
