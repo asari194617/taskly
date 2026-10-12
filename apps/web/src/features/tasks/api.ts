@@ -97,7 +97,7 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
   const variables = { q: q || undefined, ...cursor };
   try {
     const result = await gql<{ tasks: { items: Task[]; next_cursor: TaskCursor | null } }>(
-      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:50, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ ${taskFields} } next_cursor{ cursor_deadline cursor_id } } }`,
+      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:15, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ ${taskFields} } next_cursor{ cursor_deadline cursor_id } } }`,
       variables,
       { signal },
     );
@@ -109,7 +109,7 @@ export async function searchTasks(q: string, signal?: AbortSignal, cursor?: Task
     const result = await gql<{
       tasks: { items: Omit<Task, "is_completed">[]; next_cursor: TaskCursor | null };
     }>(
-      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:50, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_hidden } next_cursor{ cursor_deadline cursor_id } } }`,
+      `query($q:String,$cursor_deadline:String,$cursor_id:String){ tasks(limit:15, q:$q, cursor_deadline:$cursor_deadline, cursor_id:$cursor_id){ items{ id title subject_id deadline deadline_since deadline_until description type is_require_hand_in is_self_check_required is_hidden } next_cursor{ cursor_deadline cursor_id } } }`,
       variables,
       { signal },
     );
