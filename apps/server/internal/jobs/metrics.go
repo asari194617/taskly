@@ -125,6 +125,7 @@ func (t aggregateTime) Value() (driver.Value, error) { return t.Time, nil }
 
 func (t *aggregateTime) Scan(value any) error {
 	if value == nil {
+		t.Time = time.Time{}
 		return nil
 	}
 	if v, ok := value.(time.Time); ok {

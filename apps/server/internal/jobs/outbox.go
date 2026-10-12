@@ -20,15 +20,21 @@ type outboxChanges struct{ kinds map[string]struct{} }
 // Transaction saves application changes and jobs atomically, then wakes only
 // the affected worker lanes after the outermost database commit succeeds.
 func Transaction(db *gorm.DB, fn func(*gorm.DB) error) error {
-	if _, nested := db.Statement.ConnPool.(gorm.TxCommitter); nested {
-		// A savepoint release is not a commit. The enclosing outbox transaction
-		// owns notification; a plain GORM outer transaction relies on recovery.
-		return db.Transaction(fn)
-	}
 	changes := &outboxChanges{kinds: make(map[string]struct{})}
 	ctx := context.WithValue(db.Statement.Context, outboxContextKey{}, changes)
 	if err := db.WithContext(ctx).Transaction(fn); err != nil {
 		return err
+	}
+	if _, nested := db.Statement.ConnPool.(gorm.TxCommitter); nested {
+		// A savepoint release is not a commit. Merge only successful nested
+		// changes into the enclosing outbox transaction; plain GORM outer
+		// transactions rely on recovery after their eventual commit.
+		if parent, ok := db.Statement.Context.Value(outboxContextKey{}).(*outboxChanges); ok {
+			for kind := range changes.kinds {
+				parent.kinds[kind] = struct{}{}
+			}
+		}
+		return nil
 	}
 	for kind := range changes.kinds {
 		Notify(db, kind)

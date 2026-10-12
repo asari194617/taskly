@@ -40,6 +40,17 @@ func TestOutboxWakesOnlyAfterCommit(t *testing.T) {
 			return err
 		}
 		expectWake(t, w, false)
+		// An inner rollback must not add its lane to the outer commit hints.
+		rollback := errors.New("nested rollback")
+		err := Transaction(tx, func(nested *gorm.DB) error {
+			if _, err := Enqueue(nested, "task_email", map[string]int{"event": 3}, nil); err != nil {
+				return err
+			}
+			return rollback
+		})
+		if !errors.Is(err, rollback) {
+			return err
+		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
