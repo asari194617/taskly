@@ -121,7 +121,7 @@ func Deliver(db *gorm.DB, job Job, policy CallbackPolicy) error {
 }
 
 func deliverTeamsInbound(db *gorm.DB, jobID uint64, acceptedAt time.Time, payload TeamsInbound) error {
-	return db.Transaction(func(tx *gorm.DB) error {
+	return Transaction(db, func(tx *gorm.DB) error {
 		// A retry after a crash must not create a second task. This lookup and
 		// the task insert are protected by the job row lock.
 		var job Job

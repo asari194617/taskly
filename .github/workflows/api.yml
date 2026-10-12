@@ -79,6 +79,9 @@ jobs:
       - name: Exercise core tables
         working-directory: apps/server
         run: go test ./internal/schema -run '^TestDeclarativeSchema$' -count=1 -v
+      - name: Verify transactional outbox against MySQL
+        working-directory: apps/server
+        run: go test ./internal/jobs -run '^TestMySQLTransactionalOutbox$' -count=1 -v
       - name: Verify account erasure against MySQL
         run: |
           python3 -m venv /tmp/taskly-erasure-venv

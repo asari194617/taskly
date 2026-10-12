@@ -19,7 +19,7 @@ func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, des
 
 func CreateTaskWithImages(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, imageKeys []string, actor string) (domain.Task, error) {
 	var created domain.Task
-	err := db.Transaction(func(tx *gorm.DB) error {
+	err := Transaction(db, func(tx *gorm.DB) error {
 		var err error
 		created, err = domain.CreateTask(tx, addedUserID, title, subjectID, description, typ, handIn, selfCheck,
 			deadline.Deadline, deadline.DeadlineSince, deadline.DeadlineUntil, actor)
@@ -44,7 +44,7 @@ func UpdateTask(db *gorm.DB, id uint, modifier func(*domain.Task) error, actor s
 
 func UpdateTaskWithImages(db *gorm.DB, id uint, modifier func(*domain.Task) error, imageKeys *[]string, actor string) (domain.Task, domain.Task, error) {
 	var before, after domain.Task
-	err := db.Transaction(func(tx *gorm.DB) error {
+	err := Transaction(db, func(tx *gorm.DB) error {
 		var err error
 		before, after, err = domain.UpdateTask(tx, id, modifier, actor)
 		if err != nil {
@@ -82,7 +82,7 @@ func UpdateTaskWithImages(db *gorm.DB, id uint, modifier func(*domain.Task) erro
 
 func DeleteTask(db *gorm.DB, id uint, actor string) (domain.Task, error) {
 	var deleted domain.Task
-	err := db.Transaction(func(tx *gorm.DB) error {
+	err := Transaction(db, func(tx *gorm.DB) error {
 		mid, err := teamsMessageID(tx, id)
 		if err != nil {
 			return err

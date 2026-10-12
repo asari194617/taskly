@@ -35,6 +35,14 @@ func (Job) TableName() string { return "integration_jobs" }
 // Enqueue commits a job with the caller's transaction. A duplicate client key
 // returns the original job; callers can safely repeat a timed-out request.
 func Enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, error) {
+	job, err := enqueue(db, kind, payload, dedupKey)
+	if err == nil {
+		recordWake(db, kind)
+	}
+	return job, err
+}
+
+func enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return Job{}, err
@@ -74,16 +82,18 @@ func Enqueue(db *gorm.DB, kind string, payload any, dedupKey *string) (Job, erro
 }
 
 type Worker struct {
-	DB           *gorm.DB
-	Deliver      func(Job) error
-	Kind         string
-	ExcludeKinds []string
-	stop         chan struct{}
-	done         chan struct{}
+	DB            *gorm.DB
+	Deliver       func(Job) error
+	Kind          string
+	ExcludeKinds  []string
+	stop          chan struct{}
+	done          chan struct{}
+	wake          chan struct{}
+	recoveryEvery time.Duration
 }
 
 func NewWorker(db *gorm.DB, deliver func(Job) error) *Worker {
-	return &Worker{DB: db, Deliver: deliver, stop: make(chan struct{}), done: make(chan struct{})}
+	return &Worker{DB: db, Deliver: deliver, stop: make(chan struct{}), done: make(chan struct{}), wake: make(chan struct{}, 1), recoveryEvery: recoveryInterval}
 }
 
 // NewKindWorker reserves a processing lane for one job kind. Multiple workers
@@ -95,9 +105,11 @@ func NewKindWorker(db *gorm.DB, kind string, deliver func(Job) error) *Worker {
 }
 
 func (w *Worker) Start() {
+	unsubscribe := w.subscribe()
 	go func() {
 		defer close(w.done)
-		ticker := time.NewTicker(time.Second)
+		defer unsubscribe()
+		ticker := time.NewTicker(w.recoveryEvery)
 		defer ticker.Stop()
 		for {
 			select {
@@ -116,6 +128,7 @@ func (w *Worker) Start() {
 			case <-w.stop:
 				return
 			case <-ticker.C:
+			case <-w.wake:
 			}
 		}
 	}()
@@ -230,6 +243,10 @@ func (w *Worker) RunOne() (bool, error) {
 
 // Retry exposes a deliberate operator action; failed rows never retry forever.
 func Retry(db *gorm.DB, id uint64) error {
+	var job Job
+	if err := db.Select("kind").First(&job, id).Error; err != nil {
+		return err
+	}
 	result := db.Model(&Job{}).Where("id = ? AND status = ?", id, "failed").Updates(map[string]any{
 		"status": "pending", "attempts": 0, "available_at": time.Now(), "lease_until": nil, "last_error": nil,
 	})
@@ -239,5 +256,6 @@ func Retry(db *gorm.DB, id uint64) error {
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
 	}
+	recordWake(db, job.Kind)
 	return nil
 }

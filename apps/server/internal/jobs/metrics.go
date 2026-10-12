@@ -1,6 +1,8 @@
 package jobs
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,21 +35,33 @@ func metricKind(kind string) string {
 // previous reading until the next poll and is returned to the caller for logging.
 func ObserveBacklog(db *gorm.DB, kinds []string) error {
 	now := time.Now()
+	var rows []struct {
+		Kind   string
+		Count  int64
+		Oldest aggregateTime
+	}
+	if err := db.Model(&Job{}).Select("kind, COUNT(*) AS count, MIN(available_at) AS oldest").
+		Where("kind IN ? AND status = ? AND available_at <= ?", kinds, "pending", now).
+		Group("kind").Scan(&rows).Error; err != nil {
+		return err
+	}
+	byKind := make(map[string]struct {
+		count  int64
+		oldest time.Time
+	}, len(rows))
+	for _, row := range rows {
+		byKind[row.Kind] = struct {
+			count  int64
+			oldest time.Time
+		}{row.Count, row.Oldest.Time}
+	}
 	for _, kind := range kinds {
-		query := db.Model(&Job{}).Where("kind = ? AND status = ? AND available_at <= ?", kind, "pending", now)
-		var count int64
-		if err := query.Count(&count).Error; err != nil {
-			return err
-		}
-		dueJobs.WithLabelValues(metricKind(kind)).Set(float64(count))
+		row := byKind[kind]
 		age := 0.0
-		if count > 0 {
-			var oldest Job
-			if err := query.Order("available_at").First(&oldest).Error; err != nil {
-				return err
-			}
-			age = now.Sub(oldest.AvailableAt).Seconds()
+		if row.count > 0 {
+			age = max(0, now.Sub(row.oldest).Seconds())
 		}
+		dueJobs.WithLabelValues(metricKind(kind)).Set(float64(row.count))
 		oldestWait.WithLabelValues(metricKind(kind)).Set(age)
 	}
 	return nil
@@ -76,30 +90,63 @@ func (c *queueCollector) Collect(ch chan<- prometheus.Metric) {
 	var rows []struct {
 		Status string
 		Count  int64
+		Oldest aggregateTime
 	}
-	if err := c.db.Table("integration_jobs").Select("status, COUNT(*) AS count").
+	if err := c.db.Table("integration_jobs").Select("status, COUNT(*) AS count, MIN(created_at) AS oldest").
 		Where("status IN ?", []string{"pending", "processing", "failed"}).Group("status").Scan(&rows).Error; err != nil {
 		ch <- prometheus.NewInvalidMetric(c.count, err)
 		return
 	}
-	byStatus := make(map[string]int64, len(rows))
+	byStatus := make(map[string]struct {
+		count  int64
+		oldest time.Time
+	}, len(rows))
 	for _, row := range rows {
-		byStatus[row.Status] = row.Count
+		byStatus[row.Status] = struct {
+			count  int64
+			oldest time.Time
+		}{row.Count, row.Oldest.Time}
 	}
 	for _, status := range []string{"pending", "processing", "failed"} {
 		age := 0.0
-		if byStatus[status] > 0 {
-			var oldest Job
-			if err := c.db.Select("created_at").Where("status = ?", status).Order("created_at ASC").First(&oldest).Error; err != nil {
-				ch <- prometheus.NewInvalidMetric(c.oldest, err)
-				return
-			}
-			age = time.Since(oldest.CreatedAt).Seconds()
-			if age < 0 {
-				age = 0
-			}
+		if byStatus[status].count > 0 {
+			age = max(0, time.Since(byStatus[status].oldest).Seconds())
 		}
-		ch <- prometheus.MustNewConstMetric(c.count, prometheus.GaugeValue, float64(byStatus[status]), status)
+		ch <- prometheus.MustNewConstMetric(c.count, prometheus.GaugeValue, float64(byStatus[status].count), status)
 		ch <- prometheus.MustNewConstMetric(c.oldest, prometheus.GaugeValue, age, status)
 	}
+}
+
+// MySQL returns aggregate DATETIMEs as time.Time with parseTime enabled;
+// SQLite returns text even when the source column is a DATETIME.
+type aggregateTime struct{ time.Time }
+
+func (t aggregateTime) Value() (driver.Value, error) { return t.Time, nil }
+
+func (t *aggregateTime) Scan(value any) error {
+	if value == nil {
+		t.Time = time.Time{}
+		return nil
+	}
+	if v, ok := value.(time.Time); ok {
+		t.Time = v
+		return nil
+	}
+	var raw string
+	switch v := value.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	default:
+		return fmt.Errorf("unexpected aggregate timestamp type %T", value)
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999-07:00", "2006-01-02 15:04:05.999999999-07:00 MST", "2006-01-02 15:04:05.999999999"} {
+		parsed, err := time.ParseInLocation(layout, raw, time.Local)
+		if err == nil {
+			t.Time = parsed
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid aggregate timestamp %q", raw)
 }
