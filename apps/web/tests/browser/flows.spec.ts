@@ -1,5 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Mocked API requests must stay visible to Playwright, including in WebKit.
+test.use({ serviceWorkers: "block" });
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}`,
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Allow-Headers": "Content-Type, X-Client-Platform, X-Amz-Meta-Owner-Id",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+};
+
 type Task = {
   id: number;
   title: string;
@@ -24,11 +34,12 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   const subjects = [{ id: 1, name_ja: "数学", name_en: "Math", created_at: "2026-01-01T00:00:00Z", expires_at: null }];
   await page.route("https://r2.example.test/**", async (route) => {
     if (route.request().method() === "PUT") uploadedKeys.push(route.request().url());
-    return route.fulfill({ status: 200, body: "" });
+    return route.fulfill({ status: 200, headers: corsHeaders, body: "" });
   });
   await page.route("http://localhost:3063/**", async (route) => {
     const url = new URL(route.request().url());
-    const respond = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    const respond = (body: unknown, status = 200) => route.fulfill({ status, headers: corsHeaders, contentType: "application/json", body: JSON.stringify(body) });
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: corsHeaders });
     if (url.pathname === "/auth/oauth/start") {
       authenticated = true;
       return route.fulfill({ status: 302, headers: { Location: `http://localhost:${process.env.PLAYWRIGHT_PORT || "4321"}/home` }, body: "" });
@@ -98,9 +109,9 @@ test("ログイン後に課題を作成・編集・完了し、検索できる",
   await page.getByRole("button", { name: "新規作成" }).first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("タイトル").fill("ブラウザテスト課題");
-  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await dialog.getByLabel("サブジェクト", { exact: true }).click();
   await page.getByRole("menuitem", { name: "数学" }).click();
-  await dialog.getByRole("button", { name: "未設定" }).click();
+  await dialog.getByLabel("期限", { exact: true }).click();
   await page.getByRole("button", { name: "日付", exact: true }).click();
   await page.locator(".rdp-today button").click();
   await page.getByRole("button", { name: "適用" }).click();
@@ -129,9 +140,9 @@ test("課題作成時に画像をR2へ直接アップロードする", async ({ 
   await page.getByRole("button", { name: "新規作成" }).first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("タイトル").fill("画像つき課題");
-  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await dialog.getByLabel("サブジェクト", { exact: true }).click();
   await page.getByRole("menuitem", { name: "数学" }).click();
-  await dialog.getByRole("button", { name: "未設定" }).click();
+  await dialog.getByLabel("期限", { exact: true }).click();
   await page.getByRole("button", { name: "日付", exact: true }).click();
   await page.locator(".rdp-today button").click();
   await page.getByRole("button", { name: "適用" }).click();
@@ -153,9 +164,9 @@ test("課題編集で画像を複数ドラッグ&ドロップして保存する"
   await page.getByRole("button", { name: "新規作成" }).first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("タイトル").fill("編集画像テスト");
-  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await dialog.getByLabel("サブジェクト", { exact: true }).click();
   await page.getByRole("menuitem", { name: "数学" }).click();
-  await dialog.getByRole("button", { name: "未設定" }).click();
+  await dialog.getByLabel("期限", { exact: true }).click();
   await page.getByRole("button", { name: "日付", exact: true }).click();
   await page.locator(".rdp-today button").click();
   await page.getByRole("button", { name: "適用" }).click();
@@ -186,9 +197,9 @@ test("課題の詳細に入力した改行を一覧表示でも保持する", as
   await page.getByRole("button", { name: "新規作成" }).first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("タイトル").fill("改行を含む課題");
-  await dialog.getByRole("button", { name: "選択してください" }).first().click();
+  await dialog.getByLabel("サブジェクト", { exact: true }).click();
   await page.getByRole("menuitem", { name: "数学" }).click();
-  await dialog.getByRole("button", { name: "未設定" }).click();
+  await dialog.getByLabel("期限", { exact: true }).click();
   await page.getByRole("button", { name: "日付", exact: true }).click();
   await page.locator(".rdp-today button").click();
   await page.getByRole("button", { name: "適用" }).click();
@@ -291,7 +302,9 @@ test("モバイルの新規作成ボタンを名前で見つけて作成画面�
     .and(page.locator('button[aria-label="新規作成"]'));
   await expect(createButton).toBeVisible();
   await createButton.click();
-  await expect(page.getByRole("dialog").getByText("新規課題の作成")).toBeVisible();
+  await expect(page).toHaveURL(/\/tasks\/new$/);
+  await expect(page.getByRole("heading", { name: "新規課題の作成" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("TOTP無効化とリカバリーコード再発行は確認後だけ実行する", async ({ page }) => {
@@ -422,7 +435,7 @@ test("課題ごとの完了チェックボックスをキーボードで操作�
 test("API 失敗を表示し、再読み込みで復帰する", async ({ page }) => {
   await mockApi(page, { failFirstSearch: true });
   await login(page);
-  await expect(page.getByText("temporary outage")).toBeVisible();
+  await expect(page.getByText("temporary outage", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "再読み込み" }).click();
   await expect(page.getByRole("button", { name: "新規作成" }).first()).toBeVisible();
 });
@@ -568,4 +581,74 @@ test("設定詳細画面と日時選択の文言が英語・日本語に切り�
   await expect(page.getByRole("heading", { name: "接続までの流れ" })).toBeVisible();
   await expect(page.getByText("https://mcp.taskly.iy0306.com", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("接続できないとき", { exact: true })).toBeVisible();
+});
+
+
+for (const width of [320, 390]) {
+  test(`スマホ${width}pxで長い課題をスクロールして登録できる`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 640 });
+    const api = await mockApi(page, { authenticated: true });
+    await page.goto("/tasks/new");
+    await page.getByLabel("タイトル", { exact: true }).fill("Teamsで知らされた課題");
+    await expect(page.getByRole("button", { name: "新規作成", exact: true })).toBeDisabled();
+    await page.getByLabel("サブジェクト").click();
+    await page.getByRole("menuitem", { name: "数学" }).click();
+    await page.getByLabel("期限", { exact: true }).click();
+    await page.getByLabel("日付", { exact: true }).fill("2099-10-16");
+    await page.getByRole("button", { name: "範囲選択" }).click();
+    await page.getByRole("button", { name: "5限", exact: true }).click();
+    await page.getByRole("button", { name: "6限", exact: true }).click();
+    await page.getByRole("button", { name: "適用" }).click();
+    await expect(page.getByLabel("期限", { exact: true })).toContainText("5〜6限まで");
+    await page.getByLabel("期限", { exact: true }).click();
+    await page.getByLabel("日付", { exact: true }).fill("2099-10-17");
+    await page.getByRole("button", { name: "閉じる", exact: true }).click();
+    await expect(page.getByLabel("期限", { exact: true })).toContainText("2099-10-16");
+
+    await page.getByText("詳細を追加（任意）", { exact: true }).click();
+    await page.getByLabel("説明 （任意）").fill("長い説明\n".repeat(100));
+    await page.locator('input[type="file"]').setInputFiles({ name: "notice.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") });
+    // Reduced available height models the layout constraint while a phone keyboard is open.
+    await page.setViewportSize({ width, height: 360 });
+    await page.getByLabel("タイトル", { exact: true }).focus();
+    await expect(page.getByLabel("タイトル", { exact: true })).toBeInViewport();
+    const submit = page.getByRole("button", { name: "新規作成", exact: true });
+    await submit.scrollIntoViewIfNeeded();
+    await expect(submit).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/mobile-task-${width}.png`, fullPage: true });
+    await submit.click();
+    await expect(page).toHaveURL(/\/home$/);
+    await expect(page.getByText("Teamsで知らされた課題", { exact: true })).toBeVisible();
+    expect(api.tasks).toHaveLength(1);
+    expect(api.tasks[0].description).toContain("長い説明\n");
+    expect(api.uploadedKeys).toHaveLength(1);
+  });
+}
+
+test("登録失敗後も入力を保持し、再試行で一件だけ登録する", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  const api = await mockApi(page, { authenticated: true });
+  let fail = true;
+  await page.route("http://localhost:3063/graphql", async (route) => {
+    if (fail && route.request().postDataJSON()?.query.includes("createTask(")) {
+      fail = false;
+      return route.fulfill({ status: 503, headers: corsHeaders, json: { errors: [{ message: "temporary outage" }] } });
+    }
+    return route.fallback();
+  });
+  await page.goto("/tasks/new");
+  await page.getByLabel("タイトル", { exact: true }).fill("再試行の課題");
+  await page.getByLabel("サブジェクト").click();
+  await page.getByRole("menuitem", { name: "数学" }).click();
+  await page.getByLabel("期限", { exact: true }).click();
+  await page.getByLabel("日付", { exact: true }).fill("2099-10-16");
+  await page.getByRole("button", { name: "適用" }).click();
+  await page.getByRole("button", { name: "新規作成", exact: true }).click();
+  await expect(page.getByText("temporary outage", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("タイトル", { exact: true })).toHaveValue("再試行の課題");
+  await expect(page).toHaveURL(/\/tasks\/new$/);
+  await page.getByRole("button", { name: "新規作成", exact: true }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  expect(api.tasks).toHaveLength(1);
 });

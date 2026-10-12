@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import type { Subject } from "./api";
 
 type Props = {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   subjects: Subject[];
@@ -20,6 +21,7 @@ type Props = {
 };
 
 export function SubjectSelect({
+  id,
   value,
   onChange,
   subjects,
@@ -32,9 +34,7 @@ export function SubjectSelect({
   const [filter, setFilter] = React.useState("");
   const displayName = React.useCallback(
     (subject: Subject) =>
-      language === "en" && subject.name_en
-        ? subject.name_en
-        : subject.name_ja,
+      language === "en" && subject.name_en ? subject.name_en : subject.name_ja,
     [language],
   );
   const selected = subjects.find((subject) => String(subject.id) === value);
@@ -47,9 +47,10 @@ export function SubjectSelect({
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
+          id={id}
           variant="outline"
           type="button"
-          className="w-full justify-between"
+          className="h-11 w-full justify-between text-base md:h-9 md:text-sm"
         >
           <span className="truncate">
             {selected ? displayName(selected) : placeholder}
@@ -67,6 +68,7 @@ export function SubjectSelect({
       <DropdownMenuContent className="w-[var(--radix-dropdown-menu-trigger-width)] p-2">
         <div className="p-1">
           <Input
+            className="h-11 text-base md:h-9 md:text-sm"
             placeholder={searchLabel}
             value={filter}
             onChange={(event) => setFilter(event.target.value)}

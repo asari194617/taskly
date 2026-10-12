@@ -37,13 +37,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { useMediaQuery } from "@/react/hooks/useMediaQuery";
 import { toast } from "@/hooks/use-toast";
 import { AlertCircle, FileText, Plus, Search } from "lucide-react";
@@ -149,6 +142,10 @@ export default function TasksList() {
   } = useTaskActions(items, setItems);
   const [subjects, setSubjects] = React.useState<Subject[]>([]);
   const isDesktop = useMediaQuery("(min-width: 768px)");
+  const openCreate = React.useCallback(() => {
+    if (window.matchMedia("(min-width: 768px)").matches) setCreateOpen(true);
+    else window.location.assign("/tasks/new");
+  }, [setCreateOpen]);
   // One-time bootstrap: subjects and my role; avoid reloading on each search
   React.useEffect(() => {
     loadSubjects()
@@ -230,7 +227,7 @@ export default function TasksList() {
         lastG = Date.now();
       } else if (e.key.toLowerCase() === "n") {
         if (Date.now() - lastG < 800) {
-          setCreateOpen(true);
+          openCreate();
           lastG = 0;
         }
       } else if (e.key === "?") {
@@ -242,7 +239,7 @@ export default function TasksList() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dict.tasks]);
+  }, [dict.tasks, openCreate]);
 
   // Ctrl+S / Cmd+S to save when editing
   React.useEffect(() => {
@@ -340,7 +337,7 @@ export default function TasksList() {
             <TooltipTrigger asChild>
               <Button
                 size="sm"
-                onClick={() => setCreateOpen(true)}
+                onClick={openCreate}
                 className="sm:inline-flex hidden"
               >
                 <Plus className="h-4 w-4 mr-1" /> {dict.tasks.newTask}
@@ -354,7 +351,7 @@ export default function TasksList() {
           size="icon"
           className="sm:hidden inline-flex"
           aria-label={dict.tasks.newTask}
-          onClick={() => setCreateOpen(true)}
+          onClick={openCreate}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -402,12 +399,12 @@ export default function TasksList() {
         </div>
       </div>
 
-      {/* New Task Form (responsive dialog/drawer) */}
+      {/* Desktop form; mobile registration has its own route. */}
       <Dialog
         open={isDesktop && createOpen}
         onOpenChange={(v: boolean) => setCreateOpen(isDesktop ? v : createOpen)}
       >
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent className="sm:max-w-[640px] max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dict.tasks.createTaskTitle}</DialogTitle>
             <DialogDescription>
@@ -427,32 +424,6 @@ export default function TasksList() {
           </div>
         </DialogContent>
       </Dialog>
-      <Drawer
-        open={!isDesktop && createOpen}
-        onOpenChange={(v: boolean) =>
-          setCreateOpen(!isDesktop ? v : createOpen)
-        }
-      >
-        <DrawerContent>
-          <DrawerHeader className="text-left">
-            <DrawerTitle>{dict.tasks.createTaskTitle}</DrawerTitle>
-            <DrawerDescription>
-              {dict.tasks.enterRequiredInfo}
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-4 space-y-3">
-            <TaskFormFields
-              id="nt-drawer"
-              values={createValues}
-              set={createSetters}
-              subjects={subjects}
-            />
-            <Button onClick={createTask} disabled={creating} className="w-full">
-              {dict.tasks.create}
-            </Button>
-          </div>
-        </DrawerContent>
-      </Drawer>
       {/* Empty states below toolbar */}
       {shownItems.length === 0 &&
         !nextCursor &&
@@ -487,7 +458,7 @@ export default function TasksList() {
               <EmptyDescription>{dict.tasks.noTasksDesc}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <div className="w-full max-w-xl text-left space-y-3">
+              <div className="hidden md:block w-full max-w-xl text-left space-y-3">
                 <TaskFormFields
                   id="nt-inline"
                   values={createValues}
