@@ -1,7 +1,7 @@
 # Single-job GitHub Actions runner pool
 
-Trusted same-repository PRs and production image jobs use four containerized runners with the `taskly-ci`
-label. GitHub registrations are persistent, but every runner process accepts
+Trusted same-repository PRs and production image jobs use containerized runners with the `taskly-ci`
+label. Up to four CI slots are supported. GitHub registrations are persistent, but every runner process accepts
 only one job (`run.sh --once`). systemd then starts a new container from the
 pinned image, so the workspace and container filesystem are discarded between
 jobs. The image includes Playwright browser dependencies, Python/venv, build
@@ -25,35 +25,48 @@ its own selection job, so it does not require GitHub-hosted minutes to start.
 External fork PRs select `ubuntu-latest`. Set the repository variable `CI_RUNNER`
 to `ubuntu-latest` for an explicit hosted override (normal billing applies).
 There is no automatic paid fallback: an offline pool leaves trusted jobs queued.
-The persistent host runner
-uses the separate `taskly-prod` label and is reserved for the production deploy
-job.
+The production deploy runner uses the separate `taskly-prod` label and its own
+registration volume. It is recycled after every deploy job in the same way as
+the CI slots.
 
 ## Host installation
 
-Build the pinned image and install the root-owned launchers and unit:
+Run the installer as root on an Ubuntu runner host. It installs Docker when
+needed, creates the unprivileged `taskly-runner` service account, builds the
+pinned image, and installs the root-owned launchers and systemd unit:
 
 ```bash
-docker build --tag taskly-actions-runner:2.337.0-ci infra/actions-runner
-sudo install -d -m 0755 /opt/taskly-runner
-sudo install -o root -g root -m 0755 \
-  infra/actions-runner/run-slot.sh \
-  infra/actions-runner/register-slot.sh \
-  /opt/taskly-runner/
-sudo install -o root -g root -m 0644 \
-  infra/actions-runner/taskly-runner@.service \
-  /etc/systemd/system/taskly-runner@.service
+sudo infra/actions-runner/install-host.sh
 ```
 
-Create a repository runner registration token, then register and enable each
-slot. Registration tokens are short-lived and are not stored on the host.
+The default per-job limits are 3 CPUs and 7 GiB. Override them while installing
+on a smaller host. For example, a 2-vCPU host can run one CI slot with:
 
 ```bash
-for slot in 1 2 3 4; do
+sudo env TASKLY_RUNNER_CPUS=2 TASKLY_RUNNER_MEMORY=2300m \
+  infra/actions-runner/install-host.sh
+```
+
+Do not enable more concurrent slots than the host can support. Create a
+repository runner registration token, then register the required CI slots and
+the production slot. Registration tokens are short-lived and are not stored on
+the host.
+
+```bash
+for slot in 1 prod; do
   printf '%s' "$REGISTRATION_TOKEN" | \
-    /opt/taskly-runner/register-slot.sh "$slot"
+    sudo -u taskly-runner /opt/taskly-runner/register-slot.sh "$slot"
   sudo systemctl enable --now "taskly-runner@$slot.service"
 done
+```
+
+CI slots register as `taskly-ci-slot-N` with the `taskly-ci` label. The
+production slot registers as `taskly-prod` with the `taskly-prod` label. Check
+both registrations and services after installation:
+
+```bash
+systemctl is-active taskly-runner@1.service taskly-runner@prod.service
+docker ps --filter label=taskly.actions-runner=single-job
 ```
 
 The credential volumes are copied into each fresh container rather than mounted
@@ -92,6 +105,8 @@ workspace. A missing container is harmless during a normal single-job exit.
 After updating the launcher and unit, run `sudo systemctl daemon-reload`.
 Check both `systemctl is-active taskly-runner@N.service` and
 `docker ps --filter name=taskly-ci-slot-N` after stopping an idle slot.
+For the production slot, use `taskly-runner@prod.service` and container name
+`taskly-prod`.
 
 ## Memory corruption incident (2026-10-02)
 
@@ -114,4 +129,5 @@ with multiple passes, then run dependency integrity checks, API build/tests,
 and image builds in a fresh runner environment before restoring all slots.
 Restore CI startup only after these checks with
 `sudo systemctl enable --now taskly-runner@{1..4}.service`. Start the separate
-production-deploy runner only after host verification succeeds.
+production-deploy runner only after host verification succeeds with
+`sudo systemctl enable --now taskly-runner@prod.service`.

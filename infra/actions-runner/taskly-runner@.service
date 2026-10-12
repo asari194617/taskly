@@ -5,11 +5,12 @@ Requires=docker.service
 
 [Service]
 Type=simple
-User=nishikawa
-Group=nishikawa
+User=taskly-runner
+Group=taskly-runner
+EnvironmentFile=-/etc/taskly-runner/runner.env
 ExecStart=/opt/taskly-runner/run-slot.sh %i
 # Stopping the Docker CLI alone leaves its daemon-managed container running.
-ExecStop=-/usr/bin/docker stop --timeout 10 taskly-ci-slot-%i
+ExecStop=-/opt/taskly-runner/stop-slot.sh %i
 # Keep the launcher alive long enough to remove its per-job workspace.
 KillMode=mixed
 Restart=always
