@@ -21,6 +21,7 @@ export function useTaskActions(
   setItems: React.Dispatch<React.SetStateAction<Task[] | null>>,
 ) {
   const { dict } = useLang();
+  const createInFlight = React.useRef(false);
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
   const [newSubjectId, setNewSubjectId] = React.useState("");
@@ -44,13 +45,15 @@ export function useTaskActions(
   const [editDesc, setEditDesc] = React.useState("");
   const [editImages, setEditImages] = React.useState<TaskFormImage[]>([]);
   async function createTask() {
+    if (createInFlight.current) return false;
     if (!newTitle.trim() || !newSubjectId.trim() || !newDate.trim()) {
       toast({
         variant: "destructive",
         title: dict.toast.requiredFields,
       });
-      return;
+      return false;
     }
+    createInFlight.current = true;
     setCreating(true);
     try {
       const imageKeys = await Promise.all(
@@ -79,13 +82,16 @@ export function useTaskActions(
       setNewImages([]);
       setCreateOpen(false);
       toast({ title: dict.toast.created });
+      return true;
     } catch (e: any) {
       toast({
         variant: "destructive",
         title: dict.toast.createFailed,
         description: e?.message,
       });
+      return false;
     } finally {
+      createInFlight.current = false;
       setCreating(false);
     }
   }

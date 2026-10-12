@@ -1,0 +1,11 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import TaskCreatePage from "../../react/TaskCreatePage";
+---
+<Layout title="New task | Taskly">
+  <TaskCreatePage client:load />
+</Layout>
+<script>
+  import { requireAuth } from "@/lib/auth-guard";
+  requireAuth();
+</script>
