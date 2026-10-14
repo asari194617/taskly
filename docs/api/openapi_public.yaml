@@ -41,6 +41,9 @@ components:
           type: boolean
         is_self_check_required:
           type: boolean
+        is_completion_disabled:
+          type: boolean
+          description: Whether completion marking is disabled for this task.
         deadline:
           type: string
           format: date
@@ -127,6 +130,9 @@ paths:
                 type: { type: string }
                 is_require_hand_in: { type: boolean }
                 is_self_check_required: { type: boolean }
+                is_completion_disabled:
+                  type: boolean
+                  description: If omitted, uses the configured default for the task type.
                 deadline: { type: string, format: date }
                 deadline_since: { type: string }
                 deadline_until: { type: string }
@@ -159,6 +165,10 @@ paths:
                 type: { type: string, nullable: true }
                 is_require_hand_in: { type: boolean, nullable: true }
                 is_self_check_required: { type: boolean, nullable: true }
+                is_completion_disabled:
+                  type: boolean
+                  nullable: true
+                  description: Disabling completion clears existing completion marks. Omission preserves the current setting.
                 deadline: { type: string, format: date, nullable: true }
                 deadline_since: { type: string, nullable: true }
                 deadline_until: { type: string, nullable: true }
