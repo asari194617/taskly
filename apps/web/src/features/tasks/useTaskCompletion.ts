@@ -26,6 +26,7 @@ export function useTaskCompletion(
   );
 
   function toggleWithPending(task: Task) {
+    if (task.is_completion_disabled) return;
     const existing = pending[task.id];
     if (existing) {
       existing.cancel();

@@ -161,6 +161,7 @@ export const t = (lang: Lang) => ({
         : "JPEG, PNG, WebP, or GIF (10 MiB each, up to 5)",
     type: lang === "ja" ? "タイプ" : "Type",
     requireHandIn: lang === "ja" ? "提出必須" : "Submission required",
+    disableCompletion: lang === "ja" ? "完了マークを無効にする" : "Disable completion marking",
     selfCheckRequired: lang === "ja" ? "自己採点が必要" : "Self-check required",
     selfCheckBadge: lang === "ja" ? "自己採点" : "Self-check",
     optional: lang === "ja" ? "（任意）" : "(Optional)",

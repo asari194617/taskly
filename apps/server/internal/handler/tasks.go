@@ -82,16 +82,17 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
 		}
 		var body struct {
-			Title           string  `json:"title"`
-			SubjectID       uint    `json:"subject_id"`
-			Description     *string `json:"description"`
-			ImageKey        *string `json:"image_key"`
-			Type            *string `json:"type"`
-			IsRequireHandIn *bool   `json:"is_require_hand_in"`
-			Deadline        string  `json:"deadline"`       // YYYY-MM-DD, required
-			DeadlineSince   *string `json:"deadline_since"` // ENUM: NONE,P1..P6
-			DeadlineUntil   *string `json:"deadline_until"` // ENUM: NONE,MORNING,P1..P6
-			SelfCheck       *bool   `json:"is_self_check_required"`
+			Title              string  `json:"title"`
+			SubjectID          uint    `json:"subject_id"`
+			Description        *string `json:"description"`
+			ImageKey           *string `json:"image_key"`
+			Type               *string `json:"type"`
+			IsRequireHandIn    *bool   `json:"is_require_hand_in"`
+			Deadline           string  `json:"deadline"`       // YYYY-MM-DD, required
+			DeadlineSince      *string `json:"deadline_since"` // ENUM: NONE,P1..P6
+			DeadlineUntil      *string `json:"deadline_until"` // ENUM: NONE,MORNING,P1..P6
+			SelfCheck          *bool   `json:"is_self_check_required"`
+			CompletionDisabled *bool   `json:"is_completion_disabled"`
 		}
 		if err := c.BodyParser(&body); err != nil || strings.TrimSpace(body.Title) == "" || body.SubjectID == 0 || strings.TrimSpace(body.Deadline) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -113,6 +114,9 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			}
 			rec.ImageKey = &key
 		}
+		if rec.Type == "" {
+			rec.Type = "OTHER"
+		}
 		if body.Type != nil {
 			rec.Type = utils.NormalizeTaskType(*body.Type)
 		}
@@ -133,7 +137,11 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 		}
 		rec.DeadlineSince, rec.DeadlineUntil = since, until
-		recCreated, err := jobs.CreateTask(h.db, u.ID, body.Title, body.SubjectID, body.Description, rec.Type, rec.IsRequireHandIn, rec.IsSelfCheckRequired, rec, u.Email)
+		var completionDisabled []bool
+		if body.CompletionDisabled != nil {
+			completionDisabled = []bool{*body.CompletionDisabled}
+		}
+		recCreated, err := jobs.CreateTask(h.db, u.ID, body.Title, body.SubjectID, body.Description, rec.Type, rec.IsRequireHandIn, rec.IsSelfCheckRequired, rec, u.Email, completionDisabled...)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "db"})
 		}
@@ -151,15 +159,16 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 		}
 		// Keep a copy for change diff
 		var body struct {
-			Title           *string `json:"title"`
-			SubjectID       *uint   `json:"subject_id"`
-			Description     *string `json:"description"`
-			Type            *string `json:"type"`
-			IsRequireHandIn *bool   `json:"is_require_hand_in"`
-			SelfCheck       *bool   `json:"is_self_check_required"`
-			Deadline        *string `json:"deadline"`       // YYYY-MM-DD
-			DeadlineSince   *string `json:"deadline_since"` // ENUM
-			DeadlineUntil   *string `json:"deadline_until"` // ENUM
+			Title              *string `json:"title"`
+			SubjectID          *uint   `json:"subject_id"`
+			Description        *string `json:"description"`
+			Type               *string `json:"type"`
+			IsRequireHandIn    *bool   `json:"is_require_hand_in"`
+			SelfCheck          *bool   `json:"is_self_check_required"`
+			CompletionDisabled *bool   `json:"is_completion_disabled"`
+			Deadline           *string `json:"deadline"`       // YYYY-MM-DD
+			DeadlineSince      *string `json:"deadline_since"` // ENUM
+			DeadlineUntil      *string `json:"deadline_until"` // ENUM
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -228,6 +237,9 @@ func (h *Handler) RegisterTasksRoutes(router fiber.Router) {
 			}
 			if body.IsRequireHandIn != nil {
 				r.IsRequireHandIn = *body.IsRequireHandIn
+			}
+			if body.CompletionDisabled != nil {
+				r.IsCompletionDisabled = *body.CompletionDisabled
 			}
 			if body.SelfCheck != nil {
 				r.IsSelfCheckRequired = *body.SelfCheck

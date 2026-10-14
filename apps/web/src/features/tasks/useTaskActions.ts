@@ -13,6 +13,7 @@ import {
   uploadTaskImage,
   type Task,
 } from "./api";
+import { loadCompletionDefaults } from "./completion-defaults";
 import { runOptimisticMutation } from "./state.mjs";
 import type { TaskFormImage } from "./TaskFormFields";
 
@@ -21,6 +22,18 @@ export function useTaskActions(
   setItems: React.Dispatch<React.SetStateAction<Task[] | null>>,
 ) {
   const { dict } = useLang();
+  const [completionDefaults, setCompletionDefaults] = React.useState<Record<string, boolean>>({ QUIZ: true });
+  const [newCompletionDisabled, setNewCompletionDisabled] = React.useState<boolean | undefined>();
+  const [editCompletionDisabled, setEditCompletionDisabled] = React.useState(false);
+  React.useEffect(() => {
+    let active = true;
+    loadCompletionDefaults().then((rows) => {
+      if (active) setCompletionDefaults(Object.fromEntries(rows.map((row) => [row.type, row.is_completion_disabled])));
+    }).catch((error) => {
+      if (active) toast({ variant: "destructive", title: dict.tasks.loadFailed, description: error?.message });
+    });
+    return () => { active = false; };
+  }, []);
   const createInFlight = React.useRef(false);
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
@@ -64,6 +77,7 @@ export function useTaskActions(
         subject_id: parseInt(newSubjectId, 10),
         is: newRequire,
         scr: newSelfCheck,
+        completionDisabled: newCompletionDisabled,
         deadline: newDate,
         ...sinceUntilFromMeta(newDate, newMeta), // enums
         description: newDesc || undefined,
@@ -77,6 +91,7 @@ export function useTaskActions(
       setNewMeta(null);
       setNewRequire(false);
       setNewSelfCheck(false);
+      setNewCompletionDisabled(undefined);
       setNewType("");
       setNewDesc("");
       setNewImages([]);
@@ -104,6 +119,7 @@ export function useTaskActions(
     setEditMeta(null);
     setEditRequire(!!t.is_require_hand_in);
     setEditSelfCheck(!!t.is_self_check_required);
+    setEditCompletionDisabled(!!t.is_completion_disabled);
     setEditType(t.type || "");
     setEditDesc(t.description || "");
     const keys = t.image_keys ?? [];
@@ -140,13 +156,14 @@ export function useTaskActions(
         subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
         is: editRequire,
         scr: editSelfCheck,
+        completionDisabled: editCompletionDisabled,
         deadline: editDate || undefined,
         ...sinceUntilFromMeta(editDate, editMeta),
         description: editDesc,
         type: editType,
         image_keys: imageKeys,
       });
-      setItems((current) => current?.map((task) => task.id === id ? { ...task, ...updated } : task) ?? null);
+      setItems((current) => current?.map((task) => task.id === id ? { ...task, ...updated, is_completed: updated.is_completion_disabled ? false : task.is_completed } : task) ?? null);
       toast({ title: dict.toast.updated });
       cancelEdit();
     } catch (e: any) {
@@ -223,6 +240,7 @@ export function useTaskActions(
     meta: newMeta,
     requireHandIn: newRequire,
     selfCheck: newSelfCheck,
+    completionDisabled: newCompletionDisabled ?? completionDefaults[newType || "OTHER"] ?? false,
     type: newType,
     description: newDesc,
     images: newImages,
@@ -234,7 +252,8 @@ export function useTaskActions(
     meta: setNewMeta,
     requireHandIn: setNewRequire,
     selfCheck: setNewSelfCheck,
-    type: setNewType,
+    completionDisabled: setNewCompletionDisabled,
+    type: (value: string) => { setNewType(value); setNewCompletionDisabled(undefined); },
     description: setNewDesc,
     images: setNewImages,
   };
@@ -245,6 +264,7 @@ export function useTaskActions(
     meta: editMeta,
     requireHandIn: editRequire,
     selfCheck: editSelfCheck,
+    completionDisabled: editCompletionDisabled,
     type: editType,
     description: editDesc,
     images: editImages,
@@ -256,6 +276,7 @@ export function useTaskActions(
     meta: setEditMeta,
     requireHandIn: setEditRequire,
     selfCheck: setEditSelfCheck,
+    completionDisabled: setEditCompletionDisabled,
     type: setEditType,
     description: setEditDesc,
     images: setEditImages,

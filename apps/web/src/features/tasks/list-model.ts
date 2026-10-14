@@ -24,8 +24,9 @@ export function visibleTasks(
 ): Task[] {
   const today = startOfDay(now);
   return items.filter((task) => {
-    if (filter === "incomplete" && task.is_completed) return false;
-    if (filter === "completed" && !task.is_completed) return false;
+    const completed = !task.is_completion_disabled && task.is_completed;
+    if (filter === "incomplete" && completed) return false;
+    if (filter === "completed" && !completed) return false;
     return (
       !!query.trim() ||
       !task.deadline ||

@@ -125,6 +125,7 @@ func (h *Handler) createGQLTypes() *gqlShared.GqlTypes {
 			"type":                   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"is_require_hand_in":     &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
 			"is_self_check_required": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			"is_completion_disabled": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
 			"deadline":               &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
 			"deadline_since":         &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM
 			"deadline_until":         &graphql.Field{Type: graphql.NewNonNull(graphql.String)}, // ENUM

@@ -16,7 +16,7 @@ func TestSearchIncludesExpiredTasksAcrossPages(t *testing.T) {
 	}
 	for _, schema := range []string{
 		`CREATE TABLE tasks (id integer primary key, added_user_id integer, title text, subject_id integer,
-			description text, type text, is_require_hand_in boolean, is_self_check_required boolean,
+			description text, type text, is_require_hand_in boolean, is_self_check_required boolean, is_completion_disabled boolean default 0,
 			is_hidden boolean, deadline date, effective_deadline date, deadline_since text,
 			deadline_until text, created_at datetime, updated_at datetime)`,
 		"CREATE TABLE role_users (id integer primary key, user_id integer, role text)",
@@ -115,7 +115,7 @@ func TestListVisibilityAndCursor(t *testing.T) {
 	}
 	if err := db.Exec(`CREATE TABLE tasks (
 		id integer primary key, added_user_id integer, title text, subject_id integer,
-		description text, type text, is_require_hand_in boolean, is_self_check_required boolean,
+		description text, type text, is_require_hand_in boolean, is_self_check_required boolean, is_completion_disabled boolean default 0,
 		is_hidden boolean, deadline date, effective_deadline date, deadline_since text,
 		deadline_until text, created_at datetime, updated_at datetime
 	)`).Error; err != nil {

@@ -1,0 +1,9 @@
+---
+import Layout from "../../layouts/AppLayout.astro";
+import AdminGuard from "../../components/AdminGuard";
+import TaskDefaults from "../../react/admin/TaskDefaults";
+---
+<Layout title="課題タイプの初期設定">
+  <AdminGuard />
+  <TaskDefaults client:load />
+</Layout>

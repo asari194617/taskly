@@ -25,7 +25,7 @@ function taskForMCP(row: any) {
   const fields: Record<string, string> = {
     ID: "id", AddedUserID: "added_user_id", Title: "title", SubjectID: "subject_id",
     Description: "description", Type: "type", IsRequireHandIn: "is_require_hand_in",
-    IsSelfCheckRequired: "is_self_check_required", Deadline: "deadline",
+    IsSelfCheckRequired: "is_self_check_required", IsCompletionDisabled: "is_completion_disabled", Deadline: "deadline",
     DeadlineSince: "deadline_since", DeadlineUntil: "deadline_until",
     CreatedAt: "created_at", UpdatedAt: "updated_at",
   };

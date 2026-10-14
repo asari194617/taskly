@@ -102,3 +102,36 @@ test("通常ユーザーの管理操作は実 API で拒否される", async ({ 
   }, api);
   expect(subjects.data.subjects).not.toContainEqual({ name_ja: "不正な教科" });
 });
+
+
+test("実 API でタイプ別初期値・個別上書き・完了拒否を保存する", async ({ page }) => {
+  await login(page, "e2e-admin@example.test");
+  async function graphql(query: string, variables: Record<string, unknown> = {}) {
+    const response = await page.request.post(`${api}/graphql`, {
+      data: { query, variables },
+      headers: { "X-Client-Platform": "web", Origin: "http://localhost:4321" },
+    });
+    return response.json();
+  }
+  const subjects = await graphql("query { subjects { id } }");
+  const subject = subjects.data.subjects[0].id;
+  const setDefault = `mutation($disabled:Boolean!) { adminSetTaskCompletionDefault(type:"QUIZ",is_completion_disabled:$disabled) }`;
+  expect((await graphql(setDefault, { disabled: true })).errors).toBeUndefined();
+  const create = `mutation($subject:Int!,$disabled:Boolean) { createTask(title:"E2E 小テスト",subject_id:$subject,type:"QUIZ",deadline:"2099-01-01",is_completion_disabled:$disabled) { id is_completion_disabled } }`;
+  const quiz = (await graphql(create, { subject })).data.createTask;
+  expect(quiz.is_completion_disabled).toBe(true);
+  const denied = await graphql(`mutation($id:Int!) { completeTask(id:$id) }`, { id: quiz.id });
+  expect(JSON.stringify(denied.errors)).toContain("task completion disabled");
+  const overridden = (await graphql(create, { subject, disabled: false })).data.createTask;
+  expect(overridden.is_completion_disabled).toBe(false);
+  expect((await graphql(`mutation($id:Int!) { completeTask(id:$id) }`, { id: overridden.id })).data.completeTask).toBe(true);
+  expect((await graphql(`mutation($id:Int!) { updateTask(id:$id,is_completion_disabled:true) { is_completion_disabled } }`, { id: overridden.id })).errors).toBeUndefined();
+  const listed = await graphql(`query { tasks(q:"E2E 小テスト") { items { id is_completed is_completion_disabled } } }`);
+  expect(listed.data.tasks.items.find((task: { id: number }) => task.id === overridden.id).is_completed).toBe(false);
+  expect((await graphql(setDefault, { disabled: false })).errors).toBeUndefined();
+  expect((await graphql(create, { subject })).data.createTask.is_completion_disabled).toBe(false);
+  // The earlier quiz keeps its saved setting after changing the type default.
+  const unchanged = await graphql(`query { tasks(q:"E2E 小テスト") { items { id is_completion_disabled } } }`);
+  expect(unchanged.data.tasks.items.find((task: { id: number }) => task.id === quiz.id).is_completion_disabled).toBe(true);
+  expect((await graphql(setDefault, { disabled: true })).errors).toBeUndefined();
+});

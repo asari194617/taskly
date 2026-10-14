@@ -30,6 +30,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
 			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
+			"is_completion_disabled": &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"deadline":               &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)}, // YYYY-MM-DD
 			"deadline_since":         &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
 			"deadline_until":         &graphql.ArgumentConfig{Type: graphql.String},                     // ENUM
@@ -88,7 +89,11 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				if err != nil {
 					return nil, err
 				}
-				recCreated, err := jobs.CreateTaskWithImages(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}, imageKeys, u.Email)
+				var completionDisabled []bool
+				if v, ok := p.Args["is_completion_disabled"].(bool); ok {
+					completionDisabled = []bool{v}
+				}
+				recCreated, err := jobs.CreateTaskWithImages(h.db, u.ID, title, uint(subjectID), descPtr, typ, irh, scr, domain.Task{Deadline: utils.DateOnly(dt), DeadlineSince: since, DeadlineUntil: until}, imageKeys, u.Email, completionDisabled...)
 				if err != nil {
 					return nil, fmt.Errorf("db")
 				}
@@ -104,6 +109,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					"type":                   recCreated.Type,
 					"is_require_hand_in":     recCreated.IsRequireHandIn,
 					"is_self_check_required": recCreated.IsSelfCheckRequired,
+					"is_completion_disabled": recCreated.IsCompletionDisabled,
 					"deadline":               recCreated.Deadline.Format("2006-01-02"),
 					"deadline_since":         recCreated.DeadlineSince,
 					"deadline_until":         recCreated.DeadlineUntil,
@@ -127,6 +133,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 			"type":                   &graphql.ArgumentConfig{Type: graphql.String},
 			"is_require_hand_in":     &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"is_self_check_required": &graphql.ArgumentConfig{Type: graphql.Boolean},
+			"is_completion_disabled": &graphql.ArgumentConfig{Type: graphql.Boolean},
 			"deadline":               &graphql.ArgumentConfig{Type: graphql.String}, // YYYY-MM-DD
 			"deadline_since":         &graphql.ArgumentConfig{Type: graphql.String},
 			"deadline_until":         &graphql.ArgumentConfig{Type: graphql.String},
@@ -189,6 +196,9 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					if v, ok := p.Args["is_require_hand_in"].(bool); ok {
 						r.IsRequireHandIn = v
 					}
+					if v, ok := p.Args["is_completion_disabled"].(bool); ok {
+						r.IsCompletionDisabled = v
+					}
 					if v, ok := p.Args["is_self_check_required"].(bool); ok {
 						r.IsSelfCheckRequired = v
 					}
@@ -236,6 +246,7 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 					"type":                   after.Type,
 					"is_require_hand_in":     after.IsRequireHandIn,
 					"is_self_check_required": after.IsSelfCheckRequired,
+					"is_completion_disabled": after.IsCompletionDisabled,
 					"deadline":               after.Deadline.Format("2006-01-02"),
 					"deadline_since":         after.DeadlineSince,
 					"deadline_until":         after.DeadlineUntil,
@@ -309,6 +320,9 @@ func (h *Handler) mutationFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 				}
 				if !allowed {
 					return false, fmt.Errorf("forbidden")
+				}
+				if rec.IsCompletionDisabled {
+					return false, fmt.Errorf("task completion disabled")
 				}
 				// Upsert completion via domain service
 				if err := domain.CompleteTask(h.db, u.ID, rec.ID); err != nil {

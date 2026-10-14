@@ -141,6 +141,11 @@ func deliverTeamsInbound(db *gorm.DB, jobID uint64, acceptedAt time.Time, payloa
 		}
 		task := domain.Task{AddedUserID: payload.AddedUserID, Title: payload.Title, Description: payload.Description, SubjectID: payload.SubjectID,
 			Deadline: deadline, DeadlineSince: "NONE", DeadlineUntil: "NONE", Type: "OTHER"}
+		defaults, err := domain.TaskCompletionDefaults(tx)
+		if err != nil {
+			return err
+		}
+		task.IsCompletionDisabled = defaults[task.Type]
 		if err := tx.Create(&task).Error; err != nil {
 			return err
 		}

@@ -1,14 +1,25 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CreateTask creates a new task record and triggers async notifications.
-func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, isRequireHandIn bool, isSelfCheckRequired bool, deadline time.Time, deadlineSince string, deadlineUntil string, userEmail string) (Task, error) {
+func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, isRequireHandIn bool, isSelfCheckRequired bool, deadline time.Time, deadlineSince string, deadlineUntil string, userEmail string, completionDisabled ...bool) (Task, error) {
 	rec := Task{AddedUserID: addedUserID, Title: title, SubjectID: subjectID, Description: description, Type: typ, IsRequireHandIn: isRequireHandIn, IsSelfCheckRequired: isSelfCheckRequired, Deadline: deadline, DeadlineSince: deadlineSince, DeadlineUntil: deadlineUntil}
+	if len(completionDisabled) > 0 {
+		rec.IsCompletionDisabled = completionDisabled[0]
+	} else {
+		defaults, err := TaskCompletionDefaults(db)
+		if err != nil {
+			return Task{}, err
+		}
+		rec.IsCompletionDisabled = defaults[typ]
+	}
 	if err := db.Create(&rec).Error; err != nil {
 		return Task{}, err
 	}
@@ -19,7 +30,7 @@ func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, des
 // Returns before and after copies of the task.
 func UpdateTask(db *gorm.DB, id uint, modifier func(*Task) error, userEmail string) (Task, Task, error) {
 	var rec Task
-	if err := db.First(&rec, id).Error; err != nil {
+	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&rec, id).Error; err != nil {
 		return Task{}, Task{}, err
 	}
 	before := rec
@@ -46,7 +57,17 @@ func DeleteTask(db *gorm.DB, id uint, userEmail string) (Task, error) {
 
 // CompleteTask marks completion for a user.
 func CompleteTask(db *gorm.DB, userID uint, taskID uint) error {
-	return db.Exec("INSERT INTO tasks_users_completions(user_id, task_id) VALUES(?, ?) ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP", userID, taskID).Error
+	// Lock the task so disabling completion and marking it complete serialize.
+	return db.Transaction(func(tx *gorm.DB) error {
+		var task Task
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&task, taskID).Error; err != nil {
+			return err
+		}
+		if task.IsCompletionDisabled {
+			return fmt.Errorf("task completion disabled")
+		}
+		return tx.Exec("INSERT INTO tasks_users_completions(user_id, task_id) VALUES(?, ?) ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP", userID, taskID).Error
+	})
 }
 
 // UncompleteTask removes completion mark for a user.

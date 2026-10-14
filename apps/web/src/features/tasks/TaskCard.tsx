@@ -83,7 +83,7 @@ export function TaskCard({
     <li
       key={t.id}
       onClick={(e) => {
-        if (isEditing) return;
+        if (isEditing || t.is_completion_disabled) return;
         if (
           (e.target as HTMLElement).closest(
             "button, input, textarea, label, select, a, [role='button'], [role='checkbox']",
@@ -93,11 +93,11 @@ export function TaskCard({
       }}
       className={
         "relative rounded-lg border p-4 pl-12 bg-card text-card-foreground transition-opacity " +
-        (isEditing ? "" : "cursor-pointer ") +
+        (isEditing || t.is_completion_disabled ? "" : "cursor-pointer ") +
         (pendingInfo ? " opacity-50" : "")
       }
     >
-      <Checkbox
+      {!t.is_completion_disabled && <Checkbox
         checked={!!t.is_completed}
         disabled={isEditing}
         onCheckedChange={(checked) => {
@@ -107,7 +107,7 @@ export function TaskCard({
         }}
         aria-label={`${t.title}: ${dict.tasks.completion}`}
         className="absolute left-4 top-1/2 -translate-y-1/2"
-      />
+      />}
       {isEditing ? (
         <div className="space-y-3">
           <TaskFormFields

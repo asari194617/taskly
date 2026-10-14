@@ -336,6 +336,7 @@ func newTestIcalDB(t testing.TB) *gorm.DB {
 			type TEXT NOT NULL DEFAULT 'OTHER',
 			is_require_hand_in INTEGER NOT NULL DEFAULT 0,
 			is_self_check_required INTEGER NOT NULL DEFAULT 0,
+            is_completion_disabled INTEGER NOT NULL DEFAULT 0,
 			is_hidden INTEGER NOT NULL DEFAULT 0,
 			deadline DATETIME NOT NULL,
 			deadline_since TEXT NOT NULL DEFAULT 'NONE',

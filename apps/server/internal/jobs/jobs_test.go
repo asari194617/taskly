@@ -34,11 +34,14 @@ func testDB(t *testing.T) *gorm.DB {
 
 func createTasksTable(t *testing.T, db *gorm.DB) {
 	t.Helper()
+	if err := db.Exec("CREATE TABLE configs (`key` text primary key, value text)").Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Exec(`CREATE TABLE tasks (
 		id integer primary key autoincrement, added_user_id integer not null,
 		title text not null, subject_id integer not null, description text,
 		type text not null default 'OTHER', is_require_hand_in integer not null default 0,
-		is_self_check_required integer not null default 0, is_hidden integer not null default 0,
+		is_self_check_required integer not null default 0, is_completion_disabled integer not null default 0, is_hidden integer not null default 0,
 		deadline date, deadline_since text not null default 'NONE',
 		deadline_until text not null default 'NONE', created_at datetime default CURRENT_TIMESTAMP,
 		updated_at datetime default CURRENT_TIMESTAMP
