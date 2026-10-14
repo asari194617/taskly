@@ -25,7 +25,36 @@ if PROD_ENV='KEY=value' "$repo/.github/scripts/require-prod-env.sh" >/dev/null 2
   echo 'Missing Airflow metadata settings were accepted' >&2
   exit 1
 fi
-PROD_ENV=$'AIRFLOW_META_DATABASE=taskly_airflow\nAIRFLOW_META_USER=taskly_airflow\nAIRFLOW_META_PASSWORD=example' "$repo/.github/scripts/require-prod-env.sh"
+airflow_env=$'AIRFLOW_META_DATABASE=taskly_airflow\nAIRFLOW_META_USER=taskly_airflow\nAIRFLOW_META_PASSWORD=example'
+r2_env=$'R2_ENDPOINT=https://account.r2.cloudflarestorage.com\nR2_BUCKET=taskly-task-images\nR2_ACCESS_KEY_ID=example-access\nR2_SECRET_ACCESS_KEY=example-secret'
+valid_env="$airflow_env"$'\n'"$r2_env"
+PROD_ENV="$valid_env" "$repo/.github/scripts/require-prod-env.sh"
+if PROD_ENV="$airflow_env" "$repo/.github/scripts/require-prod-env.sh" >/dev/null 2>&1; then
+  echo 'Missing task image storage settings were accepted' >&2
+  exit 1
+fi
+for key in R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+  missing_env=$(sed "/^${key}=/d" <<<"$valid_env")
+  if PROD_ENV="$missing_env" "$repo/.github/scripts/require-prod-env.sh" >/dev/null 2>&1; then
+    echo "Missing $key was accepted" >&2
+    exit 1
+  fi
+  for value in '' '   ' '""' "''" '"   "' "'   '" '# unset'; do
+    # A later empty assignment must not be hidden by an earlier valid value.
+    if PROD_ENV="$valid_env"$'\n'"$key=$value" "$repo/.github/scripts/require-prod-env.sh" >"$tmp/error" 2>&1; then
+      echo "Empty $key was accepted" >&2
+      exit 1
+    fi
+    assert grep -q "PROD_ENV must set $key" "$tmp/error"
+    if grep -q 'example-secret' "$tmp/error"; then
+      echo 'Storage credential leaked in validation error' >&2
+      exit 1
+    fi
+  done
+  for value in '"example"' "'example'"; do
+    PROD_ENV="$valid_env"$'\n'"$key=$value" "$repo/.github/scripts/require-prod-env.sh"
+  done
+done
 
 mkdir -p "$tmp/source/infra" "$tmp/remote/infra" "$tmp/bin"
 printf 'old root\n' > "$tmp/remote/.env"
