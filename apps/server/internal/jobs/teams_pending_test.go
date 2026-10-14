@@ -401,3 +401,96 @@ func TestTeamsPendingEmailJobHasUsefulChangeMessage(t *testing.T) {
 		t.Fatalf("pending update status = %q", job.Status)
 	}
 }
+
+func TestTeamsInvisibleUpdateDoesNotQueueReply(t *testing.T) {
+	for _, posted := range []bool{false, true} {
+		t.Run(strconv.FormatBool(posted), func(t *testing.T) {
+			db := pendingTeamsTestDB(t)
+			task := createPendingTeamsTask(t, db)
+			if posted {
+				insertTeamsMessageID(t, db, task.ID, "posted-id")
+			}
+			for _, modify := range []func(*domain.Task) error{
+				func(rec *domain.Task) error { return nil },
+				func(rec *domain.Task) error {
+					rec.Type = "QUIZ"
+					rec.IsRequireHandIn = true
+					rec.IsSelfCheckRequired = true
+					return nil
+				},
+				func(rec *domain.Task) error {
+					rec.Deadline = time.Date(2026, 10, 10, 0, 0, 0, 0, time.FixedZone("JST", 9*3600))
+					return nil
+				},
+			} {
+				if _, _, err := UpdateTask(db, task.ID, modify, "actor@example.test"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := emailJobsForAction(t, db, "updated"); len(got) != 0 {
+				t.Fatalf("invisible update queued %d replies", len(got))
+			}
+			if _, _, err := UpdateTask(db, task.ID, func(rec *domain.Task) error { rec.Title = "visible change"; return nil }, "actor@example.test"); err != nil {
+				t.Fatal(err)
+			}
+			pendingEmailJob(t, db, "updated")
+		})
+	}
+}
+
+func teamsSMTPBody(t *testing.T, message string) map[string]string {
+	t.Helper()
+	_, body, ok := strings.Cut(message, "\r\n\r\n")
+	if !ok {
+		t.Fatalf("SMTP body missing: %q", message)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(body)), &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestTeamsReplyEmailPreservesBreaksAndEscapesMarkup(t *testing.T) {
+	db := pendingTeamsTestDB(t)
+	task := createPendingTeamsTask(t, db)
+	insertTeamsMessageID(t, db, task.ID, "posted-id")
+	_, _, err := UpdateTask(db, task.ID, func(rec *domain.Task) error {
+		rec.Title = "updated <title> & more"
+		description := "1行目\r\n2行目 <重要>"
+		rec.Description = &description
+		return nil
+	}, "actor@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := teamsSMTPBody(t, deliverPendingEmail(t, db, pendingEmailJob(t, db, "updated").ID))
+	if payload["message_id"] != "posted-id" {
+		t.Fatalf("reply message ID: %+v", payload)
+	}
+	for _, want := range []string{"<br>・タイトル:", "updated &lt;title&gt; &amp; more", "1行目<br>2行目 &lt;重要&gt;"} {
+		if !strings.Contains(payload["message"], want) {
+			t.Fatalf("SMTP message missing %q: %+v", want, payload)
+		}
+	}
+}
+
+func TestTeamsCreateEmailKeepsPlainSubjectAndHTMLDescription(t *testing.T) {
+	db := pendingTeamsTestDB(t)
+	if err := db.AutoMigrate(&domain.Subject{}); err != nil {
+		t.Fatal(err)
+	}
+	description := "1行目\n2行目 <重要> & 補足"
+	task, err := CreateTask(db, 1, "title <重要> & 補足", 1, &description, "OTHER", false, false,
+		domain.Task{Deadline: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC), DeadlineSince: "NONE", DeadlineUntil: "NONE"}, "actor@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := teamsSMTPBody(t, deliverPendingEmail(t, db, pendingEmailJob(t, db, "created").ID))
+	if payload["task_id"] != strconv.FormatUint(uint64(task.ID), 10) || !strings.Contains(payload["title"], "title <重要> & 補足") {
+		t.Fatalf("plain Teams subject: %+v", payload)
+	}
+	if payload["description"] != "1行目<br>2行目 &lt;重要&gt; &amp; 補足" {
+		t.Fatalf("HTML description: %+v", payload)
+	}
+}

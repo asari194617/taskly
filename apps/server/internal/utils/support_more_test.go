@@ -184,7 +184,7 @@ func TestTaskNotificationMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := BuildTaskUpdateMessageJa(before, after, db)
-	for _, want := range []string{"ID:7", "'old' → 'new'", "'国語' → 'English'", "'オンライン' → '小テスト'", "2026-09-23 → 2026-09-24", "1限 → 2限", "2限まで → 昼休みまで"} {
+	for _, want := range []string{"ID:7", "'old' → 'new'", "'国語' → 'English'", "2026-09-23 → 2026-09-24", "1限 → 2限", "2限まで → 昼休みまで"} {
 		if !strings.Contains(message, want) {
 			t.Errorf("message missing %q:\n%s", want, message)
 		}
