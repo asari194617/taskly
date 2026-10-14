@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"gorm.io/gorm"
+	"html"
 	"net"
 	"net/smtp"
 	"strconv"
@@ -253,10 +254,10 @@ func strOrUnsetJa(p *string) string {
 	return *p
 }
 
-// Build a Japanese message describing changes between two Task states
+// Describe changes to fields included in the original Teams post.
+// An empty message means there is no Teams-visible change.
 func BuildTaskUpdateMessageJa(before domain.Task, after domain.Task, DB *gorm.DB) string {
 	b := &strings.Builder{}
-	fmt.Fprintf(b, "課題が更新されました (ID:%d)\n", after.ID)
 	// Title
 	if before.Title != after.Title {
 		fmt.Fprintf(b, "・タイトル: '%s' → '%s'\n", before.Title, after.Title)
@@ -266,23 +267,11 @@ func BuildTaskUpdateMessageJa(before domain.Task, after domain.Task, DB *gorm.DB
 		fmt.Fprintf(b, "・教科: '%s' → '%s'\n", subjectNameJa(before.SubjectID, DB), subjectNameJa(after.SubjectID, DB))
 	}
 	// Description
-	if (before.Description == nil) != (after.Description == nil) || (before.Description != nil && after.Description != nil && *before.Description != *after.Description) {
+	if strOrUnsetJa(before.Description) != strOrUnsetJa(after.Description) {
 		fmt.Fprintf(b, "・説明: '%s' → '%s'\n", strOrUnsetJa(before.Description), strOrUnsetJa(after.Description))
 	}
-	// Type
-	if !strings.EqualFold(before.Type, after.Type) {
-		fmt.Fprintf(b, "・種別: '%s' → '%s'\n", displayTaskTypeJa(before.Type), displayTaskTypeJa(after.Type))
-	}
-	// Hand-in
-	if before.IsRequireHandIn != after.IsRequireHandIn {
-		fmt.Fprintf(b, "・要提出: %s → %s\n", displayBoolJa(before.IsRequireHandIn), displayBoolJa(after.IsRequireHandIn))
-	}
-	// Self check
-	if before.IsSelfCheckRequired != after.IsSelfCheckRequired {
-		fmt.Fprintf(b, "・自己チェック: %s → %s\n", displayBoolJa(before.IsSelfCheckRequired), displayBoolJa(after.IsSelfCheckRequired))
-	}
 	// Deadline date
-	if !before.Deadline.Equal(after.Deadline) {
+	if before.Deadline.Format("2006-01-02") != after.Deadline.Format("2006-01-02") {
 		fmt.Fprintf(b, "・期限日: %s → %s\n", before.Deadline.Format("2006-01-02"), after.Deadline.Format("2006-01-02"))
 	}
 	// Since / Until
@@ -292,7 +281,10 @@ func BuildTaskUpdateMessageJa(before domain.Task, after domain.Task, DB *gorm.DB
 	if !strings.EqualFold(before.DeadlineUntil, after.DeadlineUntil) {
 		fmt.Fprintf(b, "・終了限: %s → %s\n", displayUntilJa(before.DeadlineUntil), displayUntilJa(after.DeadlineUntil))
 	}
-	return b.String()
+	if b.Len() == 0 {
+		return ""
+	}
+	return fmt.Sprintf("課題が更新されました (ID:%d)\n%s", after.ID, b.String())
 }
 
 func BuildTaskDeleteMessageJa(t domain.Task) string {
@@ -323,7 +315,7 @@ func SendTeamsNotifyEmailForTaskSync(t domain.Task, DB *gorm.DB) error {
 		desc = *t.Description
 	}
 	// JSON body consumed by Power Automate
-	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), formatted, desc, time.Now().Format(time.RFC3339))
+	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), teamsHTML(formatted), teamsHTML(desc), time.Now().Format(time.RFC3339))
 	return smtpSendPlain(to, subject, body)
 }
 
@@ -351,6 +343,13 @@ func SendTeamsReplyEmailSync(taskID uint, messageID string, message string) erro
 		return fmt.Errorf("TEAMS_NOTIFY_EMAIL is not configured")
 	}
 	subject := "[Taskly]tasks:reply"
-	body := fmt.Sprintf(`{"message_id":%q,"task_id":%q,"message":%q}`, messageID, fmt.Sprintf("%d", taskID), message)
+	body := fmt.Sprintf(`{"message_id":%q,"task_id":%q,"message":%q}`, messageID, fmt.Sprintf("%d", taskID), teamsHTML(message))
 	return smtpSendPlain(to, subject, body)
+}
+
+// Power Automate inserts these values directly into an HTML message body.
+// Escape user text before adding breaks so literal markup stays literal.
+func teamsHTML(text string) string {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	return strings.ReplaceAll(html.EscapeString(text), "\n", "<br>")
 }

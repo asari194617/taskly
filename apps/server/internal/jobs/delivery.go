@@ -210,7 +210,7 @@ func EnqueueTaskNotices(tx *gorm.DB, action string, task domain.Task, actor, mes
 			return err
 		}
 	}
-	if strings.TrimSpace(os.Getenv("TEAMS_NOTIFY_EMAIL")) != "" && (action == "created" || messageID != "" || message != "") {
+	if strings.TrimSpace(os.Getenv("TEAMS_NOTIFY_EMAIL")) != "" && (action == "created" || message != "") {
 		_, err := Enqueue(tx, "task_email", TaskNotice{Task: task, Action: action, MessageID: messageID, Message: message}, nil)
 		return err
 	}

@@ -401,3 +401,39 @@ func TestTeamsPendingEmailJobHasUsefulChangeMessage(t *testing.T) {
 		t.Fatalf("pending update status = %q", job.Status)
 	}
 }
+
+func TestTeamsInvisibleUpdateDoesNotQueueReply(t *testing.T) {
+	for _, posted := range []bool{false, true} {
+		t.Run(strconv.FormatBool(posted), func(t *testing.T) {
+			db := pendingTeamsTestDB(t)
+			task := createPendingTeamsTask(t, db)
+			if posted {
+				insertTeamsMessageID(t, db, task.ID, "posted-id")
+			}
+			for _, modify := range []func(*domain.Task) error{
+				func(rec *domain.Task) error { return nil },
+				func(rec *domain.Task) error {
+					rec.Type = "QUIZ"
+					rec.IsRequireHandIn = true
+					rec.IsSelfCheckRequired = true
+					return nil
+				},
+				func(rec *domain.Task) error {
+					rec.Deadline = time.Date(2026, 10, 10, 0, 0, 0, 0, time.FixedZone("JST", 9*3600))
+					return nil
+				},
+			} {
+				if _, _, err := UpdateTask(db, task.ID, modify, "actor@example.test"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := emailJobsForAction(t, db, "updated"); len(got) != 0 {
+				t.Fatalf("invisible update queued %d replies", len(got))
+			}
+			if _, _, err := UpdateTask(db, task.ID, func(rec *domain.Task) error { rec.Title = "visible change"; return nil }, "actor@example.test"); err != nil {
+				t.Fatal(err)
+			}
+			pendingEmailJob(t, db, "updated")
+		})
+	}
+}

@@ -84,7 +84,7 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     }
     if (query.includes("updateTask(")) {
       const task = tasks.find((item) => item.id === variables.id)!;
-      Object.assign(task, { is_completion_disabled: variables.completionDisabled ?? task.is_completion_disabled, title: variables.title, subject_id: variables.subject_id || task.subject_id, image_keys: variables.image_keys ?? task.image_keys, image_urls: (variables.image_keys ?? task.image_keys ?? []).map((key: string) => `https://r2.example.test/view/${key}`) });
+      Object.assign(task, { is_completion_disabled: variables.completionDisabled ?? task.is_completion_disabled, title: variables.title, subject_id: variables.subject_id || task.subject_id, type: variables.type || task.type, image_keys: variables.image_keys ?? task.image_keys, image_urls: (variables.image_keys ?? task.image_keys ?? []).map((key: string) => `https://r2.example.test/view/${key}`) });
       if (task.is_completion_disabled) task.is_completed = false;
       return respond({ data: { updateTask: task } });
     }
@@ -706,4 +706,25 @@ test("管理者がタイプ別の完了マーク初期値を保存できる", as
   await expect(page.getByText("更新しました", { exact: true })).toBeVisible();
   await page.reload();
   await expect(quiz).not.toBeChecked();
+});
+
+test("編集フォームは保存済みの課題タイプを表示し、言語変更後も同じ値を保存する", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  api.tasks.push({ id: 42, title: "タイプ表示テスト", subject_id: 1, deadline: "2099-10-15", type: "ONLINE", is_completed: false });
+  await page.goto("/home");
+  await expect(page.getByText("タイプ表示テスト")).toBeVisible();
+  await page.getByRole("button", { name: "アクション" }).click();
+  await page.getByRole("button", { name: "編集", exact: true }).click();
+  const type = page.locator("#ed-42-type");
+  await expect(type).toHaveText("オンライン");
+  await page.evaluate(() => { localStorage.setItem("display_lang", "en"); window.dispatchEvent(new Event("languagechange")); });
+  await expect(type).toHaveText("Online");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => api.tasks[0].type).toBe("ONLINE");
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await type.click();
+  await page.getByRole("option", { name: "Quiz", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => api.tasks[0].type).toBe("QUIZ");
 });
