@@ -19,6 +19,8 @@ type Task = {
   image_keys?: string[];
   image_urls?: string[];
   is_completed: boolean;
+  is_completion_disabled?: boolean;
+  type?: string;
 };
 
 async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean; authenticated?: boolean; meDelayMs?: number } = {}) {
@@ -29,6 +31,7 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   let nextId = 2;
   let searchFailures = options.failFirstSearch ? 1 : 0;
   const tasks: Task[] = [];
+  const completionDefaults = Object.fromEntries(["ONLINE", "FACE_TO_FACE", "QUIZ", "PRESENTATION", "SELF_STUDY", "OTHER"].map((type) => [type, type === "QUIZ"]));
   const uploadedKeys: string[] = [];
   let presignCount = 0;
   const subjects = [{ id: 1, name_ja: "数学", name_en: "Math", created_at: "2026-01-01T00:00:00Z", expires_at: null }];
@@ -62,6 +65,11 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
       if (!authenticated) return respond({ errors: [{ message: "unauthorized" }] }, 401);
       return respond({ data: { me: { id: 1, email: "browser@example.test", display_name: "Browser Tester", is_agreed_policies: true, is_admin: !!options.admin, is_manager: false } } });
     }
+    if (query.includes("taskCompletionDefaults")) return respond({ data: { taskCompletionDefaults: Object.entries(completionDefaults).map(([type, disabled]) => ({ type, is_completion_disabled: disabled })) } });
+    if (query.includes("adminSetTaskCompletionDefault")) {
+      completionDefaults[variables.type] = variables.disabled;
+      return respond({ data: { adminSetTaskCompletionDefault: true } });
+    }
     if (query.includes("adminSubjectCreate")) {
       const subject = { id: 2, name_ja: variables.ja, name_en: variables.en || null, created_at: "2026-01-01T00:00:00Z", expires_at: null };
       subjects.push(subject);
@@ -70,13 +78,14 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     if (query.includes("adminSubjects")) return respond({ data: { adminSubjects: subjects } });
     if (query.includes("subjects{")) return respond({ data: { subjects } });
     if (query.includes("createTask(")) {
-      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, image_keys: variables.image_keys || [], image_urls: (variables.image_keys || []).map((key: string) => `https://r2.example.test/view/${key}`), is_completed: false };
+      const task = { id: nextId++, title: variables.title, subject_id: variables.subject_id, deadline: variables.deadline, description: variables.description, type: variables.type || "OTHER", is_completion_disabled: variables.completionDisabled ?? completionDefaults[variables.type || "OTHER"], image_keys: variables.image_keys || [], image_urls: (variables.image_keys || []).map((key: string) => `https://r2.example.test/view/${key}`), is_completed: false };
       tasks.push(task);
       return respond({ data: { createTask: task } });
     }
     if (query.includes("updateTask(")) {
       const task = tasks.find((item) => item.id === variables.id)!;
-      Object.assign(task, { title: variables.title, subject_id: variables.subject_id || task.subject_id, image_keys: variables.image_keys ?? task.image_keys, image_urls: (variables.image_keys ?? task.image_keys ?? []).map((key: string) => `https://r2.example.test/view/${key}`) });
+      Object.assign(task, { is_completion_disabled: variables.completionDisabled ?? task.is_completion_disabled, title: variables.title, subject_id: variables.subject_id || task.subject_id, image_keys: variables.image_keys ?? task.image_keys, image_urls: (variables.image_keys ?? task.image_keys ?? []).map((key: string) => `https://r2.example.test/view/${key}`) });
+      if (task.is_completion_disabled) task.is_completed = false;
       return respond({ data: { updateTask: task } });
     }
     if (query.includes("uncompleteTask(")) {
@@ -651,4 +660,50 @@ test("登録失敗後も入力を保持し、再試行で一件だけ登録す�
   await page.getByRole("button", { name: "新規作成", exact: true }).click();
   await expect(page).toHaveURL(/\/home$/);
   expect(api.tasks).toHaveLength(1);
+});
+
+
+test("小テストの完了操作を無効化し、課題ごとに上書きできる", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  await page.goto("/home");
+  await page.getByRole("button", { name: "新規作成" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("タイトル").fill("小テスト課題");
+  await dialog.getByLabel("サブジェクト", { exact: true }).click();
+  await page.getByRole("menuitem", { name: "数学" }).click();
+  await dialog.getByLabel("期限", { exact: true }).click();
+  await page.getByRole("button", { name: "日付", exact: true }).click();
+  await page.locator(".rdp-today button").click();
+  await page.getByRole("button", { name: "適用" }).click();
+  await dialog.getByLabel("タイプ", { exact: true }).click();
+  await page.getByRole("option", { name: "小テスト", exact: true }).click();
+  await expect(dialog.getByRole("switch", { name: "完了マークを無効にする" })).toBeChecked();
+  await dialog.getByRole("button", { name: "新規作成", exact: true }).click();
+  await expect.poll(() => api.tasks.length).toBe(1);
+  await expect(page.getByRole("checkbox", { name: "小テスト課題: 完了" })).toHaveCount(0);
+  const completions: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/graphql") && /completeTask/.test(request.postData() || "")) completions.push(request.postData()!);
+  });
+  await page.getByText("小テスト課題", { exact: true }).click();
+  await page.waitForTimeout(3300);
+  expect(completions).toHaveLength(0);
+  await page.getByRole("button", { name: "アクション" }).click();
+  await page.getByRole("button", { name: "編集", exact: true }).click();
+  await page.getByRole("switch", { name: "完了マークを無効にする" }).click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByRole("checkbox", { name: "小テスト課題: 完了" }).click();
+  await expect.poll(() => api.tasks[0].is_completed, { timeout: 6000 }).toBe(true);
+});
+
+test("管理者がタイプ別の完了マーク初期値を保存できる", async ({ page }) => {
+  await mockApi(page, { authenticated: true, admin: true });
+  await page.goto("/admin/task-defaults");
+  const quiz = page.getByRole("switch", { name: "小テスト — 完了マークを無効にする" });
+  await expect(quiz).toBeChecked();
+  await quiz.click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.getByText("更新しました", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(quiz).not.toBeChecked();
 });

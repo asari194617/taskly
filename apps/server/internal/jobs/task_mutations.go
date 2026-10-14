@@ -9,20 +9,20 @@ import (
 	"gorm.io/gorm"
 )
 
-func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, actor string) (domain.Task, error) {
+func CreateTask(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, actor string, completionDisabled ...bool) (domain.Task, error) {
 	keys := deadline.ImageKeys
 	if len(keys) == 0 && deadline.ImageKey != nil {
 		keys = []string{*deadline.ImageKey}
 	}
-	return CreateTaskWithImages(db, addedUserID, title, subjectID, description, typ, handIn, selfCheck, deadline, keys, actor)
+	return CreateTaskWithImages(db, addedUserID, title, subjectID, description, typ, handIn, selfCheck, deadline, keys, actor, completionDisabled...)
 }
 
-func CreateTaskWithImages(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, imageKeys []string, actor string) (domain.Task, error) {
+func CreateTaskWithImages(db *gorm.DB, addedUserID uint, title string, subjectID uint, description *string, typ string, handIn, selfCheck bool, deadline domain.Task, imageKeys []string, actor string, completionDisabled ...bool) (domain.Task, error) {
 	var created domain.Task
 	err := Transaction(db, func(tx *gorm.DB) error {
 		var err error
 		created, err = domain.CreateTask(tx, addedUserID, title, subjectID, description, typ, handIn, selfCheck,
-			deadline.Deadline, deadline.DeadlineSince, deadline.DeadlineUntil, actor)
+			deadline.Deadline, deadline.DeadlineSince, deadline.DeadlineUntil, actor, completionDisabled...)
 		if err != nil {
 			return err
 		}
@@ -49,6 +49,11 @@ func UpdateTaskWithImages(db *gorm.DB, id uint, modifier func(*domain.Task) erro
 		before, after, err = domain.UpdateTask(tx, id, modifier, actor)
 		if err != nil {
 			return err
+		}
+		if after.IsCompletionDisabled {
+			if err := tx.Exec("DELETE FROM tasks_users_completions WHERE task_id = ?", after.ID).Error; err != nil {
+				return err
+			}
 		}
 		if imageKeys != nil {
 			if err := taskimage.Replace(tx, after.ID, *imageKeys); err != nil {

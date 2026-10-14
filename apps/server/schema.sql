@@ -308,6 +308,7 @@ CREATE TABLE `tasks` (
   `type` enum('ONLINE','FACE_TO_FACE','QUIZ','PRESENTATION','SELF_STUDY','OTHER') NOT NULL DEFAULT 'OTHER',
   `is_require_hand_in` tinyint(1) NOT NULL DEFAULT '0',
   `is_self_check_required` tinyint(1) NOT NULL DEFAULT '0',
+  `is_completion_disabled` tinyint(1) NOT NULL DEFAULT '0',
   `deadline` date NOT NULL,
   `deadline_since` enum('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10') NOT NULL DEFAULT 'NONE',
   `deadline_until` enum('NONE','MORNING','LUNCH','AFTER_SCHOOL','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10') NOT NULL DEFAULT 'NONE',

@@ -43,10 +43,15 @@ func TestAdminResolverAuthorization(t *testing.T) {
 	query := "query { adminSubjects { id } }"
 	mutation := `mutation { adminSubjectCreate(name_ja: "test") { id } }`
 	adminOnly := `mutation { adminSetConfig(key: "test", value: "x") }`
+	completionDefault := `mutation { adminSetTaskCompletionDefault(type: "QUIZ", is_completion_disabled: true) }`
 	tests := []struct {
 		name, role, operation, wantError string
 		wantStatus                       int
 	}{
+		{"anonymous task default", "", completionDefault, "unauthorized", 401},
+		{"user task default", "user", completionDefault, "forbidden", 400},
+		{"manager task default", "manager", completionDefault, "forbidden", 400},
+		{"invalid task default type", "admin", `mutation { adminSetTaskCompletionDefault(type: "invalid", is_completion_disabled: true) }`, "invalid task type", 400},
 		{"anonymous query", "", query, "unauthorized", 401},
 		{"anonymous mutation", "", mutation, "unauthorized", 401},
 		{"user query", "user", query, "forbidden", 400},
@@ -80,7 +85,7 @@ func TestAdminResolverAuthorization(t *testing.T) {
 	if err := db.Migrator().DropTable(&domain.RoleUser{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, operation := range []string{query, mutation, adminOnly} {
+	for _, operation := range []string{query, mutation, adminOnly, completionDefault} {
 		t.Run("role lookup failure "+operation, func(t *testing.T) {
 			assertAdminGraphQLResult(t, app, operation, 400, "authorization:")
 		})

@@ -18,6 +18,7 @@ import {
   type Subject,
 } from "./api";
 import { useLang } from "@/react/LanguageProvider";
+import { taskTypeOptions } from "./completion-defaults";
 import { ImagePlus, X } from "lucide-react";
 
 export type TaskFormImage = {
@@ -34,6 +35,7 @@ export type TaskFormValues = {
   meta: DeadlineMeta | null;
   requireHandIn: boolean;
   selfCheck: boolean;
+  completionDisabled: boolean;
   type: string;
   description: string;
   images: TaskFormImage[];
@@ -46,6 +48,7 @@ export type TaskFormSetters = {
   meta: (value: DeadlineMeta | null) => void;
   requireHandIn: (value: boolean) => void;
   selfCheck: (value: boolean) => void;
+  completionDisabled: (value: boolean) => void;
   type: (value: string) => void;
   description: (value: string) => void;
   images: (value: TaskFormImage[]) => void;
@@ -80,14 +83,6 @@ export function TaskFormFields({
 }) {
   const { lang, dict } = useLang();
   const [imageError, setImageError] = React.useState("");
-  const taskTypes = [
-    dict.tasks.typeOnline,
-    dict.tasks.typeFaceToFace,
-    dict.tasks.typeQuiz,
-    dict.tasks.typePresentation,
-    dict.tasks.typeSelfStudy,
-    dict.tasks.typeOther,
-  ];
   const appendFiles = (files: FileList | File[]) => {
     const available = TASK_IMAGE_MAX_COUNT - values.images.length;
     const selected = Array.from(files);
@@ -190,13 +185,17 @@ export function TaskFormFields({
                 <SelectValue placeholder={dict.tasks.selectPlaceholder} />
               </SelectTrigger>
               <SelectContent>
-                {taskTypes.map((type) => (
+                {taskTypeOptions.map(({ type, label }) => (
                   <SelectItem key={type} value={type}>
-                    {type}
+                    {dict.tasks[label]}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="col-span-full flex items-center gap-2">
+            <Switch id={`${id}-completion`} checked={values.completionDisabled} onCheckedChange={set.completionDisabled} />
+            <Label htmlFor={`${id}-completion`}>{dict.tasks.disableCompletion}</Label>
           </div>
           <div className="col-span-full">
             <Label htmlFor={`${id}-desc`}>

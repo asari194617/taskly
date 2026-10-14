@@ -68,6 +68,7 @@
 | `description` | `TEXT` | NULL | 詳細説明 |
 | `is_require_hand_in` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | 提出必須か |
 | `is_self_check_required` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | 自己確認必須か |
+| `is_completion_disabled` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | 完了マークを無効にする（課題ごとに保存） |
 | `is_hidden` | `BOOLEAN` | NOT NULL, DEFAULT FALSE | モデレーションにより非表示か |
 | `deadline` | `DATE` | NOT NULL | 期日 |
 | `deadline_since` | `ENUM('NONE','P1','P2','P3','P4','P5','P6','P7','P8','P9','P10')` | NOT NULL, DEFAULT 'NONE' | 期日の開始コマ |

@@ -112,5 +112,38 @@ func (h *Handler) mutationFieldsSettings() graphql.Fields {
 		},
 	}
 
+	fields["adminSetTaskCompletionDefault"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"type":                   &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+			"is_completion_disabled": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
+			c, ok := gqlH.FiberCtxFromContext(p.Context)
+			if !ok {
+				return false, fmt.Errorf("context missing")
+			}
+			u, err := h.requireAdminActor(c, false)
+			if err != nil {
+				return false, err
+			}
+			typ := p.Args["type"].(string)
+			valid := false
+			for _, candidate := range domain.TaskTypes {
+				if typ == candidate {
+					valid = true
+				}
+			}
+			if !valid {
+				return false, fmt.Errorf("invalid task type")
+			}
+			if err := utils.SetConfigString(domain.TaskCompletionDefaultKey(typ), fmt.Sprint(p.Args["is_completion_disabled"].(bool)), h.db); err != nil {
+				return false, err
+			}
+			h.recordAuditLog(&domain.Log{UserID: &u.ID, Action: "admin.settings.task_completion_default." + typ})
+			return true, nil
+		},
+	}
 	return fields
 }

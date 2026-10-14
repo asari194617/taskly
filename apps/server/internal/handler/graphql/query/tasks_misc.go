@@ -17,6 +17,28 @@ import (
 func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 	taskType := t.TaskType
 	return graphql.Fields{
+		"taskCompletionDefaults": &graphql.Field{
+			Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{Name: "TaskCompletionDefault", Fields: graphql.Fields{
+				"type":                   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+				"is_completion_disabled": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean)},
+			}})),
+			Resolve: func(p graphql.ResolveParams) (any, error) {
+				h := h.withContext(p.Context)
+				c, ok := gqlH.FiberCtxFromContext(p.Context)
+				if !ok || !utils.UserFromSession(c, h.db, h.rdb) {
+					return nil, fmt.Errorf("unauthorized")
+				}
+				defaults, err := domain.TaskCompletionDefaults(h.db)
+				if err != nil {
+					return nil, err
+				}
+				out := []map[string]any{}
+				for _, typ := range domain.TaskTypes {
+					out = append(out, map[string]any{"type": typ, "is_completion_disabled": defaults[typ]})
+				}
+				return out, nil
+			},
+		},
 		"tasks": &graphql.Field{
 			Type: graphql.NewObject(graphql.ObjectConfig{
 				Name: "TasksResult",
@@ -105,12 +127,13 @@ func (h *Handler) QueryFieldsTasks(t *gqlH.GqlTypes) graphql.Fields {
 							"type":                   it.Type,
 							"is_require_hand_in":     it.IsRequireHandIn,
 							"is_self_check_required": it.IsSelfCheckRequired,
+							"is_completion_disabled": it.IsCompletionDisabled,
 							"is_hidden":              it.IsHidden,
 						}
 						out["deadline"] = it.Deadline.Format("2006-01-02")
 						out["deadline_since"] = it.DeadlineSince
 						out["deadline_until"] = it.DeadlineUntil
-						out["is_completed"] = completed[it.ID]
+						out["is_completed"] = !it.IsCompletionDisabled && completed[it.ID]
 						out["created_at"] = it.CreatedAt.Format(time.RFC3339)
 						out["updated_at"] = it.UpdatedAt.Format(time.RFC3339)
 						if images != nil {

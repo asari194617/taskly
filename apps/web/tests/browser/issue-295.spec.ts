@@ -15,6 +15,7 @@ async function mockApi(page: Page) {
       if (query.includes("me{")) return reply(authenticated
         ? { data: { me: { id: 1, email, display_name: "Browser Tester", is_agreed_policies: true, is_admin: false, is_manager: false } } }
         : { errors: [{ message: "unauthorized" }] }, authenticated ? 200 : 401);
+      if (query.includes("taskCompletionDefaults")) return reply({ data: { taskCompletionDefaults: ["ONLINE", "FACE_TO_FACE", "QUIZ", "PRESENTATION", "SELF_STUDY", "OTHER"].map((type) => ({ type, is_completion_disabled: type === "QUIZ" })) } });
       if (query.includes("subjects{")) return reply({ data: { subjects: [{ id: 1, name_ja: "数学", name_en: "Math" }] } });
       if (query.includes("tasks(")) return reply({ data: { tasks: { items: [], next_cursor: null } } });
       throw new Error(`Unmocked GraphQL operation: ${query}`);
