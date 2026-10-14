@@ -315,7 +315,7 @@ func SendTeamsNotifyEmailForTaskSync(t domain.Task, DB *gorm.DB) error {
 		desc = *t.Description
 	}
 	// JSON body consumed by Power Automate
-	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), teamsHTML(formatted), teamsHTML(desc), time.Now().Format(time.RFC3339))
+	body := fmt.Sprintf(`{"task_id":%q,"title":%q,"description":%q,"sent_at":%q}`, fmt.Sprintf("%d", t.ID), formatted, teamsHTML(desc), time.Now().Format(time.RFC3339))
 	return smtpSendPlain(to, subject, body)
 }
 
