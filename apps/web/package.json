@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@storybook/addon-docs": "10.6.1",
     "@storybook/addon-links": "10.6.1",
     "@storybook/react-vite": "10.6.1",
