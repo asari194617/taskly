@@ -29,7 +29,7 @@
     "react-i18next": "17.0.16",
     "redis": "^6.3.0",
     "tslog": "^5.2.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@react-email/ui": "6.11.1",
