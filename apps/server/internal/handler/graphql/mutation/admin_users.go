@@ -215,6 +215,38 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 		},
 	}
 
+	fields["adminUserRestore"] = &graphql.Field{
+		Type: graphql.Boolean,
+		Args: graphql.FieldConfigArgument{
+			"user_id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Int)},
+		},
+		Resolve: func(p graphql.ResolveParams) (any, error) {
+			h := h.withContext(p.Context)
+			if c, ok := gqlH.FiberCtxFromContext(p.Context); ok {
+				actor, err := h.requireAdminActor(c, true)
+				if err != nil {
+					return false, err
+				}
+				id := p.Args["user_id"].(int)
+				if id <= 0 {
+					return false, fmt.Errorf("invalid user")
+				}
+				if err := utils.RestoreUser(p.Context, uint(id), h.db, h.rdb); err != nil {
+					if errors.Is(err, authsync.ErrLifecycleSync) {
+						return false, fmt.Errorf("auth service synchronization pending")
+					}
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return false, fmt.Errorf("user not found")
+					}
+					return false, fmt.Errorf("db")
+				}
+				h.recordAuditLog(&domain.Log{UserID: &actor.ID, Action: fmt.Sprintf("admin.user.restore:%d", id)})
+				return true, nil
+			}
+			return false, fmt.Errorf("context missing")
+		},
+	}
+
 	fields["adminUserDelete"] = &graphql.Field{
 		Type: graphql.Boolean,
 		Args: graphql.FieldConfigArgument{

@@ -48,6 +48,10 @@ func TestAdminResolverAuthorization(t *testing.T) {
 		name, role, operation, wantError string
 		wantStatus                       int
 	}{
+		{"anonymous restore", "", `mutation { adminUserRestore(user_id: 42) }`, "unauthorized", 401},
+		{"user restore", "user", `mutation { adminUserRestore(user_id: 42) }`, "forbidden", 400},
+		{"manager restore validates ID", "manager", `mutation { adminUserRestore(user_id: 0) }`, "invalid user", 400},
+		{"admin restore validates ID", "admin", `mutation { adminUserRestore(user_id: 0) }`, "invalid user", 400},
 		{"anonymous task default", "", completionDefault, "unauthorized", 401},
 		{"user task default", "user", completionDefault, "forbidden", 400},
 		{"manager task default", "manager", completionDefault, "forbidden", 400},

@@ -23,7 +23,7 @@ type Task = {
   type?: string;
 };
 
-async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean; authenticated?: boolean; meDelayMs?: number } = {}) {
+async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?: boolean; authenticated?: boolean; meDelayMs?: number; failRestore?: boolean } = {}) {
   await page.addInitScript(() => {
     if (!localStorage.getItem("display_lang")) localStorage.setItem("display_lang", "ja");
   });
@@ -31,6 +31,11 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
   let nextId = 2;
   let searchFailures = options.failFirstSearch ? 1 : 0;
   const tasks: Task[] = [];
+  const users = [
+    { id: 2, email: "deleted@example.test", display_name: "Deleted User", roles: [], is_blocked: true, is_deleted: true },
+    { id: 3, email: "active@example.test", display_name: "Active User", roles: [], is_blocked: false, is_deleted: false },
+  ];
+  const restoredIds: number[] = [];
   const completionDefaults = Object.fromEntries(["ONLINE", "FACE_TO_FACE", "QUIZ", "PRESENTATION", "SELF_STUDY", "OTHER"].map((type) => [type, type === "QUIZ"]));
   const uploadedKeys: string[] = [];
   let presignCount = 0;
@@ -64,6 +69,13 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
       }
       if (!authenticated) return respond({ errors: [{ message: "unauthorized" }] }, 401);
       return respond({ data: { me: { id: 1, email: "browser@example.test", display_name: "Browser Tester", is_agreed_policies: true, is_admin: !!options.admin, is_manager: false } } });
+    }
+    if (query.includes("adminUsersPaginated")) return respond({ data: { adminUsersPaginated: { items: users, total: users.length } } });
+    if (query.includes("adminUserRestore")) {
+      restoredIds.push(variables.id);
+      if (options.failRestore) return respond({ errors: [{ message: "auth service synchronization pending" }] }, 400);
+      users.find((user) => user.id === variables.id)!.is_deleted = false;
+      return respond({ data: { adminUserRestore: true } });
     }
     if (query.includes("taskCompletionDefaults")) return respond({ data: { taskCompletionDefaults: Object.entries(completionDefaults).map(([type, disabled]) => ({ type, is_completion_disabled: disabled })) } });
     if (query.includes("adminSetTaskCompletionDefault")) {
@@ -103,7 +115,7 @@ async function mockApi(page: Page, options: { admin?: boolean; failFirstSearch?:
     }
     throw new Error(`Unmocked GraphQL operation: ${query}`);
   });
-  return { tasks, subjects, uploadedKeys };
+  return { tasks, subjects, uploadedKeys, users, restoredIds };
 }
 
 async function login(page: Page) {
@@ -950,4 +962,46 @@ test("画像取得・コピー失敗とコピー非対応をプレビュー内�
   await expect(dialog.getByRole("button", { name: "画像をコピー", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("status")).toContainText("このブラウザーは画像コピーに対応していません");
   expect(api.tasks[0].is_completed).toBe(false);
+});
+
+for (const width of [1280, 390]) {
+  test(`削除済みユーザーを確認して復元できる (${width}px)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const api = await mockApi(page, { admin: true, authenticated: true });
+    await page.goto("/admin/users/");
+    const deleted = page.getByRole("row").filter({ hasText: "deleted@example.test" });
+    const active = page.getByRole("row").filter({ hasText: "active@example.test" });
+    await expect(deleted.getByRole("cell", { name: "削除済み", exact: true })).toBeVisible();
+    await active.getByRole("button", { name: "操作", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "復元…", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await deleted.getByRole("button", { name: "操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "復元…", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "ユーザーを復元", exact: true });
+    await expect(dialog).toContainText("再ログインが必要");
+    await dialog.getByRole("button", { name: "キャンセル", exact: true }).click();
+    expect(api.restoredIds).toEqual([]);
+    await deleted.getByRole("button", { name: "操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "復元…", exact: true }).click();
+    await dialog.getByRole("button", { name: "復元", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(deleted.getByRole("cell", { name: "有効", exact: true })).toBeVisible();
+    await expect(deleted.getByRole("cell", { name: "Yes", exact: true })).toBeVisible();
+    expect(api.restoredIds).toEqual([2]);
+  });
+}
+
+test("復元の同期失敗時は削除済み表示と再試行を維持する", async ({ page }) => {
+  const api = await mockApi(page, { admin: true, authenticated: true, failRestore: true });
+  await page.goto("/admin/users/");
+  const deleted = page.getByRole("row").filter({ hasText: "deleted@example.test" });
+  await deleted.getByRole("button", { name: "操作", exact: true }).click();
+  await page.getByRole("menuitem", { name: "復元…", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "ユーザーを復元", exact: true });
+  await dialog.getByRole("button", { name: "復元", exact: true }).click();
+  await expect(page.getByText("復元に失敗しました", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "復元", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "キャンセル", exact: true }).click();
+  await expect(deleted.getByRole("cell", { name: "削除済み", exact: true })).toBeVisible();
+  expect(api.restoredIds).toEqual([2]);
 });

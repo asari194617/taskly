@@ -24,6 +24,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -187,21 +188,64 @@ func SoftDeleteUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Cl
 		if err := tx.Model(&domain.User{}).Where("id = ? AND is_deleted = 0", userID).Updates(map[string]any{"is_deleted": true, "deleted_at": deletedAt}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("user_id = ?", userID).Delete(&domain.Session{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&domain.APIKey{}).Where("user_id = ?", userID).Update("is_valid", false).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", userID).Delete(&domain.IcalKey{}).Error; err != nil {
-			return err
-		}
-		return tx.Where("user_id = ?", userID).Delete(&domain.MCP{}).Error
+		return revokeUserCredentials(tx, userID)
 	}); err != nil {
 		return err
 	}
 	ClearUserSessionCache(ctx, userID, RDB)
-	return authsync.SyncDeleted(ctx, userID, deletedAt)
+	// Serialize lifecycle delivery with restoration. A restore may have completed
+	// after the local deletion committed; do not send an obsolete deletion then.
+	return DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var user domain.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+			return err
+		}
+		if !user.IsDeleted {
+			return nil
+		}
+		if user.DeletedAt != nil {
+			deletedAt = user.DeletedAt.UTC()
+		}
+		return authsync.SyncDeleted(ctx, userID, deletedAt)
+	})
+}
+
+// RestoreUser locks the app account against erasure and synchronizes auth first.
+// A failed synchronization leaves the app account deleted; retries are safe.
+func RestoreUser(ctx context.Context, userID uint, DB *gorm.DB, RDB *redis.Client) error {
+	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var user domain.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
+			return err
+		}
+		if !user.IsDeleted {
+			return nil
+		}
+		if err := revokeUserCredentials(tx, userID); err != nil {
+			return err
+		}
+		if err := authsync.SyncRestored(ctx, userID); err != nil {
+			return err
+		}
+		return tx.Model(&user).Updates(map[string]any{"is_deleted": false, "deleted_at": nil}).Error
+	})
+	if err == nil {
+		ClearUserSessionCache(ctx, userID, RDB)
+	}
+	return err
+}
+
+func revokeUserCredentials(tx *gorm.DB, userID uint) error {
+	if err := tx.Where("user_id = ?", userID).Delete(&domain.Session{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&domain.APIKey{}).Where("user_id = ?", userID).Update("is_valid", false).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("user_id = ?", userID).Delete(&domain.IcalKey{}).Error; err != nil {
+		return err
+	}
+	return tx.Where("user_id = ?", userID).Delete(&domain.MCP{}).Error
 }
 
 func ClearUserSessionCache(ctx context.Context, userID uint, RDB *redis.Client) {

@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -70,6 +71,7 @@ import {
   createUser,
   deleteDevice as deleteDeviceRequest,
   deleteUser,
+  restoreUser,
   loadAdminUsers,
   loadDevices,
   loadNotificationSettings,
@@ -112,6 +114,8 @@ export default function AdminUsers() {
   const [openBulk, setOpenBulk] = React.useState(false);
   const [bulkCsv, setBulkCsv] = React.useState("");
 
+  const [restoreTarget, setRestoreTarget] = React.useState<AUser | null>(null);
+  const [restoring, setRestoring] = React.useState(false);
   const [openDelete, setOpenDelete] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<AUser | null>(null);
   const [deleteHard, setDeleteHard] = React.useState(false);
@@ -610,7 +614,7 @@ export default function AdminUsers() {
 
   function openDeleteDialog(u: AUser) {
     setDeleteTarget(u);
-    setDeleteHard(false);
+    setDeleteHard(u.is_deleted);
     setDeleteConfirm("");
     setOpenDelete(true);
   }
@@ -707,6 +711,25 @@ export default function AdminUsers() {
         title: "追加に失敗しました",
         description: e?.message,
       });
+    }
+  }
+
+  async function submitRestore() {
+    if (!restoreTarget || restoring) return;
+    setRestoring(true);
+    try {
+      await restoreUser(restoreTarget.id);
+      setRestoreTarget(null);
+      await load();
+      toast({ title: "ユーザーを復元しました" });
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "復元に失敗しました",
+        description: e?.message,
+      });
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -848,6 +871,7 @@ export default function AdminUsers() {
               <TableHead>言語</TableHead>
               <TableHead>メールログイン</TableHead>
               <TableHead>ブロック</TableHead>
+              <TableHead>状態</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -855,7 +879,7 @@ export default function AdminUsers() {
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="text-center text-sm text-muted-foreground"
                 >
                   読み込み中…
@@ -864,7 +888,7 @@ export default function AdminUsers() {
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="text-center text-sm text-muted-foreground"
                 >
                   該当するユーザーがいません
@@ -884,6 +908,7 @@ export default function AdminUsers() {
                     {u.email_login_enabled ? "有効" : "無効"}
                   </TableCell>
                   <TableCell>{u.is_blocked ? "Yes" : "No"}</TableCell>
+                  <TableCell>{u.is_deleted ? "削除済み" : "有効"}</TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -955,11 +980,16 @@ export default function AdminUsers() {
                             ブロック
                           </DropdownMenuItem>
                         )}
+                        {u.is_deleted && (
+                          <DropdownMenuItem onClick={() => setRestoreTarget(u)}>
+                            復元…
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={() => openDeleteDialog(u)}
                         >
-                          削除…
+                          {u.is_deleted ? "物理削除…" : "削除…"}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1063,6 +1093,34 @@ export default function AdminUsers() {
         </Dialog>
       )}
 
+      <Dialog
+        open={!!restoreTarget}
+        onOpenChange={(open) => {
+          if (!open && !restoring) setRestoreTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ユーザーを復元</DialogTitle>
+          </DialogHeader>
+          <DialogDescription>
+            {restoreTarget?.email} を復元します。再ログインが必要です。削除時に失効したセッション・APIキーなどは復活しません。ブロック設定は維持されます。
+          </DialogDescription>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={restoring}
+              onClick={() => setRestoreTarget(null)}
+            >
+              キャンセル
+            </Button>
+            <Button disabled={restoring} onClick={submitRestore}>
+              {restoring ? "復元中…" : "復元"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={openDelete} onOpenChange={setOpenDelete}>
         <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
@@ -1076,6 +1134,7 @@ export default function AdminUsers() {
               <Button
                 variant={deleteHard ? "secondary" : "default"}
                 onClick={() => setDeleteHard(false)}
+                disabled={deleteTarget?.is_deleted}
               >
                 ソフト削除 (フラグ設定)
               </Button>

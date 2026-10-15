@@ -8,6 +8,7 @@ export type AdminUser = {
   email_login_enabled?: boolean | null;
   roles: string[];
   is_blocked: boolean;
+  is_deleted: boolean;
 };
 
 export type Device = {
@@ -29,7 +30,7 @@ export function loadAdminUsers(options: {
   pageSize: number;
 }) {
   return gql<{ adminUsersPaginated: { items: AdminUser[]; total: number } }>(
-    `query($q:String,$sb:String,$sd:String,$p:Int,$ps:Int){ adminUsersPaginated(q:$q,sort_by:$sb,sort_dir:$sd,page:$p,page_size:$ps){ items{ id email display_name notification_lang email_login_enabled roles is_blocked } total } }`,
+    `query($q:String,$sb:String,$sd:String,$p:Int,$ps:Int){ adminUsersPaginated(q:$q,sort_by:$sb,sort_dir:$sd,page:$p,page_size:$ps){ items{ id email display_name notification_lang email_login_enabled roles is_blocked is_deleted } total } }`,
     { q: options.query, sb: options.sortBy, sd: options.sortDir, p: options.page, ps: options.pageSize },
   );
 }
@@ -111,4 +112,8 @@ export function createDevice(userId: number, input: { platform: string; name?: s
 
 export function deleteUser(userId: number, hard: boolean) {
   return gql(`mutation($id:Int!,$h:Boolean){ adminUserDelete(user_id:$id, hard:$h) }`, { id: userId, h: hard });
+}
+
+export function restoreUser(userId: number) {
+  return gql(`mutation($id:Int!){ adminUserRestore(user_id:$id) }`, { id: userId });
 }

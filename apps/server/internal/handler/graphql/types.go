@@ -63,6 +63,7 @@ func (h *Handler) createGQLTypes() *gqlShared.GqlTypes {
 			"email_login_enabled": &graphql.Field{Type: graphql.Boolean},
 			"roles":               &graphql.Field{Type: graphql.NewList(graphql.String)},
 			"is_blocked":          &graphql.Field{Type: graphql.Boolean},
+			"is_deleted":          &graphql.Field{Type: graphql.Boolean},
 		},
 	})
 
