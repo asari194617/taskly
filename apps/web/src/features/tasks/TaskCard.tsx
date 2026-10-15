@@ -118,10 +118,10 @@ export function TaskCard({
             subjects={subjects}
           />
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => saveEdit(t.id)}>
+            <Button size="sm" disabled={editValues.submitting} onClick={() => saveEdit(t.id)}>
               <Save className="h-4 w-4 mr-1" /> {dict.tasks.save}
             </Button>
-            <Button size="sm" variant="secondary" onClick={cancelEdit}>
+            <Button size="sm" variant="secondary" disabled={editValues.submitting} onClick={cancelEdit}>
               <X className="h-4 w-4 mr-1" /> {dict.tasks.cancel}
             </Button>
           </div>

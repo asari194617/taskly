@@ -48,13 +48,22 @@ export const TASK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 export const TASK_IMAGE_MAX_COUNT = 5;
 export const TASK_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-export async function uploadTaskImage(file: File): Promise<string> {
+export type TaskImageUpload = {
+  state: "idle" | "uploading" | "processing" | "error" | "done";
+  progress?: number;
+};
+
+export async function uploadTaskImage(
+  file: File,
+  onProgress?: (upload: TaskImageUpload) => void,
+): Promise<string> {
   if (!TASK_IMAGE_TYPES.includes(file.type)) {
     throw new Error("unsupported_image_type");
   }
   if (file.size <= 0 || file.size > TASK_IMAGE_MAX_BYTES) {
     throw new Error("image_too_large");
   }
+  onProgress?.({ state: "processing" });
   const presignResponse = await webFetch(`${getApiBase()}/task-images/presign`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -64,14 +73,34 @@ export async function uploadTaskImage(file: File): Promise<string> {
   if (!presignResponse.ok) {
     throw new Error(presign?.error || "image_presign_failed");
   }
-  const uploadResponse = await fetch(presign.upload_url, {
-    method: "PUT",
-    headers: presign.headers,
-    body: file,
+  await new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    // Register listeners before open/send so cross-origin uploads report progress.
+    request.upload.onprogress = (event) => {
+      onProgress?.({
+        state: "uploading",
+        progress: event.lengthComputable && event.total > 0
+          ? Math.min(100, Math.round(event.loaded / event.total * 100))
+          : undefined,
+      });
+    };
+    request.upload.onload = () => onProgress?.({ state: "processing", progress: 100 });
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.({ state: "done", progress: 100 });
+        resolve();
+      } else {
+        reject(new Error("image_upload_failed"));
+      }
+    };
+    request.onerror = request.onabort = request.ontimeout = () => reject(new Error("image_upload_failed"));
+    request.open("PUT", presign.upload_url);
+    for (const [name, value] of Object.entries(presign.headers as Record<string, string>)) {
+      request.setRequestHeader(name, value);
+    }
+    onProgress?.({ state: "uploading", progress: 0 });
+    request.send(file);
   });
-  if (!uploadResponse.ok) {
-    throw new Error("image_upload_failed");
-  }
   return presign.key;
 }
 

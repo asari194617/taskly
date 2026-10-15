@@ -16,9 +16,19 @@ import {
   TASK_IMAGE_MAX_COUNT,
   TASK_IMAGE_TYPES,
   type Subject,
+  type TaskImageUpload,
 } from "./api";
 import { useLang } from "@/react/LanguageProvider";
 import { taskTypeOptions } from "./completion-defaults";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@/components/ui/attachment";
 import { ImagePlus, X } from "lucide-react";
 
 export type TaskFormImage = {
@@ -26,6 +36,7 @@ export type TaskFormImage = {
   file?: File;
   key?: string;
   url?: string;
+  upload?: TaskImageUpload;
 };
 
 export type TaskFormValues = {
@@ -39,6 +50,7 @@ export type TaskFormValues = {
   type: string;
   description: string;
   images: TaskFormImage[];
+  submitting?: boolean;
 };
 
 export type TaskFormSetters = {
@@ -84,6 +96,7 @@ export function TaskFormFields({
   const { lang, dict } = useLang();
   const [imageError, setImageError] = React.useState("");
   const appendFiles = (files: FileList | File[]) => {
+    if (values.submitting) return;
     const available = TASK_IMAGE_MAX_COUNT - values.images.length;
     const selected = Array.from(files);
     if (available <= 0 || selected.length > available) {
@@ -106,8 +119,9 @@ export function TaskFormFields({
     set.images([...values.images, ...additions]);
   };
   return (
-    <div
-      className={`grid ${compact ? "grid-cols-1" : "grid-cols-2"} gap-4 [&>div]:min-w-0`}
+    <fieldset
+      disabled={values.submitting}
+      className={`min-w-0 grid ${compact ? "grid-cols-1" : "grid-cols-2"} gap-4 [&>div]:min-w-0`}
     >
       <div className="col-span-full">
         <Label htmlFor={`${id}-title`}>{dict.tasks.title}</Label>
@@ -194,8 +208,14 @@ export function TaskFormFields({
             </Select>
           </div>
           <div className="col-span-full flex items-center gap-2">
-            <Switch id={`${id}-completion`} checked={values.completionDisabled} onCheckedChange={set.completionDisabled} />
-            <Label htmlFor={`${id}-completion`}>{dict.tasks.disableCompletion}</Label>
+            <Switch
+              id={`${id}-completion`}
+              checked={values.completionDisabled}
+              onCheckedChange={set.completionDisabled}
+            />
+            <Label htmlFor={`${id}-completion`}>
+              {dict.tasks.disableCompletion}
+            </Label>
           </div>
           <div className="col-span-full">
             <Label htmlFor={`${id}-desc`}>
@@ -227,7 +247,13 @@ export function TaskFormFields({
               }}
             >
               <ImagePlus className="mb-1 h-5 w-5 text-muted-foreground" />
-              <span className="text-sm">{compact ? (lang === "ja" ? "通知や課題の画像を選択" : "Choose a task or notification image") : dict.tasks.imageDrop}</span>
+              <span className="text-sm">
+                {compact
+                  ? lang === "ja"
+                    ? "通知や課題の画像を選択"
+                    : "Choose a task or notification image"
+                  : dict.tasks.imageDrop}
+              </span>
               <span className="text-xs text-muted-foreground">
                 {dict.tasks.imageHelp}
               </span>
@@ -244,37 +270,71 @@ export function TaskFormFields({
               }}
             />
             {values.images.length > 0 && (
-              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+              <div className="mt-2 grid gap-2" aria-label={dict.tasks.images}>
                 {values.images.map((image, index) => (
-                  <div
+                  <Attachment
                     key={image.id}
-                    className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
+                    state={image.upload?.state ?? (image.key ? "done" : "idle")}
+                    className="w-full flex-nowrap"
                   >
-                    {image.file ? (
-                      <FileImagePreview
-                        file={image.file}
-                        name={image.file.name}
-                      />
-                    ) : image.url ? (
-                      <img
-                        src={image.url}
-                        alt={`${dict.tasks.image} ${index + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                    <button
-                      type="button"
-                      className="absolute right-1 top-1 rounded-full bg-background/90 p-1 shadow"
-                      aria-label={`${dict.tasks.removeImage} ${index + 1}`}
-                      onClick={() =>
-                        set.images(
-                          values.images.filter((item) => item.id !== image.id),
-                        )
-                      }
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                    <AttachmentMedia variant="image">
+                      {image.file ? (
+                        <FileImagePreview
+                          file={image.file}
+                          name={image.file.name}
+                        />
+                      ) : image.url ? (
+                        <img
+                          src={image.url}
+                          alt={`${dict.tasks.image} ${index + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle>
+                        {image.file?.name ?? `${dict.tasks.image} ${index + 1}`}
+                      </AttachmentTitle>
+                      <AttachmentDescription
+                        role="status"
+                        className="whitespace-normal wrap-anywhere"
+                      >
+                        {image.upload?.state === "uploading"
+                          ? `${dict.tasks.imageUploading}${image.upload.progress === undefined ? "" : ` · ${image.upload.progress}%`}`
+                          : image.upload?.state === "processing"
+                            ? dict.tasks.imageProcessing
+                            : image.upload?.state === "error"
+                              ? dict.tasks.imageUploadFailed
+                              : image.key
+                                ? dict.tasks.imageUploaded
+                                : dict.tasks.imageReady}
+                      </AttachmentDescription>
+                      {image.upload?.state === "uploading" && (
+                        <progress
+                          className="mt-1 block h-1.5 w-full accent-primary"
+                          max={100}
+                          value={image.upload.progress}
+                          aria-label={`${image.file?.name ?? dict.tasks.image}: ${dict.tasks.imageUploading}`}
+                        />
+                      )}
+                    </AttachmentContent>
+                    <AttachmentActions>
+                      <AttachmentAction
+                        type="button"
+                        disabled={values.submitting}
+                        aria-label={`${dict.tasks.removeImage} ${index + 1}`}
+                        onClick={() =>
+                          set.images(
+                            values.images.filter(
+                              (item) => item.id !== image.id,
+                            ),
+                          )
+                        }
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </AttachmentAction>
+                    </AttachmentActions>
+                  </Attachment>
                 ))}
               </div>
             )}
@@ -286,6 +346,6 @@ export function TaskFormFields({
           </div>
         </div>
       </details>
-    </div>
+    </fieldset>
   );
 }

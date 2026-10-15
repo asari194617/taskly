@@ -12,25 +12,68 @@ type CompletionItem = { id: number; is_completed: boolean };
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 describe("task search and update", () => {
-  it("uploads supported images directly with the signed R2 request", async () => {
-    const request = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        key: "task-images/1/550e8400-e29b-41d4-a716-446655440000",
-        upload_url: "https://r2.example.test/signed",
-        headers: { "Content-Type": "image/png", "x-amz-meta-owner-id": "1" },
-      }), { status: 200, headers: { "Content-Type": "application/json" } }))
-      .mockResolvedValueOnce(new Response(null, { status: 200 }));
-    const file = new File([new Uint8Array([1, 2, 3])], "proof.png", { type: "image/png" });
+  function mockImageUpload() {
+    const request = {
+      upload: { onprogress: null as any, onload: null as any },
+      onload: null as any, onerror: null as any, onabort: null as any, ontimeout: null as any,
+      status: 200,
+      open: vi.fn(), setRequestHeader: vi.fn(), send: vi.fn(),
+    };
+    vi.stubGlobal("XMLHttpRequest", class { constructor() { return request; } });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({
+      key: "task-images/1/550e8400-e29b-41d4-a716-446655440000",
+      upload_url: "https://r2.example.test/signed",
+      headers: { "Content-Type": "image/png", "x-amz-meta-owner-id": "1" },
+    }), { status: 200 }));
+    return request;
+  }
 
-    await expect(uploadTaskImage(file)).resolves.toContain("550e8400");
-    expect(request).toHaveBeenNthCalledWith(2, "https://r2.example.test/signed", expect.objectContaining({
-      method: "PUT",
-      body: file,
-    }));
+  it("uploads with signed headers and reports transfer and response progress", async () => {
+    const request = mockImageUpload();
+    const progress = vi.fn();
+    const file = new File([new Uint8Array([1, 2, 3])], "proof.png", { type: "image/png" });
+    const result = uploadTaskImage(file, progress);
+    await vi.waitFor(() => expect(request.send).toHaveBeenCalledWith(file));
+    expect(request.open).toHaveBeenCalledWith("PUT", "https://r2.example.test/signed");
+    expect(request.setRequestHeader.mock.calls).toEqual([["Content-Type", "image/png"], ["x-amz-meta-owner-id", "1"]]);
+    expect(progress.mock.calls.map(([value]) => value)).toEqual([{ state: "processing" }, { state: "uploading", progress: 0 }]);
+    request.upload.onprogress({ lengthComputable: true, loaded: 1, total: 2 });
+    expect(progress).toHaveBeenLastCalledWith({ state: "uploading", progress: 50 });
+    request.upload.onprogress({ lengthComputable: false });
+    expect(progress).toHaveBeenLastCalledWith({ state: "uploading", progress: undefined });
+    request.upload.onload();
+    expect(progress).toHaveBeenLastCalledWith({ state: "processing", progress: 100 });
+    request.onload();
+    await expect(result).resolves.toContain("550e8400");
+    expect(progress).toHaveBeenLastCalledWith({ state: "done", progress: 100 });
+  });
+
+  it.each(["http", "network", "abort", "timeout"])("rejects a failed %s upload without reporting done", async (failure) => {
+    const request = mockImageUpload();
+    const progress = vi.fn();
+    const result = uploadTaskImage(new File(["image"], "proof.png", { type: "image/png" }), progress);
+    const rejected = expect(result).rejects.toThrow("image_upload_failed");
+    await vi.waitFor(() => expect(request.send).toHaveBeenCalled());
+    if (failure === "http") { request.status = 403; request.onload(); }
+    else if (failure === "network") request.onerror();
+    else if (failure === "abort") request.onabort();
+    else request.ontimeout();
+    await rejected;
+    expect(progress).not.toHaveBeenCalledWith(expect.objectContaining({ state: "done" }));
+  });
+
+  it("propagates presign failures without starting an upload", async () => {
+    const construct = vi.fn();
+    vi.stubGlobal("XMLHttpRequest", construct);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ error: "storage_unavailable" }), { status: 503 }));
+    await expect(uploadTaskImage(new File(["image"], "proof.png", { type: "image/png" }))).rejects.toThrow("storage_unavailable");
+    expect(construct).not.toHaveBeenCalled();
   });
 
   it("rejects oversized or unsafe images before requesting a URL", async () => {

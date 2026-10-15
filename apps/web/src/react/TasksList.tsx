@@ -108,14 +108,6 @@ export default function TasksList() {
     createOpen,
     setCreateOpen,
     editingId,
-    editTitle,
-    editSubjectId,
-    editDate,
-    editMeta,
-    editRequire,
-    editSelfCheck,
-    editType,
-    editDesc,
     createValues,
     createSetters,
     editValues,
@@ -249,7 +241,6 @@ export default function TasksList() {
       if (!isSave) return;
       if (editingId != null) {
         e.preventDefault();
-        // Avoid duplicate submissions if already saving could be added here
         saveEdit(editingId);
       }
     }
@@ -257,14 +248,7 @@ export default function TasksList() {
     return () => window.removeEventListener("keydown", onSaveKey);
   }, [
     editingId,
-    editTitle,
-    editSubjectId,
-    editDate,
-    editMeta,
-    editRequire,
-    editSelfCheck,
-    editType,
-    editDesc,
+    saveEdit,
   ]);
 
   if (error) {
