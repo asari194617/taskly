@@ -858,7 +858,10 @@ for (const [lang, width] of [["ja", 1280], ["en", 390]] as const) {
       canvas.getContext("2d")!.fillRect(0, 0, 1600, 1200);
       return canvas.toDataURL(mimeType).split(",")[1];
     }, mimeType);
-    await page.route(url, (route) => route.fulfill({ headers: corsHeaders, contentType: mimeType, body: Buffer.from(data, "base64") }));
+    const imageResponse = { headers: corsHeaders, contentType: mimeType, body: Buffer.from(data, "base64") };
+    await page.route(url, (route) => route.fulfill(imageResponse));
+    // The first request in a new tab belongs to the context, before page routes attach.
+    await context.route(url, (route) => route.fulfill(imageResponse));
     api.tasks.push({ id: 70, title: "Preview task", subject_id: 1, deadline: "2099-10-15", is_completed: false, image_urls: [url, url + "?broken"] });
     await page.goto("/home");
     const ja = lang === "ja";
