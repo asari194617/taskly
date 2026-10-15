@@ -843,3 +843,108 @@ test("画像を編集保存中は入力と二重保存を防ぎ、失敗後に�
   expect(uploads).toBe(2);
   expect(api.tasks[0].image_keys).toHaveLength(1);
 });
+
+for (const [lang, width] of [["ja", 1280], ["en", 390]] as const) {
+  test(`画像プレビュー・保存・コピー (${lang}, ${width}px)`, async ({ page, context }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const api = await mockApi(page, { authenticated: true });
+    await page.addInitScript((language) => localStorage.setItem("display_lang", language), lang);
+    const url = "https://r2.example.test/preview.png";
+    const mimeType = lang === "ja" ? "image/png" : "image/webp";
+    const data = await page.evaluate((mimeType) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1600;
+      canvas.height = 1200;
+      canvas.getContext("2d")!.fillRect(0, 0, 1600, 1200);
+      return canvas.toDataURL(mimeType).split(",")[1];
+    }, mimeType);
+    await page.route(url, (route) => route.fulfill({ headers: corsHeaders, contentType: mimeType, body: Buffer.from(data, "base64") }));
+    api.tasks.push({ id: 70, title: "Preview task", subject_id: 1, deadline: "2099-10-15", is_completed: false, image_urls: [url, url + "?broken"] });
+    await page.goto("/home");
+    const ja = lang === "ja";
+    const trigger = page.getByRole("button", { name: ja ? "画像をプレビュー: Preview task - 画像 1" : "Preview image: Preview task - Image 1", exact: true });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog");
+    const zoomIn = dialog.getByRole("button", { name: ja ? "拡大" : "Zoom in", exact: true });
+    const fit = dialog.getByRole("button", { name: ja ? "画面に合わせる" : "Fit to view" });
+    const close = dialog.getByRole("button", { name: ja ? "閉じる" : "Close", exact: true });
+    await expect(dialog.getByRole("img")).toBeVisible();
+    await expect(page).toHaveURL(/\/home$/);
+    const initialWidth = await dialog.getByRole("img").evaluate((el) => el.clientWidth);
+    await zoomIn.click();
+    await expect(fit).toHaveText("125%");
+    await expect.poll(async () => Math.abs(await dialog.getByRole("img").evaluate((el) => el.clientWidth) - initialWidth * 1.25)).toBeLessThan(2);
+    for (let i = 0; i < 11; i++) await zoomIn.click();
+    await expect(zoomIn).toBeDisabled();
+    const region = dialog.getByRole("region");
+    expect(await region.evaluate((el) => el.scrollWidth > el.clientWidth && el.scrollHeight > el.clientHeight)).toBe(true);
+    await region.evaluate((el) => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; });
+    expect(await region.evaluate((el) => el.scrollLeft > 0 && el.scrollTop > 0)).toBe(true);
+    await fit.click();
+    await dialog.getByRole("button", { name: ja ? "縮小" : "Zoom out", exact: true }).click();
+    await expect(fit).toHaveText("75%");
+    for (let i = 0; i < 2; i++) await dialog.getByRole("button", { name: ja ? "縮小" : "Zoom out", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: ja ? "縮小" : "Zoom out", exact: true })).toBeDisabled();
+    await fit.click();
+    const downloadPromise = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: ja ? "ダウンロード" : "Download", exact: true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(`task-70-1.${ja ? "png" : "webp"}`);
+    expect(await download.failure()).toBeNull();
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await dialog.getByRole("button", { name: ja ? "画像をコピー" : "Copy image", exact: true }).click();
+    await expect(dialog.getByRole("status")).toHaveText(ja ? "コピーしました" : "Copied");
+    expect(await page.evaluate(async () => (await (await navigator.clipboard.read())[0].getType("image/png")).size)).toBeGreaterThan(100);
+    const popupPromise = page.waitForEvent("popup");
+    await dialog.getByRole("link", { name: ja ? "新しいタブで開く" : "Open in new tab" }).click();
+    const popup = await popupPromise;
+    await expect(popup).toHaveURL(url);
+    await popup.close();
+    await page.screenshot({ path: `test-results/image-preview-${lang}.png` });
+    expect(await dialog.evaluate((el) => el.getBoundingClientRect().right <= innerWidth)).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expect(fit).toHaveText("100%");
+    await close.click();
+    await expect(dialog).not.toBeVisible();
+    await trigger.click();
+    await page.locator('[data-slot="dialog-overlay"]').click({ position: { x: 2, y: 2 } });
+    await expect(dialog).not.toBeVisible();
+    expect(api.tasks[0].is_completed).toBe(false);
+    const second = page.getByRole("button", { name: ja ? "画像をプレビュー: Preview task - 画像 2" : "Preview image: Preview task - Image 2", exact: true });
+    await second.click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await close.click();
+    await expect(second).toBeFocused();
+  });
+}
+
+test("画像取得・コピー失敗とコピー非対応をプレビュー内に表示する", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  const url = "https://r2.example.test/error.png";
+  let failFetch = false;
+  await page.route(url, (route) => route.fulfill(failFetch
+    ? { status: 403, headers: corsHeaders, body: "expired" }
+    : { headers: corsHeaders, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") }));
+  api.tasks.push({ id: 71, title: "Error image", subject_id: 1, deadline: "2099-10-15", is_completed: false, image_urls: [url] });
+  await page.goto("/home");
+  const trigger = page.getByRole("button", { name: "画像をプレビュー: Error image - 画像 1", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("img")).toBeVisible();
+  failFetch = true;
+  await dialog.getByRole("button", { name: "ダウンロード", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("ダウンロードできませんでした");
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "write", { configurable: true, value: () => Promise.reject(new Error("Permission denied")) }));
+  await dialog.getByRole("button", { name: "画像をコピー", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("画像をコピーできませんでした");
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => Object.defineProperty(window, "ClipboardItem", { configurable: true, value: undefined }));
+  await trigger.click();
+  await expect(dialog.getByRole("button", { name: "画像をコピー", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("status")).toContainText("このブラウザーは画像コピーに対応していません");
+  expect(api.tasks[0].is_completed).toBe(false);
+});

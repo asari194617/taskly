@@ -1,3 +1,4 @@
+import { ImagePreview } from "./ImagePreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -176,22 +177,12 @@ export function TaskCard({
             {imageURLs.length > 0 && (
               <div className="mt-3 grid max-w-2xl grid-cols-2 gap-2 sm:grid-cols-3">
                 {imageURLs.map((url, index) => (
-                  <a
+                  <ImagePreview
                     key={url}
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <img
-                      src={url}
-                      alt={`${t.title} - ${dict.tasks.image} ${index + 1}`}
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                      className="h-40 w-full rounded-md border object-cover"
-                    />
-                  </a>
+                    url={url}
+                    alt={`${t.title} - ${dict.tasks.image} ${index + 1}`}
+                    filename={`task-${t.id}-${index + 1}`}
+                  />
                 ))}
               </div>
             )}

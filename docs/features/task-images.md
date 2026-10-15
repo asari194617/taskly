@@ -16,6 +16,10 @@
 
 SVG は active content を含められるため許可しない。サイズ制限はクライアントとAPIの両方で検証し、最終的には課題保存時の `HeadObject` の実サイズで判定する。
 
+課題カードの画像をクリックすると、ページ遷移せずダイアログでプレビューする。拡大・縮小（25〜400%、100%は画面内に収まる表示）、画面に合わせる、ダウンロード、画像コピー、新しいタブで開く操作に対応する。拡大画像はスクロールして全体を確認でき、Escape・閉じるボタン・背景クリックで閉じる。画像操作で課題の完了状態は変わらない。画像コピーはPNG形式に変換し、非対応ブラウザーや権限拒否・取得失敗を画面内で通知する。
+
+ダウンロード・コピーは署名付きGET URLを `fetch` するため、R2のCORSには本番originからの **GET** 許可も必要。既存バケットのPUT許可を保持してGETを追加する。バケットを公開する必要はない。
+
 ## 設定
 
 API の環境変数に以下を設定する。
@@ -32,13 +36,13 @@ TASK_IMAGE_MAX_BYTES=10485760
 
 Webの `apps/web/public/_headers` では、署名付きURLのバケットoriginを `connect-src`（アップロード）と `img-src`（表示）の両方で許可する。バケットやアカウントを変更する場合は、CSPと `apps/web/scripts/check-security-headers.mjs` の許可originも更新する。
 
-R2 API token は対象バケットの Object Read & Write のみに限定する。バケットは非公開のままとし、Web の本番originからの直接 PUT を許可するCORSポリシーを設定する。
+R2 API token は対象バケットの Object Read & Write のみに限定する。バケットは非公開のままとし、Web の本番originからの直接 PUT と GET を許可するCORSポリシーを設定する。
 
 ```json
 [
   {
     "AllowedOrigins": ["https://taskly.iy0306.com"],
-    "AllowedMethods": ["PUT"],
+    "AllowedMethods": ["PUT", "GET"],
     "AllowedHeaders": ["content-type", "x-amz-meta-owner-id"],
     "ExposeHeaders": ["etag"],
     "MaxAgeSeconds": 3600
