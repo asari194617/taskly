@@ -15,6 +15,9 @@ func TestLifecycleSyncDisabled(t *testing.T) {
 	if err := SyncDeleted(context.Background(), 42, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if err := SyncRestored(context.Background(), 42); err != nil {
+		t.Fatal(err)
+	}
 	if err := Erase(context.Background(), 42); err != nil {
 		t.Fatal(err)
 	}
@@ -93,5 +96,29 @@ func TestEraseReportsUserNotDeleted(t *testing.T) {
 	t.Setenv("AUTH_INTERNAL_TOKEN", "internal-test-token")
 	if err := Erase(context.Background(), 42); !errors.Is(err, ErrLifecycleNotDeleted) || !errors.Is(err, ErrLifecycleSync) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRestoreSyncRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			t.Error(err)
+		}
+		if r.Method != "PUT" || r.URL.Path != "/internal/users/42/lifecycle" || input["deleted"] != false || len(input) != 1 {
+			t.Errorf("request=%s %s body=%+v", r.Method, r.URL.Path, input)
+		}
+		if r.Header.Get("Authorization") != "Bearer internal-test-token" {
+			t.Error("missing authorization")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	t.Setenv("AUTH_ACCOUNT_LIFECYCLE_EXTERNAL", "1")
+	t.Setenv("AUTH_LIFECYCLE_SYNC_URL", server.URL)
+	t.Setenv("AUTH_INTERNAL_TOKEN", "internal-test-token")
+	t.Setenv("NODE_ENV", "development")
+	if err := SyncRestored(context.Background(), 42); err != nil {
+		t.Fatal(err)
 	}
 }

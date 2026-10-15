@@ -264,6 +264,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 							"display_name":        it.DisplayName,
 							"notification_lang":   it.NotificationLang,
 							"email_login_enabled": it.EmailCodeAllowed,
+							"is_deleted":          it.IsDeleted,
 							"roles":               ridx[it.ID],
 							"is_blocked":          blocked[it.ID],
 						})
@@ -328,6 +329,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 							"display_name":        it.DisplayName,
 							"notification_lang":   it.NotificationLang,
 							"email_login_enabled": it.EmailCodeAllowed,
+							"is_deleted":          it.IsDeleted,
 							"roles":               roleMap[it.ID],
 							"is_blocked":          blocked[it.ID],
 						})
@@ -440,6 +442,7 @@ func (h *Handler) QueryFieldsAdminUsers(t *gqlH.GqlTypes) graphql.Fields {
 							"display_name":        it.DisplayName,
 							"notification_lang":   it.NotificationLang,
 							"email_login_enabled": it.EmailCodeAllowed,
+							"is_deleted":          it.IsDeleted,
 							"roles":               roleMap[it.ID],
 							"is_blocked":          blocked[it.ID],
 						})

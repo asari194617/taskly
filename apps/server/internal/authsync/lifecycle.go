@@ -52,6 +52,18 @@ func SyncDeleted(ctx context.Context, userID uint, deletedAt time.Time) error {
 	return sendLifecycleRequest(ctx, http.MethodPut, endpoint, token, bytes.NewReader(payload), http.StatusOK)
 }
 
+// SyncRestored reopens the account without reactivating revoked credentials.
+func SyncRestored(ctx context.Context, userID uint) error {
+	if !LifecycleEnabled() {
+		return nil
+	}
+	base, token, err := lifecycleConfig()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrLifecycleSync, err)
+	}
+	return sendLifecycleRequest(ctx, http.MethodPut, lifecycleUserURL(base, userID)+"/lifecycle", token, strings.NewReader(`{"deleted":false}`), http.StatusOK)
+}
+
 func Erase(ctx context.Context, userID uint) error {
 	if !LifecycleEnabled() {
 		return nil
