@@ -16,7 +16,7 @@ permissions:
 jobs:
   failed-deploy:
     if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - name: Notify Discord
         env:
@@ -32,7 +32,7 @@ jobs:
             -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
   release-drift:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
     environment: production
     env:
       GH_TOKEN: ${{ github.token }}
@@ -43,6 +43,22 @@ jobs:
       PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
       PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
     steps:
+      - name: Install GitHub CLI when absent on self-hosted runner
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+          # The primary pool is Linux/x64; install without sudo or image changes.
+          install_dir="$RUNNER_TEMP/taskly-gh"
+          mkdir -p "$install_dir"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz \
+            --output "$install_dir/gh.tar.gz"
+          echo "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386  $install_dir/gh.tar.gz" | sha256sum --check -
+          tar -xzf "$install_dir/gh.tar.gz" -C "$install_dir"
+          echo "$install_dir/gh_2.102.0_linux_amd64/bin" >> "$GITHUB_PATH"
       - name: Compare latest release with running API image
         run: |
           set -euo pipefail

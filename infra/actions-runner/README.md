@@ -33,6 +33,34 @@ The production deploy runner uses the separate `taskly-prod` label and its own
 registration volume. It is recycled after every deploy job in the same way as
 the CI slots.
 
+## October 2026 hosted-minutes outage
+
+Set the repository Actions variable `CI_PRIMARY_ONLY=true` while the October
+2026 hosted allowance is exhausted. This guard moves the trusted selector job
+and both production-watch jobs to `taskly-ci-primary`, and forces all downstream
+Linux jobs to primary without consulting heartbeats. It takes precedence over
+`CI_RUNNER` and workflow-dispatch overrides, so a busy/offline primary queues
+jobs instead of falling back to a billed host. Secondary heartbeats are skipped.
+External-fork selectors and jobs remain GitHub-hosted; they may be blocked by
+the exhausted allowance and must never be moved to a trusted self-hosted host.
+
+The MCP client release workflow is deferred entirely while the guard is set:
+its Windows/macOS executables need native runners, and an incomplete release
+must not be published. Re-run the release for its tag after restoring normal mode.
+
+On November 1, clear `CI_PRIMARY_ONLY` (or set it to `false`) to restore the
+independent GitHub-hosted selector, heartbeat-based fallback, production watch,
+secondary heartbeat, and native client releases. This switch does not expire
+by itself; a follow-up in the owning Codex chat is scheduled to clear it.
+Do not set `CI_RUNNER=primary` for this temporary mode; leaving it unset preserves
+the normal fallback policy after the guard is cleared.
+
+```bash
+gh variable set CI_PRIMARY_ONLY --body true --repo asari194617/taskly
+# After the billing window resets:
+gh variable delete CI_PRIMARY_ONLY --repo asari194617/taskly
+```
+
 ## Host installation
 
 Run the installer as root on an Ubuntu runner host. It installs Docker when

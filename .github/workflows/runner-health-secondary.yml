@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   heartbeat:
+    if: vars.CI_PRIMARY_ONLY != 'true'
     runs-on: [self-hosted, taskly-ci-secondary]
     timeout-minutes: 5
     steps:

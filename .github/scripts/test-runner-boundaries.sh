@@ -37,4 +37,14 @@ grep -Fq 'runner: ${{ needs.select-runner.outputs.label }}' .github/workflows/de
 grep -Fq 'uses: ./.github/workflows/select-runner.yml' .github/workflows/weekly-discord.yml
 grep -Fq 'runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}' .github/workflows/weekly-discord.yml
 
+# The temporary billing guard covers orchestration and every hosted OS job.
+grep -Fq "vars.CI_PRIMARY_ONLY == 'true'" "$selector"
+grep -Fq "process.env.PRIMARY_ONLY === 'true'" "$selector"
+for workflow in deploy-prod-watch release-mcp-client runner-health-secondary; do
+  grep -Fq 'vars.CI_PRIMARY_ONLY' ".github/workflows/$workflow.yml"
+done
+for job in build-windows build-macos; do
+  sed -n "/^  $job:/,/^  [a-z]/p" .github/workflows/release-mcp-client.yml | grep -Fq 'needs: select-runner'
+done
+
 echo "Runner trust boundaries are valid"
