@@ -12,6 +12,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/utils"
 	graphql "github.com/graphql-go/graphql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // mutationFieldsAdminUsers groups admin user management mutations.
@@ -265,7 +266,7 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 				if hard {
 					if authsync.LifecycleEnabled() {
 						var target domain.User
-						if err := h.db.Select("id", "is_deleted", "deleted_at").First(&target, id).Error; err != nil {
+						if err := h.db.Select("id", "is_deleted").First(&target, id).Error; err != nil {
 							return false, fmt.Errorf("db")
 						}
 						if !target.IsDeleted {
@@ -273,21 +274,38 @@ func (h *Handler) mutationFieldsAdminUsers() graphql.Fields {
 								return false, fmt.Errorf("auth service synchronization pending")
 							}
 						}
-						err := authsync.Erase(p.Context, uint(id))
-						if errors.Is(err, authsync.ErrLifecycleNotDeleted) {
-							deletedAt := time.Now().UTC().Truncate(time.Second)
-							if target.DeletedAt != nil {
-								deletedAt = target.DeletedAt.UTC()
+					}
+					// Restoration and erasure must hold the same app row lock until
+					// both stores finish, otherwise auth could be erased after a restore.
+					err := h.db.Transaction(func(tx *gorm.DB) error {
+						var target domain.User
+						if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&target, id).Error; err != nil {
+							return err
+						}
+						if authsync.LifecycleEnabled() {
+							if !target.IsDeleted {
+								return fmt.Errorf("user was restored; retry deletion")
 							}
-							if err = authsync.SyncDeleted(p.Context, uint(id), deletedAt); err == nil {
-								err = authsync.Erase(p.Context, uint(id))
+							err := authsync.Erase(p.Context, uint(id))
+							if errors.Is(err, authsync.ErrLifecycleNotDeleted) {
+								deletedAt := time.Now().UTC().Truncate(time.Second)
+								if target.DeletedAt != nil {
+									deletedAt = target.DeletedAt.UTC()
+								}
+								if err = authsync.SyncDeleted(p.Context, uint(id), deletedAt); err == nil {
+									err = authsync.Erase(p.Context, uint(id))
+								}
+							}
+							if err != nil {
+								return err
 							}
 						}
-						if err != nil {
+						return tx.Delete(&domain.User{}, id).Error
+					})
+					if err != nil {
+						if errors.Is(err, authsync.ErrLifecycleSync) {
 							return false, fmt.Errorf("auth service synchronization pending")
 						}
-					}
-					if err := h.db.Delete(&domain.User{}, id).Error; err != nil {
 						return false, fmt.Errorf("db")
 					}
 				} else {

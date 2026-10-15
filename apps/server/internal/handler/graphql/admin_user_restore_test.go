@@ -88,4 +88,6 @@ func TestAdminUserRestoreAndListing(t *testing.T) {
 	}
 	assertAdminGraphQLResult(t, app, `mutation { adminUserRestore(user_id:42) }`, 200, "")
 	assertAdminGraphQLResult(t, app, `mutation { adminUserRestore(user_id:999) }`, 400, "user not found")
+	assertAdminGraphQLResult(t, app, `mutation { adminUserDelete(user_id:42, hard:true) }`, 200, "")
+	assertAdminGraphQLResult(t, app, `mutation { adminUserRestore(user_id:42) }`, 400, "user not found")
 }
