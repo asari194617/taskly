@@ -16,9 +16,10 @@ permissions:
 
 jobs:
   select:
-    # Selection has to run independently of both self-hosted pools so it can
-    # fall through to the next tier when a pool is unavailable.
-    runs-on: ubuntu-latest
+    # During a hosted-minutes outage, trusted jobs (including selection) use
+    # primary only. Fork selection stays hosted and never enters our CI pool.
+    # Clear CI_PRIMARY_ONLY after the billing window to restore independent selection.
+    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
     outputs:
       label: ${{ steps.runner.outputs.label }}
     steps:
@@ -26,6 +27,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           RUNNER_OVERRIDE: ${{ inputs.runner_override }}
+          PRIMARY_ONLY: ${{ vars.CI_PRIMARY_ONLY }}
           REPOSITORY_RUNNER_OVERRIDE: ${{ vars.CI_RUNNER }}
           EXTERNAL_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         with:
@@ -41,6 +43,12 @@ jobs:
 
             if (process.env.EXTERNAL_FORK === 'true') {
               core.setOutput('label', JSON.stringify(labels['ubuntu-latest']));
+              return;
+            }
+            // The billing guard takes precedence over manual/variable overrides
+            // and heartbeat freshness; a busy primary should queue, never bill hosted.
+            if (process.env.PRIMARY_ONLY === 'true') {
+              core.setOutput('label', JSON.stringify(labels.primary));
               return;
             }
             if (override !== 'auto') {

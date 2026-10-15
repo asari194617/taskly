@@ -12,6 +12,9 @@ permissions:
 
 jobs:
   select-runner:
+    # Native Windows/macOS builds cannot run on the Linux primary host.
+    # Defer the entire release rather than publish an incomplete set of clients.
+    if: vars.CI_PRIMARY_ONLY != 'true'
     uses: ./.github/workflows/select-runner.yml
 
   build-linux:
@@ -52,6 +55,7 @@ jobs:
           path: artifacts/*
 
   build-windows:
+    needs: select-runner
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -86,6 +90,7 @@ jobs:
           path: artifacts/*
 
   build-macos:
+    needs: select-runner
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

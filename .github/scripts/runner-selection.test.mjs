@@ -19,6 +19,7 @@ const hosted = ['ubuntu-latest'];
 
 async function select({
   externalFork = false,
+  primaryOnly = false,
   inputOverride = 'auto',
   repositoryOverride = '',
   health = {},
@@ -51,6 +52,7 @@ async function select({
     { repo: { owner: 'owner', repo: 'taskly' } },
     core,
     { env: {
+      PRIMARY_ONLY: String(primaryOnly),
       EXTERNAL_FORK: String(externalFork),
       RUNNER_OVERRIDE: inputOverride,
       REPOSITORY_RUNNER_OVERRIDE: repositoryOverride,
@@ -112,9 +114,27 @@ test('unsupported override fails closed', async () => {
   assert.equal(result.output, undefined);
 });
 
+for (const [inputOverride, repositoryOverride] of [
+  ['auto', ''], ['secondary', ''], ['ubuntu-latest', ''],
+  ['auto', 'ubuntu-latest'], ['unexpected', ''],
+]) {
+  test(`primary-only billing guard overrides ${inputOverride}/${repositoryOverride}`, async () => {
+    const result = await select({ primaryOnly: true, inputOverride, repositoryOverride });
+    assert.deepEqual(result.output, primary);
+    assert.equal(result.failure, undefined);
+    assert.deepEqual(result.calls, []);
+  });
+}
+
+test('primary-only billing guard never sends forks to self-hosted runners', async () => {
+  const result = await select({ externalFork: true, primaryOnly: true, inputOverride: 'primary' });
+  assert.deepEqual(result.output, hosted);
+  assert.deepEqual(result.calls, []);
+});
+
 test('selection does not check out code, access secrets, or use production runners', () => {
   assert.doesNotMatch(workflow, /actions\/checkout|secrets\.|taskly-prod/);
   assert.match(workflow, /permissions:\n  actions: read/);
-  assert.match(workflow, /runs-on: ubuntu-latest/);
+  assert.match(workflow, /runs-on:.*vars\.CI_PRIMARY_ONLY == 'true'.*github\.event_name == 'pull_request'.*taskly-ci-primary.*ubuntu-latest/);
   assert.match(workflow, /actions\/github-script@[0-9a-f]{40}/);
 });

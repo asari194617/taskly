@@ -16,7 +16,7 @@ permissions:
 jobs:
   failed-deploy:
     if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - name: Notify Discord
         env:
@@ -32,7 +32,7 @@ jobs:
             -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
   release-drift:
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
     environment: production
     env:
       GH_TOKEN: ${{ github.token }}
