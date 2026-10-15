@@ -21,7 +21,7 @@
     "dd-trace": "6.20.1",
     "dotenv": "18.0.7",
     "google-protobuf": "^4.0.3",
-    "i18next": "^26.4.3",
+    "i18next": "^26.4.4",
     "i18next-resources-to-backend": "^1.2.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
