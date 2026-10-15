@@ -149,6 +149,13 @@ export const t = (lang: Lang) => ({
         ? "画像をドラッグ&ドロップ、またはクリックして選択"
         : "Drag and drop images, or click to choose",
     removeImage: lang === "ja" ? "画像を削除" : "Remove image",
+    imageReady: lang === "ja" ? "アップロード待ち" : "Ready to upload",
+    imageUploading: lang === "ja" ? "アップロード中" : "Uploading",
+    imageProcessing: lang === "ja" ? "処理中" : "Processing",
+    imageUploaded: lang === "ja" ? "アップロード完了" : "Uploaded",
+    imageUploadFailed: lang === "ja"
+      ? "アップロードに失敗しました。保存し直して再試行してください。"
+      : "Upload failed. Save again to retry.",
     imageInvalid:
       lang === "ja"
         ? "対応形式の10 MiB以下の画像を選択してください。"

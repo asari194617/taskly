@@ -10,11 +10,11 @@ import {
   deleteTask as deleteTaskRequest,
   reportTask,
   updateTask as updateTaskRequest,
-  uploadTaskImage,
   type Task,
 } from "./api";
 import { loadCompletionDefaults } from "./completion-defaults";
 import { runOptimisticMutation } from "./state.mjs";
+import { uploadTaskImages } from "./task-image-uploads";
 import type { TaskFormImage } from "./TaskFormFields";
 
 export function useTaskActions(
@@ -35,6 +35,8 @@ export function useTaskActions(
     return () => { active = false; };
   }, []);
   const createInFlight = React.useRef(false);
+  const editInFlight = React.useRef(false);
+  const [saving, setSaving] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState("");
   const [newSubjectId, setNewSubjectId] = React.useState("");
@@ -69,9 +71,9 @@ export function useTaskActions(
     createInFlight.current = true;
     setCreating(true);
     try {
-      const imageKeys = await Promise.all(
-        newImages.flatMap((image) => image.file ? [uploadTaskImage(image.file)] : []),
-      );
+      const imageKeys = await uploadTaskImages(newImages, (id, patch) => {
+        setNewImages((images) => images.map((image) => image.id === id ? { ...image, ...patch } : image));
+      });
       const created = await createTaskRequest({
         title: newTitle.trim(),
         subject_id: parseInt(newSubjectId, 10),
@@ -112,6 +114,7 @@ export function useTaskActions(
   }
 
   function beginEdit(t: Task) {
+    if (editInFlight.current) return;
     setEditingId(t.id);
     setEditTitle(t.title);
     setEditSubjectId(String(t.subject_id || ""));
@@ -131,6 +134,7 @@ export function useTaskActions(
     })));
   }
   function cancelEdit() {
+    if (editInFlight.current) return;
     setEditingId(null);
     setEditTitle("");
     setEditSubjectId("");
@@ -143,14 +147,13 @@ export function useTaskActions(
     setEditImages([]);
   }
   async function saveEdit(id: number) {
+    if (editInFlight.current) return;
+    editInFlight.current = true;
+    setSaving(true);
     try {
-      const uploadedKeys = await Promise.all(
-        editImages.flatMap((image) => image.file ? [uploadTaskImage(image.file)] : []),
-      );
-      const imageKeys = [
-        ...editImages.flatMap((image) => image.key ? [image.key] : []),
-        ...uploadedKeys,
-      ];
+      const imageKeys = await uploadTaskImages(editImages, (imageId, patch) => {
+        setEditImages((images) => images.map((image) => image.id === imageId ? { ...image, ...patch } : image));
+      });
       const updated = await updateTaskRequest(id, {
         title: editTitle,
         subject_id: editSubjectId ? parseInt(editSubjectId, 10) : undefined,
@@ -165,6 +168,7 @@ export function useTaskActions(
       });
       setItems((current) => current?.map((task) => task.id === id ? { ...task, ...updated, is_completed: updated.is_completion_disabled ? false : task.is_completed } : task) ?? null);
       toast({ title: dict.toast.updated });
+      editInFlight.current = false;
       cancelEdit();
     } catch (e: any) {
       toast({
@@ -172,6 +176,9 @@ export function useTaskActions(
         title: dict.toast.updateFailed,
         description: e?.message,
       });
+    } finally {
+      editInFlight.current = false;
+      setSaving(false);
     }
   }
   async function deleteTask(id: number) {
@@ -244,6 +251,7 @@ export function useTaskActions(
     type: newType,
     description: newDesc,
     images: newImages,
+    submitting: creating,
   };
   const createSetters = {
     title: setNewTitle,
@@ -268,6 +276,7 @@ export function useTaskActions(
     type: editType,
     description: editDesc,
     images: editImages,
+    submitting: saving,
   };
   const editSetters = {
     title: setEditTitle,
@@ -285,7 +294,7 @@ export function useTaskActions(
   return {
     creating,
     createOpen,
-    setCreateOpen,
+    setCreateOpen: (open: boolean) => { if (!createInFlight.current) setCreateOpen(open); },
     editingId,
     editTitle,
     editSubjectId,

@@ -728,3 +728,118 @@ test("編集フォームは保存済みの課題タイプを表示し、言語�
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => api.tasks[0].type).toBe("QUIZ");
 });
+
+
+test("画像ごとの進捗と失敗を表示し、全転送後に失敗画像だけ再試行する", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const api = await mockApi(page, { authenticated: true });
+  await page.addInitScript(() => {
+    (window as any).taskImageRequests = [];
+    const send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function (body) {
+      (window as any).taskImageRequests.push(this);
+      return send.call(this, body);
+    };
+  });
+  let release!: () => void;
+  const slowUpload = new Promise<void>((resolve) => { release = resolve; });
+  let uploads = 0;
+  await page.route("https://r2.example.test/signed-upload-*", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    uploads++;
+    if (route.request().url().endsWith("-1")) return route.fulfill({ status: 503, headers: corsHeaders, body: "" });
+    if (route.request().url().endsWith("-2")) {
+      await slowUpload;
+      return route.fulfill({ status: 200, headers: corsHeaders, body: "" });
+    }
+    return route.fallback();
+  });
+  await page.goto("/tasks/new");
+  await page.getByLabel("タイトル", { exact: true }).fill("画像再試行テスト");
+  await page.getByLabel("サブジェクト").click();
+  await page.getByRole("menuitem", { name: "数学" }).click();
+  await page.getByLabel("期限", { exact: true }).click();
+  await page.getByLabel("日付", { exact: true }).fill("2099-10-16");
+  await page.getByRole("button", { name: "適用" }).click();
+  await page.getByText("詳細を追加（任意）", { exact: true }).click();
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "failed.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") },
+    { name: "slow.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") },
+  ]);
+  const attachments = page.locator('[data-slot="attachment"]');
+  await expect(attachments.first()).toHaveAttribute("data-state", "idle");
+  await expect(attachments.first().getByRole("status")).toHaveText("アップロード待ち");
+  const submit = page.locator('form button[type="submit"]');
+  await submit.click();
+  await expect(attachments.first()).toHaveAttribute("data-state", "error");
+  await expect(attachments.last()).toHaveAttribute("data-state", "uploading");
+  await expect(submit).toBeDisabled();
+  await expect(page.getByRole("button", { name: /画像を削除/ }).first()).toBeDisabled();
+  await page.evaluate(() => {
+    const request = (window as any).taskImageRequests[1] as XMLHttpRequest;
+    request.upload.dispatchEvent(new ProgressEvent("progress", { lengthComputable: true, loaded: 1, total: 2 }));
+  });
+  await expect(attachments.last().getByRole("status")).toHaveText("アップロード中 · 50%");
+  await expect(attachments.last().getByRole("progressbar")).toHaveAttribute("value", "50");
+  await page.evaluate(() => { localStorage.setItem("display_lang", "en"); window.dispatchEvent(new Event("languagechange")); });
+  await expect(attachments.last().getByRole("status")).toHaveText("Uploading · 50%");
+  await expect(attachments.first().getByRole("status")).toContainText("Upload failed");
+  await expect(submit).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await attachments.last().scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/image-upload-progress-mobile.png", fullPage: true });
+  expect(api.tasks).toHaveLength(0);
+  await page.evaluate(() => (window as any).taskImageRequests[1].upload.dispatchEvent(new ProgressEvent("load")));
+  await expect(attachments.last()).toHaveAttribute("data-state", "processing");
+  release();
+  await expect(attachments.last()).toHaveAttribute("data-state", "done");
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page).toHaveURL(/\/home$/);
+  expect(uploads).toBe(3);
+  expect(api.tasks).toHaveLength(1);
+  expect(api.tasks[0].image_keys).toEqual([
+    "task-images/1/550e8400-e29b-41d4-a716-000000000003",
+    "task-images/1/550e8400-e29b-41d4-a716-000000000002",
+  ]);
+});
+
+test("画像を編集保存中は入力と二重保存を防ぎ、失敗後に再試行できる", async ({ page }) => {
+  const api = await mockApi(page, { authenticated: true });
+  api.tasks.push({ id: 42, title: "画像編集中", subject_id: 1, deadline: "2099-10-15", is_completed: false });
+  let release!: () => void;
+  const response = new Promise<void>((resolve) => { release = resolve; });
+  let uploads = 0;
+  await page.route("https://r2.example.test/signed-upload-*", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    uploads++;
+    if (uploads === 1) {
+      await response;
+      return route.fulfill({ status: 403, headers: corsHeaders, body: "" });
+    }
+    return route.fallback();
+  });
+  await page.goto("/home");
+  await page.getByRole("button", { name: "アクション" }).click();
+  await page.getByRole("button", { name: "編集", exact: true }).click();
+  await page.locator('#ed-42-images').setInputFiles({ name: "edit.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") });
+  const save = page.getByRole("button", { name: "保存", exact: true });
+  await save.click();
+  const attachment = page.locator('[data-slot="attachment"]');
+  await expect(attachment).toHaveAttribute("data-state", "uploading");
+  await expect(save).toBeDisabled();
+  await expect(page.getByLabel("タイトル", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "キャンセル", exact: true })).toBeDisabled();
+  await page.keyboard.press("ControlOrMeta+s");
+  expect(uploads).toBe(1);
+  await attachment.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/image-upload-progress-edit.png", fullPage: true });
+  release();
+  await expect(attachment).toHaveAttribute("data-state", "error");
+  await expect(attachment.getByRole("status")).toContainText("アップロードに失敗しました");
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.locator('#ed-42-images')).toHaveCount(0);
+  expect(uploads).toBe(2);
+  expect(api.tasks[0].image_keys).toHaveLength(1);
+});
