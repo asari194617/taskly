@@ -35,4 +35,17 @@ for (const directive of requiredCspDirectives) {
   }
 }
 
+// Task images use signed URLs on the private bucket for both PUT and GET.
+const taskImageOrigin = "https://taskly-task-images.5a245d21c227e6c29395ad786899eb1e.r2.cloudflarestorage.com";
+const csp = headers.match(/^  Content-Security-Policy: (.+)$/m)?.[1] ?? "";
+const sources = new Map(csp.split(";").map((directive) => {
+  const [name, ...values] = directive.trim().split(/\s+/);
+  return [name, values];
+}));
+for (const directive of ["connect-src", "img-src"]) {
+  if (!sources.get(directive)?.includes(taskImageOrigin)) {
+    throw new Error(`Task image bucket must be allowed by ${directive}`);
+  }
+}
+
 console.log("Security headers are configured.");
