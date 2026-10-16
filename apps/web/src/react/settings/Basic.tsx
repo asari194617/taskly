@@ -153,7 +153,11 @@ export default function SettingsBasic() {
             </Label>
             <Select
               value={notificationLang}
-              onValueChange={(v: "ja" | "en") => setNotificationLang(v)}
+              onValueChange={(value) => {
+                if (value === "ja" || value === "en") {
+                  setNotificationLang(value);
+                }
+              }}
             >
               <SelectTrigger id="notification_lang">
                 <SelectValue placeholder={dict.tasks.selectPlaceholder} />
