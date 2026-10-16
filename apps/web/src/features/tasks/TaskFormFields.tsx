@@ -95,6 +95,18 @@ export function TaskFormFields({
 }) {
   const { lang, dict } = useLang();
   const [imageError, setImageError] = React.useState("");
+  const [isDraggingImage, setIsDraggingImage] = React.useState(false);
+  const imageDragDepth = React.useRef(0);
+  const canAddImages =
+    !values.submitting && values.images.length < TASK_IMAGE_MAX_COUNT;
+  const imageDropActive = canAddImages && isDraggingImage;
+  const resetImageDrag = () => {
+    imageDragDepth.current = 0;
+    setIsDraggingImage(false);
+  };
+  React.useEffect(() => {
+    if (!canAddImages) resetImageDrag();
+  }, [canAddImages]);
   const appendFiles = (files: FileList | File[]) => {
     if (values.submitting) return;
     const available = TASK_IMAGE_MAX_COUNT - values.images.length;
@@ -236,17 +248,32 @@ export function TaskFormFields({
             <label
               htmlFor={`${id}-images`}
               data-testid={`${id}-image-dropzone`}
-              className="mt-1 flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed bg-muted/30 px-4 py-3 text-center transition-colors hover:bg-muted/50"
+              className={`mt-1 flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed px-4 py-3 text-center transition-colors ${imageDropActive ? "border-primary bg-primary/10 ring-2 ring-primary/30" : "bg-muted/30 hover:bg-muted/50"}`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                if (!canAddImages || !event.dataTransfer.types.includes("Files"))
+                  return;
+                imageDragDepth.current += 1;
+                setIsDraggingImage(true);
+              }}
               onDragOver={(event) => {
                 event.preventDefault();
-                event.dataTransfer.dropEffect = "copy";
+                event.dataTransfer.dropEffect = canAddImages ? "copy" : "none";
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                imageDragDepth.current = Math.max(0, imageDragDepth.current - 1);
+                if (imageDragDepth.current === 0) setIsDraggingImage(false);
               }}
               onDrop={(event) => {
                 event.preventDefault();
+                resetImageDrag();
                 appendFiles(event.dataTransfer.files);
               }}
             >
-              <ImagePlus className="mb-1 h-5 w-5 text-muted-foreground" />
+              <ImagePlus
+                className={`mb-1 h-5 w-5 ${imageDropActive ? "text-primary" : "text-muted-foreground"}`}
+              />
               <span className="text-sm">
                 {compact
                   ? lang === "ja"

@@ -179,6 +179,64 @@ test("課題作成時に画像をR2へ直接アップロードする", async ({ 
   await expect.poll(() => api.tasks[0].image_keys?.[0]).toContain("550e8400");
 });
 
+test("画像のドロップ領域はファイルのドラッグ中に強調され、離脱・ドロップで元に戻る", async ({ page }) => {
+  await mockApi(page, { authenticated: true });
+  await page.goto("/home");
+  await page.getByRole("button", { name: "新規作成" }).first().click();
+  const dropzone = page.getByRole("dialog").locator('[data-testid$="-image-dropzone"]');
+  const initialBorder = await dropzone.evaluate((element) => getComputedStyle(element).borderColor);
+  const initialBackground = await dropzone.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array([1])], "proof.png", { type: "image/png" }));
+    return transfer;
+  });
+  const textTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.setData("text/plain", "text");
+    return transfer;
+  });
+  await dropzone.dispatchEvent("dragenter", { dataTransfer: textTransfer });
+  await expect(dropzone).not.toHaveClass(/border-primary/);
+  await dropzone.dispatchEvent("dragleave", { dataTransfer: textTransfer });
+
+  await dropzone.dispatchEvent("dragenter", { dataTransfer });
+  await dropzone.dispatchEvent("dragover", { dataTransfer });
+  await expect.poll(() => dropzone.evaluate((element) => getComputedStyle(element).borderColor)).not.toBe(initialBorder);
+  await expect.poll(() => dropzone.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(initialBackground);
+  await expect(dropzone.locator("svg")).toHaveClass(/text-primary/);
+  // Moving across the icon and text must keep the outer dropzone highlighted.
+  const child = dropzone.locator("span").first();
+  await child.dispatchEvent("dragenter", { dataTransfer });
+  await dropzone.dispatchEvent("dragleave", { dataTransfer });
+  await expect(dropzone).toHaveClass(/border-primary/);
+  await child.dispatchEvent("dragleave", { dataTransfer });
+  await expect(dropzone).not.toHaveClass(/border-primary/);
+  await expect(dropzone).toHaveCSS("border-color", initialBorder);
+
+  await dropzone.dispatchEvent("dragenter", { dataTransfer });
+  await dropzone.dispatchEvent("drop", { dataTransfer });
+  await expect(dropzone).not.toHaveClass(/border-primary/);
+  await expect(page.getByRole("button", { name: /画像を削除/ })).toHaveCount(1);
+
+  await page.getByRole("dialog").locator('input[type="file"]').setInputFiles(
+    Array.from({ length: 4 }, (_, index) => ({
+      name: `extra-${index}.png`, mimeType: "image/png", buffer: Buffer.from([1]),
+    })),
+  );
+  await expect(page.getByRole("button", { name: /画像を削除/ })).toHaveCount(5);
+  await dropzone.dispatchEvent("dragenter", { dataTransfer });
+  await expect(dropzone).not.toHaveClass(/border-primary/);
+  await dropzone.dispatchEvent("dragleave", { dataTransfer });
+  await page.getByRole("button", { name: /画像を削除/ }).last().click();
+  await dropzone.dispatchEvent("dragenter", { dataTransfer });
+  await expect(dropzone).toHaveClass(/border-primary/);
+  await dropzone.dispatchEvent("dragleave", { dataTransfer });
+  await expect(dropzone).not.toHaveClass(/border-primary/);
+  await dataTransfer.dispose();
+  await textTransfer.dispose();
+});
+
 test("課題編集で画像を複数ドラッグ&ドロップして保存する", async ({ page }) => {
   const api = await mockApi(page, { authenticated: true });
   await page.goto("/home");
