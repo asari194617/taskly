@@ -60,3 +60,6 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
 COPY --from=mysql-client /usr/bin/mysqldump /usr/local/bin/mysqldump
+
+# Avoid loading Airflow and its providers for every periodic health probe.
+COPY --chown=airflow:root infra/airflow/healthcheck.py /opt/airflow/healthcheck.py
