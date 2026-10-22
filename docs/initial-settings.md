@@ -84,6 +84,45 @@ mountします。通常のローカルCompose起動ではこのoverrideを使い
 本番ホストではイメージをビルドしません。`docker compose up --build` や
 `latest` の直接指定ではなく、ワークフローが配布する commit SHA タグを使用します。
 
+### 小容量ホストのメモリ管理
+
+Airflow 3 の実行方式は `LocalExecutor`、既定の実行枠は1です。
+`SequentialExecutor` は Airflow 3.3 では `LocalExecutor` に読み替えられるため、
+実行枠を8にすると待機中にも8個の Python ワーカーが常駐します。
+全 DAG・通知チャネル・コールバック・UI は維持し、重なったタスクは順番に実行します。
+ホスト増強後に並列数を上げる場合は `PROD_ENV` に `TASKLY_AIRFLOW_PARALLELISM` を設定します。
+メタDB接続プールは各プロセス2接続、追加接続なしです。
+
+scheduler / DAG processor のコンテナ healthcheck は `infra/airflow/healthcheck.py` で
+同一ホスト名の最新ジョブが `running` かつハートビートが閾値内かをメタDBで確認します。
+Airflow CLI や provider の読み込みを30秒ごとに繰り返さず、既定30秒の閾値と
+`AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD` /
+`AIRFLOW__DAG_PROCESSOR__HEALTH_CHECK_THRESHOLD` に対応します。
+DBセッションを UTC に固定し、MySQL の `TIMESTAMP` の時差変換で判定を誤らないようにします。
+
+本番 MySQL はテーブルキャッシュ512、定義キャッシュ400、キャッシュ分割数2、
+SQL digest 集計1000件、ログバッファ16MiBに設定します。Performance Schema、
+InnoDBデータキャッシュ、接続上限、SQL mode、トランザクションの永続化設定は維持します。
+補助キャッシュを小さくするため、テーブルオープン回数・ログ待ち・SQL遅延を反映後に確認します。
+Prometheus / Grafana / Alertmanager / Blackbox は既存のコンテナ上限より小さい
+`GOMEMLIMIT` を設定し、上限到達前の GC を促します。これは Go ランタイムの
+ソフト目標であり、プロセス全体の使用量を保証する上限ではありません。
+
+本番での比較は `docker stats` だけでなく cgroup v2 の `memory.current` と
+`memory.swap.current` の合計、`vmstat 1 5` の swap in/out、HTTP応答時間、
+全 DAG の直近成功・実行時間で行います。スワップに退避したメモリは `docker stats` の
+表示だけでは把握できません。ホストには Taskly 外のアプリ・監視Agentも常駐するため、
+それらを含む `free -m` / プロセス別 `VmSwap` も確認します。
+
+反映は通常のデプロイで行います。MySQL の起動引数を変更したリリースでは DB が再作成され、
+接続が一時的に切断されます。切り戻しはこの設定変更を revert したリリースをデプロイします。
+旧 Airflow イメージに戻す場合は healthcheck の Compose 設定も同時に戻してください。
+この変更ではアプリDB・AirflowメタDBのスキーマ移行は不要です。
+
+参考: [Airflow LocalExecutor](https://airflow.apache.org/docs/apache-airflow/3.3.0/core-concepts/executor/local.html)、
+[MySQL Performance Schemaの自動設定](https://dev.mysql.com/doc/refman/8.4/en/performance-schema-startup-configuration.html)、
+[Goのメモリ目標](https://go.dev/doc/gc-guide#Memory_limit)。
+
 ### DBスキーマ管理
 
 `apps/server/schema.sql` がTasklyアプリDBの宣言的な正本です。`atlas.hcl` は接続情報を

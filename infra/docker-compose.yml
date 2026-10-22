@@ -158,17 +158,15 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       MYSQL_ROOT_PASSWORD: ""
-      AIRFLOW__CORE__PARALLELISM: "8"
+      AIRFLOW__CORE__PARALLELISM: ${TASKLY_AIRFLOW_PARALLELISM:-1}
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
-      AIRFLOW__SCHEDULER__MAX_THREADS: "2"
-      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__EXPOSE_CONFIG: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_META_USER:?set AIRFLOW_META_USER}:${AIRFLOW_META_PASSWORD:?set AIRFLOW_META_PASSWORD}@db:3306/${AIRFLOW_META_DATABASE:?set AIRFLOW_META_DATABASE}
-      AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "8"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "2"
       AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "0"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE: "1800"
@@ -264,17 +262,15 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
       MYSQL_ROOT_PASSWORD: ""
-      AIRFLOW__CORE__PARALLELISM: "8"
+      AIRFLOW__CORE__PARALLELISM: ${TASKLY_AIRFLOW_PARALLELISM:-1}
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
-      AIRFLOW__SCHEDULER__MAX_THREADS: "2"
-      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
       AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
       AIRFLOW__API__BASE_URL: http://airflow-webserver:3065
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://${AIRFLOW_META_USER:?set AIRFLOW_META_USER}:${AIRFLOW_META_PASSWORD:?set AIRFLOW_META_PASSWORD}@db:3306/${AIRFLOW_META_DATABASE:?set AIRFLOW_META_DATABASE}
-      AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "8"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "2"
       AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "0"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING: "True"
       AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE: "1800"
@@ -307,7 +303,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "test -x /opt/airflow/bin/notifications-que-manager && test -x /opt/airflow/bin/backup-mysql && test -x /opt/airflow/bin/moderation && airflow jobs check --job-type SchedulerJob --local",
+          "test -x /opt/airflow/bin/notifications-que-manager && test -x /opt/airflow/bin/backup-mysql && test -x /opt/airflow/bin/moderation && python /opt/airflow/healthcheck.py SchedulerJob",
         ]
       interval: 30s
       timeout: 20s
@@ -338,7 +334,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      AIRFLOW__CORE__PARALLELISM: "8"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__PARALLELISM: ${TASKLY_AIRFLOW_PARALLELISM:-1}
       MYSQL_ROOT_PASSWORD: ""
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT: "120"
@@ -371,7 +368,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
     command: ["bash", "-lc", "exec airflow dag-processor"]
     healthcheck:
-      test: ["CMD", "airflow", "jobs", "check", "--job-type", "DagProcessorJob", "--local"]
+      test: ["CMD", "python", "/opt/airflow/healthcheck.py", "DagProcessorJob"]
       interval: 30s
       timeout: 20s
       retries: 3

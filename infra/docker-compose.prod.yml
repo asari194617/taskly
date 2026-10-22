@@ -9,6 +9,17 @@ x-datadog-socket-mount: &datadog-socket-mount
   read_only: true
 
 services:
+  db:
+    # Trim auxiliary caches on the shared 2 GiB host. Keep Performance Schema,
+    # InnoDB's data cache, SQL semantics, and durability settings intact.
+    command:
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+      - --table-open-cache=512
+      - --table-definition-cache=400
+      - --table-open-cache-instances=2
+      - --performance-schema-digests-size=1000
+      - --innodb-log-buffer-size=16777216
+
   server:
     environment:
       <<: *datadog-environment
@@ -54,6 +65,8 @@ services:
     image: prom/prometheus:v3.5.0
     restart: unless-stopped
     mem_limit: 192m
+    environment:
+      GOMEMLIMIT: 144MiB
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -74,6 +87,7 @@ services:
     restart: unless-stopped
     mem_limit: 64m
     environment:
+      GOMEMLIMIT: 48MiB
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     entrypoint: ["/bin/sh", "/etc/alertmanager/start-alertmanager.sh"]
     volumes:
@@ -87,12 +101,15 @@ services:
     image: prom/blackbox-exporter:v0.27.0
     restart: unless-stopped
     mem_limit: 32m
+    environment:
+      GOMEMLIMIT: 24MiB
 
   grafana:
     image: grafana/grafana:12.2.0
     restart: unless-stopped
     mem_limit: 192m
     environment:
+      GOMEMLIMIT: 144MiB
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_AUTH_BASIC_ENABLED: "false"
