@@ -24,7 +24,9 @@ services:
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      # The image starts a socket-only temporary server during initialization.
+      # Dependents connect over TCP and must wait for the final server.
+      test: ["CMD", "mysqladmin", "ping", "--protocol=TCP", "-h", "127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,7 +39,7 @@ services:
     tmpfs:
       - /var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-patlas_dev_password"]
+      test: ["CMD", "mysqladmin", "ping", "--protocol=TCP", "-h", "127.0.0.1", "-patlas_dev_password"]
       interval: 2s
       timeout: 5s
       retries: 30
