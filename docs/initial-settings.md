@@ -125,6 +125,11 @@ Prometheus / Grafana / Alertmanager / Blackbox は既存のコンテナ上限よ
 
 ### DBスキーマ管理
 
+MySQL と Atlas 用の一時 MySQL の healthcheck は `--protocol=TCP -h 127.0.0.1` で
+最終サーバーの待受開始を確認します。公式イメージは初期化中に `--skip-networking` の
+一時サーバーを起動するため、`localhost` の socket 接続では初期化完了前に healthy になり、
+後続の Atlas が TCP 接続拒否で失敗する場合があります。
+
 `apps/server/schema.sql` がTasklyアプリDBの宣言的な正本です。`atlas.hcl` は接続情報を
 環境変数から組み立て、SQL定義の解析には使い捨てのMySQL 8.4を使います。過去の
 `apps/server/migrations` は監査資料として残しますが、新しい変更は追加しません。
