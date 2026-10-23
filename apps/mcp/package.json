@@ -23,7 +23,7 @@
     "fastify": "5.12.7",
     "fastify-plugin": "6.0.1",
     "mysql2": "3.24.6",
-    "undici": "8.12.2",
+    "undici": "8.12.3",
     "zod": "4.6.7"
   },
   "devDependencies": {
