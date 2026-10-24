@@ -96,7 +96,8 @@ RUN python -m pip install --no-cache-dir --upgrade \
     "urllib3>=2.8.0" "certifi>=2026.10.19" \
     "opentelemetry-api>=1.45.1" "opentelemetry-sdk>=1.45.1" \
     "opentelemetry-exporter-otlp>=1.45.1" \
-    "PyJWT>=2.15.0" "uv>=0.13.4" && \
+    "PyJWT>=2.15.0" "uv>=0.13.4" \
+    "aiohttp>=3.14.4" "multidict>=6.9.1" && \
     python -m pip check
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
