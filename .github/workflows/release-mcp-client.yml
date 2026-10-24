@@ -35,7 +35,8 @@ jobs:
           set -eux
           npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
-          npm i -g esbuild@0.25.10 @yao-pkg/pkg@6.22.0
+          # pkg 6.24.0 embeds Node 22.23.4, which fixes CVE-2026-111497.
+          npm i -g esbuild@0.25.10 @yao-pkg/pkg@6.24.0
           pkg --version
           mkdir -p artifacts
           mkdir -p .tmp/mcp-release
@@ -75,7 +76,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
-          npm install --global esbuild@0.25.10 @yao-pkg/pkg@6.22.0
+          # pkg 6.24.0 embeds Node 22.23.4, which fixes CVE-2026-111497.
+          npm install --global esbuild@0.25.10 @yao-pkg/pkg@6.24.0
           pkg --version
           New-Item -ItemType Directory -Force artifacts, .tmp/mcp-release | Out-Null
           esbuild apps/mcp/src/stdio.ts --bundle --platform=node --format=cjs --target=node22 --outfile=.tmp/mcp-release/taskly-mcp.cjs
@@ -107,7 +109,8 @@ jobs:
           set -eux
           npm -C apps/mcp ci --legacy-peer-deps --no-audit --no-fund
           npm -C apps/mcp run build
-          npm i -g esbuild@0.25.10 @yao-pkg/pkg@6.22.0
+          # pkg 6.24.0 embeds Node 22.23.4, which fixes CVE-2026-111497.
+          npm i -g esbuild@0.25.10 @yao-pkg/pkg@6.24.0
           pkg --version
           mkdir -p artifacts
           mkdir -p .tmp/mcp-release
