@@ -93,12 +93,14 @@ RUN python -m pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL
 # SSH providers and their dependency trees.
 RUN python -m pip install --no-cache-dir --upgrade \
     "apache-airflow==${AIRFLOW_VERSION}" \
+    apache-airflow-providers-fab \
     "urllib3>=2.8.0" "certifi>=2026.10.19" \
     "opentelemetry-api>=1.45.1" "opentelemetry-sdk>=1.45.1" \
     "opentelemetry-exporter-otlp>=1.45.1" \
     "PyJWT>=2.15.0" "uv>=0.13.4" \
     "aiohttp>=3.14.4" "multidict>=6.9.1" && \
-    python -m pip check
+    python -m pip check && \
+    python -c "from airflow.providers.fab.auth_manager.fab_auth_manager import FabAuthManager"
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
