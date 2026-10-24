@@ -52,7 +52,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Use the client matching the production MySQL server so the dump can be restored.
 FROM mysql:8.4 AS mysql-client
 
-FROM apache/airflow:3.3.0-python3.14
+FROM apache/airflow:slim-3.3.2-python3.14
 
 USER root
 RUN apt-get update && \
@@ -71,9 +71,12 @@ USER airflow
 
 # Python deps for integrations: Sentry, Datadog tracer, Discord provider
 # IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
-ARG AIRFLOW_VERSION=3.3.0
+ARG AIRFLOW_VERSION=3.3.2
 ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
-RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
+RUN python -m pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
+    "apache-airflow==${AIRFLOW_VERSION}" \
+    apache-airflow-providers-standard \
+    mysql-connector-python \
     sentry-sdk \
     ddtrace \
     apache-airflow-providers-discord \
@@ -84,6 +87,17 @@ RUN pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     python-dateutil \
 	python-dotenv \
 	boto3
+
+# Keep the patched core fixed while overriding security-sensitive versions from
+# the upstream release constraints. The slim image avoids unused cloud, AI and
+# SSH providers and their dependency trees.
+RUN python -m pip install --no-cache-dir --upgrade \
+    "apache-airflow==${AIRFLOW_VERSION}" \
+    "urllib3>=2.8.0" "certifi>=2026.10.19" \
+    "opentelemetry-api>=1.45.1" "opentelemetry-sdk>=1.45.1" \
+    "opentelemetry-exporter-otlp>=1.45.1" \
+    "PyJWT>=2.15.0" "uv>=0.13.4" && \
+    python -m pip check
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
