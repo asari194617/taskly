@@ -23,7 +23,7 @@ RUN apt-get update && \
     mkdir /opt/brotli-runtime && \
     cp -a /opt/brotli/lib/libbrotli*.so* /opt/brotli-runtime/
 
-FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS batch-builder
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS batch-builder
 
 ARG TARGETOS
 ARG TARGETARCH

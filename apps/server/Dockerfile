@@ -26,7 +26,7 @@ RUN apk add --no-cache build-base ca-certificates cmake curl gzip tar \
 	&& mkdir /opt/brotli-runtime \
 	&& cp -a /opt/brotli/lib/libbrotli*.so* /opt/brotli-runtime/
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS build
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
 # Copy the server source tree after the refactor to a nested layout
