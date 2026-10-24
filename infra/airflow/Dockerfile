@@ -52,11 +52,24 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Use the client matching the production MySQL server so the dump can be restored.
 FROM mysql:8.4 AS mysql-client
 
+FROM apache/airflow:slim-3.3.2-python3.14 AS airflow-python-deps
+
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential default-libmysqlclient-dev pkg-config && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+ARG AIRFLOW_VERSION=3.3.2
+ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
+RUN python -m pip wheel --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
+    --wheel-dir /tmp/mysqlclient-wheels mysqlclient
+
 FROM apache/airflow:slim-3.3.2-python3.14
 
 USER root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git ca-certificates default-mysql-client gzip curl && \
+    apt-get install -y --no-install-recommends git ca-certificates default-mysql-client libmariadb3 gzip curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Debian bookworm has not published a fixed libbrotli package yet. Prefer the
@@ -68,6 +81,10 @@ RUN mkdir -p /opt/airflow/bin /opt/airflow/backups /opt/airflow/logs && \
     chown -R airflow:root /opt/airflow/bin /opt/airflow/backups /opt/airflow/logs
 
 USER airflow
+
+COPY --from=airflow-python-deps --chown=airflow:root /tmp/mysqlclient-wheels/ /tmp/mysqlclient-wheels/
+RUN python -m pip install --no-cache-dir /tmp/mysqlclient-wheels/mysqlclient-*.whl && \
+    rm -rf /tmp/mysqlclient-wheels
 
 # Python deps for integrations: Sentry, Datadog tracer, Discord provider
 # IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
@@ -100,6 +117,7 @@ RUN python -m pip install --no-cache-dir --upgrade \
     "PyJWT>=2.15.0" "uv>=0.13.4" \
     "aiohttp>=3.14.4" "multidict>=6.9.1" && \
     python -m pip check && \
+    python -c "import MySQLdb" && \
     python -c "from airflow.providers.fab.auth_manager.fab_auth_manager import FabAuthManager"
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
