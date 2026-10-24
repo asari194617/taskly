@@ -1,0 +1,124 @@
+name: update-primary-runners
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-primary-runners
+  cancel-in-progress: false
+
+env:
+  RUNNER_IMAGE: taskly-actions-runner:2.338.1-ci
+  EXPECTED_NODE_VERSION: v24.22.1
+
+jobs:
+  install:
+    runs-on: [self-hosted, taskly-ci-primary]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build and verify the runner image
+        run: |
+          set -euo pipefail
+          docker build --tag "$RUNNER_IMAGE" infra/actions-runner
+          docker run --rm --entrypoint sh "$RUNNER_IMAGE" -lc '
+            test "$(node --version)" = "v24.22.1"
+            test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v24.22.1"
+            curl --version | head -1 | grep -F "brotli/1.2.1"
+            ldd "$(command -v curl)" | grep -F "/usr/local/lib/libbrotli"
+          '
+
+      - name: Install the new launcher on the host
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/infra/actions-runner,dst=/source,readonly" \
+            --mount type=bind,src=/opt/taskly-runner,dst=/host-opt \
+            --mount type=bind,src=/etc/taskly-runner,dst=/host-etc \
+            alpine:3.22 sh -euc '
+              for script in run-slot.sh register-slot.sh stop-slot.sh; do
+                cp "/source/${script}" "/host-opt/${script}"
+                chmod 0755 "/host-opt/${script}"
+              done
+              if grep -q "^TASKLY_RUNNER_IMAGE=" /host-etc/runner.env; then
+                sed -i "s#^TASKLY_RUNNER_IMAGE=.*#TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.1-ci#" /host-etc/runner.env
+              else
+                printf "%s\n" "TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.1-ci" >> /host-etc/runner.env
+              fi
+              chmod 0644 /host-etc/runner.env
+            '
+
+  recycle:
+    needs: install
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4]
+    runs-on: [self-hosted, taskly-ci-primary]
+    timeout-minutes: 5
+    steps:
+      - name: Drain one existing listener
+        run: |
+          echo "Recycling ${RUNNER_NAME} for slot ${{ matrix.slot }}"
+          sleep 30
+
+  verify:
+    needs: recycle
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4]
+    runs-on: [self-hosted, taskly-ci-primary]
+    timeout-minutes: 5
+    steps:
+      - name: Verify the recycled listener
+        run: |
+          set -euo pipefail
+          echo "Verifying ${RUNNER_NAME} for slot ${{ matrix.slot }}"
+          test "$(node --version)" = "$EXPECTED_NODE_VERSION"
+          test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "$EXPECTED_NODE_VERSION"
+          curl --version | head -1 | grep -F "brotli/1.2.1"
+          ldd "$(command -v curl)" | grep -F "/usr/local/lib/libbrotli"
+          sleep 15
+
+  verify-host:
+    needs: verify
+    runs-on: [self-hosted, taskly-ci-primary]
+    timeout-minutes: 10
+    steps:
+      - name: Verify every primary listener container
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            all_current=true
+            for slot in 1 2 3 4; do
+              container="taskly-ci-slot-${slot}"
+              image=$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null || true)
+              if [ "$image" != "$RUNNER_IMAGE" ]; then
+                all_current=false
+                echo "Waiting for ${container}: ${image:-not running}"
+              fi
+            done
+            if [ "$all_current" = true ]; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              echo "Primary listener containers did not all converge on ${RUNNER_IMAGE}" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          for slot in 1 2 3 4; do
+            container="taskly-ci-slot-${slot}"
+            echo "Verifying ${container}"
+            test "$(docker exec "$container" node --version)" = "$EXPECTED_NODE_VERSION"
+            test "$(docker exec "$container" /home/runner/actions-runner/externals/node24/bin/node --version)" = "$EXPECTED_NODE_VERSION"
+            docker exec "$container" sh -lc 'curl --version | head -1 | grep -F "brotli/1.2.1"'
+            docker exec "$container" sh -lc 'ldd "$(command -v curl)" | grep -F "/usr/local/lib/libbrotli"'
+          done
