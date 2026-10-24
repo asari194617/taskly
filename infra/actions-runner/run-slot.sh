@@ -2,7 +2,7 @@
 set -euo pipefail
 
 slot=${1:?runner slot is required}
-image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
+image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.338.1-ci}
 runner_cpus=${TASKLY_RUNNER_CPUS:-3}
 runner_memory=${TASKLY_RUNNER_MEMORY:-7g}
 runner_pids_limit=${TASKLY_RUNNER_PIDS_LIMIT:-2048}

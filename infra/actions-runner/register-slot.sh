@@ -9,7 +9,7 @@ if [[ -r "$env_file" ]]; then
   source "$env_file"
   set +a
 fi
-image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.337.0-ci}
+image=${TASKLY_RUNNER_IMAGE:-taskly-actions-runner:2.338.1-ci}
 repository_url=${TASKLY_REPOSITORY_URL:-https://github.com/asari194617/taskly}
 runner_name_prefix=${TASKLY_RUNNER_NAME_PREFIX:-taskly-ci-slot}
 runner_ci_label=${TASKLY_RUNNER_CI_LABEL:-taskly-ci}
