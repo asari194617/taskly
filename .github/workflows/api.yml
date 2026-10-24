@@ -63,6 +63,7 @@ jobs:
       JWT_SECRET: taskly-ci-baseline-secret-at-least-32-characters
       TEST_SCHEMA_DB: "1"
       TEST_API_SMOKE: "1"
+      METRICS_BIND_ADDR: "127.0.0.1:0"
     steps:
       - name: Select isolated MySQL port
         env:
