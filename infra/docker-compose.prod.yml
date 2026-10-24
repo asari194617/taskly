@@ -62,7 +62,7 @@ services:
       - *datadog-socket-mount
 
   prometheus:
-    image: prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.15.1
     restart: unless-stopped
     mem_limit: 192m
     environment:
@@ -83,7 +83,7 @@ services:
       - blackbox
 
   alertmanager:
-    image: prom/alertmanager:v0.28.1
+    image: prom/alertmanager:v0.34.1
     restart: unless-stopped
     mem_limit: 64m
     environment:
@@ -98,14 +98,14 @@ services:
       - "127.0.0.1:3069:9093"
 
   blackbox:
-    image: prom/blackbox-exporter:v0.27.0
+    image: prom/blackbox-exporter:v0.29.1
     restart: unless-stopped
     mem_limit: 32m
     environment:
       GOMEMLIMIT: 24MiB
 
   grafana:
-    image: grafana/grafana:12.2.0
+    image: grafana/grafana:12.4.13
     restart: unless-stopped
     mem_limit: 192m
     environment:
