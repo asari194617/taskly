@@ -100,6 +100,7 @@ RUN python -m pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL
     grpcio \
     protobuf \
     pymysql \
+    aiomysql \
     icalendar \
     python-dateutil \
 	python-dotenv \
@@ -117,7 +118,7 @@ RUN python -m pip install --no-cache-dir --upgrade \
     "PyJWT>=2.15.0" "uv>=0.13.4" \
     "aiohttp>=3.14.4" "multidict>=6.9.1" && \
     python -m pip check && \
-    python -c "import MySQLdb" && \
+    python -c "import MySQLdb, aiomysql, pymysql" && \
     python -c "from airflow.providers.fab.auth_manager.fab_auth_manager import FabAuthManager"
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
