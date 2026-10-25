@@ -133,6 +133,14 @@ jobs:
             --entrypoint python \
             "taskly-ci-airflow:${{ github.sha }}" \
             -m unittest discover -s /opt/airflow/ci/tests -v
+      - name: Verify Airflow MySQL metadata initialization
+        if: matrix.service == 'airflow'
+        run: |
+          docker run --rm \
+            --env AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=mysql+mysqlconnector://airflow:airflow@127.0.0.1/airflow \
+            --env AIRFLOW__CORE__AUTH_MANAGER=airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager \
+            --entrypoint airflow \
+            "taskly-ci-airflow:${{ github.sha }}" version
       - name: Remove CI-only Airflow image
         if: always() && matrix.service == 'airflow'
         env:

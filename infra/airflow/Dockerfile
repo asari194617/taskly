@@ -52,6 +52,18 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Use the client matching the production MySQL server so the dump can be restored.
 FROM mysql:8.4 AS mysql-client
 
+FROM apache/airflow:slim-3.3.2-python3.14 AS mysqlclient-wheel
+
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential default-libmysqlclient-dev pkg-config && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+USER airflow
+ARG AIRFLOW_VERSION=3.3.2
+RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /tmp/mysqlclient-wheels \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt" \
+    mysqlclient
+
 FROM apache/airflow:slim-3.3.2-python3.14
 
 USER root
@@ -73,8 +85,10 @@ USER airflow
 # IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
 ARG AIRFLOW_VERSION=3.3.2
 ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
+COPY --from=mysqlclient-wheel /tmp/mysqlclient-wheels/ /tmp/mysqlclient-wheels/
 RUN python -m pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     "apache-airflow==${AIRFLOW_VERSION}" \
+    /tmp/mysqlclient-wheels/*.whl \
     apache-airflow-providers-standard \
     mysql-connector-python \
     sentry-sdk \
@@ -100,7 +114,7 @@ RUN python -m pip install --no-cache-dir --upgrade \
     "PyJWT>=2.15.0" "uv>=0.13.4" \
     "aiohttp>=3.14.4" "multidict>=6.9.1" && \
     python -m pip check && \
-    python -c "from airflow.providers.fab.auth_manager.fab_auth_manager import FabAuthManager"
+    python -c "import MySQLdb; from airflow.providers.fab.auth_manager.fab_auth_manager import FabAuthManager"
 
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
