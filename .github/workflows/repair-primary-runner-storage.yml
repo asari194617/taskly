@@ -1,0 +1,51 @@
+name: repair-primary-runner-storage
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/repair-primary-runner-storage.yml"
+
+permissions: {}
+
+jobs:
+  cleanup:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4]
+    runs-on: [self-hosted, taskly-ci-primary]
+    timeout-minutes: 10
+    steps:
+      - name: Reclaim unused runner storage
+        env:
+          RUNNER_IMAGE: taskly-actions-runner:2.338.1-ci
+        run: |
+          set -euo pipefail
+
+          work_root=/var/lib/taskly-runner/work
+          active_mounts="$RUNNER_TEMP/active-runner-mounts"
+          docker ps -q | xargs -r docker inspect --format '{{range .Mounts}}{{println .Source}}{{end}}' \
+            | awk -v prefix="$work_root/" 'index($0, prefix) == 1' > "$active_mounts"
+
+          docker run --rm --user root \
+            --volume "$work_root:/host-work" \
+            --volume "$active_mounts:/active-runner-mounts:ro" \
+            --entrypoint bash \
+            "$RUNNER_IMAGE" \
+            -euo pipefail -c '
+              while IFS= read -r -d "" directory; do
+                host_path="/var/lib/taskly-runner/work/${directory##*/}"
+                if grep -Fxq "$host_path" /active-runner-mounts; then
+                  echo "keeping active workspace $host_path"
+                else
+                  echo "removing stale workspace $host_path"
+                  rm -rf -- "$directory"
+                fi
+              done < <(find /host-work -mindepth 1 -maxdepth 1 -type d -name "taskly-ci-slot-*.*" -print0)
+            '
+
+          docker builder prune -af
+          docker image prune -af
+          docker volume prune -f
+          df -h "$work_root"
+          docker system df
