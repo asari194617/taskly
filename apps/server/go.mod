@@ -27,7 +27,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0
 	golang.org/x/crypto v0.58.0
 	google.golang.org/genai v1.76.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.74.8
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/sqlite v1.6.0
