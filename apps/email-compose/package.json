@@ -13,7 +13,7 @@
     "email:dev": "email dev --dir src"
   },
   "dependencies": {
-    "@grpc/grpc-js": "1.14.6",
+    "@grpc/grpc-js": "1.14.7",
     "@grpc/proto-loader": "^0.8.1",
     "@react-email/render": "^2.1.1",
     "@sentry/node": "11.9.0",
