@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 
-FROM node:26.12.1-trixie AS deps
+FROM node:26.13.0-trixie AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Use BuildKit cache to speed up installs
@@ -15,7 +15,7 @@ RUN npm run build
 
 # The slim runtime omits the vulnerable distro libbrotli/curl stack. Node
 # 26.12.1 carries its own CVE-2026-111497 fix.
-FROM node:26.12.1-trixie-slim AS runner
+FROM node:26.13.0-trixie-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN test "$(node --version)" = "v26.12.1" \
