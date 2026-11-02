@@ -47,7 +47,7 @@
     "@storybook/addon-docs": "10.6.4",
     "@storybook/addon-links": "10.6.4",
     "@storybook/react-vite": "10.6.4",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "^5.0.5",
