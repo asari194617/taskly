@@ -1,4 +1,4 @@
-FROM node:26.12.1-trixie AS deps
+FROM node:26.13.0-trixie AS deps
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
 RUN npm ci --legacy-peer-deps --no-audit --no-fund
@@ -11,7 +11,7 @@ RUN npx tsc -p .
 
 # The slim runtime omits the vulnerable distro libbrotli/curl stack. Node
 # 26.12.1 carries its own CVE-2026-111497 fix.
-FROM node:26.12.1-trixie-slim AS runner
+FROM node:26.13.0-trixie-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN test "$(node --version)" = "v26.12.1" \
