@@ -13,31 +13,33 @@
     "email:dev": "email dev --dir src"
   },
   "dependencies": {
-    "@grpc/grpc-js": "1.14.6",
+    "@grpc/grpc-js": "1.14.7",
     "@grpc/proto-loader": "^0.8.1",
     "@react-email/render": "^2.1.1",
-    "@sentry/node": "11.9.0",
-    "@sentry/profiling-node": "11.9.0",
-    "dd-trace": "6.21.0",
+    "@sentry/node": "11.10.0",
+    "@sentry/profiling-node": "11.10.0",
+    "dd-trace": "6.23.0",
     "dotenv": "18.0.9",
     "google-protobuf": "^4.0.3",
-    "i18next": "^26.5.11",
-    "i18next-resources-to-backend": "^1.2.3",
+    "i18next": "^26.7.1",
+    "i18next-resources-to-backend": "^1.2.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-email": "6.11.3",
-    "react-i18next": "17.1.9",
-    "redis": "^6.3.0",
+    "react-email": "6.11.6",
+    "react-i18next": "17.1.11",
+    "redis": "^6.3.1",
     "tslog": "^5.4.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@react-email/ui": "6.11.3",
-    "@types/node": "^26.6.5",
+    "@react-email/ui": "6.11.6",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "typescript": "^7.0.2"
   },
   "overrides": {
+    "glob": "14.0.3",
+    "minimatch": "11.0.4",
     "next": "16.4.2"
   }
 }
