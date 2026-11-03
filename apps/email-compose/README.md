@@ -20,8 +20,22 @@ Environment variables:
 - SENTRY_TRACES_SAMPLE_RATE / SENTRY_PROFILES_SAMPLE_RATE (optional)
 - DD\_\* variables for Datadog (optional)
 
-Build: npm run build
-Run: node dist/index.js
+## Local development
+
+Use Node.js 24 for the same checks as CI; the container runtime uses Node.js
+26.13.0. From this directory:
+
+```bash
+npm ci
+npm run build
+npm start
+```
+
+The service listens on gRPC port `50051`. There is no HTTP email-rendering
+endpoint. Compose exposes this port only inside its network. The API and
+notification mailer connect using `EMAIL_COMPOSE_GRPC_ADDR=email-compose:50051`.
+See [`src/proto/email.proto`](src/proto/email.proto) for the RPC contract and the
+[local setup guide](../../docs/local-development.md) for the surrounding stack.
 
 Code-composition requests accept `expiry_minutes`. Existing `ComposeLoginCode`
 callers that omit it retain the five-minute wording. The two new auth-code RPCs

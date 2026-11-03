@@ -31,7 +31,7 @@ GitHub Actions の本番更新は `deploy-production` concurrency group で直�
 
 `main` の ruleset は `api-build`、`api-empty-database`、`web-build-and-test`、`mcp-build`、`email-compose-build`、`compose-build` を必須チェックとする。これらのワークフローは全 PR で実行する。必要承認数は 0 で、自己レビューでマージできる運用とする。例外権限は設定しない。必須チェックの変更時は、ruleset とこの一覧を同時に更新する。
 
-同一リポジトリ内の信頼済みPRと本番画像build/releaseは、共通の `select-runner` を介して専用CI poolを使う。外部fork PRは `ubuntu-latest` に限定する。CI runnerは1ジョブ後にworkspaceを再作成するが、Docker socketへアクセスできるため悪意あるコードに対する隔離ではない。外部forkのコードを未レビューのまま内部ブランチに移して実行しない。本番反映はPR用poolとは別の `taskly-prod` 専用runnerで実行する。pool停止時はキューで待機し、runnerの明示的な切り替えは公開後のfork検証を終えてから別途行う。
+同一リポジトリ内の信頼済みPRと本番画像build/releaseは、共通の `select-runner` を介して専用CI poolを使う。外部fork PRは `ubuntu-latest` に限定する。CI runnerは1ジョブ後にworkspaceを再作成するが、Docker socketへアクセスできるため悪意あるコードに対する隔離ではない。外部forkのコードを未レビューのまま内部ブランチに移して実行しない。本番反映はPR用poolとは別の `taskly-prod` 専用runnerで実行する。通常は heartbeat の鮮度で primary → secondary → `ubuntu-latest` と選択する。`CI_PRIMARY_ONLY=true` の障害時ガードを設定した間だけ、信頼済みジョブは primary 停止時にもキューで待機する。明示的な切り替えとガード解除は [runner 手順](../../infra/actions-runner/README.md)に従う。
 
 リリース前に担当者は `apps/server/schema.sql` のAtlas dry-runをPRに記録し、旧 API イメージが新スキーマで動くか、旧スキーマへ戻す必要があるかを判定する。追加だけの変更でも、旧 API の読み書き経路を検証する。列削除や型変更がある場合は原則として先に互換期間を設け、旧イメージへの即時切り戻しを「不可」と判定する。
 

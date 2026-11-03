@@ -25,8 +25,8 @@ archived edition or the server's accepted version.
 
 ## Migration and access
 
-`0031_policy_consents.sql` adds append-only events with user ID, acceptance
-time, all three document versions and the display language. The legacy
+The `policy_consents` definition in `apps/server/schema.sql` adds append-only
+events with user ID, acceptance time, all three document versions and the display language. The legacy
 `users.is_agreed_policies` value is retained for old API compatibility but
 cannot establish when or which text a user accepted. No synthetic events are
 created. Every existing user, including one with that flag set, must explicitly
@@ -84,9 +84,11 @@ request is closed.
 
 ## Deployment and rollback
 
-Run migration 0030 before deploying the new API. The old API image ignores the
-new table and can continue reading and writing the legacy boolean; it will not
-create consent events. Rolling back only the API image leaves events intact.
+Apply `apps/server/schema.sql` with Atlas before deploying an API that uses
+consent events; see [schema operations](../initial-settings.md#dbスキーマ管理).
+Historical migration numbers are not deployment commands. An older API that
+predates consent events ignores the table and can continue reading and writing
+the legacy boolean; it will not create consent events. Rolling back only the API image leaves events intact.
 If the migration itself must be undone, stop consent writes, take a verified
 backup, and use a reviewed corrective migration. Do not drop the event table
 to roll back the feature.

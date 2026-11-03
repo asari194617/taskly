@@ -1,6 +1,14 @@
 # Schemas
 
-このドキュメントは、Taskly で使用されるデータスキーマの仕様を説明します。
+この文書は主要テーブルの用途を説明する概要です。全カラム・制約・インデックスの正本は
+[`apps/server/schema.sql`](../apps/server/schema.sql)、適用設定は
+[`atlas.hcl`](../atlas.hcl)です。差分は [Atlas の手順](initial-settings.md#dbスキーマ管理)
+で適用し、過去の `migrations/` の SQL を順に再実行しません。
+
+Airflow メタDBはアプリDBと分離し、Airflow 自身の `db migrate` で管理します。
+認証を分離した環境では、このDBのユーザーは taskly-auth の投影です。
+[ユーザー同期](auth-user-projection-sync.md)と[プロフィール所有権](account-profile-ownership.md)
+を参照してください。
 
 ## 凡例
 
