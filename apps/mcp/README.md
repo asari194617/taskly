@@ -20,7 +20,9 @@ The Compose service is named `mcp` and is exposed at
 
 `PATCH /users/:id` accepts only the token owner's `display_name` and
 `notification_lang` (`ja` or `en`). The request is validated and applied by the
-Go API. Account deletion, registration, and policy agreement are not profile
+Go API. When `AUTH_PROFILE_EXTERNAL=1`, display-name changes return HTTP 409;
+change the name in taskly-auth instead. Notification language remains editable.
+Account deletion, registration, and policy agreement are not profile
 updates and cannot be changed with `user_update`.
 
 The server SHA-256 hashes the supplied token and compares it with
@@ -45,6 +47,11 @@ returns HTTP 503 if either check fails. Compose and deployment verification use
 the liveness endpoint to restart it.
 
 ## Local development
+
+Use Node.js 24 for the same checks as CI; the container runtime uses Node.js
+26.13.0. For the full dependency stack and schema initialization, follow the
+[local setup guide](../../docs/local-development.md). The commands below run
+the HTTP process directly on the host and require exported environment variables.
 
 ```bash
 npm ci --legacy-peer-deps --no-audit --no-fund

@@ -17,8 +17,11 @@ service name on the Compose `default` network.
 | `3067/tcp` | `127.0.0.1` only | Grafana dashboard via SSH tunnel |
 | `3068/tcp` | `127.0.0.1` only | Prometheus query and readiness |
 | `3069/tcp` | `127.0.0.1` only | Alertmanager readiness and test alerts |
-| `3070/tcp` | `127.0.0.1` only | Planned auth API upstream |
-| `3071/tcp` | `127.0.0.1` only | Planned auth UI upstream |
+| `3070/tcp` | `127.0.0.1` only | External taskly-auth API upstream |
+| `3071/tcp` | `127.0.0.1` only | Reserved for a separate auth UI upstream (not provisioned here) |
+
+Auth upstreams are managed by the separate taskly-auth deployment; the Taskly
+Compose files do not create those services or port mappings.
 
 MySQL (`3306`), Redis (`6379`), and email-compose gRPC (`50051`)
 have no host port mapping. Containers reach them as `db:3306`, `redis:6379`,

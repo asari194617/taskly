@@ -9,7 +9,7 @@
 | Docker build cache | 最終参照から7日超で削除 | volumeは対象外 |
 | Airflow task log | 14日超で削除 | `airflow-logs` volume内の通常ファイルのみ |
 | ローカルMySQL backup | 14日超で削除 | 古い候補も新しい順に最低3世代を保持 |
-| FTP上のMySQL backup | 7日 | backup batchの既存ポリシー |
+| FTPS上のMySQL backup | 既定14日、最低3世代を保持 | `BACKUP_RETENTION_DAYS` で期間を変更。リモートの最低3世代は固定。アプリDBとAirflowメタDBごとに適用 |
 
 `db-data`、`redis-data`、`airflow-logs`、`airflow-backups` を含むDocker volumeに対して、
 `docker volume prune` や `docker system prune --volumes` は実行しない。

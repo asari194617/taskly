@@ -12,4 +12,4 @@ docker run --rm \
   -m unittest discover -s /opt/airflow/ci/tests -v
 ```
 
-イメージには Airflow 3.3.0 / Python 3.14 と、Airflow の constraints に沿ってインストールされた `icalendar`、`python-dateutil` などが含まれます。`test_dag_imports.py` は全 Python ファイルの構文と、`.airflowignore` に従って読み込まれる本番 DAG の import エラー・DAG ID の欠落を検証します。新しい本番 DAG を追加したら期待する ID も更新してください。
+イメージには Airflow 3.3.2 / Python 3.14（正確な版は `infra/airflow/Dockerfile` を参照） と、Airflow の constraints に沿ってインストールされた `icalendar`、`python-dateutil` などが含まれます。`test_dag_imports.py` は全 Python ファイルの構文と、`.airflowignore` に従って読み込まれる本番 DAG の import エラー・DAG ID の欠落を検証します。新しい本番 DAG を追加したら期待する ID も更新してください。

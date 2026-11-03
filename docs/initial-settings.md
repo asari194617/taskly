@@ -38,12 +38,13 @@
 - `PROD_ENV`: 本番 `.env` の内容。空値では本番ホストへの接続前にデプロイを中止する
 - `PROD_ENV` 内の `AIRFLOW_META_DATABASE`, `AIRFLOW_META_USER`, `AIRFLOW_META_PASSWORD`: Airflow メタDB専用の接続設定。既存DBからの移行手順は [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) を参照
 - `TASK_IMAGES_R2_ENDPOINT`, `TASK_IMAGES_R2_BUCKET`, `TASK_IMAGES_R2_ACCESS_KEY_ID`, `TASK_IMAGES_R2_SECRET_ACCESS_KEY`: 課題画像用の非公開R2バケット設定。`production` environment に4項目をまとめて保存し、デプロイ時に `PROD_ENV` に組み込む。直接 `PROD_ENV` に `R2_*` を含める方法も利用できる。未設定・空値ではデプロイを中止する。公開MCPクライアント配信用のリポジトリ Secrets とは独立して設定する。詳細は [`features/task-images.md`](features/task-images.md) を参照
-- `PROD_COMPOSE_PROFILES`: 将来 Compose profile を追加する場合の予約値（現行構成には profile なし）
+- `PROD_COMPOSE_PROFILES`: 追加で有効にする Compose profile。通常は空。スキーマ適用スクリプトが Atlas 用の `schema` profile を一時的に有効化するため、通常デプロイでの指定は不要
 - `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。API と MCP は `/readyz` を指定します。既存の `/healthz` 設定は検証スクリプトが `/readyz` に置き換えます。設定された経路だけ追加検証します。
 
 `main` への push では次のパスが変更された場合に起動します。
 
 - `apps/server/**`
+- `atlas.hcl`
 - `apps/mcp/**`
 - `apps/email-compose/**`
 - `batches/**`
@@ -55,25 +56,38 @@
 - `.github/scripts/check-prod-airflow.sh`
 - `.github/workflows/deploy-prod.yml`
 
-手動実行も可能で、`full_build=true` が既定です。画像の build と release は通常、1ジョブごとにコンテナを作り直す4スロットの `taskly-ci` runner poolで実行します。runner poolを使えない場合は `runner_override=ubuntu-latest` を指定できます。`select-runner` と `plan` も既定でself-hosted runner、本番反映は `taskly-prod` 専用runnerで実行します。
+手動実行も可能で、`full_build=true` が既定です。イメージの build/release と `plan` は
+共通の `select-runner` が選ぶ runner を使います。通常、選択ジョブ自体は GitHub-hosted で実行し、
+15分以内に成功した heartbeat がある primary、secondary、`ubuntu-latest` の順に選びます。
+手動の `runner_override` またはリポジトリ変数 `CI_RUNNER` で明示できます。
+`CI_PRIMARY_ONLY=true` はこれらに優先し、信頼済みジョブを primary に固定します。
+2026-11-03 の確認では両変数は未設定です。構成・障害時の切り替えは
+[runner pool 手順](../infra/actions-runner/README.md)を参照してください。
+本番反映は `taskly-prod` 専用runnerで実行します。
+
+パス条件には拡張子の除外がないため、上記ディレクトリ内の README 変更も本番デプロイを起動します。
+Web は Cloudflare Pages で別途配信し、この Compose ワークフローではビルドしません。
 
 ### デプロイの流れ
 
 1. 変更パスから `api`, `email-compose`, `mcp`, `airflow` のビルド対象を選択する。
 2. 対象イメージを `linux/amd64` でビルドし、commit SHA タグで GHCR に push する。
-3. 変更のないサービスにも同じリリース SHA タグを付け、4サービスすべてを同一 SHA で固定する。
+3. 変更のないサービスの既存 `latest` イメージにも同じリリース SHA タグを付け、4サービスのリリースタグを揃える。Airflow の稼働コンテナは更新条件に該当しない限り旧 SHA のまま維持する。
 4. `PROD_ENV` を確認し、`.env` と `infra/.env` を保護してリポジトリを rsync する。
 5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
 6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
 7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull する。Redis ACL の entrypoint が変更された場合は Redis を再作成し、DB と Redis の起動を確認する。
-8. Atlasで `apps/server/schema.sql` と実DBの差分を表示し、破壊的変更がないことを確認して適用する。成功後にアプリコンテナを更新する。Airflow のイメージまたは Compose 設定が変わった場合だけ Airflow 3サービスを更新する。メタDB移行は通常デプロイでは実行しない。
+8. Atlasで `apps/server/schema.sql` と実DBの差分を表示し、破壊的変更がないことを確認して適用する。成功後にアプリコンテナを更新する。Airflow のイメージまたは Compose 設定が変わった場合だけ Airflow 3サービスを更新する。独立したメタDB分離スクリプトは通常デプロイでは実行しない。
 9. 更新したコンテナの再作成後、最大10分間 healthcheck を待つ。
 10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
 11. Datadog APM socket への接続と Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
 
 同時に複数の push があっても実行中のデプロイはキャンセルせず、後続を待機させます。デプロイ失敗時は別の SSH セッションで Airflow 3サービスの状態を確認し、停止・不健康・確認不能なら Actions にエラーを表示します。
 
-Airflow メタDBの初期化・スキーマ更新・旧アプリDBからの分離が必要な場合は、バックアップと DAG の実行状況を確認してから [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) の明示的な移行手順を実行してください。Airflow のサービス起動時に `db migrate` は実行しません。
+Airflow メタDBの初期化・スキーマ更新・旧アプリDBからの分離が必要な場合は、バックアップと DAG の実行状況を確認してから [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) の明示的な移行手順を実行してください。ベースの Compose は起動時に `db migrate` を実行しません。ただし本番 override の
+`airflow-scheduler.command` は exporter の起動前に `airflow db migrate` を実行します。
+これは既存メタDBのスキーマ更新であり、新DB・ユーザーの作成や旧アプリDBからのテーブル移動は行いません。
+初期化・分離には明示的な移行手順が必要です。
 
 デプロイ先ではホストの Datadog Agent が `/var/run/datadog/apm.socket` と
 `/var/run/datadog/dsd.socket` を提供している必要があります。デプロイは両socketの存在を
@@ -164,6 +178,7 @@ Teams連携の `status_callback` を使用する場合は、デプロイ前に `
 `infra/ops/install-user-cron.sh` が次をユーザー crontab に登録します。
 
 - 5分ごとのディスク状態確認
+- 毎分の Prometheus・Alertmanager・scrape 対象確認（[監視手順](operations/metrics-monitoring.md)）
 - 毎日 03:25 の清掃
 
 通知先は `DISK_ALERT_WEBHOOK_URL`、未設定時は `DISCORD_WEBHOOK_URL` です。

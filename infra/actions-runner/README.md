@@ -33,33 +33,36 @@ The production deploy runner uses the separate `taskly-prod` label and its own
 registration volume. It is recycled after every deploy job in the same way as
 the CI slots.
 
-## October 2026 hosted-minutes outage
+## Hosted-minutes outage guard
 
-Set the repository Actions variable `CI_PRIMARY_ONLY=true` while the October
-2026 hosted allowance is exhausted. This guard moves the trusted selector job
-and both production-watch jobs to `taskly-ci-primary`, and forces all downstream
-Linux jobs to primary without consulting heartbeats. It takes precedence over
-`CI_RUNNER` and workflow-dispatch overrides, so a busy/offline primary queues
-jobs instead of falling back to a billed host. Secondary heartbeats are skipped.
-External-fork selectors and jobs remain GitHub-hosted; they may be blocked by
-the exhausted allowance and must never be moved to a trusted self-hosted host.
+Normal operation uses the independent hosted selector and heartbeat fallback
+above. As checked on 2026-11-03, repository variables `CI_PRIMARY_ONLY` and
+`CI_RUNNER` are unset, and GitHub reports four primary slots, one secondary slot,
+and `taskly-prod` online. This is a point-in-time registration check; use current
+heartbeats and job results to assess whether a pool can run work.
+
+During a hosted-minutes outage, set `CI_PRIMARY_ONLY=true`. This guard moves the
+trusted selector job and both production-watch jobs to `taskly-ci-primary`, and
+forces downstream Linux jobs to primary without consulting heartbeats. It takes
+precedence over `CI_RUNNER` and dispatch overrides, so a busy/offline primary
+queues jobs. Secondary heartbeats are skipped. External-fork selectors and jobs
+remain GitHub-hosted.
 
 The MCP client release workflow is deferred entirely while the guard is set:
-its Windows/macOS executables need native runners, and an incomplete release
-must not be published. Re-run the release for its tag after restoring normal mode.
-
-On November 1, clear `CI_PRIMARY_ONLY` (or set it to `false`) to restore the
-independent GitHub-hosted selector, heartbeat-based fallback, production watch,
-secondary heartbeat, and native client releases. This switch does not expire
-by itself; a follow-up in the owning Codex chat is scheduled to clear it.
-Do not set `CI_RUNNER=primary` for this temporary mode; leaving it unset preserves
-the normal fallback policy after the guard is cleared.
+its Windows/macOS executables need native runners. After the allowance is
+restored, clear the guard and re-run any deferred release for its tag. The guard
+does not expire automatically. Do not leave `CI_RUNNER=primary` set when restoring
+normal fallback.
 
 ```bash
 gh variable set CI_PRIMARY_ONLY --body true --repo asari194617/taskly
-# After the billing window resets:
+# Once the allowance is restored:
 gh variable delete CI_PRIMARY_ONLY --repo asari194617/taskly
+gh variable list --repo asari194617/taskly
 ```
+
+This mechanism was used for the October 2026 allowance outage. The guard is
+no longer active as of the check above.
 
 ## Host installation
 
@@ -158,14 +161,14 @@ Check both `systemctl is-active taskly-runner@N.service` and
 For the production slot, use `taskly-runner@prod.service` and container name
 `taskly-prod`.
 
-## Memory corruption incident (2026-10-02)
+## Historical memory corruption incident (2026-10-02)
 
 The runner host produced illegal UTF-8 in freshly downloaded Go modules, Git
 pack/inflate errors, and crashes in unrelated host programs. With all four CI
 containers stopped, `sudo memtester 2G 1` tested 2 GiB of locked memory and
 finished with exit code 6 and 1,391 `FAILURE:` reports, including a stuck-address
-failure. The diagnostic log is `/tmp/taskly-memtest-initial.log` on the host;
-copy it before rebooting because `/tmp` is tmpfs.
+failure. The diagnostic log was written to `/tmp/taskly-memtest-initial.log`.
+That temporary path is not a durable incident archive.
 
 This is evidence of memory-subsystem corruption, not proof of which DIMM,
 slot, CPU memory controller, or firmware setting is responsible. Rebuilding
@@ -173,11 +176,11 @@ runner containers or deleting Go caches does not repair it. The four CI services
 were stopped and disabled with owner approval. The separate production-deploy
 runner service was stopped too; its boot-time enablement was left unchanged.
 
-Keep the host out of CI until physical/firmware diagnosis and memory testing
-pass. After repair, test memory across a substantial portion of available RAM
-with multiple passes, then run dependency integrity checks, API build/tests,
-and image builds in a fresh runner environment before restoring all slots.
-Restore CI startup only after these checks with
-`sudo systemctl enable --now taskly-runner@{1..4}.service`. Start the separate
-production-deploy runner only after host verification succeeds with
-`sudo systemctl enable --now taskly-runner@prod.service`.
+The incident response required keeping the affected host out of CI until
+physical/firmware diagnosis, memory tests over substantial RAM with multiple
+passes, dependency integrity checks, API tests, and fresh image builds passed.
+Preserve that repair evidence in restricted operations records. The online
+registrations recorded above describe current availability; they do not establish
+the hardware root cause or substitute for repair evidence. For a recurrence,
+stop assigning work to the affected pool and follow the same diagnostics before
+restoring slots.

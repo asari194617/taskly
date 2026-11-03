@@ -21,7 +21,25 @@
 - AirflowのWeb UIは`http://localhost:3065`でアクセスできます。
 - 処理の結果はDiscordのWebhookに通知されます。
 - WebhookのURLは`.env`の`DISCORD_WEBHOOK_URL`で設定されています。
-- 全てのバッチ処理はGoで実装します。`infra/docker-compose.yml`の`docker compose`でAirflowイメージをビルドし、バッチはイメージ内の事前ビルド済みバイナリとして実行します。
+- Go バッチと Python の DAG / worker を Airflow から実行します。Go コードを変更した場合は Airflow イメージを再ビルドします。
+
+## 現行 DAG
+
+スケジュールの正本は `infra/airflow/dags/` です。以下は UTC cron を JST に換算した通常の実行時刻です。
+
+| DAG | JST | 処理 |
+| --- | --- | --- |
+| `account_erasure` | 毎日 02:30 | 保持期限後の退会データ消去。認証サービスとの同期を含む |
+| `backup_mysql` | 毎日 03:00 | アプリDB、続いて Airflow メタDBの暗号化バックアップ |
+| `day_shift_index_increment` | 毎日 03:00 | 休日・学校カレンダーを考慮した日直インデックス更新 |
+| `notifications` | 毎日 07:00 / 17:00 | キュー生成と Email / Web Push / Discord 配信 |
+| `day_shift_notify_0830` | 毎日 08:30 | 当日の日直通知 |
+| `moderation_daily` | 毎日 11:15 | モデレーション通知 |
+
+`account_erasure`、日直インデックス更新、日直通知などには Python 実装もあります。
+Go のバッチ実行ファイルは Airflow イメージ内の `/opt/airflow/bin` に配置します。
+ローカルの初期化は [開発手順](../docs/local-development.md#optional-airflow)、
+Python の検証は [Airflow テスト](../docs/operations/airflow-python-tests.md)を参照してください。
 
 ## 各バッチの説明
 

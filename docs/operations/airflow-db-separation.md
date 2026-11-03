@@ -10,7 +10,10 @@
 
 ## 初回移行
 
-通常の本番デプロイは Airflow メタDBを変更しません。初回分離・新規環境の初期化・Airflow バージョンに伴うメタDB更新が必要な場合は、作業対象リリースの Compose ファイルとイメージを用意し、`infra/` で `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`、`TASKLY_IMAGE_TAG=<対象のcommit SHA>` を設定して `./ops/migrate-airflow-db.sh` を明示的に実行します。対象イメージを先に pull し、両DBの復元可能なバックアップを確認してください。このスクリプトは Airflow 3サービスを停止し、`prepare-airflow-db.sh` を実行してから3サービスが healthy になるまで待ちます。停止または移行が失敗・中断された場合は終了 trap で再起動を試み、失敗時はエラーを出します。移行開始前の失敗は旧イメージ、移行開始後は対象イメージを選びます。プロセス強制終了やホスト障害では trap は実行されないため、復旧手順で3サービスを確認してください。
+通常の本番デプロイは `migrate-airflow-db.sh` / `prepare-airflow-db.sh` を実行しません。
+ただし `infra/docker-compose.prod.yml` の scheduler 起動コマンドは、exporter と scheduler の
+開始前に `airflow db migrate` を実行します。新DB・ユーザー・権限の準備や旧DBからの分離は
+この起動処理では行いません。初回分離・新規環境の初期化・Airflow バージョンに伴うメタDB更新が必要な場合は、作業対象リリースの Compose ファイルとイメージを用意し、`infra/` で `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`、`TASKLY_IMAGE_TAG=<対象のcommit SHA>` を設定して `./ops/migrate-airflow-db.sh` を明示的に実行します。対象イメージを先に pull し、両DBの復元可能なバックアップを確認してください。このスクリプトは Airflow 3サービスを停止し、`prepare-airflow-db.sh` を実行してから3サービスが healthy になるまで待ちます。停止または移行が失敗・中断された場合は終了 trap で再起動を試み、失敗時はエラーを出します。移行開始前の失敗は旧イメージ、移行開始後は対象イメージを選びます。プロセス強制終了やホスト障害では trap は実行されないため、復旧手順で3サービスを確認してください。
 
 `prepare-airflow-db.sh` は MySQL が既存 volume で起動していても root 接続で新DB・ユーザーを作ります。新 Airflow イメージで一時的なメタスキーマを作成してテーブル一覧を取得し、旧アプリDBにある Airflow テーブルを1つの `RENAME TABLE` 文で移動します。MySQL が旧スキーマへの内部参照を保持する場合があるため、移動したメタテーブルの外部キーを新スキーマ内への参照として作り直します。その後 `airflow db migrate` を再実行して新バージョンに必要なテーブルを補い、`dag_run` と `task_instance` の件数を照合します。Airflow のメタユーザーにはメタDBだけ、アプリユーザーにはアプリDBだけを許可します。双方のアカウントで反対側のDBへの書き込み拒否を確認します。
 

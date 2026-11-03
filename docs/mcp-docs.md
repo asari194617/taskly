@@ -13,15 +13,19 @@ Taskly MCP は、HTTP API と、その API を MCP ツールとして公開す�
 - `user_get`: `{ id }`
 - `user_update`: `{ id, patch: { display_name?, notification_lang? } }`（本人のみ。`notification_lang` は `ja` または `en`）
 
-HTTP endpoint の詳細は `apps/mcp/README.md` を参照してください。
+`AUTH_PROFILE_EXTERNAL=1` の環境では表示名は taskly-auth で変更します。
+MCP からの表示名更新は HTTP 409 になり、通知言語の更新は利用できます。
+HTTP endpoint の詳細は [MCP README](../apps/mcp/README.md) を参照してください。
 
 ## ローカルで使う
 
-リポジトリのルートで次を実行します。
+[ローカル開発手順](local-development.md)に従って `.env` と `infra/.env` を設定し、
+Atlas でスキーマを適用してから API と MCP を起動します。MCP は MySQL に加えて
+Go API・Redis・email-compose に依存するため、DB と MCP だけでは利用できません。
 
 ```bash
-cp .env.example .env
-docker compose -f infra/docker-compose.yml up -d --build db mcp
+infra/ops/apply-schema.sh
+docker compose -f infra/docker-compose.yml up -d --build --wait server mcp
 curl -fsS http://localhost:3066/readyz
 ```
 
