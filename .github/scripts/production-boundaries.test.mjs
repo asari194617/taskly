@@ -13,7 +13,9 @@ function job(workflow, name) {
 function enabled(block, github, results = {}) {
   const expression = block.match(/^    if: (.+)$/m)?.[1]
     .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
-    .replace(/needs\.([\w-]+)/g, 'needs["$1"]');
+    .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
+    // GitHub expression string equality is case-insensitive.
+    .replace(/github\.ref == '([^']+)'/g, 'github.ref.toLowerCase() === "$1".toLowerCase()');
   assert.ok(expression, 'job has an explicit condition');
   return runInNewContext(expression, {
     github,
@@ -32,15 +34,18 @@ for (const [workflow, name, results] of [
   test(`${workflow}/${name} accepts main and rejects other dispatch refs`, () => {
     const block = job(workflow, name);
     for (const ref of ['refs/heads/feature', 'refs/tags/main', 'refs/pull/1/merge', '']) {
-      assert.equal(enabled(block, { ref, event_name: 'workflow_dispatch' }, results), false, ref);
+      assert.equal(enabled(block, { ref, ref_protected: true, event_name: 'workflow_dispatch' }, results), false, ref);
     }
-    assert.equal(enabled(block, { ref: 'refs/heads/main', event_name: 'workflow_dispatch' }, results), true);
+    assert.equal(enabled(block, { ref: 'refs/heads/main', ref_protected: true, event_name: 'workflow_dispatch' }, results), true);
+    for (const ref of ['refs/heads/main', 'refs/heads/Main']) {
+      assert.equal(enabled(block, { ref, ref_protected: false, event_name: 'workflow_dispatch' }, results), false);
+    }
   });
 }
 
 test('failed/skipped image planning cannot publish or deploy', () => {
   for (const result of ['failure', 'skipped', 'cancelled']) {
-    const github = { ref: 'refs/heads/main' };
+    const github = { ref: 'refs/heads/main', ref_protected: true };
     assert.equal(enabled(job('deploy-prod', 'release-images'), github, {
       plan: result, 'publish-images': 'skipped',
     }), false);
@@ -48,7 +53,7 @@ test('failed/skipped image planning cannot publish or deploy', () => {
       plan: 'success', 'release-images': result,
     }), false);
   }
-  assert.equal(enabled(job('deploy-prod', 'release-images'), { ref: 'refs/heads/main' }, {
+  assert.equal(enabled(job('deploy-prod', 'release-images'), { ref: 'refs/heads/main', ref_protected: true }, {
     plan: 'success', 'publish-images': 'skipped',
   }), true, 'a successful plan with no changed images still tags the release');
 });
@@ -63,10 +68,11 @@ test('production SSH jobs stay on the production runner and environment', () => 
 
 test('release drift checks accept only scheduled or manual main runs', () => {
   const block = job('deploy-prod-watch', 'release-drift');
+  assert.equal(enabled(block, { ref: 'refs/heads/Main', ref_protected: false, event_name: 'workflow_dispatch' }), false);
   for (const ref of ['refs/heads/main', 'refs/heads/feature', 'refs/tags/main']) {
     for (const event_name of ['schedule', 'workflow_dispatch', 'workflow_run', 'pull_request']) {
       const expected = ref === 'refs/heads/main' && ['schedule', 'workflow_dispatch'].includes(event_name);
-      assert.equal(enabled(block, { ref, event_name }), expected);
+      assert.equal(enabled(block, { ref, ref_protected: true, event_name }), expected);
     }
   }
 });

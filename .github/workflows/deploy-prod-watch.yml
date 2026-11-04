@@ -31,7 +31,7 @@ jobs:
           curl --fail --silent --show-error --retry 3 --retry-delay 3 \
             -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
   release-drift:
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ github.ref == 'refs/heads/main' && github.ref_protected && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     # This job receives the production SSH key, even though it only reads state.
     runs-on: [self-hosted, taskly-prod]
     environment: production
