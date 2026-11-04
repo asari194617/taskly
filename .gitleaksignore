@@ -1,0 +1,9 @@
+# Historical CI-only fixture: taskly-baseline-ci-key, used against localhost.
+# Fingerprints intentionally exclude only these revisions, not future credentials.
+db2320b0f329667daa648be17295970bb0241947:.github/workflows/api.yml:curl-auth-header:98
+db2320b0f329667daa648be17295970bb0241947:.github/workflows/api.yml:curl-auth-header:103
+9a13ef9abca8f26c7d5abd2adb852eb9c96a8eec:.github/workflows/api.yml:curl-auth-header:98
+9a13ef9abca8f26c7d5abd2adb852eb9c96a8eec:.github/workflows/api.yml:curl-auth-header:103
+# False match across the DAG description ending in "Gemini API" and the
+# schedule_interval keyword (cron: 15 2 * * *); no credential is present.
+c989efa7d19cb642bca7137af3d5fe90485158b9:infra/airflow/dags/moderation.py:generic-api-key:18
