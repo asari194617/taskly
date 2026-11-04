@@ -1,7 +1,11 @@
 # Contributing
 
-Taskly is not currently accepting external code contributions. Public issues
-may be used for reproducible bug reports and narrowly scoped feature requests,
+Taskly is not currently accepting external code contributions. Pull request
+creation is restricted to collaborators in the repository settings. Maintainers
+continue to use branches, pull requests, review, and the required checks before
+merging.
+
+Public issues may be used for reproducible bug reports and narrowly scoped feature requests,
 but maintainers may close requests that contain private data, security details,
 or material outside the project's scope.
 
