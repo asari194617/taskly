@@ -47,6 +47,8 @@ permissions:
 
 jobs:
   select-runner:
+    # Reject non-main manual dispatches before any image publication or host work.
+    if: github.ref == 'refs/heads/main' && github.ref_protected
     uses: ./.github/workflows/select-runner.yml
     with:
       runner_override: ${{ inputs.runner_override || 'auto' }}
@@ -151,7 +153,7 @@ jobs:
 
   release-images:
     needs: [plan, publish-images]
-    if: ${{ always() && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.ref_protected && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
     runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
     permissions:
       contents: read
@@ -191,7 +193,7 @@ jobs:
 
   deploy:
     needs: [plan, release-images]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.release-images.result == 'success' }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.ref_protected && needs.plan.result == 'success' && needs.release-images.result == 'success' }}
     runs-on: [self-hosted, taskly-prod]
     environment: production
     permissions:

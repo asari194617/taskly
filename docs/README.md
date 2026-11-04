@@ -33,6 +33,7 @@ they do not provision that service:
 ## Operations and verification
 
 - [CI/CD and production deployment](initial-settings.md)
+- [Repository publication gates and final audit](operations/repository-publication.md)
 - [GitHub Actions runner pool](../infra/actions-runner/README.md) and [required checks](operations/github-actions-required-checks.md)
 - [Readiness](operations/readiness.md), [network ports](operations/network-ports.md), and [monitoring](operations/metrics-monitoring.md)
 - [Redis ACL operations](redis-acl-operations.md) and [disk maintenance](operations/disk-maintenance.md)

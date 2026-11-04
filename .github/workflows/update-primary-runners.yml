@@ -16,6 +16,7 @@ env:
 
 jobs:
   install:
+    if: github.ref == 'refs/heads/main' && github.ref_protected
     runs-on: [self-hosted, taskly-ci-primary]
     timeout-minutes: 30
     steps:

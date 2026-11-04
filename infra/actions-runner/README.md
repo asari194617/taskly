@@ -29,24 +29,25 @@ pool naturally becomes ineligible when it cannot complete the scheduled check.
 External fork PRs always select `ubuntu-latest`. Set the repository variable
 `CI_RUNNER` to `primary`, `secondary`, or `ubuntu-latest` for an explicit override
 (hosted billing applies to the last option).
-The production deploy runner uses the separate `taskly-prod` label and its own
-registration volume. It is recycled after every deploy job in the same way as
-the CI slots.
+Production deployment and release-drift checks use the separate `taskly-prod`
+label and its own registration volume. It is recycled after every job in the
+same way as the CI slots. A separate label or container does not isolate it
+from a CI slot with access to the same host Docker socket.
 
 ## Hosted-minutes outage guard
 
 Normal operation uses the independent hosted selector and heartbeat fallback
-above. As checked on 2026-11-03, repository variables `CI_PRIMARY_ONLY` and
-`CI_RUNNER` are unset, and GitHub reports four primary slots, one secondary slot,
-and `taskly-prod` online. This is a point-in-time registration check; use current
-heartbeats and job results to assess whether a pool can run work.
+above. Check current repository variables, runner registrations, and recent
+heartbeat/job results before changing the pool. Registration status alone does
+not establish that a pool can run work.
 
 During a hosted-minutes outage, set `CI_PRIMARY_ONLY=true`. This guard moves the
-trusted selector job and both production-watch jobs to `taskly-ci-primary`, and
+trusted selector job and the failed-deploy notification to `taskly-ci-primary`, and
 forces downstream Linux jobs to primary without consulting heartbeats. It takes
 precedence over `CI_RUNNER` and dispatch overrides, so a busy/offline primary
 queues jobs. Secondary heartbeats are skipped. External-fork selectors and jobs
-remain GitHub-hosted.
+remain GitHub-hosted. Production release-drift checks always use `taskly-prod`.
+The secret scan also always uses GitHub-hosted runners, independent of this guard.
 
 The MCP client release workflow is deferred entirely while the guard is set:
 its Windows/macOS executables need native runners. After the allowance is
@@ -60,9 +61,6 @@ gh variable set CI_PRIMARY_ONLY --body true --repo asari194617/taskly
 gh variable delete CI_PRIMARY_ONLY --repo asari194617/taskly
 gh variable list --repo asari194617/taskly
 ```
-
-This mechanism was used for the October 2026 allowance outage. The guard is
-no longer active as of the check above.
 
 ## Host installation
 
@@ -81,7 +79,8 @@ cleanup trap before populating a workspace, so a failed initialization does not
 leak disk space.
 
 The default per-job limits are 3 CPUs and 7 GiB. Override them for the host's
-capacity. The 5-vCPU/32-GiB primary host runs four slots with:
+capacity. For example, configure four primary slots only when the host has
+sufficient CPU and memory:
 
 ```bash
 sudo env TASKLY_RUNNER_CPUS=1.25 TASKLY_RUNNER_MEMORY=7g \
@@ -90,7 +89,7 @@ sudo env TASKLY_RUNNER_CPUS=1.25 TASKLY_RUNNER_MEMORY=7g \
   infra/actions-runner/install-host.sh
 ```
 
-The existing 2-vCPU secondary host runs one slot with:
+Example configuration for a smaller secondary host with one CI slot:
 
 ```bash
 sudo env TASKLY_RUNNER_CPUS=2 TASKLY_RUNNER_MEMORY=2300m \
@@ -161,26 +160,29 @@ Check both `systemctl is-active taskly-runner@N.service` and
 For the production slot, use `taskly-runner@prod.service` and container name
 `taskly-prod`.
 
-## Historical memory corruption incident (2026-10-02)
+## Investigating suspected hardware corruption
 
-The runner host produced illegal UTF-8 in freshly downloaded Go modules, Git
-pack/inflate errors, and crashes in unrelated host programs. With all four CI
-containers stopped, `sudo memtester 2G 1` tested 2 GiB of locked memory and
-finished with exit code 6 and 1,391 `FAILURE:` reports, including a stuck-address
-failure. The diagnostic log was written to `/tmp/taskly-memtest-initial.log`.
-That temporary path is not a durable incident archive.
+Unrelated programs crashing, invalid bytes in freshly downloaded modules, or
+repeated Git pack/inflate failures can indicate host hardware problems. Stop
+assigning CI and production jobs to the affected host while investigating.
+Rebuilding runner containers or deleting caches does not repair failing memory.
 
-This is evidence of memory-subsystem corruption, not proof of which DIMM,
-slot, CPU memory controller, or firmware setting is responsible. Rebuilding
-runner containers or deleting Go caches does not repair it. The four CI services
-were stopped and disabled with owner approval. The separate production-deploy
-runner service was stopped too; its boot-time enablement was left unchanged.
+Use an operator-approved maintenance window for memory diagnostics. Validate
+substantial RAM over multiple passes, dependency integrity, application tests,
+and fresh image builds before restoring slots. Keep diagnostic logs, failure
+counts, host identifiers, repair evidence, and incident timelines in restricted
+operations records. Online runner registrations do not establish hardware health.
 
-The incident response required keeping the affected host out of CI until
-physical/firmware diagnosis, memory tests over substantial RAM with multiple
-passes, dependency integrity checks, API tests, and fresh image builds passed.
-Preserve that repair evidence in restricted operations records. The online
-registrations recorded above describe current availability; they do not establish
-the hardware root cause or substitute for repair evidence. For a recurrence,
-stop assigning work to the affected pool and follow the same diagnostics before
-restoring slots.
+## Public repository boundary
+
+The runner selector is routing logic, not an access-control boundary: an external
+PR can edit its workflow to request a self-hosted label directly. Approval must
+cover the entire proposed workflow and code, including changes after earlier
+runs. Do not rely on container recycling, label separation, or the hosted-minutes
+guard to contain untrusted code that can access the host Docker socket.
+
+Before making this repository public, follow the
+[publication gates](../../docs/operations/repository-publication.md), including
+removing public-repository access to privileged runners or moving deployment
+to a separate private repository. Do not register privileged runners on a new
+public source mirror.

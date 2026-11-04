@@ -48,3 +48,5 @@ for job in build-windows build-macos; do
 done
 
 echo "Runner trust boundaries are valid"
+
+node --test .github/scripts/production-boundaries.test.mjs

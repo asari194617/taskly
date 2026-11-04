@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   failed-deploy:
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - name: Notify Discord
@@ -31,8 +31,9 @@ jobs:
           curl --fail --silent --show-error --retry 3 --retry-delay 3 \
             -H 'Content-Type: application/json' -d "$payload" "$DISCORD_WEBHOOK_URL"
   release-drift:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
+    if: ${{ github.ref == 'refs/heads/main' && github.ref_protected && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    # This job receives the production SSH key, even though it only reads state.
+    runs-on: [self-hosted, taskly-prod]
     environment: production
     env:
       GH_TOKEN: ${{ github.token }}
