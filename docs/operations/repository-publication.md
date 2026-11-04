@@ -16,14 +16,19 @@ Publishing source does not change the licensing terms in `LICENSE`.
   false positives: four references to a localhost-only CI key and one match
   crossing a DAG description and cron keyword. `.gitleaksignore` records only
   those commit/path/rule/line fingerprints. The repeat scan had no other findings.
-- The active main ruleset requires signed commits, PRs, and six application
-  checks, with no bypass actors. Actions defaults to a read-only token and
+- The main ruleset requires signed commits, PRs, six application checks, and
+  `secret-scan`, with no bypass actors. Actions defaults to a read-only token and
   requires full action SHA pins. Production credentials are Environment secrets;
   the repository secret names contain no `PROD_*` or task-image storage secrets.
 - The production Environment restricts deployments to protected branches and
   disallows administrator bypass. Reviewer/wait-timer protection is still absent.
   Public fork approval and native security features still require verification
   during the visibility transition.
+- Issue/PR bodies (752), issue comments (1,522), review comments (none returned),
+  and releases (5) were fetched with pagination and scanned with Gitleaks: no
+  candidates. A global-IPv4 text search returned only a dependency version, not
+  a host address. PR diffs/review summaries, Actions logs/artifacts/caches, wiki,
+  and other personal or operational details still need separate review.
 
 These are dated observations, not a permanent authorization to publish. The
 `secret-scan` workflow checks fetched history on PRs and main pushes using a
