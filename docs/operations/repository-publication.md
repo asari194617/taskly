@@ -36,35 +36,40 @@ checksum-verified Gitleaks binary, read-only token, redacted output, and a
 GitHub-hosted runner. It supplements GitHub's native security features. It does
 not enumerate GitHub issues, old PR caches, logs, artifacts, or hidden refs.
 
-## Remaining runner boundary
+## PR admission and runner boundary
 
-**Do not change this repository to public while privileged repository runners
-remain directly selectable by its PR workflows.** The shared selector sends
-ordinary fork PRs to GitHub-hosted runners, but a fork can change the workflow
-and request `taskly-prod` or a CI label directly. Approval policies require
-review of every untrusted workflow revision; they do not make runner labels an
-access-control mechanism. A Docker socket gives jobs host-level access, including
-other runner containers/volumes on the same host.
+The publication plan keeps this repository and its production deployment together.
+External code contributions are not accepted. GitHub's repository setting must
+remain `has_pull_requests=true` and
+`pull_request_creation_policy=collaborators_only`: maintainers retain the required
+PR/review/merge workflow, while outsiders cannot create PRs. This is an enforced
+repository setting, not just the policy in `CONTRIBUTING.md`. See
+[GitHub's PR access documentation](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/disabling-pull-requests).
 
-The workflow guards reject non-main manual deployment, image publication, and
-runner installation. Deployment and release-drift checks use `production` and
-`taskly-prod`. These reduce accidental exposure but do not prevent an untrusted
-PR from changing its own YAML or compromising a shared host.
+On 2026-11-04 the setting was applied and read back through the REST API. The
+collaborator inventory contained only the owner, and the only open PR was from
+the owner in this repository. There were no open external PRs to grandfather
+into the restricted policy. Recheck both inventories immediately before publishing.
 
-Choose and implement one of these publication layouts before the final gate:
+The shared selector's hosted fallback is defense in depth. Runner labels and
+container recycling do not isolate malicious code: a job with the host Docker
+socket can reach other containers and volumes. Only trusted maintainers may
+submit executable code to these runners. Review any collaborator invitation,
+GitHub App access change, and imported external code with that trust in mind.
+The production guards, dedicated runner, and protected Environment remain in use.
 
-1. **Public source repository, existing private deployment repository.** Publish
-   an audited source copy without privileged runner registrations or production
-   secrets. Keep production operations in the private repository and define a
-   reviewed source synchronization procedure. Validate the new public CI and
-   secret inventory before enabling contributions.
-2. **Publish this repository after moving privileged execution.** Move deployment,
-   image publication, release monitoring, and host maintenance to a private
-   repository. Remove privileged runner registrations and credentials from the
-   public repository; run public PR checks on GitHub-hosted runners. Validate the
-   replacement deploy path before changing visibility.
+Audit event triggers as well as PR creation. Public issue/comment/review content
+must not start privileged jobs or be evaluated as code. The current workflows
+have no `issues`, `issue_comment`, `pull_request_review`, or
+`pull_request_target` triggers. Existing `workflow_run` consumers require their
+own input validation; restricting new PRs does not sanitize old artifacts.
 
-See GitHub's [self-hosted runner security guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners).
+Before enabling external PRs in the future, redesign the untrusted execution
+boundary and validate it first. A private deployment repository is an option for
+that future contribution model, not a prerequisite for the current publication
+plan with external PR creation blocked. GitHub's
+[self-hosted runner guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners)
+still applies to every actor allowed to execute workflows.
 
 ## Repeatable final audit
 
@@ -99,20 +104,24 @@ binary cleanup. See [GitHub's removal procedure](https://docs.github.com/en/auth
 
 ## Visibility transition
 
-1. Finish the chosen runner/deployment separation and the content audit. Preserve
-   restricted recovery evidence and record the reviewed commit/ref inventory.
-2. Quiesce Actions for the transition after active production operations finish;
-   do not allow external PR execution before policies have been verified.
-3. Change visibility, then require approval for **all external contributors**.
-   Confirm read-only default tokens, SHA pins, the main ruleset and required
-   checks (including `secret-scan`), and secret placement in the private deployment
-   repository. Configure its Environment reviewer or timer protection as supported.
+1. Complete the content audit. Preserve restricted recovery evidence and record
+   the reviewed commit/ref inventory. Verify the collaborators-only PR policy,
+   trusted collaborator/App inventory, and absence of existing external PRs.
+2. Quiesce Actions for the transition after active production operations finish.
+3. Change visibility and immediately read back `collaborators_only`; retain
+   `has_pull_requests=true` so maintainer PRs remain usable. Keep read-only default
+   tokens, SHA pins, the main ruleset and required checks (including `secret-scan`),
+   and production credentials in the protected `production` Environment. Configure
+   Environment reviewer or timer protection as supported. An all-external-contributors
+   run approval policy is additional protection, not a replacement for blocked
+   external PR creation.
 4. Enable and verify secret scanning, push protection, code scanning for the
    supported languages, Dependabot alerts/updates, and private vulnerability
    reporting. Triage initial alerts and verify the route in `SECURITY.md` works.
-5. Enable public CI only after the above checks. Use a harmless external fork PR
-   to verify both the usual selector path and an explicitly requested privileged
-   label: no public PR may reach a private production runner or its credentials.
-   Close the test PR and cancel any intentionally unschedulable test job.
+5. Enable Actions only after the above checks. Verify that an account without
+   collaborator access cannot create a PR, and that maintainer PRs still run the
+   required checks. Do not temporarily reopen external PR creation to test runner
+   routing. If a separate test account is unavailable, record that validation gap
+   explicitly; owner-authenticated readback is not an outsider test.
 6. Record results in #437, #439, #441, #443, and #445. Only mark a gate complete
    when its current evidence meets the issue's completion conditions.

@@ -175,14 +175,15 @@ operations records. Online runner registrations do not establish hardware health
 
 ## Public repository boundary
 
-The runner selector is routing logic, not an access-control boundary: an external
-PR can edit its workflow to request a self-hosted label directly. Approval must
-cover the entire proposed workflow and code, including changes after earlier
-runs. Do not rely on container recycling, label separation, or the hosted-minutes
-guard to contain untrusted code that can access the host Docker socket.
+External PR creation is blocked by the repository's `collaborators_only` PR
+policy. Maintainers retain their PR/review/merge workflow; repository separation
+is not required for this contribution model. Keep collaborator and GitHub App
+access limited to trusted actors, and do not import unreviewed external code.
 
-Before making this repository public, follow the
-[publication gates](../../docs/operations/repository-publication.md), including
-removing public-repository access to privileged runners or moving deployment
-to a separate private repository. Do not register privileged runners on a new
-public source mirror.
+The runner selector is routing logic, not an access-control boundary. If external
+PRs are enabled in the future, they could edit workflow labels directly. Before
+changing that policy, redesign the untrusted execution boundary. Container
+recycling and distinct labels do not contain code with host Docker access.
+
+Follow the [publication gates](../../docs/operations/repository-publication.md)
+for policy readback, event-trigger review, and verification before public release.
