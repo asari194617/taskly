@@ -10,6 +10,13 @@ This package contains two processes:
 The Compose service is named `mcp` and is exposed at
 `http://localhost:3066` for local development.
 
+The HTTP process allows 300 requests per minute per direct peer IP before any
+authentication or database query. Excess requests return HTTP 429 with
+`Retry-After`. All routes share this budget except `/healthz`, which does no
+database work. `/readyz` is included. Forwarded-IP headers and token changes do
+not create a new budget; clients behind the same reverse proxy share its budget.
+The counter is local to each process and resets on restart.
+
 | Method | Path | Authentication |
 | --- | --- | --- |
 | GET | `/healthz` | none |

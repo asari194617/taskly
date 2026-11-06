@@ -48,16 +48,33 @@ Publishing source does not change the licensing terms in `LICENSE`.
   scopes. Existing workflow integrations and webhook destinations were reviewed;
   re-audit any future integration or collaborator change.
 
-## Prepared controls
+## Verified publication (2026-11-06)
+
+The existing repository was made public after [PR #755](https://github.com/asari194617/taskly/pull/755)
+passed its checks and self-review. Actions was temporarily disabled during the
+transition and then restored with its previous selected-action and SHA-pin policy.
+Anonymous repository API and Git ref reads succeeded. The four application GHCR
+packages still rejected anonymous access with HTTP 401.
 
 - The main ruleset requires signed commits, PRs, six application checks, and
   `secret-scan`, with no bypass actors. Actions defaults to a read-only token and
   requires full action SHA pins. Production credentials are Environment secrets;
   the repository secret names contain no `PROD_*` or task-image storage secrets.
 - The production Environment restricts deployments to protected branches and
-  disallows administrator bypass. Reviewer/wait-timer protection is still absent.
-  Public fork approval and native security features still require verification
-  during the visibility transition.
+  disallows administrator bypass. It now adds a one-minute wait timer; it does
+  not require independent human approval. A [post-publication deployment](https://github.com/asari194617/taskly/actions/runs/42223511036)
+  completed successfully on the dedicated production runner.
+- Secret scanning, push protection, Dependabot alerts/security updates, and
+  private vulnerability reporting were enabled and read back. Initial secret
+  and Dependabot alert inventories were empty. [CodeQL's initial analysis](https://github.com/asari194617/taskly/actions/runs/42223452717)
+  succeeded for Actions, Go, JavaScript/TypeScript, and Python on hosted runners.
+  Its twelve initial findings and their remediation/triage are tracked in #443.
+- Collaborator-only PR creation remained enabled, with only the owner in the
+  collaborator inventory. All external contributors also require fork-workflow
+  approval as defense in depth. An independent signed-in outsider account was
+  unavailable: the anonymous API readback verifies the configured policy, but is
+  not an end-to-end attempt to create an outsider PR. Maintainer PR/check evidence
+  is recorded in #445; external PR creation was never temporarily enabled.
 
 These are dated observations, not a permanent authorization to publish. The
 `secret-scan` workflow checks fetched history on PRs and main pushes using a
@@ -130,6 +147,14 @@ Actions logs/artifacts/caches, and packages. Do not infer safety from retention
 settings or a smaller clone. GitHub-owned pull refs cannot be deleted by pushing;
 GitHub Support only assists with qualifying sensitive-data removal, not arbitrary
 binary cleanup. See [GitHub's removal procedure](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
+
+### Existing clones after history cleanup
+
+Keep unpublished work and any required recovery bundle in private storage. Start
+from a fresh clone of `https://github.com/asari194617/taskly.git`, then reapply only
+reviewed changes onto a new branch. Do not merge an old clone's history or push its
+stale branches/tags back into the sanitized repository. The final audit retained
+and verified a private local Git bundle; it is not a release artifact.
 
 ## Visibility transition
 

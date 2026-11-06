@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -43,6 +45,19 @@ func TestParseTeamsStatusPayload(t *testing.T) {
 				t.Fatalf("parseTeamsStatusPayload() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseTeamsStatusRejectsInvalidNumericIDs(t *testing.T) {
+	for _, value := range []any{"18446744073709551616", float64(-1), 1.5, math.NaN(), math.Inf(1), math.Exp2(strconv.IntSize)} {
+		if got := parseTeamsStatusPayload(map[string]any{"task_id": value}); got.TaskID != 0 {
+			t.Errorf("task_id %v became %d, want 0", value, got.TaskID)
+		}
+	}
+	if strconv.IntSize == 32 {
+		if got := parseTeamsStatusPayload(map[string]any{"task_id": "4294967296"}); got.TaskID != 0 {
+			t.Fatal("32-bit overflow must not wrap")
+		}
 	}
 }
 

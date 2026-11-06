@@ -12,10 +12,25 @@ export function loginRedirect(authenticated: boolean | null, path: string): stri
   return authenticated === false ? `/login?next=${encodeURIComponent(path)}` : null;
 }
 
+export function localRedirectTarget(raw: string | null | undefined): string | null {
+  // URL parsers remove tabs/newlines and treat backslashes as slashes. Validate
+  // both the input and the normalized path before passing it to location.
+  if (!raw?.startsWith("/") || /[\\\u0000-\u0020\u007f]/.test(raw)) return null;
+  try {
+    const base = "https://taskly.invalid";
+    const target = new URL(raw, base);
+    if (target.origin !== base || target.pathname.startsWith("//")) return null;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 export function postLoginRedirect(authenticated: boolean | null, search: string, defaultTarget = "/home"): string | null {
   if (!authenticated) return null;
-  const raw = new URLSearchParams(search).get("next") || "";
-  return /^\/(?![/\\])/.test(raw) && !/^\/login(?:\/|[?#]|$)/.test(raw) ? raw : defaultTarget;
+  const target = localRedirectTarget(new URLSearchParams(search).get("next"));
+  return target && !/^\/login(?:\/|[?#]|$)/.test(target)
+    ? target : localRedirectTarget(defaultTarget) || "/home";
 }
 
 export function requireAuth(): void {
