@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import fp from "fastify-plugin";
+import rateLimit from "@fastify/rate-limit";
 import crypto from "crypto";
 import { httpTaskGateway, type TaskGateway } from "./task_gateway.js";
 export type DBPool = {
@@ -40,6 +41,10 @@ export async function createApp(
 ) {
   const app = Fastify({ logger: false });
 
+  // Bound work before authentication queries. Forwarded headers and rotating
+  // tokens cannot reset this peer-IP budget; proxy peers share the same budget.
+  await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
+
   // Auth plugin: X-MCP-Token -> mcps.hashed_token match (with expiry)
   app.register(
     fp(async (instance) => {
@@ -69,7 +74,7 @@ export async function createApp(
     }),
   );
 
-  app.get("/healthz", async () => ({ ok: true }));
+  app.get("/healthz", { config: { rateLimit: false } }, async () => ({ ok: true }));
   app.get("/readyz", async (_req, reply) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<null>((resolve) => {

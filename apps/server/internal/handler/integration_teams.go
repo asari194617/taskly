@@ -5,6 +5,7 @@ import (
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"github.com/asari194617/taskly/apps/server/internal/jobs"
 	"github.com/gofiber/fiber/v2"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -117,11 +118,11 @@ func parseTeamsStatusPayload(raw map[string]any) teamsStatusPayload {
 	payload.IsSuccess, _ = raw["is_success"].(bool)
 	switch taskID := raw["task_id"].(type) {
 	case string:
-		if value, err := strconv.ParseUint(strings.TrimSpace(taskID), 10, 64); err == nil {
+		if value, err := strconv.ParseUint(strings.TrimSpace(taskID), 10, strconv.IntSize); err == nil {
 			payload.TaskID = uint(value)
 		}
 	case float64:
-		if taskID >= 0 {
+		if taskID >= 0 && taskID < math.Exp2(strconv.IntSize) && math.Trunc(taskID) == taskID {
 			payload.TaskID = uint(taskID)
 		}
 	}

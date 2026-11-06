@@ -10,7 +10,10 @@ import (
 
 // small helpers
 func ToUint(s string) uint {
-	v, _ := strconv.ParseUint(s, 10, 64)
+	v, err := strconv.ParseUint(s, 10, strconv.IntSize)
+	if err != nil {
+		return 0
+	}
 	return uint(v)
 }
 

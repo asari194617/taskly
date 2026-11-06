@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { gql } from "@/lib/graphql";
+import { localRedirectTarget } from "@/lib/auth-guard";
 import { useLang } from "@/react/LanguageProvider";
 
 const policyVersion = "2026-09-22.1";
@@ -36,7 +37,7 @@ export default function ConsentPage() {
         { terms: policyVersion, privacy: policyVersion, security: policyVersion, language: lang }
       );
       const next = new URLSearchParams(location.search).get("next");
-      location.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/home");
+      location.replace(localRedirectTarget(next) || "/home");
     } catch {
       setError(true);
     } finally {
