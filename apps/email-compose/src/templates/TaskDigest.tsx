@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/suspicious/noArrayIndexKey: <explanation> */
 import * as React from "react";
 import { Container, Section, Heading, Text } from "react-email";
 import { getT } from "../get-t.js";

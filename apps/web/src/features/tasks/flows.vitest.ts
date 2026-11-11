@@ -25,6 +25,7 @@ describe("task search and update", () => {
       status: 200,
       open: vi.fn(), setRequestHeader: vi.fn(), send: vi.fn(),
     };
+    // biome-ignore lint/correctness/noConstructorReturn: The XHR test double deliberately returns the shared request spy.
     vi.stubGlobal("XMLHttpRequest", class { constructor() { return request; } });
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({
       key: "task-images/1/550e8400-e29b-41d4-a716-446655440000",

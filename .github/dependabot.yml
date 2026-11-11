@@ -5,6 +5,14 @@
 
 version: 2
 updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
   - package-ecosystem: "npm" # See documentation for possible values
     directory: "/apps/web/" # Location of package manifests
     schedule:
