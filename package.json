@@ -1,0 +1,12 @@
+{
+  "name": "taskly-tooling",
+  "private": true,
+  "scripts": {
+    "lint": "biome lint --error-on-warnings .",
+    "lint:fix": "biome lint --write .",
+    "lint:go": "bash scripts/lint-go.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6"
+  }
+}

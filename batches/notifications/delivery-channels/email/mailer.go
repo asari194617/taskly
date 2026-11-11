@@ -35,7 +35,7 @@ func NewSMTPMailer(cfg *EmailConfig) *SMTPMailer {
 
 // Send は実際にSMTPサーバーを叩いてメールを送信します
 func (m *SMTPMailer) Send(to, subject, text, html string) error {
-	addr := fmt.Sprintf("%s:%s", m.cfg.Host, m.cfg.Port)
+	addr := net.JoinHostPort(m.cfg.Host, m.cfg.Port)
 	conn, err := net.DialTimeout("tcp", addr, m.cfg.Timeout)
 	if err != nil {
 		return fmt.Errorf("dial failed: %w", err)
