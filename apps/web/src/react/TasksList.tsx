@@ -78,6 +78,7 @@ export default function TasksList() {
   const {
     items,
     setItems,
+    pauseRevalidation,
     nextCursor,
     loadingMore,
     loadMoreError,
@@ -102,6 +103,7 @@ export default function TasksList() {
         description: error?.message,
       });
     },
+    pauseRevalidation,
   );
   const {
     creating,

@@ -11,6 +11,7 @@ export default defineConfig({
         "src/features/**/api.ts",
         "src/features/notifications/settings.ts",
         "src/features/tasks/list-model.ts",
+        "src/features/tasks/task-revalidation.ts",
         "src/lib/api.ts",
         "src/lib/graphql.ts",
         "src/lib/auth-guard.ts",

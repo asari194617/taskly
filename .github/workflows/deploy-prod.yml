@@ -221,12 +221,14 @@ jobs:
       - name: Restore workspace ownership
         run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" alpine:3.20 chown -R "$(id -u):$(id -g)" /workspace
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Prepare private task image storage environment
+      - name: Prepare dedicated production environment settings
         env:
           TASK_IMAGES_R2_ENDPOINT: ${{ secrets.TASK_IMAGES_R2_ENDPOINT }}
           TASK_IMAGES_R2_BUCKET: ${{ secrets.TASK_IMAGES_R2_BUCKET }}
           TASK_IMAGES_R2_ACCESS_KEY_ID: ${{ secrets.TASK_IMAGES_R2_ACCESS_KEY_ID }}
           TASK_IMAGES_R2_SECRET_ACCESS_KEY: ${{ secrets.TASK_IMAGES_R2_SECRET_ACCESS_KEY }}
+          DEPLOY_NNCT_GUIDANCE_EVENT_ID: ${{ secrets.NNCT_GUIDANCE_EVENT_ID }}
+          DEPLOY_NNCT_GUIDANCE_TASK_BINDINGS: ${{ secrets.NNCT_GUIDANCE_TASK_BINDINGS }}
         run: python3 .github/scripts/prepare-prod-env.py
       - name: Require production environment
         run: .github/scripts/require-prod-env.sh

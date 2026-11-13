@@ -239,3 +239,82 @@ The runtime Compose configuration does not mount document files or read
 See the guidance repository's deployment instructions for environment settings,
 data import, readiness checks, and rollback. Taskly's Compose files and
 `infra/ops/apply-schema.sh` do not deploy or migrate this separate service.
+
+## Taskly completion synchronization
+
+The optional first-party bridge stores no separate completion flags. Guidance
+reads and updates Taskly's existing `tasks_users_completions` records; checking
+or unchecking either service is reflected by the next read in the other.
+Opening the guidance homepage never creates shared class tasks.
+
+First provision or identify the intended canonical tasks through the normal
+Taskly administration workflow. Keep the real task IDs and imported event data
+in private operator configuration, outside Git. Configure the Taskly API with:
+
+- `NNCT_GUIDANCE_EVENT_ID`: the imported event's exact opaque namespace.
+- `NNCT_GUIDANCE_TASK_BINDINGS`: a JSON object mapping logical keys to existing
+  positive, unique Taskly task IDs. Accepted keys are `assigned-visit-N`,
+  `visit-survey-N` (`N` is 1–99), `overall-survey`, and `sheet-submission`.
+  Both fixed keys and at least one key from each numbered group are required;
+  at most 64 bindings are accepted. The guidance API validates its needed keys
+  against its private imported schedule and selected roster assignment.
+- The existing confidential `AUTH_ISSUER`, `AUTH_CLIENT_ID`, and
+  `AUTH_CLIENT_SECRET`, and the existing `WEB_PUBLIC_URL`. Production requires
+  HTTPS. There is no additional service-wide integration secret.
+
+For example, this **synthetic** shape illustrates the binding format; replace
+all values with private operator configuration and never use example IDs in
+production:
+
+```json
+{"assigned-visit-2":101,"visit-survey-2":102,"overall-survey":103,"sheet-submission":104}
+```
+
+Restart the Taskly API after changing configuration. Without valid configuration
+the bridge returns `503`; existing Taskly routes continue to work. To roll back
+the integration, remove the two `NNCT_GUIDANCE_*` values and restart. Existing
+tasks and canonical user completion records remain intact.
+
+Only the guidance backend calls `GET /integrations/nnct-guidance/tasks` and
+`PUT /integrations/nnct-guidance/tasks/{key}`. It forwards the signed-in user's
+current Taskly-auth access token as `Authorization: Bearer …` and sends the
+exact `X-Guidance-Event-ID`. The browser never receives this token, confidential
+client credentials, or a cross-user identifier. Taskly introspects each request
+using its own confidential client and accepts only the dedicated first-party
+client `nnct-corp-guidance-2026`, `taskly-api` audience, trusted issuer,
+`taskly:login` scope, live token, and numeric user subject. Development tests use
+the same client identity in an isolated synthetic auth environment; unrelated
+OAuth clients cannot write through the bridge.
+
+GET returns `{event_id,tasks:[{key,task_id,completed,completion_disabled,taskly_url}]}`.
+PUT accepts only `{completed:boolean}` and returns the updated task object.
+It supports checking and undoing a check, always for the authenticated subject.
+Both responses use `Cache-Control: no-store`. Deleted/blocked accounts, current
+policy consent, task moderation, task read permissions, and disabled completion
+are enforced. A disabled task can still be unchecked, matching Taskly's normal
+completion behavior. Event mismatch or disabled checking returns `409`;
+unlisted keys return `404`; inaccessible tasks return `403`. Identity or database
+outages fail closed and never manufacture an incomplete state.
+
+The PR coverage comment includes the entire guidance bridge package with an
+80% minimum. Synthetic OAuth/SQLite tests exercise identity, ownership,
+configuration, and failure handling; `api-empty-database` also runs
+`TestMySQLGuidanceBridgeCanonicalRoundTrip` against MySQL on every PR change.
+That test exercises the real bridge and Taskly GraphQL completion routes in both
+directions, including undo, retries, and disabled completion. No production data
+or credentials are needed.
+
+For the cross-service browser suite, `apps/server/cmd/guidance-e2e` starts the
+real Taskly bridge and GraphQL routes with synthetic data and in-process Redis.
+It requires `TASKLY_GUIDANCE_E2E=1`, a nonproduction `NODE_ENV`, literal loopback
+`ADDR`, a loopback `TASKLY_E2E_MYSQL_DSN` whose database is exactly
+`taskly_guidance_e2e`, and a loopback HTTP `AUTH_ISSUER`. It refuses nonempty
+databases rather than deleting existing data. Start from `apps/server` so it can
+read `schema.sql`, or pass `TASKLY_E2E_SCHEMA_PATH`. Supply the synthetic issuer's
+`AUTH_CLIENT_ID` and `AUTH_CLIENT_SECRET`. `/__test/ready` reports readiness;
+`/__test/fixture` returns synthetic user IDs, local sessions, task bindings, and
+the event namespace. These routes and sessions exist only in this loopback test
+command; the production Docker entrypoint builds `cmd/server` exclusively.
+The fixture includes an explicitly read-denied user for authorization failure
+coverage. Browser tests use the actual `/graphql/` completion mutations for
+Taskly-side changes and the guidance proxy for the opposite direction.

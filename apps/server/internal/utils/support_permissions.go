@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"github.com/asari194617/taskly/apps/server/internal/domain"
 	"gorm.io/gorm"
@@ -73,6 +74,8 @@ func CheckPermission(userID uint, target, action string, ownerID *uint, DB *gorm
 			return false, nil
 		}
 		return false, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
 	}
 	switch strings.ToLower(action) {
 	case "read":
