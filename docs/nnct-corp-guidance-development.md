@@ -33,10 +33,15 @@ client with PKCE S256 and does not need Taskly's confidential client secret or
 its internal synchronization token. Do not replace the existing `taskly-web`
 client or change Taskly's authentication ownership flags for this setup.
 
-Use `127.0.0.1` consistently for this development flow. taskly-auth accepts an
+Use `127.0.0.1` consistently for the guidance UI, API, and callback. taskly-auth accepts an
 HTTP public-client callback on a loopback IP, but not an HTTP `localhost`
 callback. The guidance API also requires the browser Origin to match its
 configured UI origin exactly.
+
+The identity provider has its own origin. Keep taskly-auth's default issuer and
+authentication UI/API on `localhost`, as described in its setup guide. If that
+service already uses a different origin, set the guidance `AUTH_ISSUER` to its
+actual issuer; do not change only one side of the provider's browser/API setup.
 
 ## Start the database and import private data
 
@@ -82,7 +87,7 @@ In the same terminal as the import, configure the API and start it:
 export ADDR='127.0.0.1:3071'
 export UI_ORIGIN='http://127.0.0.1:3000'
 export API_ORIGIN='http://127.0.0.1:3071'
-export AUTH_ISSUER='http://127.0.0.1:3067'
+export AUTH_ISSUER='http://localhost:3067'
 export AUTH_CLIENT_ID='nnct-corp-guidance-dev'
 export SESSION_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 go run ./cmd/api
