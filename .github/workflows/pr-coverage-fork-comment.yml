@@ -62,6 +62,7 @@ jobs:
             const marker = '<!-- taskly-pr-coverage -->';
             const rows = [
               ['API core (Go statements)', 'server'],
+              ['Guidance bridge (Go statements, minimum 80%)', 'guidance-bridge'],
               ['Notification core (Go statements)', 'batches'],
               ['Email core (Go statements)', 'batch-email'],
               ['Web push core (Go statements)', 'batch-web-push'],

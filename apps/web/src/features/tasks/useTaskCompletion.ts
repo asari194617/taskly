@@ -11,16 +11,20 @@ type PendingAction = {
 export function useTaskCompletion(
   setItems: React.Dispatch<React.SetStateAction<Task[] | null>>,
   onError: (error: unknown) => void,
+  pauseRevalidation?: () => () => void,
 ) {
   const [pending, setPending] = React.useState<Record<number, PendingAction>>(
     {},
   );
   const pendingTimers = React.useRef(new Set<ReturnType<typeof setTimeout>>());
+  const refreshLeases = React.useRef(new Set<() => void>());
 
   React.useEffect(
     () => () => {
       for (const timer of pendingTimers.current) clearTimeout(timer);
       pendingTimers.current.clear();
+      for (const release of refreshLeases.current) release();
+      refreshLeases.current.clear();
     },
     [],
   );
@@ -38,12 +42,18 @@ export function useTaskCompletion(
       });
       return;
     }
+    const resume = pauseRevalidation?.();
+    const release = () => {
+      if (refreshLeases.current.delete(release)) resume?.();
+    };
+    refreshLeases.current.add(release);
     const action = scheduleTaskCompletion({
       task,
       publish: (change: (items: Task[]) => Task[]) =>
         setItems((current) => change(current || [])),
       persist: setTaskCompleted,
       onError,
+      onFinished: release,
       onSettled: () => {
         pendingTimers.current.delete(action.timeout);
         setPending((current) => {

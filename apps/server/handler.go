@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/asari194617/taskly/apps/server/internal/domain"
+	"github.com/asari194617/taskly/apps/server/internal/guidancebridge"
 	"github.com/asari194617/taskly/apps/server/internal/handler"
 	adminH "github.com/asari194617/taskly/apps/server/internal/handler/admin"
 	gqlH "github.com/asari194617/taskly/apps/server/internal/handler/graphql"
@@ -164,6 +165,7 @@ func newServerApp(db *gorm.DB, rdb *redis.Client, wAuth *webauthn.WebAuthn, serv
 
 	/* 外部サービスとの連携 */
 	appHandler.RegisterIntegrationRoutes(app.Group("/integrations"))
+	guidancebridge.Register(app.Group("/integrations/nnct-guidance"), db)
 	appHandler.RegisterIntegrationJobRoutes(app.Group("/admin/integration-jobs", middleware.AuthRequired, middleware.AdminOnly, middleware.Audit))
 
 	/* ユーザー情報など */

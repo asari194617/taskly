@@ -43,6 +43,11 @@ jobs:
             directory: apps/server
             packages: ./internal/tasklist ./internal/handler/graphql
             include: ""
+          - id: guidance-bridge
+            directory: apps/server
+            packages: ./internal/guidancebridge
+            include: ""
+            threshold: 80
           - id: batches
             directory: batches/notifications/delivery-channels/common
             packages: ./...
@@ -71,7 +76,7 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: |
           go test -coverprofile=coverage.out ${{ matrix.packages }}
-          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go-profile coverage.out "$GITHUB_WORKSPACE/${{ matrix.id }}.json" 75 '${{ matrix.include }}'
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go-profile coverage.out "$GITHUB_WORKSPACE/${{ matrix.id }}.json" '${{ matrix.threshold || 75 }}' '${{ matrix.include }}'
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -168,6 +173,7 @@ jobs:
             const marker = '<!-- taskly-pr-coverage -->';
             const rows = [
               ['API core (Go statements)', 'server'],
+              ['Guidance bridge (Go statements, minimum 80%)', 'guidance-bridge'],
               ['Notification core (Go statements)', 'batches'],
               ['Email core (Go statements)', 'batch-email'],
               ['Web push core (Go statements)', 'batch-web-push'],

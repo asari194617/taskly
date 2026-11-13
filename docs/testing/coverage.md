@@ -7,6 +7,7 @@ whole-repository figure.
 | Group | Included scope | Excluded from the percentage |
 | --- | --- | --- |
 | API core | GraphQL request validation/types and task-list policy | process bootstrap, database-bound resolver wiring, external service setup |
+| Guidance bridge (80% minimum) | complete `internal/guidancebridge` OAuth identity, runtime allowlist, canonical completion API | no source files excluded; MySQL upsert roundtrip runs separately in `api-empty-database` |
 | Notification core | shared recipient eligibility, deadlines, badges, and DSN helpers | batch process bootstrap and vendor transports |
 | Email core | deterministic digest payload and localization (`coverage_core.go`) | SMTP/gRPC transport |
 | Web push core | recipient policy and idempotent delivery state (`coverage_core.go`) | network transport and process bootstrap |

@@ -38,6 +38,7 @@
 - `PROD_ENV`: 本番 `.env` の内容。空値では本番ホストへの接続前にデプロイを中止する
 - `PROD_ENV` 内の `AIRFLOW_META_DATABASE`, `AIRFLOW_META_USER`, `AIRFLOW_META_PASSWORD`: Airflow メタDB専用の接続設定。既存DBからの移行手順は [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) を参照
 - `TASK_IMAGES_R2_ENDPOINT`, `TASK_IMAGES_R2_BUCKET`, `TASK_IMAGES_R2_ACCESS_KEY_ID`, `TASK_IMAGES_R2_SECRET_ACCESS_KEY`: 課題画像用の非公開R2バケット設定。`production` environment に4項目をまとめて保存し、デプロイ時に `PROD_ENV` に組み込む。直接 `PROD_ENV` に `R2_*` を含める方法も利用できる。未設定・空値ではデプロイを中止する。公開MCPクライアント配信用のリポジトリ Secrets とは独立して設定する。詳細は [`features/task-images.md`](features/task-images.md) を参照
+- `NNCT_GUIDANCE_EVENT_ID`, `NNCT_GUIDANCE_TASK_BINDINGS`: 企業ガイダンス連携を有効にする場合、`production` environment に2項目をまとめて保存する。後者は論理キーと登録済みTaskly課題IDのJSONオブジェクト。デプロイ時に既存の完全な `PROD_ENV` を保持して同名の2設定だけを置き換えるため、`PROD_ENV` 自体の再作成は不要。両方未設定なら既存設定を保持し、片方だけの設定や不正なキー・IDではデプロイを停止する。実際の課題IDや配布資料の内容はGitに含めない。
 - `PROD_COMPOSE_PROFILES`: 追加で有効にする Compose profile。通常は空。スキーマ適用スクリプトが Atlas 用の `schema` profile を一時的に有効化するため、通常デプロイでの指定は不要
 - `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。API と MCP は `/readyz` を指定します。既存の `/healthz` 設定は検証スクリプトが `/readyz` に置き換えます。設定された経路だけ追加検証します。
 

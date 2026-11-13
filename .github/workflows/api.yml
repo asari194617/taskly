@@ -83,6 +83,9 @@ jobs:
       - name: Verify transactional outbox against MySQL
         working-directory: apps/server
         run: go test ./internal/jobs -run '^TestMySQLTransactionalOutbox$' -count=1 -v
+      - name: Verify guidance bridge canonical completion against MySQL
+        working-directory: apps/server
+        run: go test ./internal/guidancebridge -run '^TestMySQLGuidanceBridgeCanonicalRoundTrip$' -count=1 -v
       - name: Verify account erasure against MySQL
         run: |
           python3 -m venv /tmp/taskly-erasure-venv
