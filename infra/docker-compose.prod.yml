@@ -105,7 +105,7 @@ services:
       GOMEMLIMIT: 24MiB
 
   grafana:
-    image: grafana/grafana:12.4.13
+    image: grafana/grafana:12.4.15
     restart: unless-stopped
     mem_limit: 192m
     environment:
