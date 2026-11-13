@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUNNER_IMAGE: taskly-actions-runner:2.338.1-ci
-  EXPECTED_NODE_VERSION: v24.22.1
+  RUNNER_IMAGE: taskly-actions-runner:2.338.2-ci
+  EXPECTED_NODE_VERSION: v24.22.3
 
 jobs:
   install:
@@ -27,8 +27,8 @@ jobs:
           set -euo pipefail
           docker build --tag "$RUNNER_IMAGE" infra/actions-runner
           docker run --rm --entrypoint sh "$RUNNER_IMAGE" -lc '
-            test "$(node --version)" = "v24.22.1"
-            test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v24.22.1"
+            test "$(node --version)" = "v24.22.3"
+            test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v24.22.3"
             curl --version | head -1 | grep -F "brotli/1.2.1"
             ldd "$(command -v curl)" | grep -F "/usr/local/lib/libbrotli"
           '
@@ -46,9 +46,9 @@ jobs:
                 chmod 0755 "/host-opt/${script}"
               done
               if grep -q "^TASKLY_RUNNER_IMAGE=" /host-etc/runner.env; then
-                sed -i "s#^TASKLY_RUNNER_IMAGE=.*#TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.1-ci#" /host-etc/runner.env
+                sed -i "s#^TASKLY_RUNNER_IMAGE=.*#TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.2-ci#" /host-etc/runner.env
               else
-                printf "%s\n" "TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.1-ci" >> /host-etc/runner.env
+                printf "%s\n" "TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.2-ci" >> /host-etc/runner.env
               fi
               chmod 0644 /host-etc/runner.env
             '

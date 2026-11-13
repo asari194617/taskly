@@ -1,4 +1,4 @@
-FROM node:24.22.1-bookworm-slim AS node-runtime
+FROM node:24.22.3-bookworm-slim AS node-runtime
 
 FROM debian:bookworm-slim AS brotli-build
 
@@ -25,8 +25,8 @@ RUN apt-get update \
 
 FROM mcr.microsoft.com/playwright:v1.64.0-noble
 
-ARG RUNNER_VERSION=2.338.1
-ARG RUNNER_SHA256=08e9ccb3604d2462c24b5e33604dc30810296ca15cc65f23cffd4317eb144c37
+ARG RUNNER_VERSION=2.338.2
+ARG RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -60,7 +60,7 @@ RUN apt-get update \
       zip \
       zlib1g \
     && ldconfig \
-    && test "$(node --version)" = "v24.22.1" \
+    && test "$(node --version)" = "v24.22.3" \
     && curl --version | grep -q 'brotli/1.2.1' \
     && rm -rf /var/lib/apt/lists/* \
     && userdel --remove pwuser \
@@ -73,7 +73,8 @@ RUN apt-get update \
     && tar --extract --gzip --file /tmp/actions-runner.tar.gz \
       --directory /home/runner/actions-runner \
     && rm /tmp/actions-runner.tar.gz \
-    && test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v24.22.1" \
+    && install -m 0755 /usr/local/bin/node /home/runner/actions-runner/externals/node24/bin/node \
+    && test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v24.22.3" \
     && chown -R runner:runner /home/runner/actions-runner
 
 COPY entrypoint.sh /usr/local/bin/taskly-runner-entrypoint

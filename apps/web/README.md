@@ -6,7 +6,7 @@ API と認証サービスは別プロセスです。[リポジトリのローカ
 
 ## Local development
 
-Node.js 24 を使用します（CI は 24.22.1）。このディレクトリで:
+Node.js 24 を使用します（CI は 24.22.3）。このディレクトリで:
 
 ```bash
 cp .env.example .env

@@ -56,7 +56,7 @@ the liveness endpoint to restart it.
 ## Local development
 
 Use Node.js 24 for the same checks as CI; the container runtime uses Node.js
-26.13.0. For the full dependency stack and schema initialization, follow the
+26.13.1. For the full dependency stack and schema initialization, follow the
 [local setup guide](../../docs/local-development.md). The commands below run
 the HTTP process directly on the host and require exported environment variables.
 

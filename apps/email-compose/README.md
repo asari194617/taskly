@@ -23,7 +23,7 @@ Environment variables:
 ## Local development
 
 Use Node.js 24 for the same checks as CI; the container runtime uses Node.js
-26.13.0. From this directory:
+26.13.1. From this directory:
 
 ```bash
 npm ci

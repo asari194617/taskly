@@ -71,7 +71,7 @@ jobs:
           cache-dependency-path: ${{ matrix.directory }}/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24.22.1"
+          node-version: "24.22.3"
       - name: Test with coverage
         working-directory: ${{ matrix.directory }}
         run: |
@@ -99,7 +99,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24.22.1"
+          node-version: "24.22.3"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: node --test "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.test.mjs"
@@ -130,7 +130,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "24.22.1"
+          node-version: "24.22.3"
           cache: npm
           cache-dependency-path: apps/mcp/package-lock.json
       - run: npm ci --legacy-peer-deps --no-audit --no-fund

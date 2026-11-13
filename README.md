@@ -16,12 +16,12 @@ Taskly is a class and task management service. This repository contains:
 Prerequisites:
 
 - Docker with Docker Compose v2
-- Node.js 24 (CI uses 24.22.1) and npm for the web client and TypeScript checks
+- Node.js 24 (CI uses 24.22.3) and npm for the web client and TypeScript checks
 - Go 1.26 or newer when running Go code outside Docker (CI uses 1.26.10)
 - `jq` for Airflow database setup; Bash 4+ for the operations scripts
 
 The API Docker build currently uses Go 1.27.3; the batch builder uses Go
-1.26.10. MCP and email-compose runtime images use Node.js 26.13.0. The manifests,
+1.26.10. MCP and email-compose runtime images use Node.js 26.13.1. The manifests,
 Dockerfiles, and workflows define the exact versions for each component.
 
 The current web login uses the separate **taskly-auth** service. That service,
