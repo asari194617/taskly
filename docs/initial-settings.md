@@ -56,12 +56,14 @@
 - `.github/scripts/check-prod-airflow.sh`
 - `.github/workflows/deploy-prod.yml`
 
-手動実行も可能で、`full_build=true` が既定です。イメージの build/release と `plan` は
-共通の `select-runner` が選ぶ runner を使います。通常、選択ジョブ自体は GitHub-hosted で実行し、
+手動実行も可能で、`full_build=true` が既定です。イメージの build/release は
+共通の `select-runner` が選ぶ runner を使います。選択ジョブ自体と `plan` は常に GitHub-hosted で実行し、
 15分以内に成功した heartbeat がある primary、secondary、`ubuntu-latest` の順に選びます。
 手動の `runner_override` またはリポジトリ変数 `CI_RUNNER` で明示できます。
-`CI_PRIMARY_ONLY=true` はこれらに優先し、信頼済みジョブを primary に固定します。
-2026-11-03 の確認では両変数は未設定です。構成・障害時の切り替えは
+`CI_PRIMARY_ONLY=true` はこれらに優先し、選択対象の重いジョブを primary に固定します。
+Lint、MCP・email-compose のチェック、カバレッジ、バッチ単体テスト、実行計画・結果集約、
+通知などの軽いジョブは両変数によらず `ubuntu-latest` を使います。
+2026-11-13 の確認では `CI_PRIMARY_ONLY=true`、`CI_RUNNER` は未設定です。構成・障害時の切り替えは
 [runner pool 手順](../infra/actions-runner/README.md)を参照してください。
 本番反映は `taskly-prod` 専用runnerで実行します。
 

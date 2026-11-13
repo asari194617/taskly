@@ -16,7 +16,7 @@ permissions:
 jobs:
   failed-deploy:
     if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'failure' }}
-    runs-on: ${{ vars.CI_PRIMARY_ONLY == 'true' && fromJSON('["self-hosted","taskly-ci-primary"]') || fromJSON('["ubuntu-latest"]') }}
+    runs-on: ubuntu-latest
     steps:
       - name: Notify Discord
         env:

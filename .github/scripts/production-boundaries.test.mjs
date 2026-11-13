@@ -25,6 +25,56 @@ function enabled(block, github, results = {}) {
   });
 }
 
+test('lightweight jobs use hosted runners without waiting for pool selection', () => {
+  const placements = {
+    lint: ['biome', 'go-vet', 'ruff'],
+    mcp: ['build'],
+    'email-compose': ['build'],
+    'pr-coverage': ['metadata', 'go', 'web', 'mcp', 'comment'],
+    'pr-coverage-fork-comment': ['comment'],
+    'weekly-discord': ['report'],
+    'deploy-prod-watch': ['failed-deploy'],
+    'compose-build': ['test-batches', 'plan', 'build'],
+  };
+  for (const [workflow, names] of Object.entries(placements)) {
+    for (const name of names) {
+      const block = job(workflow, name);
+      assert.match(block, /^    runs-on: ubuntu-latest$/m, `${workflow}/${name}`);
+      assert.doesNotMatch(block, /needs.*select-runner|CI_PRIMARY_ONLY|CI_RUNNER/, `${workflow}/${name}`);
+    }
+  }
+});
+
+test('heavy jobs retain pool selection and production planning forwards its selection', () => {
+  for (const [workflow, names] of [
+    ['api', ['build', 'empty-database']],
+    ['web', ['build-and-test']],
+    ['e2e', ['web-api-db']],
+    ['compose-build', ['build-images']],
+  ]) {
+    for (const name of names) {
+      assert.match(job(workflow, name), /^    runs-on: \$\{\{ fromJSON\(needs\.select-runner\.outputs\.label\) \}\}$/m);
+    }
+  }
+  const plan = job('deploy-prod', 'plan');
+  assert.match(plan, /^    runs-on: ubuntu-latest$/m);
+  // Preserve the protected-main gate and runner override for image builds.
+  assert.match(plan, /^    needs: select-runner$/m);
+  assert.match(plan, /^      runner: \$\{\{ needs\.select-runner\.outputs\.label \}\}$/m);
+  for (const name of ['publish-images', 'release-images']) {
+    assert.match(job('deploy-prod', name), /^    runs-on: \$\{\{ fromJSON\(needs\.plan\.outputs\.runner\) \}\}$/m);
+  }
+});
+
+test('hosted image result aggregation runs even if a build or selection fails', () => {
+  const block = job('compose-build', 'build');
+  assert.match(block, /^    needs: \[plan, build-images, test-batches\]$/m);
+  assert.equal(enabled(block, {}, { plan: 'success', 'build-images': 'failure', 'test-batches': 'success' }), true);
+  assert.match(block, /test "\$PLAN_RESULT" = success/);
+  assert.match(block, /test "\$BATCH_TEST_RESULT" = success/);
+  assert.match(block, /if \[\[ "\$IMAGE_COUNT" != 0 \]\]; then\s+test "\$BUILD_RESULT" = success/);
+});
+
 for (const [workflow, name, results] of [
   ['deploy-prod', 'select-runner', {}],
   ['deploy-prod', 'release-images', { plan: 'success', 'publish-images': 'success' }],

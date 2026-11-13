@@ -12,12 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  select-runner:
-    uses: ./.github/workflows/select-runner.yml
-
   metadata:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     permissions: {}
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
@@ -38,8 +34,7 @@ jobs:
   go:
     permissions:
       contents: read
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -87,8 +82,7 @@ jobs:
   web:
     permissions:
       contents: read
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/web
@@ -118,8 +112,7 @@ jobs:
   mcp:
     permissions:
       contents: read
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/mcp
@@ -146,12 +139,12 @@ jobs:
           if-no-files-found: ignore
 
   comment:
-    needs: [select-runner, go, web, mcp]
-    if: always() && needs.select-runner.result == 'success' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [go, web, mcp]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       actions: read
       pull-requests: write
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         continue-on-error: true

@@ -135,6 +135,6 @@ test('primary-only billing guard never sends forks to self-hosted runners', asyn
 test('selection does not check out code, access secrets, or use production runners', () => {
   assert.doesNotMatch(workflow, /actions\/checkout|secrets\.|taskly-prod/);
   assert.match(workflow, /permissions:\n  actions: read/);
-  assert.match(workflow, /runs-on:.*vars\.CI_PRIMARY_ONLY == 'true'.*github\.event_name == 'pull_request'.*taskly-ci-primary.*ubuntu-latest/);
+  assert.match(workflow, /^    runs-on: ubuntu-latest$/m);
   assert.match(workflow, /actions\/github-script@[0-9a-f]{40}/);
 });
