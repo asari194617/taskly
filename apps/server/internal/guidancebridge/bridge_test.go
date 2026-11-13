@@ -111,7 +111,7 @@ func newFixture(t *testing.T, mysqlDB bool) *fixture {
 			f.task = task
 		}
 	}
-	f.identity = map[string]any{"active": true, "client_id": oauthClientID, "sub": strconv.Itoa(int(f.user.ID)), "scope": "taskly:login", "aud": "taskly-api", "exp": time.Now().Add(time.Hour).Unix(), "token_type": "Bearer"}
+	f.identity = map[string]any{"active": true, "client_id": guidanceApplication, "sub": strconv.Itoa(int(f.user.ID)), "scope": "taskly:login", "aud": "taskly-api", "exp": time.Now().Add(time.Hour).Unix(), "token_type": "Bearer"}
 	f.issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, secret, ok := r.BasicAuth()
 		if !ok || id != "taskly-confidential" || secret != "synthetic-secret" || r.Method != "POST" || r.URL.Path != "/oauth/introspect" {
