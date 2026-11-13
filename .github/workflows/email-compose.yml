@@ -8,17 +8,12 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
-  select-runner:
-    uses: ./.github/workflows/select-runner.yml
-
   build:
     name: email-compose-build
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/email-compose

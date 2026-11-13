@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-pr_workflows=(api web mcp email-compose e2e compose-build pr-coverage)
+pr_workflows=(api web e2e compose-build)
 for name in "${pr_workflows[@]}"; do
   workflow=".github/workflows/$name.yml"
   grep -Fq 'uses: ./.github/workflows/select-runner.yml' "$workflow"
-  if grep -Eq 'runs-on:.*(self-hosted|taskly-prod|ubuntu-latest)|runner-fallback' "$workflow"; then
-    echo "PR jobs must use the shared runner selector: $workflow" >&2
+  if grep -Eq 'runs-on:.*(self-hosted|taskly-prod)|runner-fallback' "$workflow"; then
+    echo "Heavy PR jobs must use the shared runner selector: $workflow" >&2
     exit 1
   fi
   grep -Fq 'runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}' "$workflow"
@@ -34,13 +34,11 @@ done
 grep -Fq 'runs-on: [self-hosted, taskly-prod]' .github/workflows/deploy-prod.yml
 grep -Fq 'runner: ${{ needs.select-runner.outputs.label }}' .github/workflows/deploy-prod.yml
 
-grep -Fq 'uses: ./.github/workflows/select-runner.yml' .github/workflows/weekly-discord.yml
-grep -Fq 'runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}' .github/workflows/weekly-discord.yml
-
-# The temporary billing guard covers orchestration and every hosted OS job.
-grep -Fq "vars.CI_PRIMARY_ONLY == 'true'" "$selector"
+# The temporary guard covers heavy selected jobs and native client releases.
+# Lightweight jobs and the selector itself always use GitHub-hosted runners.
+grep -Fq 'runs-on: ubuntu-latest' "$selector"
 grep -Fq "process.env.PRIMARY_ONLY === 'true'" "$selector"
-for workflow in deploy-prod-watch release-mcp-client runner-health-secondary; do
+for workflow in release-mcp-client runner-health-secondary; do
   grep -Fq 'vars.CI_PRIMARY_ONLY' ".github/workflows/$workflow.yml"
 done
 for job in build-windows build-macos; do

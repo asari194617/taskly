@@ -16,8 +16,7 @@ jobs:
     uses: ./.github/workflows/select-runner.yml
 
   test-batches:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -30,8 +29,7 @@ jobs:
         run: go test ./...
 
   plan:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     outputs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -147,9 +145,9 @@ jobs:
 
   build:
     name: compose-build
-    needs: [select-runner, plan, build-images, test-batches]
-    if: always() && needs.select-runner.result == 'success'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    needs: [plan, build-images, test-batches]
+    if: always()
+    runs-on: ubuntu-latest
     steps:
       - name: Check image builds
         env:

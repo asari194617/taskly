@@ -9,16 +9,12 @@ permissions:
   actions: read
 
 jobs:
-  select-runner:
-    uses: ./.github/workflows/select-runner.yml
-
   comment:
     if: github.event.workflow_run.event == 'pull_request'
     permissions:
       actions: read
       pull-requests: write
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         continue-on-error: true

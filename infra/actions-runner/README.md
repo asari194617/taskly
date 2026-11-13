@@ -1,6 +1,6 @@
 # Single-job GitHub Actions runner pool
 
-Trusted same-repository PRs and production image jobs use containerized runners. The primary
+Heavy jobs in trusted same-repository PRs and production image jobs use containerized runners. The primary
 pool has the `taskly-ci-primary` label and the existing fallback host has the
 `taskly-ci-secondary` label. Up to four CI slots per host are supported. GitHub registrations are persistent, but every runner process accepts
 only one job (`run.sh --once`). systemd then starts a new container from the
@@ -28,26 +28,47 @@ either self-hosted pool. A heartbeat is fresh for 15 minutes; a busy or offline
 pool naturally becomes ineligible when it cannot complete the scheduled check.
 External fork PRs always select `ubuntu-latest`. Set the repository variable
 `CI_RUNNER` to `primary`, `secondary`, or `ubuntu-latest` for an explicit override
-(hosted billing applies to the last option).
+of jobs using the selector.
 Production deployment and release-drift checks use the separate `taskly-prod`
 label and its own registration volume. It is recycled after every job in the
 same way as the CI slots. A separate label or container does not isolate it
 from a CI slot with access to the same host Docker socket.
 
-## Hosted-minutes outage guard
+## Lightweight jobs on GitHub-hosted runners
+
+The following jobs run directly on `ubuntu-latest`, independently of `CI_RUNNER`
+and `CI_PRIMARY_ONLY`, so they do not compete for self-hosted build slots:
+
+- Biome, Go vet, and Ruff lint checks;
+- MCP and email-compose builds and tests;
+- batch unit tests, Compose validation/image planning, and final result aggregation;
+- PR coverage tests, metadata, and coverage comments, including fork comments;
+- weekly Discord reports and failed-deploy notifications;
+- the runner selector itself and production image planning.
+
+Production planning still depends on the protected-main selector gate and forwards
+its selected runner to image build and release jobs. API tests (including the
+database suite), browser tests, E2E, and Docker image builds continue to use the
+shared selector. Production SSH jobs keep the dedicated `taskly-prod` runner.
+
+Standard GitHub-hosted runners are free for this public repository. Artifact and
+cache storage have separate allowances; see [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+
+## Primary-only guard for heavy jobs
 
 Normal operation uses the independent hosted selector and heartbeat fallback
 above. Check current repository variables, runner registrations, and recent
 heartbeat/job results before changing the pool. Registration status alone does
 not establish that a pool can run work.
 
-During a hosted-minutes outage, set `CI_PRIMARY_ONLY=true`. This guard moves the
-trusted selector job and the failed-deploy notification to `taskly-ci-primary`, and
-forces downstream Linux jobs to primary without consulting heartbeats. It takes
+Set `CI_PRIMARY_ONLY=true` to force heavy selected jobs to primary without
+consulting heartbeats. It takes
 precedence over `CI_RUNNER` and dispatch overrides, so a busy/offline primary
-queues jobs. Secondary heartbeats are skipped. External-fork selectors and jobs
-remain GitHub-hosted. Production release-drift checks always use `taskly-prod`.
-The secret scan also always uses GitHub-hosted runners, independent of this guard.
+queues heavy jobs. Secondary heartbeats are skipped. External-fork jobs remain
+GitHub-hosted. Lightweight jobs and the selector always stay GitHub-hosted, so this
+guard no longer permits CI to operate through a complete hosted-runner outage.
+Production release-drift checks always use `taskly-prod`. The secret scan also
+always uses GitHub-hosted runners, independent of this guard.
 
 The MCP client release workflow is deferred entirely while the guard is set:
 its Windows/macOS executables need native runners. After the allowance is
@@ -140,8 +161,9 @@ removes it when the job finishes,
 including files left by root in job containers. After a forced host shutdown,
 remove stale directories only after checking no runner/container uses them.
 
-Runner selection and the final fallback consume GitHub-hosted minutes. The macOS
-client build also requires a GitHub-hosted macOS runner and is billed normally.
+Runner selection, lightweight jobs, the final fallback, and native client builds
+use standard GitHub-hosted runners. Public-repository compute is free; private
+repositories consume their included allowance before additional billing applies.
 Review workflow changes before approving any external fork run;
 a PR can propose changes to its own workflow definitions.
 
