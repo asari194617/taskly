@@ -111,8 +111,8 @@ API container.
 
 Before using the application, upload **only** files listed in the private
 JSON's `documents` array to the private document bucket, using each
-`file_name` as its object key. Keep extracted JSON, student assignments, and DB
-exports out of both R2 buckets. Use separate administrator write credentials
+`file_name` as its object key. Keep extracted JSON, standalone student-assignment
+exports, and DB exports out of both R2 buckets. Use separate administrator write credentials
 for upload, then read the objects back and verify checksums, MIME types,
 `Content-Disposition: inline`, and `Cache-Control: no-store`. Confirm that an
 unsigned request is denied. The authoritative upload, CORS, permission, and
