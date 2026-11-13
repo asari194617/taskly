@@ -13,9 +13,12 @@ taskly-auth; it is not required to start the Taskly application stack.
 
 The web client is statically exported to a dedicated Cloudflare R2 bucket.
 The Go API runs on the application server and stores event information,
-user-specific saved companies, and roster-number preferences in MySQL. Source documents and extracted data
-remain outside Git. R2 receives only the web application build; authenticated
-API routes serve company information, PDF documents, and map images.
+user-specific saved companies, and roster-number preferences in MySQL. A
+separate **private** R2 bucket stores the PDF documents and map images. After
+authentication, the API issues S3 presigned URLs and the browser reads document
+bytes directly from R2. The API does not read local document files or mount a
+document volume. Source documents, extracted data, and credentials remain
+outside Git; the public UI bucket receives only the static web build.
 
 ## Register a development OAuth client
 
@@ -100,6 +103,52 @@ data without booth bounds must be re-extracted and imported for the interactive
 map. Do not copy its output, database exports, or
 credentials into either repository, frontend assets, or public CI artifacts.
 
+The importer still validates the local source files and transactionally writes
+the dataset and document allowlist to MySQL. It does not upload document bytes
+to R2. `DATA_DIR` in the commands above is the administrator's private working
+directory; it is not an API runtime setting or a directory to mount into the
+API container.
+
+Before using the application, upload **only** files listed in the private
+JSON's `documents` array to the private document bucket, using each
+`file_name` as its object key. Keep extracted JSON, student assignments, and DB
+exports out of both R2 buckets. Use separate administrator write credentials
+for upload, then read the objects back and verify checksums, MIME types,
+`Content-Disposition: inline`, and `Cache-Control: no-store`. Confirm that an
+unsigned request is denied. The authoritative upload, CORS, permission, and
+rollback steps are in the guidance repository's
+[private R2 runbook](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/private-r2.md).
+
+## Configure private document storage
+
+For development, use a private development document bucket or an already
+running loopback S3-compatible service. The API requires an R2 endpoint,
+bucket, and credentials and does not fall back to local files. It signs with
+AWS SDK for Go v2, region `auto`, and path-style object URLs. Replace all example
+values below with that development storage configuration:
+
+```bash
+export DOCUMENT_STORAGE='r2'
+export R2_ENDPOINT='https://your-account-id.r2.cloudflarestorage.com'
+export R2_BUCKET='your-private-development-documents'
+export R2_ACCESS_KEY_ID='replace-with-bucket-scoped-read-only-access-key-id'
+export R2_SECRET_ACCESS_KEY='replace-with-bucket-scoped-read-only-secret'
+```
+
+Use Object Read only credentials restricted to that exact private bucket.
+Do not reuse the public UI deployment key or an administrator upload key.
+Pass these settings to the Go process only, never through `NEXT_PUBLIC_*`,
+the frontend build, Git, or CI logs. For a loopback object service, an HTTP
+`R2_ENDPOINT` is accepted only on a loopback hostname and with an HTTP
+development API origin. Configure the service and its bucket to accept the
+same signing method and development credentials.
+
+Allow the development UI origin `http://127.0.0.1:3000` for the document
+bucket's GET/HEAD CORS policy as described in the private R2 runbook. Keep
+the bucket private without a public custom domain or `r2.dev` access. GET
+and HEAD use different signatures; a presigned GET URL cannot be reused for
+a HEAD request.
+
 ## Start the API and web client
 
 In the same terminal as the import, configure the API and start it:
@@ -132,17 +181,31 @@ dataset. An unauthenticated request to `/api/guidance`, `/api/documents/{id}`, o
 `/api/bookmarks` must return `401`. Saved companies belong to the signed-in
 Taskly account and are stored in the guidance database.
 
+The static pages are `/` (list), `/search/`, `/favorites/`, `/schedule/`,
+`/documents/`, and `/map/`. Production Cloudflare rewrites each page to its
+own exported `index.html`, preserving its URL and query string. These are
+separate pages; the old `?view=` URLs are compatibility links. The map uses
+a fullscreen layout, and PDF/map requests go directly to private R2 rather
+than the Go server's filesystem.
+
 On first login, set the roster number for Ec4 in the setup dialog, or choose to
 do it later. The API accepts numbers with an assignment in the imported guide,
 and stores the selection per Taskly account. The setting can be changed from
-the header or visit list and is shared across devices. It is not an inference
+the user menu or favorites page and is shared across devices. It is not an inference
 of the user's enrollment and is not stored in the URL.
 
+New logins have an absolute 30-day local session. The API encrypts the upstream
+access and rotating refresh tokens and refreshes access automatically without
+extending that deadline. It continues checking the upstream identity for
+protected requests. Existing short sessions keep their previous deadline
+until the next login; roster preferences and saved companies are retained.
+
 Document links are issued after authentication and last at most five minutes,
-bounded by the issuing session. The PDF or map URL can open without a viewer
-Cookie, but the API rechecks the issuing session and upstream identity. Logout
-revokes links from that session. Do not include these temporary bearer URLs in
-public logs, issue comments, or test artifacts.
+bounded by the session time remaining at issuance. The PDF or map URL can open
+without a viewer Cookie and remains usable until its R2 signature expires.
+Logout prevents new URL issuance but does **not** immediately revoke URLs
+already issued by R2. Do not include these temporary bearer URLs in public
+logs, issue comments, or test artifacts.
 
 ## Verification and production operations
 
@@ -155,11 +218,24 @@ The measured Go application, frontend, importer, and PDF-extraction tests have
 80% minimums. Integration and browser coverage are reported separately from
 those combined/unit measurements.
 
-Production uses separate `production-ui` and `production-api` GitHub Actions
-environments with GitHub-hosted runners. The R2 upload uses bucket-scoped
-credentials. API deployment uses a dedicated SSH key restricted to the
+The browser E2E helper `node scripts/e2e-run.mjs` starts its own loopback
+S3-compatible object service alongside the test OAuth service, real Go API,
+and disposable MySQL database. It uses synthetic files and independent SigV4,
+expiry, Range, and HEAD validation; real R2 credentials and production documents
+are not needed. Follow the guidance repository's
+[testing guide](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/testing.md)
+for the disposable DB variables, browser installation, and execution steps.
+
+The guidance repository uses separate `production-ui` and `production-api`
+GitHub Actions environments with GitHub-hosted runners. The public UI upload
+and private document reads use separate bucket-scoped credentials. API
+deployment uses a dedicated SSH key restricted to the
 deployment command, with a pinned server host identity. Runtime DB credentials,
-the session encryption key, and source documents stay on the application server.
+the session encryption key, and the private bucket's read-only key stay on the
+application server. PDF/PNG objects stay in private R2; source extraction and
+import validation happen in an administrator's private working directory.
+The runtime Compose configuration does not mount document files or read
+`DATA_DIR`.
 See the guidance repository's deployment instructions for environment settings,
 data import, readiness checks, and rollback. Taskly's Compose files and
 `infra/ops/apply-schema.sh` do not deploy or migrate this separate service.
