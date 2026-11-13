@@ -30,6 +30,10 @@ repository's Compose stack. Read the [local setup guide](docs/local-development.
 before starting: `.env.example` needs an auth configuration choice and the
 application schema must exist before the API starts.
 
+The optional [NNCT company guidance application](docs/nnct-corp-guidance-development.md)
+uses a separate repository, database, and OAuth client. Its setup is independent
+of this Compose stack.
+
 From the repository root, create and configure `.env` as described in that guide:
 
 ```bash

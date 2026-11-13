@@ -27,6 +27,7 @@ they do not provision that service:
 - [User projections](auth-user-projection-sync.md) and [profile ownership](account-profile-ownership.md)
 - [Account lifecycle synchronization](auth-account-lifecycle-sync.md)
 - [Session cookies](session-cookie-migration.md)
+- [NNCT company guidance setup](nnct-corp-guidance-development.md), a separate taskly-auth client
 - [Account closure, erasure, and data requests](operations/account-data.md)
 - [Policy editions and consent records](legal/README.md) and [privacy policy reference](legal/privacy-policy.md)
 

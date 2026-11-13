@@ -59,6 +59,11 @@ require their own development credentials to exercise those features. The
 Compose stack does not include an SMTP relay. Leave outbound integrations and
 scheduled jobs disabled until their development destinations are configured.
 
+The optional [NNCT company guidance service](nnct-corp-guidance-development.md)
+has its own repository, database, and public OAuth client registration. Follow
+its setup separately when working on that application; it is not part of this
+Compose stack.
+
 ## Application stack
 
 Apply the schema before starting the API:
