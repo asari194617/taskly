@@ -109,7 +109,7 @@ test('failed/skipped image planning cannot publish or deploy', () => {
 });
 
 test('production SSH jobs stay on the production runner and environment', () => {
-  for (const [workflow, name] of [['deploy-prod', 'deploy'], ['deploy-prod-watch', 'release-drift']]) {
+  for (const [workflow, name] of [['deploy-prod', 'deploy'], ['deploy-prod-watch', 'release-drift'], ['reconcile-code-only', 'reconcile']]) {
     const block = job(workflow, name);
     assert.match(block, /^    runs-on: \[self-hosted, taskly-prod\]$/m);
     assert.match(block, /^    environment: production$/m);
@@ -135,5 +135,24 @@ test('failed deployment notifications ignore non-main and successful runs', () =
         event_name: 'workflow_run', event: { workflow_run: { head_branch, conclusion } },
       }), head_branch === 'main' && conclusion === 'failure');
     }
+  }
+});
+
+test('one-time reconciliation is manual protected-main only and binds its release', () => {
+  const block = job('reconcile-code-only', 'reconcile');
+  for (const event_name of ['push', 'pull_request', 'workflow_run', 'workflow_dispatch']) {
+    for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
+      assert.equal(enabled(block, { event_name, ref, ref_protected: true }), event_name === 'workflow_dispatch' && ref === 'refs/heads/main');
+    }
+  }
+  assert.equal(enabled(block, { event_name: 'workflow_dispatch', ref: 'refs/heads/main', ref_protected: false }), false);
+  assert.match(block, /RELEASE_SHA: 85222d44a5bf082d36d9dd781889eda73f0ff013/);
+  assert.doesNotMatch(block, /PROD_ENV|rsync|docker compose up|apply-schema|install-user-cron|secrets.GHCR/);
+  for (const workflow of ['deploy-prod', 'reconcile-code-only']) {
+    const source = readFileSync(new URL(`../workflows/${workflow}.yml`, import.meta.url), 'utf8');
+    assert.match(source, /group: deploy-production/);
+    assert.match(source, /cancel-in-progress: false/);
+    assert.match(source, /timeout-minutes:/);
+    assert.match(source, /prepare-prod-ssh.sh/);
   }
 });

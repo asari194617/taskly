@@ -15,6 +15,7 @@ on:
       - ".github/scripts/image-matrix.sh"
       - ".github/scripts/require-prod-env.sh"
       - ".github/scripts/prepare-prod-env.py"
+      - ".github/scripts/prepare-prod-ssh.sh"
       - ".github/workflows/deploy-prod.yml"
   workflow_dispatch:
     inputs:
@@ -191,6 +192,7 @@ jobs:
     needs: [plan, release-images]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.ref_protected && needs.plan.result == 'success' && needs.release-images.result == 'success' }}
     runs-on: [self-hosted, taskly-prod]
+    timeout-minutes: 45
     environment: production
     permissions:
       contents: read
@@ -233,30 +235,13 @@ jobs:
       - name: Record deploy start
         run: echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - name: Prepare SSH (agent + askpass)
-        run: |
-          set -eux
-          install -m 700 -d ~/.ssh
-          printf "%s" "$PROD_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          eval "$(ssh-agent -s)"
-          if [ -n "${PROD_SSH_PASSPHRASE:-}" ]; then
-            : > /tmp/ssh_askpass.sh
-            echo '#!/usr/bin/env sh' >> /tmp/ssh_askpass.sh
-            echo 'echo "$PROD_SSH_PASSPHRASE"' >> /tmp/ssh_askpass.sh
-            chmod +x /tmp/ssh_askpass.sh
-            export SSH_ASKPASS=/tmp/ssh_askpass.sh
-            export SSH_ASKPASS_REQUIRE=force
-            export DISPLAY=:0
-            setsid -w ssh-add ~/.ssh/id_rsa < /dev/null
-          else
-            ssh-add ~/.ssh/id_rsa
-          fi
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+        timeout-minutes: 2
+        run: .github/scripts/prepare-prod-ssh.sh
       - name: Verify SSH connectivity
+        timeout-minutes: 2
         run: ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" true
       - name: Verify unchanged schema against the committed production baseline
+        timeout-minutes: 5
         id: schema_guard
         run: |
           set -eu
@@ -282,12 +267,14 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Check and mark production deployment
+        timeout-minutes: 5
         run: |
           test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
             bash -s -- begin "$PROD_WORKDIR" "$RELEASE_SHA" \
               "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
       - name: Rsync repository to server
+        timeout-minutes: 5
         run: |
           set -eux
           test -n "$PROD_WORKDIR"
@@ -312,6 +299,7 @@ jobs:
             --exclude "**/artifacts" \
             -e "ssh -p $PROD_SSH_PORT" ./ "$PROD_USER@$PROD_HOST:$PROD_WORKDIR/"
       - name: Install production environment
+        timeout-minutes: 5
         run: |
           set -eu
           tmpenv=$(mktemp)
@@ -328,6 +316,7 @@ jobs:
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
             "bash $quoted_workdir/infra/ops/install-prod-env.sh $quoted_workdir $quoted_tmp $quoted_sha $quoted_profiles"
       - name: Remote deploy
+        timeout-minutes: 30
         run: |
           set -eux
           set +x
@@ -374,7 +363,7 @@ jobs:
           docker compose exec -T airflow-scheduler airflow dags details account_erasure -o plain </dev/null \
             | grep -Eq '^is_paused +False$'
           ./ops/verify-deploy-health.sh
-          docker compose exec -T server curl --fail --silent --show-error \
+          docker compose exec -T server curl --fail --silent --show-error --max-time 10 \
             --unix-socket /var/run/datadog/apm.socket http://localhost/info </dev/null >/dev/null
           docker compose exec -T email-compose node -e '
             const socket = require("node:net").connect("/var/run/datadog/apm.socket");
@@ -395,11 +384,13 @@ jobs:
           ./ops/install-user-cron.sh "$PROD_WORKDIR"
           EOS
       - name: Mark production deployment complete
+        timeout-minutes: 5
         run: |
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
             bash -s -- complete "$PROD_WORKDIR" "$RELEASE_SHA" \
               "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
       - name: Check Airflow after deploy failure
+        timeout-minutes: 5
         if: ${{ failure() || cancelled() }}
         continue-on-error: true
         run: .github/scripts/check-prod-airflow.sh
