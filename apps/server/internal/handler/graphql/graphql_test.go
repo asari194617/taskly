@@ -35,6 +35,7 @@ func TestGraphQLCancelsSlowDBQuery(t *testing.T) {
 	}
 	queryStarted := make(chan struct{}, 1)
 	queryStopped := make(chan struct{}, 1)
+	queryFinished := make(chan struct{}, 1)
 	if err := db.Callback().Query().Before("gorm:query").Register("test:slow_query", func(tx *gorm.DB) {
 		if tx.Statement.Table == "policy_consents" {
 			return
@@ -45,6 +46,13 @@ func TestGraphQLCancelsSlowDBQuery(t *testing.T) {
 			queryStopped <- struct{}{}
 		case <-time.After(time.Second):
 			tx.AddError(fmt.Errorf("database query was not canceled"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Callback().Query().After("gorm:query").Register("test:query_finished", func(tx *gorm.DB) {
+		if tx.Statement.Table != "policy_consents" {
+			queryFinished <- struct{}{}
 		}
 	}); err != nil {
 		t.Fatal(err)
@@ -70,6 +78,11 @@ func TestGraphQLCancelsSlowDBQuery(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != fiber.StatusGatewayTimeout {
 		t.Fatalf("status = %d, want 504", res.StatusCode)
+	}
+	select {
+	case <-queryFinished:
+	default:
+		t.Fatal("HTTP handler released its request before the canceled query finished")
 	}
 	select {
 	case <-queryStarted:

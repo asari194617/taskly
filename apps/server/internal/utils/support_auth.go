@@ -169,11 +169,11 @@ func RevokeSession(c *fiber.Ctx, token string, userID uint, DB *gorm.DB, RDB *re
 	if err := DB.Where("hashed_token = ? OR hashed_token = ?", Sha256Hex([]byte(token)), token).Delete(&domain.Session{}).Error; err != nil {
 		failures = append(failures, fmt.Errorf("delete persisted session: %w", err))
 	}
-	if err := RDB.Del(c.Context(), "session:"+token).Err(); err != nil {
+	if err := RDB.Del(c.UserContext(), "session:"+token).Err(); err != nil {
 		failures = append(failures, fmt.Errorf("delete cached session: %w", err))
 	}
 	if userID != 0 {
-		if err := RDB.SRem(c.Context(), fmt.Sprintf("user_sessions:%d", userID), token).Err(); err != nil {
+		if err := RDB.SRem(c.UserContext(), fmt.Sprintf("user_sessions:%d", userID), token).Err(); err != nil {
 			failures = append(failures, fmt.Errorf("remove session index: %w", err))
 		}
 	}
@@ -280,7 +280,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 	// revocation or be repopulated after cleanup, so it cannot grant access.
 	var session domain.Session
 	if err := DB.Where("(hashed_token = ? OR hashed_token = ?) AND (expires_at IS NULL OR expires_at > ?)", Sha256Hex([]byte(token)), token, time.Now()).Order("id DESC").First(&session).Error; err != nil {
-		_ = RDB.Del(c.Context(), "session:"+token).Err()
+		_ = RDB.Del(c.UserContext(), "session:"+token).Err()
 		if debugAuth {
 			log.Printf("[auth] %s %s db:miss", c.Method(), sanitizeURLPath(c.Path()))
 		}
@@ -300,7 +300,7 @@ func UserFromSession(c *fiber.Ctx, DB *gorm.DB, RDB *redis.Client) bool {
 			ttl = rem
 		}
 	}
-	_ = RDB.Set(c.Context(), "session:"+token, uidStr, ttl).Err()
+	_ = RDB.Set(c.UserContext(), "session:"+token, uidStr, ttl).Err()
 	if debugAuth {
 		log.Printf("[auth] %s %s db:hit user=%s plat=%q", c.Method(), sanitizeURLPath(c.Path()), uidStr, session.ClientPlatform)
 	}
@@ -348,7 +348,7 @@ func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gor
 	// Cached entries do not grant access without a persisted row. Clean them up
 	// best effort after the database operation succeeds.
 	key := fmt.Sprintf("user_sessions:%d", userID)
-	toks, err := RDB.SMembers(c.Context(), key).Result()
+	toks, err := RDB.SMembers(c.UserContext(), key).Result()
 	if err != nil {
 		CaptureError(fmt.Errorf("list cached sessions for cleanup: %w", err))
 		return nil
@@ -357,10 +357,10 @@ func RevokeOtherSessions(c *fiber.Ctx, userID uint, currentToken string, DB *gor
 		if t == currentToken || strings.TrimSpace(t) == "" {
 			continue
 		}
-		if err := RDB.Del(c.Context(), "session:"+t).Err(); err != nil {
+		if err := RDB.Del(c.UserContext(), "session:"+t).Err(); err != nil {
 			CaptureError(fmt.Errorf("delete cached session: %w", err))
 		}
-		if err := RDB.SRem(c.Context(), key, t).Err(); err != nil {
+		if err := RDB.SRem(c.UserContext(), key, t).Err(); err != nil {
 			CaptureError(fmt.Errorf("remove cached session index: %w", err))
 		}
 	}

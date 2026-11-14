@@ -71,12 +71,13 @@ func redisOptionsFromEnv() (*redis.Options, error) {
 		return nil, fmt.Errorf("required environment variable REDIS_PASSWORD is not set")
 	}
 	return &redis.Options{
-		Addr:            utils.Env("REDIS_ADDR", "127.0.0.1:6379"),
-		Username:        username,
-		Password:        password,
-		DB:              db,
-		Protocol:        2,
-		DisableIdentity: true,
+		Addr:                  utils.Env("REDIS_ADDR", "127.0.0.1:6379"),
+		Username:              username,
+		Password:              password,
+		DB:                    db,
+		Protocol:              2,
+		DisableIdentity:       true,
+		ContextTimeoutEnabled: true,
 	}, nil
 }
 

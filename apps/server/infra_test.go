@@ -1,9 +1,15 @@
 package server
 
 import (
+	"context"
 	"log"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	redisServer "github.com/alicebob/miniredis/v2/server"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestDatadogAgentStartOptionAcceptsUnixSocket(t *testing.T) {
@@ -62,6 +68,9 @@ func TestRedisOptionsFromEnv(t *testing.T) {
 	if options.Protocol != 2 || !options.DisableIdentity {
 		t.Fatalf("unexpected Redis protocol options: protocol=%d disable_identity=%t", options.Protocol, options.DisableIdentity)
 	}
+	if !options.ContextTimeoutEnabled {
+		t.Fatal("Redis socket operations must retain request deadlines")
+	}
 }
 
 func TestRedisOptionsFromEnvRejectsMissingCredentials(t *testing.T) {
@@ -77,6 +86,45 @@ func TestRedisOptionsFromEnvRejectsMissingCredentials(t *testing.T) {
 	_, err = redisOptionsFromEnv()
 	if err == nil || !strings.Contains(err.Error(), "REDIS_PASSWORD") {
 		t.Fatalf("expected missing password error, got %v", err)
+	}
+}
+
+func TestRedisSocketReadKeepsRequestDeadline(t *testing.T) {
+	server := miniredis.RunT(t)
+	server.RequireUserAuth("taskly", "test-secret")
+	t.Setenv("REDIS_ADDR", server.Addr())
+	t.Setenv("REDIS_USERNAME", "taskly")
+	t.Setenv("REDIS_PASSWORD", "test-secret")
+	t.Setenv("REDIS_DB", "0")
+	options, err := redisOptionsFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.MaxRetries = -1
+	rdb := redis.NewClient(options)
+	t.Cleanup(func() { _ = rdb.Close() })
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{}, 1)
+	server.Server().SetPreHook(func(_ *redisServer.Peer, command string, _ ...string) bool {
+		if strings.EqualFold(command, "get") {
+			started <- struct{}{}
+			return true // Leave the socket read pending without a Redis reply.
+		}
+		return false
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	before := time.Now()
+	err = rdb.Get(ctx, "blocked").Err()
+	if err == nil || ctx.Err() != context.DeadlineExceeded || time.Since(before) > 500*time.Millisecond {
+		t.Fatalf("Redis read did not obey request deadline: err=%v context=%v elapsed=%s", err, ctx.Err(), time.Since(before))
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("Redis command did not reach the blocked socket")
 	}
 }
 
