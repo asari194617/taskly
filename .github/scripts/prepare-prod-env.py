@@ -6,11 +6,13 @@ import os
 import re
 import secrets
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 STORAGE_KEYS = ("R2_ENDPOINT", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
 GUIDANCE_KEYS = ("NNCT_GUIDANCE_EVENT_ID", "NNCT_GUIDANCE_TASK_BINDINGS")
 GUIDANCE_PREFIX = "DEPLOY_"
+MCP_PARENT_KEY = "NNCT_GUIDANCE_MCP_PARENT_RESOURCE"
 TASK_KEY = re.compile(r"^(?:assigned-visit|visit-survey)-[1-9][0-9]?$")
 EVENT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
@@ -76,9 +78,49 @@ def guidance_values():
     return values
 
 
+def mcp_parent_values():
+    name = GUIDANCE_PREFIX + MCP_PARENT_KEY
+    raw = os.environ.get(name, "")
+    if raw == "":
+        return {}
+    invalid = name + " must be a canonical HTTPS resource ending in /mcp"
+    if len(raw) > 2048 or not raw.isascii() or any(ord(char) <= 32 or ord(char) == 127 for char in raw):
+        raise SystemExit(invalid)
+    try:
+        resource = urlsplit(raw)
+        host = resource.hostname or ""
+        port = resource.port
+    except ValueError:
+        raise SystemExit(invalid) from None
+    labels = host.split(".")
+    valid_host = len(host) <= 253 and all(
+        1 <= len(label) <= 63
+        and label[0].isalnum()
+        and label[-1].isalnum()
+        and all(char in "abcdefghijklmnopqrstuvwxyz0123456789-" for char in label)
+        for label in labels
+    )
+    authority = host if port is None else f"{host}:{port}"
+    if (
+        resource.scheme != "https"
+        or not valid_host
+        or resource.username is not None
+        or resource.password is not None
+        or resource.netloc != authority
+        or (port is not None and port == 0)
+        or resource.path != "/mcp"
+        or resource.query
+        or resource.fragment
+        or resource.geturl() != raw
+    ):
+        raise SystemExit(invalid)
+    return {MCP_PARENT_KEY: raw}
+
+
 def main():
     values = dedicated_values(STORAGE_KEYS, "TASK_IMAGES_")
     values.update(guidance_values())
+    values.update(mcp_parent_values())
     if not values:
         return  # Existing PROD_ENV can already contain these settings.
     original = os.environ.get("PROD_ENV", "")

@@ -197,6 +197,74 @@ class PrepareProdEnvTest(unittest.TestCase):
         self.run_prepare()
         self.assertTrue(self.merged().startswith("UNKNOWN_SECRET=preserve-without-newline  \n"))
 
+    def test_optional_mcp_parent_preserves_original_environment_and_replaces_only_its_key(self):
+        self.env = {
+            "PROD_ENV": "# private source\nEXISTING_SECRET='keep-$literal'\nAPI_PUBLIC_URL=https://api.taskly.example.test\nNNCT_GUIDANCE_MCP_PARENT_RESOURCE_SUFFIX=keep\nNNCT_GUIDANCE_MCP_PARENT_RESOURCE=old\n export NNCT_GUIDANCE_MCP_PARENT_RESOURCE =duplicate\n",
+            "GITHUB_ENV": str(self.output),
+            "DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE": "https://api.guidance.example.test/mcp",
+        }
+        self.run_prepare()
+        merged = self.merged()
+        self.assertTrue(merged.startswith("# private source\nEXISTING_SECRET='keep-$literal'\nAPI_PUBLIC_URL=https://api.taskly.example.test\nNNCT_GUIDANCE_MCP_PARENT_RESOURCE_SUFFIX=keep\n"))
+        self.assertEqual(merged.count("\nNNCT_GUIDANCE_MCP_PARENT_RESOURCE="), 1)
+        self.assertTrue(merged.endswith("NNCT_GUIDANCE_MCP_PARENT_RESOURCE=https://api.guidance.example.test/mcp\n"))
+        self.assertNotIn("=old", merged)
+        self.assertNotIn("=duplicate", merged)
+
+    def test_absent_or_empty_mcp_variable_keeps_existing_parent_and_legacy_environment(self):
+        original = "# preserve bytes\nUNKNOWN_SECRET='keep-$literal'\nNNCT_GUIDANCE_MCP_PARENT_RESOURCE=https://old.example.test/mcp\n"
+        self.env = {"PROD_ENV": original, "GITHUB_ENV": str(self.output)}
+        self.run_prepare()
+        self.assertFalse(self.output.exists())
+        self.env["DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE"] = ""
+        self.run_prepare()
+        self.assertFalse(self.output.exists())
+        self.guidance()
+        self.run_prepare()
+        self.assertIn(original, self.merged())
+
+    def test_mcp_parent_can_merge_with_existing_storage_and_guidance_groups(self):
+        self.guidance(storage=True)
+        self.env["DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE"] = "https://api.guidance.example.test:8443/mcp"
+        self.run_prepare()
+        merged = self.merged()
+        for key in prepare.STORAGE_KEYS + prepare.GUIDANCE_KEYS + (prepare.MCP_PARENT_KEY,):
+            self.assertEqual(sum(line.startswith(key + "=") for line in merged.splitlines()), 1)
+        self.assertIn("AIRFLOW_META_PASSWORD=keep-this-secret\n", merged)
+        self.assertIn("NNCT_GUIDANCE_MCP_PARENT_RESOURCE=https://api.guidance.example.test:8443/mcp\n", merged)
+
+    def test_mcp_parent_rejects_invalid_or_interpolated_urls_without_echoing_values(self):
+        self.env = {"PROD_ENV": "EXISTING_SECRET=keep-this-secret\n", "GITHUB_ENV": str(self.output)}
+        invalid = [
+            " ", " https://api.guidance.example.test/mcp", "https://api.guidance.example.test/mcp ",
+            "https://api.guidance.example.test/mcp\n", "https://api.guidance.example.test/mcp\r\nINJECTED=value",
+            "https://api.guidance.example.test/mcp\t", "https://api.guidance.example.test/mcp\x01",
+            "http://api.guidance.example.test/mcp", "HTTPS://api.guidance.example.test/mcp", "//api.guidance.example.test/mcp",
+            "https://user:password@api.guidance.example.test/mcp", "https:///mcp", "https://[invalid/mcp",
+            "https://api.guidance.example.test/mcp/", "https://api.guidance.example.test/other", "https://api.guidance.example.test/%6dcp",
+            "https://api.guidance.example.test/mcp?x=1", "https://api.guidance.example.test/mcp?", "https://api.guidance.example.test/mcp#fragment", "https://api.guidance.example.test/mcp#",
+            "https://API.guidance.example.test/mcp", "https://api.guidance.example.test./mcp", "https://api..example.test/mcp",
+            "https://-api.example.test/mcp", "https://api-.example.test/mcp", "https://api_guidance.example.test/mcp",
+            "https://api.${PRIVATE_TOKEN}.example.test/mcp", "https://api'quoted.example.test/mcp", "https://非公開.example.test/mcp",
+            "https://api.guidance.example.test:0/mcp", "https://api.guidance.example.test:65536/mcp", "https://api.guidance.example.test:00443/mcp",
+            "https://" + "x" * 254 + "/mcp", "https://" + "x" * 64 + ".example.test/mcp", "https://" + "x" * 2048 + "/mcp",
+        ]
+        for value in invalid:
+            with self.subTest(value_type=type(value).__name__):
+                self.env["DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE"] = value
+                with self.assertRaisesRegex(SystemExit, "canonical HTTPS resource") as error:
+                    self.run_prepare()
+                if value.strip():
+                    self.assertNotIn(value, str(error.exception))
+                self.assertNotIn("keep-this-secret", str(error.exception))
+                self.assertFalse(self.output.exists())
+
+    def test_mcp_parent_does_not_replace_missing_production_environment(self):
+        self.env = {"PROD_ENV": "", "GITHUB_ENV": str(self.output), "DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE": "https://api.guidance.example.test/mcp"}
+        with self.assertRaisesRegex(SystemExit, "PROD_ENV must contain"):
+            self.run_prepare()
+        self.assertFalse(self.output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

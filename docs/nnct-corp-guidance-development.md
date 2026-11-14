@@ -436,3 +436,41 @@ Before rollout, verify the synthetic bridge, real-MySQL, and browser cases for
 pair creation, both Guidance undo directions, manual-check preservation,
 native Taskly single-item behavior and ownership release, retries, scope
 changes, user isolation, and failed-write rollback. Record the actual CI results.
+
+
+## Delegated ChatGPT task access
+
+The Guidance MCP backend exchanges a live, consented ChatGPT access token with
+Taskly Auth before it calls the Taskly task bridge. It does not forward the MCP
+access token to Taskly. Taskly's existing `AUTH_CLIENT_ID` and
+`AUTH_CLIENT_SECRET` continue to authenticate its introspection requests.
+The MCP backend has its own confidential client credential in the Guidance API
+runtime; that credential does not belong in this repository or the browser.
+
+For this optional policy, configure the Taskly API runtime with its trusted
+`API_PUBLIC_URL` origin and `NNCT_GUIDANCE_MCP_PARENT_RESOURCE` equal to the exact
+Guidance API `/mcp` resource registered in Taskly Auth. Both must use HTTPS in
+production. Missing or invalid delegation settings reject delegated tokens
+while preserving the existing `nnct-corp-guidance-2026` web-token policy.
+Neither resource is derived from request headers.
+
+The exchanged token must have client `nnct-guidance-mcp-backend`, actor
+`nnct-guidance-mcp-backend`, original client `nnct-guidance-chatgpt`, and original
+resource equal to `NNCT_GUIDANCE_MCP_PARENT_RESOURCE`. Its audience is exactly
+`API_PUBLIC_URL` plus `/integrations/nnct-guidance/tasks`. Taskly Auth bounds the
+token to 60 seconds, checks the parent grant and token family on every
+introspection, and does not issue a refresh token for the exchange. The Taskly
+bridge also rejects an expiry more than 60 seconds ahead of its current clock.
+
+Each exchange grants one operation: `guidance:tasks:read` for `GET /tasks`, or
+`guidance:tasks:write` for `PUT /tasks/:key` under that integration prefix.
+Combining scopes or presenting the Guidance MCP audience is rejected. The same
+canonical permission, consent, account block, completion and survey-link
+transaction rules apply as for the existing web integration. These credentials
+do not authorize Taskly's general REST or GraphQL APIs.
+
+The always-run `pr-coverage` jobs measure bridge unit and disposable-MySQL
+integration coverage independently, each with an 80% minimum. The MySQL selector
+`^TestMySQLGuidance` includes the delegated-token tests alongside the existing
+atomic completion and provenance tests. Use only an isolated synthetic test
+database when running those cases locally.

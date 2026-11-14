@@ -2,10 +2,18 @@
 # Run from the release checkout over SSH before any host write, and after health checks.
 set -euo pipefail
 
-action=${1:?begin or complete required}
+action=${1:?schema-baseline, begin or complete required}
 workdir=${2:?production workdir required}
 release=${3:?release SHA required}
+expected_baseline=${4-}
+expected_digest=${5-}
+[[ $# -le 5 ]] || { echo 'Unexpected deployment guard arguments' >&2; exit 1; }
 [[ $release =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA' >&2; exit 1; }
+if [[ -n $expected_baseline || -n $expected_digest ]]; then
+  [[ ( $action == begin || $action == complete ) && $expected_baseline =~ ^[0-9a-f]{40}$ && $expected_digest =~ ^[0-9a-f]{64}$ ]] || {
+    echo 'Invalid expected deployment baseline' >&2; exit 1;
+  }
+fi
 [[ -d $workdir/infra && -f $workdir/infra/.env ]] || {
   echo 'Production Compose directory or environment is missing' >&2; exit 1;
 }
@@ -85,6 +93,7 @@ legacy_migration_digest() {
 
 read_state() {
   [[ -f $state_file && ! -L $state_file ]] || fail 'deployment state is missing or a symlink'
+  [[ $(wc -c < "$state_file") -le 1024 ]] || fail 'deployment state is oversized'
   state=()
   while IFS= read -r line; do state+=("$line"); done < "$state_file"
   [[ ${#state[@]} == 4 || ( ${#state[@]} == 5 && ${state[4]} == schema-v1 ) ]] || fail 'deployment state is malformed'
@@ -92,6 +101,31 @@ read_state() {
   [[ ${state[1]} =~ ^[0-9a-f]{40}$ && ${state[2]} =~ ^[0-9a-f]{40}$ && ${state[3]} =~ ^[0-9a-f]{64}$ ]] || fail 'deployment state has invalid values'
   state_version=legacy-migrations
   [[ ${#state[@]} == 4 ]] || state_version=${state[4]}
+}
+
+require_healthy_service() {
+  local service=$1 id status health
+  id=$(docker compose ps -q "$service") || fail "cannot inspect $service"
+  [[ -n $id ]] || fail "$service has no container"
+  status=$(docker inspect --format '{{.State.Status}}' "$id") || fail "cannot inspect $service status"
+  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id") || fail "cannot inspect $service health"
+  [[ $status == running && $health == healthy ]] || fail "$service is $status/$health"
+}
+
+source_digest() {
+  local relative=$1 path=$workdir component
+  local -a components
+  IFS=/ read -r -a components <<< "$relative"
+  for component in "${components[@]}"; do
+    path="$path/$component"
+    [[ ! -L $path ]] || fail 'schema source has a symlinked path component'
+  done
+  [[ -f $path ]] || fail 'schema source is missing'
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | cut -d' ' -f1
+  else
+    shasum -a 256 "$path" | cut -d' ' -f1
+  fi
 }
 
 write_state() {
@@ -103,6 +137,22 @@ write_state() {
 }
 
 case "$action" in
+  schema-baseline)
+    # This mode is streamed from the reviewed checkout before rsync. It never
+    # writes a marker, invokes Atlas, or starts/recreates a container.
+    read_state
+    [[ ${state[0]} == committed && ${state[1]} == "${state[2]}" && $state_version == schema-v1 && -O $state_file ]] || fail 'an owned committed schema-v1 baseline is required'
+    mode=$(stat -c %a "$state_file" 2>/dev/null || stat -f %Lp "$state_file")
+    [[ $mode == 600 ]] || fail 'deployment baseline must have mode 0600'
+    for service in server email-compose mcp db redis; do require_healthy_service "$service"; done
+    current=$(application_sha)
+    digest=$(schema_digest)
+    [[ $current == "${state[1]}" && $digest == "${state[3]}" ]] || fail 'running SHA or database schema differs from the last successful deployment'
+    source_sql=$(source_digest 'apps/server/schema.sql')
+    source_atlas=$(source_digest 'atlas.hcl')
+    printf '{"version":1,"target_sha":"%s","baseline_sha":"%s","database_digest":"%s","sources":{"apps/server/schema.sql":"%s","atlas.hcl":"%s"}}\n' \
+      "$release" "$current" "$digest" "$source_sql" "$source_atlas"
+    ;;
   begin)
     if [[ -e $state_file ]]; then
       read_state
@@ -117,6 +167,11 @@ case "$action" in
     current=$(application_sha)
     airflow=$(airflow_sha)
     digest=$(schema_digest)
+    if [[ -n $expected_baseline ]]; then
+      [[ $current == "$expected_baseline" && $digest == "$expected_digest" ]] || fail 'verified schema baseline changed before deployment'
+      [[ -e $state_file && $state_version == schema-v1 && ${state[0]} == committed ]] || fail 'verified schema baseline is no longer committed'
+      for service in server email-compose mcp db redis; do require_healthy_service "$service"; done
+    fi
     if [[ -e $state_file ]]; then
       recorded_digest=$digest
       if [[ $state_version == legacy-migrations ]]; then
@@ -134,8 +189,11 @@ case "$action" in
     [[ $current == "$release" ]] || fail "running SHA $current differs from target $release"
     airflow=$(airflow_sha)
     digest=$(schema_digest)
+    if [[ -n $expected_baseline ]]; then
+      [[ $state_version == schema-v1 && ${state[1]} == "$expected_baseline" && ${state[3]} == "$expected_digest" && $digest == "$expected_digest" ]] || fail 'code-only deployment changed its verified database schema'
+    fi
     write_state committed "$release" "$release" "$digest"
     echo "Deployment complete: sha=$release airflow=$airflow schema_digest=$digest"
     ;;
-  *) echo 'Expected begin or complete' >&2; exit 2 ;;
+  *) echo 'Expected schema-baseline, begin or complete' >&2; exit 2 ;;
 esac

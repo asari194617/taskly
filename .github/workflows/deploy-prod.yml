@@ -27,10 +27,6 @@ on:
         type: choice
         options: [auto, primary, secondary, ubuntu-latest]
         default: auto
-      allow_destructive_schema:
-        description: Apply a reviewed destructive Atlas plan
-        type: boolean
-        default: false
 
 concurrency:
   group: deploy-production
@@ -213,7 +209,6 @@ jobs:
       RELEASE_SHA: ${{ github.sha }}
       REDIS_ACL_CHANGED: ${{ needs.plan.outputs.redis_acl_changed }}
       AIRFLOW_CHANGED: ${{ needs.plan.outputs.airflow_changed }}
-      ATLAS_ALLOW_DESTRUCTIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_destructive_schema || 'false' }}
       PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
       PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
       PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
@@ -221,6 +216,8 @@ jobs:
       - name: Restore workspace ownership
         run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" alpine:3.20 chown -R "$(id -u):$(id -g)" /workspace
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - name: Prepare dedicated production environment settings
         env:
           TASK_IMAGES_R2_ENDPOINT: ${{ secrets.TASK_IMAGES_R2_ENDPOINT }}
@@ -229,6 +226,7 @@ jobs:
           TASK_IMAGES_R2_SECRET_ACCESS_KEY: ${{ secrets.TASK_IMAGES_R2_SECRET_ACCESS_KEY }}
           DEPLOY_NNCT_GUIDANCE_EVENT_ID: ${{ secrets.NNCT_GUIDANCE_EVENT_ID }}
           DEPLOY_NNCT_GUIDANCE_TASK_BINDINGS: ${{ secrets.NNCT_GUIDANCE_TASK_BINDINGS }}
+          DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE: ${{ vars.NNCT_GUIDANCE_MCP_PARENT_RESOURCE }}
         run: python3 .github/scripts/prepare-prod-env.py
       - name: Require production environment
         run: .github/scripts/require-prod-env.sh
@@ -258,10 +256,37 @@ jobs:
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
       - name: Verify SSH connectivity
         run: ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" true
+      - name: Verify unchanged schema against the committed production baseline
+        id: schema_guard
+        run: |
+          set -eu
+          rm -f "$RUNNER_TEMP/taskly-schema-baseline.json" "$RUNNER_TEMP/taskly-schema-proof.json"
+          printf -v quoted_workdir '%q' "$PROD_WORKDIR"
+          printf -v quoted_release '%q' "$RELEASE_SHA"
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
+            "bash -s -- schema-baseline $quoted_workdir $quoted_release" \
+            < infra/ops/deploy-state.sh > "$RUNNER_TEMP/taskly-schema-baseline.json"
+          python3 .github/scripts/verify-no-ddl-release.py \
+            --target-sha "$RELEASE_SHA" \
+            --baseline-file "$RUNNER_TEMP/taskly-schema-baseline.json" \
+            --output "$RUNNER_TEMP/taskly-schema-proof.json" \
+            --github-env "$GITHUB_ENV"
+      - name: Save code-only schema attestation
+        if: always() && steps.schema_guard.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: taskly-code-only-schema-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/taskly-schema-baseline.json
+            ${{ runner.temp }}/taskly-schema-proof.json
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Check and mark production deployment
         run: |
+          test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
-            bash -s -- begin "$PROD_WORKDIR" "$RELEASE_SHA" < infra/ops/deploy-state.sh
+            bash -s -- begin "$PROD_WORKDIR" "$RELEASE_SHA" \
+              "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
       - name: Rsync repository to server
         run: |
           set -eux
@@ -315,7 +340,6 @@ jobs:
           export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
           export COMPOSE_PROFILES="${PROD_COMPOSE_PROFILES:-}"
           export TASKLY_IMAGE_TAG="$RELEASE_SHA"
-          export ATLAS_ALLOW_DESTRUCTIVE="$ATLAS_ALLOW_DESTRUCTIVE"
           set +x
           export PROD_PUBLIC_API_HEALTH_URL=\$(printf '%s' '$api_health_b64' | base64 -d)
           export PROD_PUBLIC_MCP_HEALTH_URL=\$(printf '%s' '$mcp_health_b64' | base64 -d)
@@ -326,20 +350,18 @@ jobs:
           ./ops/disk-maintenance.sh pre-deploy
           test -S /var/run/datadog/apm.socket
           test -S /var/run/datadog/dsd.socket
-          # Keep unchanged services (especially MySQL and Redis) running while
-          # Compose pulls and replaces only application containers whose image or
-          # configuration changed. Database image updates should be explicit.
+          # The verified code-only path never invokes Atlas or starts a schema
+          # dev database. Keep the existing database/Redis containers running even
+          # when new application variables change their env_file contents.
           docker compose pull server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor prometheus alertmanager blackbox grafana
           if [ "$REDIS_ACL_CHANGED" = true ]; then
             # The ACL is generated by Redis's entrypoint, so a bind-mount update
             # requires container recreation before the new policy takes effect.
-            docker compose up -d --no-build --force-recreate redis
+            docker compose up -d --no-deps --no-build --force-recreate redis
           fi
-          docker compose up -d --no-build --wait db redis
-          ./ops/apply-schema.sh </dev/null
           # A release SHA is assigned to all images, but unchanged Airflow
           # containers must keep running instead of being recreated for its tag.
-          if ! docker compose up -d --wait --wait-timeout 600 --no-build --remove-orphans db redis server email-compose mcp prometheus alertmanager blackbox grafana; then
+          if ! docker compose up -d --no-deps --wait --wait-timeout 600 --no-build --remove-orphans server email-compose mcp prometheus alertmanager blackbox grafana; then
             docker compose ps
             docker compose logs --tail=50 --no-color db redis server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor prometheus alertmanager blackbox grafana
             exit 1
@@ -375,7 +397,8 @@ jobs:
       - name: Mark production deployment complete
         run: |
           ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
-            bash -s -- complete "$PROD_WORKDIR" "$RELEASE_SHA" < infra/ops/deploy-state.sh
+            bash -s -- complete "$PROD_WORKDIR" "$RELEASE_SHA" \
+              "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
       - name: Check Airflow after deploy failure
         if: ${{ failure() || cancelled() }}
         continue-on-error: true
