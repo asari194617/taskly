@@ -358,6 +358,9 @@ CREATE TABLE `tasks_users_completions` (
   `user_id` bigint unsigned NOT NULL,
   `task_id` bigint NOT NULL,
   `completed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `auto_event_id` varchar(128) DEFAULT NULL,
+  `auto_source_task_id` bigint DEFAULT NULL,
+  `auto_assignment_scope` char(64) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_user_task` (`user_id`,`task_id`),
   KEY `idx_task_user` (`task_id`,`user_id`)

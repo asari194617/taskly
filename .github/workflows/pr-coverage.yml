@@ -84,6 +84,63 @@ jobs:
           path: ${{ matrix.id }}.json
           if-no-files-found: ignore
 
+  guidance-bridge-mysql:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: taskly_guidance_ci
+          MYSQL_USER: taskly
+          MYSQL_PASSWORD: synthetic-guidance-ci-password
+        ports:
+          - 127.0.0.1::3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      TEST_SCHEMA_DB: "1"
+      MYSQL_USER: taskly
+      MYSQL_PASSWORD: synthetic-guidance-ci-password
+      MYSQL_DATABASE: taskly_guidance_ci
+      DB_HOST: 127.0.0.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: apps/server/go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24.22.3"
+      - name: Apply schema to the disposable MySQL service
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          MYSQL_PORT: ${{ job.services.mysql.ports['3306'] }}
+        run: |
+          echo "DB_PORT=$MYSQL_PORT" >> "$GITHUB_ENV"
+          docker exec -i -e MYSQL_PWD="$MYSQL_PASSWORD" "$MYSQL_CONTAINER" mysql -u "$MYSQL_USER" "$MYSQL_DATABASE" < apps/server/schema.sql
+      - name: Test atomic completion, provenance, and concurrency with MySQL coverage
+        working-directory: apps/server
+        run: |
+          go test ./internal/guidancebridge ./internal/schema -run '^TestMySQLGuidance' -count=1 -coverprofile=guidance-integration.cover
+          node "$GITHUB_WORKSPACE/.github/scripts/coverage-summary.mjs" go-profile guidance-integration.cover "$GITHUB_WORKSPACE/guidance-bridge-integration.json" 80
+          go tool cover -func=guidance-integration.cover >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: coverage-guidance-bridge-integration
+          path: |
+            guidance-bridge-integration.json
+            apps/server/guidance-integration.cover
+          if-no-files-found: ignore
+
   web:
     permissions:
       contents: read
@@ -144,7 +201,7 @@ jobs:
           if-no-files-found: ignore
 
   comment:
-    needs: [go, web, mcp]
+    needs: [go, guidance-bridge-mysql, web, mcp]
     if: always() && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       actions: read
@@ -174,6 +231,7 @@ jobs:
             const rows = [
               ['API core (Go statements)', 'server'],
               ['Guidance bridge (Go statements, minimum 80%)', 'guidance-bridge'],
+              ['Guidance MySQL integration (Go statements, minimum 80%)', 'guidance-bridge-integration'],
               ['Notification core (Go statements)', 'batches'],
               ['Email core (Go statements)', 'batch-email'],
               ['Web push core (Go statements)', 'batch-web-push'],

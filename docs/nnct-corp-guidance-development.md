@@ -247,6 +247,19 @@ reads and updates Taskly's existing `tasks_users_completions` records; checking
 or unchecking either service is reflected by the next read in the other.
 Opening the guidance homepage never creates shared class tasks.
 
+Newly checking a designated term's visit survey in Guidance also checks its
+assigned visit if that visit was not already complete. The automatic origin
+persists on the canonical row across reloads and service restarts. Undoing
+either end of this automatically owned pair **in Guidance**, within the same
+event and assignment scope, clears both checks. Earlier manual visits and
+later explicit manual checks in either service are preserved. Repeating an
+already-complete survey does not recreate a manually undone visit.
+
+Taskly's own controls remain single-item manual operations: they release the
+affected automatic pair ownership without changing the other item's check.
+If the roster/company assignment scope changes, Guidance preserves the other
+completion and retires the stale automatic origin.
+
 First provision or identify the intended canonical tasks through the normal
 Taskly administration workflow. Keep the real task IDs and imported event data
 in private operator configuration, outside Git. Configure the Taskly API with:
@@ -275,6 +288,32 @@ the bridge returns `503`; existing Taskly routes continue to work. To roll back
 the integration, remove the two `NNCT_GUIDANCE_*` values and restart. Existing
 tasks and canonical user completion records remain intact.
 
+### Survey/assigned-visit rollout
+
+Reuse the existing event namespace, bindings, tasks, and form links. This update
+adds no environment keys, replacement tasks, or form provisioning.
+
+The authoritative Taskly schema is `apps/server/schema.sql`. The canonical
+`tasks_users_completions` table gains three nullable provenance columns:
+`auto_event_id`, `auto_source_task_id`, and `auto_assignment_scope`. Existing
+rows remain manual with NULL provenance. Apply this through Taskly's Atlas
+workflow, not a historical `apps/server/migrations` file or Guidance DB migration.
+
+From the **Taskly repository root**, apply the Atlas plan before starting the
+new Taskly API, using the environment described in
+[local development](local-development.md):
+
+```bash
+infra/ops/apply-schema.sh
+docker compose -f infra/docker-compose.yml up -d --build --wait server
+```
+
+Production's existing Taskly workflow also applies the reviewed Atlas plan
+before updating the API. **Deploy the Taskly schema and API before the Guidance
+API version that sends linked requests.** Verify Taskly first, coordinate both
+services during rollback, and retain the added nullable columns. Task IDs, form
+links, event data, and production configuration stay outside Git.
+
 Only the guidance backend calls `GET /integrations/nnct-guidance/tasks` and
 `PUT /integrations/nnct-guidance/tasks/{key}`. It forwards the signed-in user's
 current Taskly-auth access token as `Authorization: Bearer …` and sends the
@@ -287,8 +326,15 @@ the same client identity in an isolated synthetic auth environment; unrelated
 OAuth clients cannot write through the bridge.
 
 GET returns `{event_id,tasks:[{key,task_id,completed,completion_disabled,taskly_url}]}`.
-PUT accepts only `{completed:boolean}` and returns the updated task object.
-It supports checking and undoing a check, always for the authenticated subject.
+An ordinary PUT sends `{completed:boolean}` and returns the updated task object.
+Linked Guidance operations add `link_assigned_visit:true` and a validated,
+opaque `assignment_scope`; responses include the counterpart in `related_tasks`.
+This mode checks/undoes a survey or undoes its assigned visit; explicitly
+checking a visit remains a single-item manual operation.
+These are backend protocol fields, not operator settings or browser-supplied
+task IDs. Both tasks are validated and updated in one transaction; explicit
+manual checks retain the single-item operation.
+Both modes support checking and undoing a check for the authenticated subject.
 Both responses use `Cache-Control: no-store`. Deleted/blocked accounts, current
 policy consent, task moderation, task read permissions, and disabled completion
 are enforced. A disabled task can still be unchecked, matching Taskly's normal
@@ -318,3 +364,8 @@ command; the production Docker entrypoint builds `cmd/server` exclusively.
 The fixture includes an explicitly read-denied user for authorization failure
 coverage. Browser tests use the actual `/graphql/` completion mutations for
 Taskly-side changes and the guidance proxy for the opposite direction.
+
+Before rollout, verify the synthetic bridge, real-MySQL, and browser cases for
+pair creation, both Guidance undo directions, manual-check preservation,
+native Taskly single-item behavior and ownership release, retries, scope
+changes, user isolation, and failed-write rollback. Record the actual CI results.
