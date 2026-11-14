@@ -17,14 +17,19 @@ import (
 )
 
 type introspection struct {
-	Active    bool   `json:"active"`
-	ClientID  string `json:"client_id"`
-	Subject   string `json:"sub"`
-	Scope     string `json:"scope"`
-	Audience  string `json:"aud"`
-	Issuer    string `json:"iss"`
-	Expires   int64  `json:"exp"`
-	TokenType string `json:"token_type"`
+	Active           bool   `json:"active"`
+	ClientID         string `json:"client_id"`
+	Subject          string `json:"sub"`
+	Scope            string `json:"scope"`
+	Audience         string `json:"aud"`
+	Issuer           string `json:"iss"`
+	Expires          int64  `json:"exp"`
+	TokenType        string `json:"token_type"`
+	OriginalClient   string `json:"original_client_id"`
+	OriginalResource string `json:"original_resource"`
+	Actor            *struct {
+		Subject string `json:"sub"`
+	} `json:"act"`
 }
 
 var client = &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -62,14 +67,37 @@ func (b *bridge) authenticate(c *fiber.Ctx) error {
 		return fail(c, 503, "identity service unavailable")
 	}
 	uid, err := strconv.ParseUint(identity.Subject, 10, strconv.IntSize)
-	hasScope := false
-	for _, scope := range strings.Fields(identity.Scope) {
-		if scope == "taskly:login" {
-			hasScope = true
-		}
-	}
-	if err != nil || uid == 0 || !identity.Active || identity.ClientID != guidanceApplication || identity.Audience != "taskly-api" || identity.Issuer != b.cfg.issuer || identity.TokenType != "Bearer" || identity.Expires <= time.Now().Unix() || !hasScope {
+
+	now := time.Now().Unix()
+	if err != nil || uid == 0 || !identity.Active || identity.Issuer != b.cfg.issuer || identity.TokenType != "Bearer" || identity.Expires <= now {
 		return fail(c, 401, "unauthorized")
+	}
+	if identity.ClientID == guidanceApplication && identity.Audience == "taskly-api" {
+		// Existing web credentials retain their original scope policy.
+		hasLogin := false
+		for _, scope := range strings.Fields(identity.Scope) {
+			hasLogin = hasLogin || scope == "taskly:login"
+		}
+		if !hasLogin {
+			return fail(c, 401, "unauthorized")
+		}
+	} else {
+		if b.cfg.delegatedResource == "" || identity.ClientID != guidanceMCPBackend || identity.Audience != b.cfg.delegatedResource || identity.OriginalClient != guidanceMCPApplication || identity.OriginalResource != b.cfg.parentResource || identity.Actor == nil || identity.Actor.Subject != guidanceMCPBackend || identity.Expires > now+60 {
+			return fail(c, 401, "unauthorized")
+		}
+		// Each exchanged token grants exactly one bridge operation. Broad MCP
+		// tokens and tokens for the general Taskly API cannot authorize this path.
+		expected := ""
+		switch c.Method() {
+		case fiber.MethodGet:
+			expected = guidanceTasksRead
+		case fiber.MethodPut:
+			expected = guidanceTasksWrite
+		}
+		scopes := strings.Fields(identity.Scope)
+		if expected == "" || len(scopes) != 1 || scopes[0] != expected {
+			return fail(c, 403, "insufficient guidance task scope")
+		}
 	}
 	var user domain.User
 	if err := b.db.Where("id = ? AND is_deleted = ?", uid, false).First(&user).Error; errors.Is(err, gorm.ErrRecordNotFound) {

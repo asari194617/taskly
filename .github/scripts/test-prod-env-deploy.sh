@@ -6,6 +6,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 assert() { "$@" || exit 1; }
 python3 "$repo/.github/scripts/prepare-prod-env.test.py"
+python3 "$repo/.github/scripts/verify-no-ddl-release.test.py"
 
 mode() {
   if stat -c %a "$1" >/dev/null 2>&1; then stat -c %a "$1"; else stat -f %Lp "$1"; fi

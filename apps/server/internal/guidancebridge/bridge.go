@@ -40,7 +40,8 @@ type completionRecord struct {
 	AutoAssignmentScope *string
 }
 
-// Register accepts only the dedicated guidance client's live OAuth access tokens.
+// Register accepts dedicated guidance web tokens or narrowly exchanged MCP
+// bridge tokens. Both policies use live introspection and canonical task permissions.
 // Generic API keys and Taskly browser sessions cannot authorize this bridge.
 func Register(router fiber.Router, db *gorm.DB) {
 	cfg, err := loadConfig()

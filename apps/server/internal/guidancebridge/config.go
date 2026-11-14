@@ -12,10 +12,18 @@ import (
 	"strings"
 )
 
-const guidanceApplication = "nnct-corp-guidance-2026"
+const (
+	guidanceApplication    = "nnct-corp-guidance-2026"
+	guidanceMCPApplication = "nnct-guidance-chatgpt"
+	guidanceMCPBackend     = "nnct-guidance-mcp-backend"
+	guidanceTasksPath      = "/integrations/nnct-guidance/tasks"
+	guidanceTasksRead      = "guidance:tasks:read"
+	guidanceTasksWrite     = "guidance:tasks:write"
+)
 
 type config struct {
 	eventID, issuer, clientID, clientSecret, webURL string
+	delegatedResource, parentResource               string
 	bindings                                        map[string]uint
 }
 
@@ -50,6 +58,10 @@ func loadConfig() (config, error) {
 			return config{}, bad
 		}
 	}
+	// Delegation is opt-in and independently fails closed. Incomplete MCP
+	// configuration must not change the established guidance web-token policy.
+	cfg.delegatedResource, cfg.parentResource = delegatedResources()
+
 	rawBindings := os.Getenv("NNCT_GUIDANCE_TASK_BINDINGS")
 	if len(rawBindings) > 16384 {
 		return config{}, bad
@@ -74,4 +86,27 @@ func loadConfig() (config, error) {
 		return config{}, bad
 	}
 	return cfg, nil
+}
+
+func delegatedResources() (string, string) {
+	origin := strings.TrimRight(os.Getenv("API_PUBLIC_URL"), "/")
+	parent := os.Getenv("NNCT_GUIDANCE_MCP_PARENT_RESOURCE")
+	if origin == "" || parent == "" {
+		return "", ""
+	}
+	for _, raw := range []string{origin, parent} {
+		u, err := url.Parse(raw)
+		if err != nil || strings.TrimSpace(raw) != raw || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return "", ""
+		}
+		if strings.EqualFold(os.Getenv("NODE_ENV"), "production") && u.Scheme != "https" {
+			return "", ""
+		}
+	}
+	api, _ := url.Parse(origin)
+	resource, _ := url.Parse(parent)
+	if api.Path != "" || resource.Path != "/mcp" {
+		return "", ""
+	}
+	return origin + guidanceTasksPath, parent
 }
