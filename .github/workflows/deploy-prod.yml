@@ -16,6 +16,7 @@ on:
       - ".github/scripts/require-prod-env.sh"
       - ".github/scripts/prepare-prod-env.py"
       - ".github/scripts/prepare-prod-ssh.sh"
+      - ".github/scripts/run-prod-script.sh"
       - ".github/workflows/deploy-prod.yml"
   workflow_dispatch:
     inputs:
@@ -246,10 +247,8 @@ jobs:
         run: |
           set -eu
           rm -f "$RUNNER_TEMP/taskly-schema-baseline.json" "$RUNNER_TEMP/taskly-schema-proof.json"
-          printf -v quoted_workdir '%q' "$PROD_WORKDIR"
-          printf -v quoted_release '%q' "$RELEASE_SHA"
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
-            "bash -s -- schema-baseline $quoted_workdir $quoted_release" \
+          umask 077
+          .github/scripts/run-prod-script.sh 120 schema-baseline "$PROD_WORKDIR" "$RELEASE_SHA" \
             < infra/ops/deploy-state.sh > "$RUNNER_TEMP/taskly-schema-baseline.json"
           python3 .github/scripts/verify-no-ddl-release.py \
             --target-sha "$RELEASE_SHA" \
@@ -270,9 +269,8 @@ jobs:
         timeout-minutes: 5
         run: |
           test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
-            bash -s -- begin "$PROD_WORKDIR" "$RELEASE_SHA" \
-              "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
+          .github/scripts/run-prod-script.sh 120 begin "$PROD_WORKDIR" "$RELEASE_SHA" \
+            "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
       - name: Rsync repository to server
         timeout-minutes: 5
         run: |
@@ -323,7 +321,7 @@ jobs:
           api_health_b64=$(printf '%s' "$PROD_PUBLIC_API_HEALTH_URL" | base64 | tr -d '\n')
           mcp_health_b64=$(printf '%s' "$PROD_PUBLIC_MCP_HEALTH_URL" | base64 | tr -d '\n')
           airflow_health_b64=$(printf '%s' "$PROD_PUBLIC_AIRFLOW_HEALTH_URL" | base64 | tr -d '\n')
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" <<EOS
+          .github/scripts/run-prod-script.sh 1740 <<EOS
           set -euxo pipefail
           cd "$PROD_WORKDIR/infra"
           export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
@@ -386,9 +384,20 @@ jobs:
       - name: Mark production deployment complete
         timeout-minutes: 5
         run: |
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
-            bash -s -- complete "$PROD_WORKDIR" "$RELEASE_SHA" \
-              "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
+          .github/scripts/run-prod-script.sh 120 complete "$PROD_WORKDIR" "$RELEASE_SHA" \
+            "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
+      - name: Verify committed production release
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          umask 077
+          .github/scripts/run-prod-script.sh 120 schema-baseline "$PROD_WORKDIR" "$RELEASE_SHA" \
+            < infra/ops/deploy-state.sh > "$RUNNER_TEMP/taskly-completed-baseline.json"
+          python3 .github/scripts/verify-no-ddl-release.py \
+            --target-sha "$RELEASE_SHA" \
+            --baseline-file "$RUNNER_TEMP/taskly-completed-baseline.json" \
+            --committed-digest "$SCHEMA_DATABASE_DIGEST" \
+            --output "$RUNNER_TEMP/taskly-completed-proof.json"
       - name: Check Airflow after deploy failure
         timeout-minutes: 5
         if: ${{ failure() || cancelled() }}

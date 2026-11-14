@@ -180,8 +180,15 @@ def main():
     parser.add_argument("--baseline-file", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--github-env")
+    parser.add_argument("--committed-digest")
     args = parser.parse_args()
     proof = verify(args.repo, args.target_sha, args.baseline_file)
+    if args.committed_digest is not None and (
+        not DIGEST.fullmatch(args.committed_digest)
+        or proof["baseline_sha"] != args.target_sha
+        or proof["database_digest"] != args.committed_digest
+    ):
+        fail("completion is not attested for the target and expected database schema")
     output = Path(args.output)
     output.write_text(json.dumps(proof, sort_keys=True) + "\n")
     output.chmod(0o600)

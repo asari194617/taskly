@@ -71,7 +71,9 @@ class VerifyNoDDLReleaseTest(unittest.TestCase):
         self.git("commit", "-qm", message)
         return self.git("rev-parse", "HEAD")
 
-    def run_verify(self, baseline=None, target=None, write_baseline=True):
+    def run_verify(
+        self, baseline=None, target=None, write_baseline=True, committed_digest=None
+    ):
         if write_baseline:
             self.baseline_file.write_text(
                 json.dumps(self.baseline if baseline is None else baseline)
@@ -90,6 +92,11 @@ class VerifyNoDDLReleaseTest(unittest.TestCase):
                 str(self.output),
                 "--github-env",
                 str(self.github_env),
+                *(
+                    []
+                    if committed_digest is None
+                    else ["--committed-digest", committed_digest]
+                ),
             ],
             capture_output=True,
             text=True,
@@ -114,6 +121,25 @@ class VerifyNoDDLReleaseTest(unittest.TestCase):
         )
         self.assertNotIn(self.sql.decode(), result.stdout + result.stderr)
         self.assertFalse(self.docker_calls.exists())
+
+    def test_committed_completion_requires_target_as_current_and_expected_digest(self):
+        for baseline_sha, digest, expected in [
+            (self.target, "a" * 64, "a" * 64),
+            (self.old, "a" * 64, "a" * 64),
+            (self.target, "a" * 64, "b" * 64),
+            (self.target, "a" * 64, "invalid"),
+        ]:
+            with self.subTest(baseline_sha=baseline_sha, expected=expected):
+                self.output.unlink(missing_ok=True)
+                self.github_env.unlink(missing_ok=True)
+                value = copy.deepcopy(self.baseline)
+                value["baseline_sha"] = baseline_sha
+                value["database_digest"] = digest
+                result = self.run_verify(value, committed_digest=expected)
+                if baseline_sha == self.target and digest == expected:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.blocked(result)
 
     def test_unknown_first_deployment_has_no_inferred_baseline(self):
         self.blocked(self.run_verify(write_baseline=False))
