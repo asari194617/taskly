@@ -8,7 +8,8 @@ import { localRedirectTarget } from "@/lib/auth-guard";
 import { useLang } from "@/react/LanguageProvider";
 
 const policyVersion = "2026-09-22.1";
-const policyPath = (kind: string) => `/legal/${kind}-${policyVersion}`;
+const policyPath = (kind: "terms" | "privacy" | "security") =>
+  `https://policies.taskly.iy0306.com/${kind}/${policyVersion}/`;
 
 function PolicyLink({ href, label, lang, agree }: { href: string; label: string; lang: "ja" | "en"; agree: string }) {
   const link = (
