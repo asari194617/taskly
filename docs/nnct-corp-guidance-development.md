@@ -27,7 +27,7 @@ and prepare a development user there. In that environment, append this entry to
 `OAUTH_PUBLIC_CLIENTS_JSON`, retaining any existing registrations:
 
 ```json
-{"client_id":"nnct-corp-guidance-dev","redirect_uri":"http://127.0.0.1:3071/auth/callback"}
+{"client_id":"nnct-corp-guidance-2026","redirect_uri":"http://127.0.0.1:3071/auth/callback"}
 ```
 
 The setting is an array of these objects. Recreate the development auth service
@@ -35,6 +35,9 @@ after changing its configuration. The guidance service uses a public OAuth
 client with PKCE S256 and does not need Taskly's confidential client secret or
 its internal synchronization token. Do not replace the existing `taskly-web`
 client or change Taskly's authentication ownership flags for this setup.
+Use the dedicated client ID above in the isolated development auth environment
+as well: Taskly's first-party guidance bridge accepts that identity only.
+Production uses a separate auth environment and its registered HTTPS callback.
 
 Use `127.0.0.1` consistently for the guidance UI, API, and callback. taskly-auth accepts an
 HTTP public-client callback on a loopback IP, but not an HTTP `localhost`
@@ -48,7 +51,8 @@ actual issuer; do not change only one side of the provider's browser/API setup.
 
 ## Start the database and import private data
 
-Use the Go and Node versions specified by the guidance repository. Python 3.12,
+For the guidance repository, use Node.js 26.13.1 (`.nvmrc`) and Go 1.27.4
+(`go.mod`). Taskly's own checks use its own manifests and workflows. Python 3.12,
 the Python data-extraction dependencies (including Pillow), and the `tesseract`
 OCR command are needed when importing a supplied guidebook. Install Tesseract
 with `brew install tesseract` on macOS or `sudo apt-get install tesseract-ocr`
@@ -158,7 +162,8 @@ export ADDR='127.0.0.1:3071'
 export UI_ORIGIN='http://127.0.0.1:3000'
 export API_ORIGIN='http://127.0.0.1:3071'
 export AUTH_ISSUER='http://localhost:3067'
-export AUTH_CLIENT_ID='nnct-corp-guidance-dev'
+guidance_registration='nnct-corp-guidance-2026'
+export AUTH_CLIENT_ID="$guidance_registration"
 export SESSION_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 go run ./cmd/api
 ```
@@ -172,6 +177,7 @@ In a second terminal, from the guidance checkout:
 
 ```bash
 npm --prefix apps/web ci
+npm --prefix deploy/r2 ci
 NEXT_PUBLIC_API_URL='http://127.0.0.1:3071' npm --prefix apps/web run dev
 ```
 
@@ -181,12 +187,12 @@ dataset. An unauthenticated request to `/api/guidance`, `/api/documents/{id}`, o
 `/api/bookmarks` must return `401`. Saved companies belong to the signed-in
 Taskly account and are stored in the guidance database.
 
-The static pages are `/` (list), `/search/`, `/favorites/`, `/schedule/`,
+The static pages are `/` (home), `/search/`, `/favorites/`, `/schedule/`,
 `/documents/`, and `/map/`. Production Cloudflare rewrites each page to its
 own exported `index.html`, preserving its URL and query string. These are
-separate pages; the old `?view=` URLs are compatibility links. The map uses
-a fullscreen layout, and PDF/map requests go directly to private R2 rather
-than the Go server's filesystem.
+separate pages; the old `?view=` URLs are compatibility links. The map fills
+the area between the header and mobile navigation. Online PDF/map requests go
+directly to private R2 rather than the Go server's filesystem.
 
 On first login, set the roster number for Ec4 in the setup dialog, or choose to
 do it later. The API accepts numbers with an assignment in the imported guide,
@@ -207,6 +213,64 @@ Logout prevents new URL issuance but does **not** immediately revoke URLs
 already issued by R2. Do not include these temporary bearer URLs in public
 logs, issue comments, or test artifacts.
 
+## Offline reference at the venue
+
+After an online visit, the same device can read the last successfully fetched
+companies, schedule, assigned visits, favorites, home state, and downloaded map
+images for up to 24 hours. The snapshot is scoped to the confirmed account and
+roster; account changes, logout, `401`, and roster changes clear it. Offline
+mode is read-only: completion, favorites, and roster edits are disabled, and
+reconnection reloads the server state without replaying queued writes.
+
+The Service Worker caches only the public static shell. Private snapshots and
+map image bytes are stored separately in IndexedDB; authentication data,
+presigned URLs, and PDFs are not cached. PDF viewing and external forms need
+connectivity. The existing private R2 bucket's exact-UI-origin GET/HEAD CORS
+policy permits map-byte retrieval without making objects public or replacing
+short presigned URLs with permanent links.
+
+The normal guidance build generates `/offline-worker.js` with its asset
+manifest. The existing R2 deploy step regenerates it from the final
+CSP-protected HTML and uploads assets, HTML, then the worker. Installing
+`deploy/r2` dependencies supplies the `parse5` parser used by CSP preparation
+and the deployment tests. Normal builds and deployments use the existing
+Cloudflare setup without a new Worker service or bucket.
+
+A zone-level browser TTL override can supersede the R2 object's `no-cache`.
+Keep the cache rule scoped only to the exact UI host and `/offline-worker.js`,
+with edge caching disabled and browser TTL set to `respect_origin`. Deployment
+verification checks the public worker's JavaScript MIME, `no-cache`, and byte
+identity with the final uploaded worker. Immutable asset policies and the
+zone-wide TTL remain unchanged.
+
+Check the public UI URL after deployment; the source of truth for expiry,
+cache boundaries, CSP, and worker verification is the guidance
+[offline guide](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/offline.md).
+
+## Guidance lint and formatting
+
+Run these commands from the **guidance checkout**, not the Taskly repository.
+The npm scripts live in `apps/web` but invoke a runner for the whole guidance
+repository: Biome 2.6.7, Ruff 0.17.5, `go vet`, and `gofmt`.
+
+```bash
+cd /absolute/path/to/taskly-nnct-corp-guidance
+npm --prefix apps/web ci
+npm --prefix deploy/r2 ci
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r requirements-lint.txt
+npm --prefix apps/web run lint
+npm --prefix apps/web run format:check
+```
+
+Use `npm --prefix apps/web run format` to apply formatting, then rerun lint
+and the formatting check. CI runs both checks for all changes without applying
+formatting or committing files. See the guidance
+[code-quality guide](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/code-quality.md)
+for the measured source types and exclusions. These commands do not change
+Taskly's lint or CI configuration.
+
 ## Verification and production operations
 
 Use the guidance repository's verification instructions and workflows for its
@@ -215,8 +279,11 @@ and Docker builds. PR reports distinguish unit, integration, and browser
 coverage. Required checks run for all PR changes, including documentation-only
 changes; they must not use path filters that leave a required check unreported.
 The measured Go application, frontend, importer, and PDF-extraction tests have
-80% minimums. Integration and browser coverage are reported separately from
-those combined/unit measurements.
+80% minimums. Guidance's real-MySQL run selects `^TestMySQL` and separately
+requires 80% statement coverage across `internal/server`. The deployed Service
+Worker functions are measured separately in Node with 80% minimums for lines, branches,
+and functions. Chromium page E2E coverage is reported separately from unit,
+MySQL, and Service Worker coverage.
 
 The browser E2E helper `node scripts/e2e-run.mjs` starts its own loopback
 S3-compatible object service alongside the test OAuth service, real Go API,
