@@ -56,13 +56,22 @@ jobs:
         run: |
           set -euo pipefail
           test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
-          printf -v workdir '%q' "$PROD_WORKDIR"
-          printf -v release '%q' "$RELEASE_SHA"
-          printf -v baseline '%q' "$SCHEMA_BASELINE_SHA"
-          printf -v digest '%q' "$SCHEMA_DATABASE_DIGEST"
-          api=$(printf '%s' "$PROD_PUBLIC_API_HEALTH_URL" | base64 | tr -d '\n')
-          mcp=$(printf '%s' "$PROD_PUBLIC_MCP_HEALTH_URL" | base64 | tr -d '\n')
-          airflow=$(printf '%s' "$PROD_PUBLIC_AIRFLOW_HEALTH_URL" | base64 | tr -d '\n')
-          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
-            "export PROD_PUBLIC_API_HEALTH_URL=\$(printf '%s' '$api' | base64 -d); export PROD_PUBLIC_MCP_HEALTH_URL=\$(printf '%s' '$mcp' | base64 -d); export PROD_PUBLIC_AIRFLOW_HEALTH_URL=\$(printf '%s' '$airflow' | base64 -d); timeout 420 bash -s -- $workdir $release $baseline $digest" \
-            < infra/ops/reconcile-code-only.sh
+          {
+            printf 'export PROD_PUBLIC_API_HEALTH_URL=%q\n' "$PROD_PUBLIC_API_HEALTH_URL"
+            printf 'export PROD_PUBLIC_MCP_HEALTH_URL=%q\n' "$PROD_PUBLIC_MCP_HEALTH_URL"
+            printf 'export PROD_PUBLIC_AIRFLOW_HEALTH_URL=%q\n' "$PROD_PUBLIC_AIRFLOW_HEALTH_URL"
+            cat infra/ops/reconcile-code-only.sh
+          } | .github/scripts/run-prod-script.sh 420 "$PROD_WORKDIR" "$RELEASE_SHA" "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST"
+      - name: Verify committed production release
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          umask 077
+          .github/scripts/run-prod-script.sh 120 schema-baseline "$PROD_WORKDIR" "$RELEASE_SHA" \
+            < infra/ops/deploy-state.sh > "$RUNNER_TEMP/taskly-completed-baseline.json"
+          python3 .github/scripts/verify-no-ddl-release.py \
+            --repo "$GITHUB_WORKSPACE/.reconcile-release" \
+            --target-sha "$RELEASE_SHA" \
+            --baseline-file "$RUNNER_TEMP/taskly-completed-baseline.json" \
+            --committed-digest "$SCHEMA_DATABASE_DIGEST" \
+            --output "$RUNNER_TEMP/taskly-completed-proof.json"

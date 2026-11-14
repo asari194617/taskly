@@ -156,3 +156,15 @@ test('one-time reconciliation is manual protected-main only and binds its releas
     assert.match(source, /prepare-prod-ssh.sh/);
   }
 });
+
+test('production source cannot share stdin with children or skip its committed-state postcondition', () => {
+  for (const workflow of ['deploy-prod', 'reconcile-code-only']) {
+    const source = readFileSync(new URL(`../workflows/${workflow}.yml`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /bash -s/);
+    assert.match(source, /run-prod-script.sh/);
+    assert.match(source, /name: Verify committed production release/);
+    assert.match(source, /--committed-digest "\$SCHEMA_DATABASE_DIGEST"/);
+    assert.match(source, /taskly-completed-baseline.json/);
+    assert.ok(source.indexOf('name: Verify committed production release') > source.indexOf(workflow === 'deploy-prod' ? 'name: Mark production deployment complete' : 'name: Verify every remaining invariant and complete the exact release'));
+  }
+});
