@@ -1,0 +1,68 @@
+name: reconcile-code-only-release
+
+on:
+  workflow_dispatch:
+
+# Serialize with ordinary deployment. Never interrupt either operation.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reconcile:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.ref_protected }}
+    runs-on: [self-hosted, taskly-prod]
+    environment: production
+    timeout-minutes: 15
+    env:
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
+      PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
+      PROD_WORKDIR: ${{ secrets.PROD_WORKDIR }}
+      PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
+      PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
+      PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
+      RELEASE_SHA: 85222d44a5bf082d36d9dd781889eda73f0ff013
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 85222d44a5bf082d36d9dd781889eda73f0ff013
+          path: .reconcile-release
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the exact failed deployment and immutable schema attestation
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/verify-reconcile-attestation.py \
+            --repo "$GITHUB_WORKSPACE/.reconcile-release" \
+            --output-dir "$RUNNER_TEMP/taskly-reconcile-proof" \
+            --github-env "$GITHUB_ENV"
+      - name: Prepare bounded production SSH
+        timeout-minutes: 2
+        run: .github/scripts/prepare-prod-ssh.sh
+      - name: Verify every remaining invariant and complete the exact release
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
+          printf -v workdir '%q' "$PROD_WORKDIR"
+          printf -v release '%q' "$RELEASE_SHA"
+          printf -v baseline '%q' "$SCHEMA_BASELINE_SHA"
+          printf -v digest '%q' "$SCHEMA_DATABASE_DIGEST"
+          api=$(printf '%s' "$PROD_PUBLIC_API_HEALTH_URL" | base64 | tr -d '\n')
+          mcp=$(printf '%s' "$PROD_PUBLIC_MCP_HEALTH_URL" | base64 | tr -d '\n')
+          airflow=$(printf '%s' "$PROD_PUBLIC_AIRFLOW_HEALTH_URL" | base64 | tr -d '\n')
+          ssh -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
+            "export PROD_PUBLIC_API_HEALTH_URL=\$(printf '%s' '$api' | base64 -d); export PROD_PUBLIC_MCP_HEALTH_URL=\$(printf '%s' '$mcp' | base64 -d); export PROD_PUBLIC_AIRFLOW_HEALTH_URL=\$(printf '%s' '$airflow' | base64 -d); timeout 420 bash -s -- $workdir $release $baseline $digest" \
+            < infra/ops/reconcile-code-only.sh

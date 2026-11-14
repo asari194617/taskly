@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -118,8 +120,24 @@ func TestRedisSocketReadKeepsRequestDeadline(t *testing.T) {
 	defer cancel()
 	before := time.Now()
 	err = rdb.Get(ctx, "blocked").Err()
-	if err == nil || ctx.Err() != context.DeadlineExceeded || time.Since(before) > 500*time.Millisecond {
-		t.Fatalf("Redis read did not obey request deadline: err=%v context=%v elapsed=%s", err, ctx.Err(), time.Since(before))
+	const budget = 500 * time.Millisecond
+	elapsed := time.Since(before)
+	var socketError net.Error
+	if err == nil || (!errors.Is(err, context.DeadlineExceeded) && !(errors.As(err, &socketError) && socketError.Timeout())) || elapsed >= budget {
+		t.Fatalf("Redis read did not obey request deadline: err=%v elapsed=%s", err, elapsed)
+	}
+	// The socket deadline and context cancellation share an absolute deadline,
+	// but their timers can wake different goroutines in either order. Observe
+	// cancellation within the original total budget rather than assuming order.
+	remaining := time.NewTimer(time.Until(before.Add(budget)))
+	defer remaining.Stop()
+	select {
+	case <-ctx.Done():
+	case <-remaining.C:
+		t.Fatal("request context did not expire within the original deadline budget")
+	}
+	if ctx.Err() != context.DeadlineExceeded || time.Since(before) > budget {
+		t.Fatalf("request deadline was not observed: context=%v elapsed=%s", ctx.Err(), time.Since(before))
 	}
 	select {
 	case <-started:
