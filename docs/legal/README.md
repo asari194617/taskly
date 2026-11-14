@@ -2,9 +2,8 @@
 
 ## Initial catalogued edition
 
-The three public Notion documents were snapshotted on 2026-09-22 as edition
-`2026-09-22.1`. Their public pages now show that edition, the effective date,
-and a change history. The archived texts are:
+The three then-public Notion documents were snapshotted on 2026-09-22 as
+consent edition `2026-09-22.1`. The archived texts are:
 
 - [Terms](terms-2026-09-22.1.md)
 - [Privacy policy](privacy-2026-09-22.1.md)
@@ -17,6 +16,12 @@ terms     688178ab0fac56e973747d16168313c2bb7b998e6a3fd9c3527d46fa72f4046d
 privacy   05d950de9df6e88fea9810d6d4c3e5d61167d963fa5e68a1c8fc8c0fad6ae46a
 security  2bcb886a3902897d5fbf57ff0fd2de1c3346fc4172cc85974e75b5d2727f3b5e
 ```
+
+The current public [privacy policy](privacy-policy.md) was revised on
+2026-09-23 (PR #418). It differs from the privacy text in the consent archive.
+The consent flow still records `2026-09-22.1`; this archive must remain
+available at its versioned URL as evidence of the text shown for that edition.
+The policy site's current `/privacy/` path must display the 2026-09-23 text.
 
 The web consent page links to immutable paths at
 `https://policies.taskly.iy0306.com/{terms,privacy,security}/2026-09-22.1/`.
