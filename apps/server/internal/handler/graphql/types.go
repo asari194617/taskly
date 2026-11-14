@@ -91,7 +91,7 @@ func (h *Handler) createGQLTypes() *gqlShared.GqlTypes {
 						case float64:
 							idUint = uint(vv)
 						}
-						_ = h.db.First(&subj, idUint).Error
+						_ = h.db.WithContext(p.Context).First(&subj, idUint).Error
 					}
 				}
 				lang := "ja"

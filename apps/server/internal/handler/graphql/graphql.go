@@ -33,6 +33,7 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 	if err != nil {
 		return
 	}
+	bindRequestResolvers(&schema)
 
 	// GraphQL POST-only endpoint with security features
 	router.Post("/", func(c *fiber.Ctx) error {
@@ -94,6 +95,7 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 		// Retain upstream cancellation while enforcing the GraphQL deadline.
 		ctx, cancel := context.WithTimeout(c.UserContext(), 5*time.Second)
 		defer cancel()
+		c.SetUserContext(ctx)
 
 		// Disable introspection in production
 		nodeEnv := strings.ToLower(utils.Env("NODE_ENV", "development"))
@@ -105,7 +107,7 @@ func (h *Handler) RegisterGraphQL(router fiber.Router) {
 			Schema:         schema,
 			RequestString:  body.Query,
 			VariableValues: body.Variables,
-			Context:        WithFiberCtx(ctx, c),
+			Context:        graphQLExecutionContext(WithFiberCtx(ctx, c)),
 		}
 		result := graphql.Do(params)
 		if ctx.Err() == context.DeadlineExceeded {
