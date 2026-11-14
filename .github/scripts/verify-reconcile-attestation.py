@@ -3,14 +3,16 @@
 
 import argparse
 import hashlib
+import http.client
 import importlib.util
 import io
 import json
 import os
+import re
 import stat
-import subprocess
 import zipfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 REPOSITORY = "asari194617/taskly"
 REPOSITORY_ID = 1074628894
@@ -134,16 +136,103 @@ def unpack(data):
     return result["taskly-schema-baseline.json"]
 
 
-def api(path):
-    result = subprocess.run(
-        ["gh", "api", "repos/" + REPOSITORY + "/" + path],
-        capture_output=True,
-        timeout=30,
-        check=False,
-    )
-    if result.returncode or len(result.stdout) > 1024 * 1024:
+API_HOST = "api.github.com"
+ARTIFACT_HOST = "productionresultssa10.blob.core.windows.net"
+HTTP_TIMEOUT = 15
+API_PATHS = {
+    "actions/runs/" + str(RUN),
+    "actions/jobs/" + str(JOB),
+    "actions/artifacts/" + str(ARTIFACT),
+    "actions/artifacts/" + str(ARTIFACT) + "/zip",
+}
+
+
+def download_target(location):
+    # This exact host was observed for the pinned artifact. Do not accept a
+    # wildcard Azure/GitHub domain or let a URL choose an authenticated host.
+    if not isinstance(location, str) or not 0 < len(location) <= 16384:
         fail()
-    return result.stdout
+    if any(not 33 <= ord(character) <= 126 for character in location):
+        fail()
+    try:
+        url = urlsplit(location)
+        if (
+            url.scheme != "https"
+            or url.netloc != ARTIFACT_HOST
+            or url.hostname != ARTIFACT_HOST
+            or url.username is not None
+            or url.password is not None
+            or url.port is not None
+            or url.fragment
+            or not url.path.startswith("/")
+        ):
+            fail()
+    except ValueError:
+        fail()
+    return url.path + ("?" + url.query if url.query else "")
+
+
+def request(host, target, headers, limit, artifact_redirect=False):
+    # http.client never follows redirects. New connections for the artifact
+    # receive a newly constructed header map containing no workflow token.
+    connection = None
+    try:
+        connection = http.client.HTTPSConnection(host, timeout=HTTP_TIMEOUT)
+        connection.request("GET", target, headers=headers)
+        response = connection.getresponse()
+        if artifact_redirect:
+            if response.status != 302:
+                fail()
+            locations = response.headers.get_all("Location", [])
+            if len(locations) != 1:
+                fail()
+            return download_target(locations[0])
+        if response.status != 200:
+            fail()
+        lengths = response.headers.get_all("Content-Length", [])
+        if len(lengths) > 1 or (
+            lengths
+            and (not re.fullmatch(r"[0-9]+", lengths[0]) or int(lengths[0]) > limit)
+        ):
+            fail()
+        body = response.read(limit + 1)
+        if len(body) > limit or (lengths and len(body) != int(lengths[0])):
+            fail()
+        return body
+    except (OSError, http.client.HTTPException, ValueError):
+        # Do not print exceptions: they may contain a token, signed URL or
+        # private API response. Error bodies are never read or logged.
+        fail()
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def api(path):
+    if path not in API_PATHS:
+        fail()
+    token = os.environ.get("GH_TOKEN", "")
+    if not token or any(not 33 <= ord(character) <= 126 for character in token):
+        fail()
+    headers = {
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "taskly-code-only-reconciliation",
+        "Accept-Encoding": "identity",
+    }
+    target = "/repos/" + REPOSITORY + "/" + path
+    if path.endswith("/zip"):
+        redirected_target = request(
+            API_HOST, target, headers, 16384, artifact_redirect=True
+        )
+        return request(
+            ARTIFACT_HOST,
+            redirected_target,
+            {"User-Agent": headers["User-Agent"], "Accept-Encoding": "identity"},
+            16384,
+        )
+    return request(API_HOST, target, headers, 1024 * 1024)
 
 
 def main():

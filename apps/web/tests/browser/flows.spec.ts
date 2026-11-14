@@ -421,10 +421,12 @@ test("TOTP無効化とリカバリーコード再発行は確認後だけ実行�
   await expect(page.getByRole("alertdialog").getByText("TOTPを無効化しますか？")).toBeVisible();
   expect(totpDisableCalls).toBe(0);
   await page.getByRole("button", { name: "キャンセル" }).click();
+  await expect(page.getByRole("alertdialog")).toBeHidden();
   expect(totpDisableCalls).toBe(0);
 
   await page.getByRole("button", { name: "無効化", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "無効化" }).focus();
+  expect(totpDisableCalls).toBe(0);
   await page.keyboard.press("Enter");
   await expect.poll(() => totpDisableCalls).toBe(1);
 
