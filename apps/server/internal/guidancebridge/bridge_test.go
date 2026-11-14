@@ -73,7 +73,7 @@ func fixtureDB(t *testing.T, mysqlDB bool) *gorm.DB {
 	}
 	for _, sql := range []string{
 		`CREATE TABLE tasks (id integer primary key, added_user_id integer, title text, subject_id integer, description text, type text, is_require_hand_in boolean, is_self_check_required boolean, is_completion_disabled boolean default 0, is_hidden boolean default 0, deadline date, deadline_since text, deadline_until text, created_at datetime, updated_at datetime)`,
-		`CREATE TABLE tasks_users_completions (user_id integer, task_id integer, completed_at datetime DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,task_id))`,
+		`CREATE TABLE tasks_users_completions (user_id integer, task_id integer, completed_at datetime DEFAULT CURRENT_TIMESTAMP, auto_event_id text, auto_source_task_id integer, auto_assignment_scope text, PRIMARY KEY(user_id,task_id))`,
 	} {
 		if err = db.Exec(sql).Error; err != nil {
 			t.Fatal(err)

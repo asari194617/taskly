@@ -55,22 +55,56 @@ func DeleteTask(db *gorm.DB, id uint, userEmail string) (Task, error) {
 	return rec, nil
 }
 
-// CompleteTask marks completion for a user.
+// LockCompletionUser serializes one user's completion and ownership changes.
+// Always acquire this lock before any Task locks in a completion transaction.
+func LockCompletionUser(tx *gorm.DB, userID uint) error {
+	var user User
+	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("id = ? AND (is_deleted = ? OR is_deleted IS NULL)", userID, false).First(&user).Error
+}
+
+// CompleteTask records an explicit manual check, retiring automatic ownership
+// on this endpoint and on visits previously derived from this source task.
 func CompleteTask(db *gorm.DB, userID uint, taskID uint) error {
-	// Lock the task so disabling completion and marking it complete serialize.
+	return changeTaskCompletion(db, userID, taskID, true, true)
+}
+
+// UncompleteTask records an explicit manual undo. Other completion flags stay
+// unchanged, while metadata linking them to this endpoint is retired.
+func UncompleteTask(db *gorm.DB, userID uint, taskID uint) error {
+	return changeTaskCompletion(db, userID, taskID, false, true)
+}
+
+// SetLinkedTaskCompletion is for the validated atomic guidance pair only. Its
+// caller holds the user lock and all pair Task locks in ascending order. It
+// must not retire ownership before the pair's scoped undo has examined it.
+func SetLinkedTaskCompletion(db *gorm.DB, userID uint, taskID uint, completed bool) error {
+	return changeTaskCompletion(db, userID, taskID, completed, false)
+}
+
+func changeTaskCompletion(db *gorm.DB, userID uint, taskID uint, completed, manual bool) error {
 	return db.Transaction(func(tx *gorm.DB) error {
+		if err := LockCompletionUser(tx, userID); err != nil {
+			return err
+		}
 		var task Task
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&task, taskID).Error; err != nil {
 			return err
 		}
-		if task.IsCompletionDisabled {
+		if completed && task.IsCompletionDisabled {
 			return fmt.Errorf("task completion disabled")
 		}
-		return tx.Exec("INSERT INTO tasks_users_completions(user_id, task_id) VALUES(?, ?) ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP", userID, taskID).Error
+		var err error
+		if completed {
+			err = tx.Exec("INSERT INTO tasks_users_completions(user_id, task_id) VALUES(?, ?) ON DUPLICATE KEY UPDATE completed_at = CURRENT_TIMESTAMP, auto_event_id = NULL, auto_source_task_id = NULL, auto_assignment_scope = NULL", userID, taskID).Error
+		} else {
+			err = tx.Exec("DELETE FROM tasks_users_completions WHERE user_id = ? AND task_id = ?", userID, taskID).Error
+		}
+		if err != nil {
+			return err
+		}
+		if manual {
+			return tx.Table("tasks_users_completions").Where("user_id = ? AND auto_source_task_id = ?", userID, taskID).Updates(map[string]any{"auto_event_id": nil, "auto_source_task_id": nil, "auto_assignment_scope": nil}).Error
+		}
+		return nil
 	})
-}
-
-// UncompleteTask removes completion mark for a user.
-func UncompleteTask(db *gorm.DB, userID uint, taskID uint) error {
-	return db.Exec("DELETE FROM tasks_users_completions WHERE user_id = ? AND task_id = ?", userID, taskID).Error
 }

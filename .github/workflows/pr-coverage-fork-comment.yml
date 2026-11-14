@@ -63,6 +63,7 @@ jobs:
             const rows = [
               ['API core (Go statements)', 'server'],
               ['Guidance bridge (Go statements, minimum 80%)', 'guidance-bridge'],
+              ['Guidance MySQL integration (Go statements, minimum 80%)', 'guidance-bridge-integration'],
               ['Notification core (Go statements)', 'batches'],
               ['Email core (Go statements)', 'batch-email'],
               ['Web push core (Go statements)', 'batch-web-push'],
