@@ -12,6 +12,7 @@ const requiredHeaders = [
   "Strict-Transport-Security",
   "X-Content-Type-Options",
   "X-Frame-Options",
+  "X-Robots-Tag",
 ];
 
 const requiredCspDirectives = [
