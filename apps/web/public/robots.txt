@@ -1,2 +1,5 @@
 User-agent: *
-Disallow: /
+Allow: /
+
+# Pages and assets return X-Robots-Tag: noindex, nofollow.
+# Crawlers must be allowed to fetch them to observe that directive.

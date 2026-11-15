@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const headersFile = new URL("../public/_headers", import.meta.url);
 const headers = readFileSync(headersFile, "utf8");
+const robots = readFileSync(new URL("../public/robots.txt", import.meta.url), "utf8");
 
 const requiredHeaders = [
   "Content-Security-Policy",
@@ -28,6 +29,10 @@ for (const header of requiredHeaders) {
   if (!headers.includes(`  ${header}:`)) {
     throw new Error(`Missing required security header: ${header}`);
   }
+}
+
+if (/^Disallow:\s*\/\s*$/mi.test(robots)) {
+  throw new Error("robots.txt blocks crawlers from seeing noindex responses");
 }
 
 for (const directive of requiredCspDirectives) {
