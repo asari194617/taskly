@@ -2,9 +2,8 @@
 
 ## Initial catalogued edition
 
-The three public Notion documents were snapshotted on 2026-09-22 as edition
-`2026-09-22.1`. Their public pages now show that edition, the effective date,
-and a change history. The archived texts are:
+The three then-public Notion documents were snapshotted on 2026-09-22 as
+consent edition `2026-09-22.1`. The archived texts are:
 
 - [Terms](terms-2026-09-22.1.md)
 - [Privacy policy](privacy-2026-09-22.1.md)
@@ -18,9 +17,16 @@ privacy   05d950de9df6e88fea9810d6d4c3e5d61167d963fa5e68a1c8fc8c0fad6ae46a
 security  2bcb886a3902897d5fbf57ff0fd2de1c3346fc4172cc85974e75b5d2727f3b5e
 ```
 
-The web consent page serves immutable paths built from these files. The archived
-edition is the evidence of what was displayed for an event. Notion remains the
-public editing location, but changing its text alone must never change the
+The current public [privacy policy](privacy-policy.md) was revised on
+2026-09-23 (PR #418). It differs from the privacy text in the consent archive.
+The consent flow still records `2026-09-22.1`; this archive must remain
+available at its versioned URL as evidence of the text shown for that edition.
+The policy site's current `/privacy/` path must display the 2026-09-23 text.
+
+The web consent page links to immutable paths at
+`https://policies.taskly.iy0306.com/{terms,privacy,security}/2026-09-22.1/`.
+The archived edition is the evidence of what was displayed for an event.
+Publishing a new document on the policy site alone must never change the
 archived edition or the server's accepted version.
 
 ## Migration and access
@@ -46,9 +52,10 @@ latest event is current. The client never supplies a timestamp or user ID.
 ## Publishing a revision
 
 1. Freeze the exact revised text in new `docs/legal/*-VERSION.md` archives.
-   Create matching versioned web pages. Preserve all older files and URLs.
-2. Update the three public Notion pages with version, effective date and a
-   change entry. Confirm the public text matches the new archive.
+   Publish matching immutable paths on the policy site. Preserve all older
+   files and URLs, and verify the served text against the archive.
+2. Update the policy site's current-version pointers, effective date, and
+   change history. Confirm the public text matches the new archive.
 3. Set `Version`, `PreviousVersion`, and a **future** `EffectiveAt` in
    `internal/legal/consent.go`; update the consent page's `policyVersion`.
    Publish a change summary and effective date in the user announcement.
