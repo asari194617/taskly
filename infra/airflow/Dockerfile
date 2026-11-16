@@ -52,7 +52,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 # Use the client matching the production MySQL server so the dump can be restored.
 FROM mysql:8.4 AS mysql-client
 
-FROM apache/airflow:slim-3.3.2-python3.14 AS airflow-python-deps
+FROM apache/airflow:slim-3.4.0-python3.14 AS airflow-python-deps
 
 USER root
 RUN apt-get update && \
@@ -60,12 +60,12 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER airflow
-ARG AIRFLOW_VERSION=3.3.2
+ARG AIRFLOW_VERSION=3.4.0
 ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
 RUN python -m pip wheel --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     --wheel-dir /tmp/mysqlclient-wheels mysqlclient
 
-FROM apache/airflow:slim-3.3.2-python3.14
+FROM apache/airflow:slim-3.4.0-python3.14
 
 USER root
 RUN apt-get update && \
@@ -88,7 +88,7 @@ RUN python -m pip install --no-cache-dir /tmp/mysqlclient-wheels/mysqlclient-*.w
 
 # Python deps for integrations: Sentry, Datadog tracer, Discord provider
 # IMPORTANT: Use Airflow constraints to avoid upgrading Airflow itself and keep provider compatibility
-ARG AIRFLOW_VERSION=3.3.2
+ARG AIRFLOW_VERSION=3.4.0
 ARG AIRFLOW_CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.14.txt"
 RUN python -m pip install --no-cache-dir --constraint "${AIRFLOW_CONSTRAINTS_URL}" \
     "apache-airflow==${AIRFLOW_VERSION}" \
@@ -124,6 +124,9 @@ RUN python -m pip install --no-cache-dir --upgrade \
 # Keep the expensive OS/Python dependency layers independent from batch source changes.
 COPY --from=batch-builder --chown=airflow:root /out/bin/ /opt/airflow/bin/
 COPY --from=mysql-client /usr/bin/mysqldump /usr/local/bin/mysqldump
+# Airflow 3.4 places /usr/python/bin (with MariaDB's mysqldump shim) first.
+# Prefer the MySQL 8.4 client copied above for production backups.
+ENV PATH="/usr/local/bin:${PATH}"
 
 # Avoid loading Airflow and its providers for every periodic health probe.
 COPY --chown=airflow:root infra/airflow/healthcheck.py /opt/airflow/healthcheck.py
