@@ -1,4 +1,4 @@
-FROM node:24.22.3-bookworm-slim AS node-runtime
+FROM node:26.13.1-bookworm-slim AS node-runtime
 
 FROM debian:bookworm-slim AS brotli-build
 
@@ -30,11 +30,13 @@ ARG RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Playwright 1.64.0 still ships Node 24.21.0. Replace it with the patched
-# runtime and override Ubuntu's vulnerable libbrotli for curl and other tools.
+# Replace the Playwright image's bundled Node with pinned Node 26.13.1 and
+# override Ubuntu's vulnerable libbrotli for curl and other tools.
 COPY --from=node-runtime /usr/local/ /usr/local/
 COPY --from=brotli-build /opt/brotli-runtime/ /usr/local/lib/
 
+# Runner 2.338.2 resolves JavaScript actions through externals/node24.
+# The path stays fixed; the executable installed there is Node 26.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -60,7 +62,7 @@ RUN apt-get update \
       zip \
       zlib1g \
     && ldconfig \
-    && test "$(node --version)" = "v24.22.3" \
+    && test "$(node --version)" = "v26.13.1" \
     && curl --version | grep -q 'brotli/1.2.1' \
     && rm -rf /var/lib/apt/lists/* \
     && userdel --remove pwuser \
@@ -74,7 +76,7 @@ RUN apt-get update \
       --directory /home/runner/actions-runner \
     && rm /tmp/actions-runner.tar.gz \
     && install -m 0755 /usr/local/bin/node /home/runner/actions-runner/externals/node24/bin/node \
-    && test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v24.22.3" \
+    && test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v26.13.1" \
     && chown -R runner:runner /home/runner/actions-runner
 
 COPY entrypoint.sh /usr/local/bin/taskly-runner-entrypoint

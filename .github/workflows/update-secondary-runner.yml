@@ -1,0 +1,74 @@
+name: update-secondary-runner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-secondary-runner
+  cancel-in-progress: false
+
+env:
+  RUNNER_IMAGE: taskly-actions-runner:2.338.2-node26-ci
+  EXPECTED_NODE_VERSION: v26.13.1
+
+jobs:
+  install:
+    if: github.ref == 'refs/heads/main' && github.ref_protected
+    runs-on: [self-hosted, taskly-ci-secondary]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build and verify the runner image
+        run: |
+          set -euo pipefail
+          docker build --tag "$RUNNER_IMAGE" infra/actions-runner
+          docker run --rm --entrypoint sh "$RUNNER_IMAGE" -lc '
+            test "$(node --version)" = "v26.13.1"
+            test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "v26.13.1"
+            curl --version | head -1 | grep -F "brotli/1.2.1"
+            ldd "$(command -v curl)" | grep -F "/usr/local/lib/libbrotli"
+          '
+      - name: Install the new launcher on the host
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/infra/actions-runner,dst=/source,readonly" \
+            --mount type=bind,src=/opt/taskly-runner,dst=/host-opt \
+            --mount type=bind,src=/etc/taskly-runner,dst=/host-etc \
+            alpine:3.22 sh -euc '
+              for script in run-slot.sh register-slot.sh stop-slot.sh; do
+                cp "/source/${script}" "/host-opt/${script}"
+                chmod 0755 "/host-opt/${script}"
+              done
+              if grep -q "^TASKLY_RUNNER_IMAGE=" /host-etc/runner.env; then
+                sed -i "s#^TASKLY_RUNNER_IMAGE=.*#TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.2-node26-ci#" /host-etc/runner.env
+              else
+                printf "%s\n" "TASKLY_RUNNER_IMAGE=taskly-actions-runner:2.338.2-node26-ci" >> /host-etc/runner.env
+              fi
+              chmod 0644 /host-etc/runner.env
+            '
+
+  recycle:
+    needs: install
+    runs-on: [self-hosted, taskly-ci-secondary]
+    timeout-minutes: 5
+    steps:
+      - name: Drain the existing secondary listener
+        run: |
+          echo "Recycling ${RUNNER_NAME}"
+          sleep 30
+
+  verify:
+    needs: recycle
+    runs-on: [self-hosted, taskly-ci-secondary]
+    timeout-minutes: 5
+    steps:
+      - name: Verify the secondary listener uses Node 26
+        run: |
+          set -euo pipefail
+          test "$(docker inspect --format '{{.Config.Image}}' taskly-ci-slot-1)" = "$RUNNER_IMAGE"
+          test "$(node --version)" = "$EXPECTED_NODE_VERSION"
+          test "$(/home/runner/actions-runner/externals/node24/bin/node --version)" = "$EXPECTED_NODE_VERSION"
