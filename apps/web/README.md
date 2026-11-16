@@ -6,7 +6,7 @@ API と認証サービスは別プロセスです。[リポジトリのローカ
 
 ## Local development
 
-Node.js 24 を使用します（CI は 24.22.3）。このディレクトリで:
+Node.js 26 を使用します（CI は 26.13.1）。このディレクトリで:
 
 ```bash
 cp .env.example .env
@@ -34,7 +34,7 @@ SITE_URL=https://preview.example.com npm run build
 
 ## Web checks
 
-Run with Node 24 from `apps/web`:
+Run with Node 26 from `apps/web`:
 
 ```bash
 npm ci
