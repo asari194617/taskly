@@ -1,5 +1,7 @@
 FROM node:26.13.1-bookworm-slim AS node-runtime
 
+FROM python:3.14.10-slim-bookworm AS python-runtime
+
 FROM debian:bookworm-slim AS brotli-build
 
 ARG BROTLI_COMMIT=db24a98aed38a16de78cc05ca15cdd8dc2a0d92d
@@ -30,9 +32,10 @@ ARG RUNNER_SHA256=baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Replace the Playwright image's bundled Node with pinned Node 26.13.1 and
-# override Ubuntu's vulnerable libbrotli for curl and other tools.
+# Replace the Playwright image's bundled Node and Python with pinned runtimes.
+# Override Ubuntu's vulnerable libbrotli for curl and other tools.
 COPY --from=node-runtime /usr/local/ /usr/local/
+COPY --from=python-runtime /usr/local/ /usr/local/
 COPY --from=brotli-build /opt/brotli-runtime/ /usr/local/lib/
 
 # Runner 2.338.2 resolves JavaScript actions through externals/node24.
@@ -44,8 +47,6 @@ RUN apt-get update \
       docker.io \
       docker-compose-v2 \
       build-essential \
-      python3 \
-      python3-venv \
       zstd \
       git \
       jq \
@@ -63,6 +64,7 @@ RUN apt-get update \
       zlib1g \
     && ldconfig \
     && test "$(node --version)" = "v26.13.1" \
+    && test "$(python3 --version)" = "Python 3.14.10" \
     && curl --version | grep -q 'brotli/1.2.1' \
     && rm -rf /var/lib/apt/lists/* \
     && userdel --remove pwuser \
