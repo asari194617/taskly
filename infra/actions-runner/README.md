@@ -154,10 +154,10 @@ Build the new image before installing `run-slot.sh`. Existing slots finish their
 current job with the old launcher; systemd picks up the new launcher on their
 next start. Allow active jobs to complete before restarting an idle slot.
 Keep the previous image and launcher until CI is verified for rollback.
-For the pinned Node runtime, dispatch `update-primary-runners` and
+For the pinned Node and Python runtimes, dispatch `update-primary-runners` and
 `update-secondary-runner` from protected `main`. The first workflow verifies
 the four primary CI slots and the production slot; the second verifies the
-secondary CI slot.
+secondary CI slot. The runner image uses Python 3.14.10 for `python3`.
 
 The host bind directory is created under the configured
 `TASKLY_RUNNER_WORK_ROOT`, with a runner-owned subdirectory. The launcher
