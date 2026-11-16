@@ -1,6 +1,6 @@
 module github.com/asari194617/taskly/apps/server
 
-go 1.26.0
+go 1.27.4
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0

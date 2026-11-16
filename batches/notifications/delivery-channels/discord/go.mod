@@ -1,6 +1,6 @@
 module github.com/asari194617/taskly/batches/notifications/delivery-channels/discord
 
-go 1.25.4
+go 1.27.4
 
 require (
 	github.com/asari194617/taskly/batches/notifications/delivery-channels/common v0.0.0

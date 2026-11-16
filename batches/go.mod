@@ -1,6 +1,6 @@
 module github.com/asari194617/taskly/batches
 
-go 1.26.0
+go 1.27.4
 
 require (
 	filippo.io/age v1.2.1
