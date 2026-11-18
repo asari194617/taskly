@@ -103,9 +103,17 @@ jobs:
           else
             npx playwright install --with-deps chromium
           fi
+      - name: Use WASI bindings on the self-hosted runner
+        if: runner.environment == 'self-hosted'
+        working-directory: apps/web
+        run: |
+          npm install --force --no-save @astrojs/compiler-binding-wasm32-wasi@0.5.3 @rolldown/binding-wasm32-wasi@1.2.18 @bruits/satteri-wasm32-wasi@0.11.7
+          echo "NAPI_RS_FORCE_WASI=true" >> "$GITHUB_ENV"
       - name: Run real API browser tests
         working-directory: apps/web
         run: npm run test:e2e
+        env:
+          NODE_OPTIONS: ${{ runner.environment == 'self-hosted' && '--import=./scripts/ci-astro-wasi-register.mjs' || '' }}
       - name: Upload API log and browser evidence
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
