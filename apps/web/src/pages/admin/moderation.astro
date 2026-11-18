@@ -1,9 +1,7 @@
 ---
-import AppLayout from "../../layouts/AppLayout.astro";
-import AdminGuard from "../../components/AdminGuard";
+import AppLayout from "../../layouts/AdminLayout.astro";
 import ModerationPage from "../../react/admin/Moderation";
 ---
-<AppLayout title="Moderation">
-  <AdminGuard />
+<AppLayout title="モデレーション">
   <ModerationPage client:load />
 </AppLayout>
