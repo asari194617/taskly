@@ -34,6 +34,7 @@ export default function Moderation() {
   const [loadError, setLoadError] = React.useState("");
   const [busyTaskId, setBusyTaskId] = React.useState<number | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [policyLoaded, setPolicyLoaded] = React.useState(false);
   const [policy, setPolicy] = React.useState<Policy>({ default_auto_hide: "high" });
   const [overridesText, setOverridesText] = React.useState("{}");
   const [showHidden, setShowHidden] = React.useState(true);
@@ -50,6 +51,7 @@ export default function Moderation() {
       setItems(rows || []);
       setPolicy(settings);
       setOverridesText(JSON.stringify(settings.auto_hide_by_category || {}, null, 2));
+      setPolicyLoaded(true);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "読み込みに失敗しました");
     } finally {
@@ -76,6 +78,7 @@ export default function Moderation() {
 
   async function savePolicy(event: React.FormEvent) {
     event.preventDefault();
+    if (!policyLoaded) return;
     let overrides: Record<string, string>;
     try {
       const parsed: unknown = JSON.parse(overridesText);
@@ -136,7 +139,7 @@ export default function Moderation() {
               aria-describedby="category-overrides-help" />
             <p id="category-overrides-help" className="text-xs text-muted-foreground">例: {`{"threat":"medium"}`}。重大度は low、medium、high を指定します。</p>
           </div>
-          <Button type="submit" disabled={saving}>{saving ? "保存中…" : "設定を保存"}</Button>
+          <Button type="submit" disabled={saving || !policyLoaded}>{saving ? "保存中…" : "設定を保存"}</Button>
         </form>
       </Card>
 
