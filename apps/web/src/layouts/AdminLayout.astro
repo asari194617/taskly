@@ -1,0 +1,45 @@
+---
+import AppLayout from "./AppLayout.astro";
+import AdminGuard from "../components/AdminGuard";
+
+const { title = "管理画面" } = Astro.props;
+const currentPath = Astro.url.pathname.replace(/\/$/, "") || "/admin";
+const sections = [
+  { href: "/admin", label: "概要" },
+  { href: "/admin/users", label: "ユーザー" },
+  { href: "/admin/day-shift", label: "日直" },
+  { href: "/admin/task-defaults", label: "課題タイプ" },
+  { href: "/admin/subject", label: "教科" },
+  { href: "/admin/reports", label: "通報" },
+  { href: "/admin/moderation", label: "モデレーション" },
+];
+---
+<AppLayout title={`${title} | Taskly`}>
+  <AdminGuard client:load />
+  <div class="mx-auto w-full max-w-7xl space-y-6">
+    <div class="flex flex-wrap items-end justify-between gap-3 border-b pb-4">
+      <div>
+        <a href="/home" class="text-sm text-muted-foreground underline-offset-4 hover:underline">← タスクに戻る</a>
+        <p class="mt-2 text-2xl font-semibold tracking-tight">管理画面</p>
+      </div>
+      <a href="/admin" class="text-sm text-muted-foreground underline-offset-4 hover:underline">管理トップ</a>
+    </div>
+    <nav aria-label="管理画面のメニュー" class="flex gap-2 overflow-x-auto border-b pb-3">
+      {sections.map((section) => (
+        <a
+          href={section.href}
+          aria-current={currentPath === section.href ? "page" : undefined}
+          class:list={[
+            "shrink-0 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            currentPath === section.href
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          ]}
+        >
+          {section.label}
+        </a>
+      ))}
+    </nav>
+    <div class="min-w-0"><slot /></div>
+  </div>
+</AppLayout>

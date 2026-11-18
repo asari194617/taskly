@@ -14,12 +14,13 @@ import {
   LogIn,
   LogOut,
   Settings,
+  Shield,
 } from "lucide-react";
 import { gql } from "@/lib/graphql";
 import { toast } from "@/hooks/use-toast";
 import { t, type Lang } from "@/lib/i18n";
 
-type Me = { id: number; email: string; display_name?: string | null };
+type Me = { id: number; email: string; display_name?: string | null; is_admin: boolean; is_manager: boolean };
 
 export default function UserMenu() {
   const [me, setMe] = React.useState<Me | null>(null);
@@ -51,7 +52,7 @@ export default function UserMenu() {
   const dict = React.useMemo(() => t(lang), [lang]);
 
   React.useEffect(() => {
-    gql<{ me: Me }>(`query{ me{ id email display_name } }`, undefined, {
+    gql<{ me: Me }>(`query{ me{ id email display_name is_admin is_manager } }`, undefined, {
       redirectOnUnauthorized: false,
     })
       .then((data) => {
@@ -124,6 +125,13 @@ export default function UserMenu() {
                 <Settings className="mr-2 h-4 w-4" /> {dict.common.settings}
               </DropdownMenuItem>
             </a>
+            {(me?.is_admin || me?.is_manager) && (
+              <a href="/admin">
+                <DropdownMenuItem className="cursor-pointer">
+                  <Shield className="mr-2 h-4 w-4" /> {dict.common.admin}
+                </DropdownMenuItem>
+              </a>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive cursor-pointer"
               onClick={logout}

@@ -1,35 +1,25 @@
 ---
-import AdminGuard from "../../components/AdminGuard";
-import Layout from "../../layouts/AppLayout.astro";
+import Layout from "../../layouts/AdminLayout.astro";
+const sections = [
+  { href: "/admin/users", title: "ユーザー", description: "ユーザーの検索、追加、権限と利用状態の管理" },
+  { href: "/admin/day-shift", title: "日直", description: "サイクル、グループ、担当順の設定" },
+  { href: "/admin/task-defaults", title: "課題タイプの初期設定", description: "タイプごとの完了マークの初期値" },
+  { href: "/admin/subject", title: "教科", description: "教科の追加、編集、有効期限の管理" },
+  { href: "/admin/reports", title: "通報", description: "ユーザーから届いた通報の確認" },
+  { href: "/admin/moderation", title: "モデレーション", description: "フラグ付き課題の確認と自動非表示の設定" },
+];
 ---
-<Layout title="Admin">
-  <AdminGuard />
-  <div class="mx-auto max-w-3xl space-y-6">
-    <div class="space-y-2">
-      <h1 class="text-2xl font-semibold">管理画面</h1>
-      <p class="text-sm text-muted-foreground">ユーザー、カレンダー、日直の管理を行います。</p>
-    </div>
-    <div class="grid gap-4 md:grid-cols-2">
-      <a href="/admin/day-shift" class="block rounded-lg border p-4 hover:bg-accent hover:text-accent-foreground">
-        <div class="font-medium">日直</div>
-        <div class="text-sm text-muted-foreground">サイクルとペアの管理</div>
+<Layout>
+  <div class="space-y-2">
+    <h1 class="text-xl font-semibold">管理メニュー</h1>
+    <p class="text-sm text-muted-foreground">作業する項目を選んでください。</p>
+  </div>
+  <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    {sections.map((section) => (
+      <a href={section.href} class="group block rounded-lg border bg-card p-5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <h2 class="font-semibold group-hover:underline">{section.title} <span aria-hidden="true">↗</span></h2>
+        <p class="mt-2 text-sm text-muted-foreground">{section.description}</p>
       </a>
-      <a href="/admin/task-defaults" class="block rounded-lg border p-4 hover:bg-accent hover:text-accent-foreground">
-        <div class="font-medium">課題タイプの初期設定</div>
-        <div class="text-sm text-muted-foreground">タイプごとの完了マークの初期値</div>
-      </a>
-      <a href="/admin/users" class="block rounded-lg border p-4 hover:bg-accent hover:text-accent-foreground">
-        <div class="font-medium">ユーザー</div>
-        <div class="text-sm text-muted-foreground">検索・ロール・ブロック管理</div>
-      </a>
-      <a href="/admin/subject" class="block rounded-lg border p-4 hover:bg-accent hover:text-accent-foreground">
-        <div class="font-medium">教科</div>
-        <div class="text-sm text-muted-foreground">教科の追加・編集・削除</div>
-      </a>
-      <a href="/admin/reports" class="block rounded-lg border p-4 hover:bg-accent hover:text-accent-foreground">
-        <div class="font-medium">通報</div>
-        <div class="text-sm text-muted-foreground">通報の管理</div>
-      </a>
-    </div>
+    ))}
   </div>
 </Layout>

@@ -88,6 +88,7 @@ import {
 
 export default function AdminUsers() {
   const [q, setQ] = React.useState("");
+  const [appliedQuery, setAppliedQuery] = React.useState("");
   const [items, setItems] = React.useState<AUser[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [page, setPage] = React.useState(1);
@@ -152,7 +153,7 @@ export default function AdminUsers() {
     setLoading(true);
     try {
       const d = await loadAdminUsers({
-        query: q || undefined,
+        query: appliedQuery || undefined,
         sortBy: sortBy || undefined,
         sortDir: sortDir || undefined,
         page,
@@ -172,18 +173,7 @@ export default function AdminUsers() {
   }
   React.useEffect(() => {
     load();
-  }, []);
-  React.useEffect(() => {
-    load();
-  }, [page, sortBy, sortDir]);
-  // optional: reload when query cleared (to avoid sticky empty state)
-  React.useEffect(() => {
-    if (q.trim() === "") {
-      setPage(1);
-      load();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [page, sortBy, sortDir, appliedQuery]);
 
   async function addRole(id: number, role: string) {
     try {
@@ -831,19 +821,29 @@ export default function AdminUsers() {
         </div>
       </div>
       <Card className="p-4 space-y-3">
-        <div className="flex gap-2 items-end">
+        <form className="flex flex-wrap gap-2 items-end" onSubmit={(event) => {
+          event.preventDefault();
+          setPage(1);
+          setAppliedQuery(q.trim());
+        }}>
           <div className="flex-1 min-w-60">
-            <div className="text-sm mb-1">検索（メール/表示名）</div>
+            <label htmlFor="admin-user-search" className="block text-sm mb-1">検索（メール/表示名）</label>
             <Input
+              id="admin-user-search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="example@example.com"
             />
           </div>
-          <Button onClick={load} disabled={loading}>
+          <Button type="submit" disabled={loading}>
             検索
           </Button>
-        </div>
+          {(q || appliedQuery) && <Button type="button" variant="outline" onClick={() => {
+            setQ("");
+            setPage(1);
+            setAppliedQuery("");
+          }}>クリア</Button>}
+        </form>
       </Card>
       <Card className="p-0 overflow-x-auto">
         <Table>
