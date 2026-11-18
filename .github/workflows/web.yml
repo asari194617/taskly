@@ -49,6 +49,7 @@ jobs:
       - run: npm run build
         env:
           NODE_OPTIONS: ${{ runner.environment == 'self-hosted' && '--import=./scripts/ci-astro-wasi-register.mjs' || '' }}
+      - run: npm run test:picomatch-exposure
       - run: npm run test:unit
       - run: npm run test:canonical
       - run: npm run test:security-headers

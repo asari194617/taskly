@@ -4,6 +4,7 @@ import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  output: "static",
   // Preview deployments intentionally keep the production canonical origin by
   // default. Set SITE_URL explicitly only when a deployment should be indexed
   // under a different public origin.

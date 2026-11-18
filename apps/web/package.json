@@ -8,6 +8,7 @@
     "check": "astro check",
     "preview": "astro preview",
     "test:canonical": "node --test scripts/canonical-url.test.mjs && node scripts/check-canonical-urls.mjs",
+    "test:picomatch-exposure": "node scripts/check-picomatch-exposure.mjs",
     "test:security-headers": "node scripts/check-security-headers.mjs",
     "test:unit": "node --test src/features/tasks/state.test.mjs scripts/bimi-logo.test.mjs && vitest run",
     "test:browser": "playwright test",
