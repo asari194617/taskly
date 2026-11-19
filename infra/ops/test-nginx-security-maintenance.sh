@@ -20,4 +20,10 @@ if bash "$script" check-version invalid >/dev/null 2>&1; then
   exit 1
 fi
 
+candidate=$(printf '%s\n' 'nginx:' '  Installed: 1.30.6-1~noble' '  Candidate: 1.30.7-1~noble' '  Version table:' '     1.30.7-1~noble 900' | bash "$script" check-candidate)
+[[ $candidate == 1.30.7-1~noble ]] || {
+  echo "Unexpected candidate: $candidate" >&2
+  exit 1
+}
+
 echo 'Nginx security version policy: PASS'
