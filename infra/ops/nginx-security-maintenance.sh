@@ -43,6 +43,17 @@ privileged() {
   fi
 }
 
+verify_config_if_permitted() {
+  local nginx=$1
+  if (( EUID == 0 )); then
+    "$nginx" -t
+  elif sudo -n true 2>/dev/null; then
+    sudo -n "$nginx" -t
+  else
+    echo 'nginx_config_test=skipped_sudo_required'
+  fi
+}
+
 inspect() {
   local nginx current candidate='unavailable'
   nginx=$(nginx_binary)
@@ -64,7 +75,7 @@ inspect() {
 
   $nginx -V 2>&1 | sed -n '1,2p'
   systemctl is-active nginx
-  privileged "$nginx" -t
+  verify_config_if_permitted "$nginx"
 
   if command -v dpkg-query >/dev/null 2>&1; then
     echo 'installed_packages:'
@@ -90,7 +101,7 @@ upgrade() {
   current=$($nginx -v 2>&1)
   if is_patched_version "$current"; then
     echo "Nginx is already patched: $current"
-    privileged "$nginx" -t
+    verify_config_if_permitted "$nginx"
     systemctl is-active nginx
     return
   fi
