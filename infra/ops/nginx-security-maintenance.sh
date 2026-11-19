@@ -43,6 +43,14 @@ privileged() {
   fi
 }
 
+nginx_candidate_from_policy() {
+  awk '$1 == "Candidate:" && candidate == "" { candidate = $2 } END { print candidate }'
+}
+
+apt_nginx_candidate() {
+  apt-cache policy nginx | nginx_candidate_from_policy
+}
+
 verify_config_if_permitted() {
   local nginx=$1
   if (( EUID == 0 )); then
@@ -84,7 +92,7 @@ inspect() {
       | sort
   fi
   if command -v apt-cache >/dev/null 2>&1; then
-    candidate=$(apt-cache policy nginx | awk '/Candidate:/ { print $2; exit }')
+    candidate=$(apt_nginx_candidate)
     printf 'apt_candidate=%s\n' "${candidate:-unavailable}"
     if [[ -n $candidate ]] && is_patched_version "$candidate"; then
       echo 'apt_candidate_security_status=patched'
@@ -111,7 +119,7 @@ upgrade() {
     return 1
   }
   privileged apt-get update
-  candidate=$(apt-cache policy nginx | awk '/Candidate:/ { print $2; exit }')
+  candidate=$(apt_nginx_candidate)
   if [[ -z $candidate ]] || ! is_patched_version "$candidate"; then
     echo "Refusing to install unpatched Nginx candidate: ${candidate:-unavailable}" >&2
     echo 'Configure an Nginx repository that provides stable 1.30.7+ or mainline 1.31.9+.' >&2
@@ -136,6 +144,9 @@ case "$action" in
   upgrade) upgrade ;;
   check-version)
     is_patched_version "${2:?version required}"
+    ;;
+  check-candidate)
+    nginx_candidate_from_policy
     ;;
   *)
     echo "Usage: $0 {inspect|upgrade}" >&2
