@@ -79,3 +79,5 @@ Use the `production-nginx-maintenance` workflow on protected `main` to inspect
 the installed binary and package candidate. The `upgrade` action refuses to
 install a candidate below the security baseline, validates the configuration,
 reloads Nginx without stopping it, and verifies that the service remains active.
+On hosts without passwordless sudo, `inspect` reports that its configuration
+test was skipped; perform `nginx -t` interactively before and after an upgrade.
