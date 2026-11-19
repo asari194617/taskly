@@ -79,6 +79,7 @@ for (const [workflow, name, results] of [
   ['deploy-prod', 'select-runner', {}],
   ['deploy-prod', 'release-images', { plan: 'success', 'publish-images': 'success' }],
   ['deploy-prod', 'deploy', { plan: 'success', 'release-images': 'success' }],
+  ['nginx-maintenance', 'maintain', {}],
   ['update-primary-runners', 'install', {}],
 ]) {
   test(`${workflow}/${name} accepts main and rejects other dispatch refs`, () => {
@@ -109,7 +110,7 @@ test('failed/skipped image planning cannot publish or deploy', () => {
 });
 
 test('production SSH jobs stay on the production runner and environment', () => {
-  for (const [workflow, name] of [['deploy-prod', 'deploy'], ['deploy-prod-watch', 'release-drift'], ['reconcile-code-only', 'reconcile']]) {
+  for (const [workflow, name] of [['deploy-prod', 'deploy'], ['deploy-prod-watch', 'release-drift'], ['nginx-maintenance', 'maintain'], ['reconcile-code-only', 'reconcile']]) {
     const block = job(workflow, name);
     assert.match(block, /^    runs-on: \[self-hosted, taskly-prod\]$/m);
     assert.match(block, /^    environment: production$/m);
