@@ -65,3 +65,17 @@ done
 
 Finally, verify the public HTTPS endpoints through Nginx. Do not test them by
 connecting directly to their loopback-only upstream ports.
+
+## Nginx security baseline
+
+The public reverse proxy must run Nginx stable 1.30.7 or newer, mainline 1.31.9
+or newer, or a later release branch. These versions include the security fixes
+published on 2026-11-18. Ubuntu's distribution packages remained vulnerable to
+the disclosed issues when this baseline was introduced, so the upstream version
+must be verified rather than assuming that an ordinary package refresh is
+sufficient.
+
+Use the `production-nginx-maintenance` workflow on protected `main` to inspect
+the installed binary and package candidate. The `upgrade` action refuses to
+install a candidate below the security baseline, validates the configuration,
+reloads Nginx without stopping it, and verifies that the service remains active.

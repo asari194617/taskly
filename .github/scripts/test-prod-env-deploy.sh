@@ -11,6 +11,7 @@ python3 "$repo/.github/scripts/verify-reconcile-attestation.test.py"
 bash "$repo/infra/ops/test-reconcile-code-only.sh"
 bash "$repo/.github/scripts/test-prod-ssh.sh"
 bash "$repo/.github/scripts/test-run-prod-script.sh"
+bash "$repo/infra/ops/test-nginx-security-maintenance.sh"
 
 mode() {
   if stat -c %a "$1" >/dev/null 2>&1; then stat -c %a "$1"; else stat -f %Lp "$1"; fi
