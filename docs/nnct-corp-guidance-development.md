@@ -375,11 +375,13 @@ infra/ops/apply-schema.sh
 docker compose -f infra/docker-compose.yml up -d --build --wait server
 ```
 
-Production's existing Taskly workflow also applies the reviewed Atlas plan
-before updating the API. **Deploy the Taskly schema and API before the Guidance
-API version that sends linked requests.** Verify Taskly first, coordinate both
-services during rollback, and retain the added nullable columns. Task IDs, form
-links, event data, and production configuration stay outside Git.
+**Prepare the Taskly schema and API before deploying the Guidance
+API version that sends linked requests.** If the production schema still needs
+these columns, use the separate [schema maintenance procedure](operations/no-ddl-code-release.md#schema-maintenance).
+The Taskly production workflow checks the established schema baseline before
+updating the API. Verify Taskly first, coordinate both services during rollback,
+and retain the added nullable columns. Task IDs, form links, event data, and
+production configuration stay outside Git.
 
 Only the guidance backend calls `GET /integrations/nnct-guidance/tasks` and
 `PUT /integrations/nnct-guidance/tasks/{key}`. It forwards the signed-in user's

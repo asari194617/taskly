@@ -1,15 +1,33 @@
-# Taskly Monorepo
+# Taskly
 
-Taskly is a class and task management service. This repository contains:
+Taskly is a class and task management service.
 
-- `apps/server`: Go/Fiber API server (GraphQL and REST), backed by MySQL and Redis
-- `apps/web`: Astro/React web client (static build for Cloudflare Pages)
-- `apps/mcp`: TypeScript HTTP API and stdio MCP bridge
-- `apps/email-compose`: Node.js gRPC service for rendering transactional email
-- `batches`: Go batch jobs scheduled by Airflow
-- `infra`: Docker Compose, Airflow, and production operations scripts
-- `cloudflare-email-workers`: inbound email forwarding worker
-- `docs`: product, API, data-model, and operations documentation
+## Repository structure
+
+| Path | Role |
+| --- | --- |
+| [`apps/web/`](apps/web/) | Astro and React web client deployed to Cloudflare Pages |
+| [`apps/server/`](apps/server/) | Go and Fiber API with GraphQL and REST, backed by MySQL and Redis |
+| [`apps/mcp/`](apps/mcp/) and [`apps/mcp-client-files/`](apps/mcp-client-files/) | TypeScript MCP HTTP service, stdio bridge, and client distribution files |
+| [`apps/email-compose/`](apps/email-compose/) | Node.js gRPC service that renders transactional email |
+| [`apps/docs/openapi/`](apps/docs/openapi/) | OpenAPI definition and API documentation page |
+| [`batches/`](batches/) | Go jobs for notifications, day-shift rotations, moderation, and database backups |
+| [`infra/`](infra/) | Docker Compose stacks, Airflow DAGs and runtime, monitoring, CI runners, and operations scripts |
+| [`cloudflare-email-workers/`](cloudflare-email-workers/) | Inbound email forwarding Worker configured by [`wrangler.toml`](wrangler.toml) |
+| [`docs/`](docs/) | Development guides, architecture, and operations runbooks |
+| [`.github/workflows/`](.github/workflows/) | CI, release, deployment, and scheduled workflows |
+| [`scripts/`](scripts/) | Repository tooling, including Go linting |
+| [`samples/`](samples/) and [`login/`](login/) | Standalone Airflow Compose example and login screenshot |
+
+### Related repositories
+
+| Repository | Role |
+| --- | --- |
+| [`taskly-auth`](https://github.com/asari194617/taskly-auth) (private) | Shared login, OAuth, and account settings used by Taskly and NNCT company guidance |
+| [`taskly-nnct-corp-guidance`](https://github.com/asari194617/taskly-nnct-corp-guidance) | NNCT company guidance web app, API, and MCP integration with Taskly task completion |
+| [`taskly-policy`](https://github.com/asari194617/taskly-policy) | Versioned policy text and release manifests |
+| [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | Public policy site that publishes releases from `taskly-policy` |
+| [`taskly-production-ribbon`](https://github.com/asari194617/taskly-production-ribbon) | Optional Chrome extension that marks Taskly production pages |
 
 ## Local development
 
@@ -17,12 +35,8 @@ Prerequisites:
 
 - Docker with Docker Compose v2
 - Node.js 26 (CI uses 26.13.1) and npm for the web client and TypeScript checks
-- Go 1.26 or newer when running Go code outside Docker (CI uses 1.26.10)
-- `jq` for Airflow database setup; Bash 4+ for the operations scripts
-
-The API Docker build currently uses Go 1.27.3; the batch builder uses Go
-1.26.10. MCP and email-compose runtime images use Node.js 26.13.1. The manifests,
-Dockerfiles, and workflows define the exact versions for each component.
+- Go 1.27.4 or newer for local Go checks, matching the current CI and Docker builds
+- Bash 4+ for operations scripts and `jq` for Airflow database setup
 
 The current web login uses the separate **taskly-auth** service. That service,
 its database, and its OAuth client registration are not included in this
@@ -109,6 +123,7 @@ npm --prefix apps/email-compose run build
 npm --prefix apps/web run check
 npm --prefix apps/web run test:unit
 npm --prefix apps/web run build
+npm --prefix apps/web run test:picomatch-exposure
 npm --prefix apps/web run test:canonical
 npm --prefix apps/web run test:security-headers
 docker compose -f infra/docker-compose.yml config --quiet
@@ -135,12 +150,12 @@ Useful entry points include:
 
 ## Production deployment
 
-Merges to `main` that touch deployable services trigger
-`.github/workflows/deploy-prod.yml`. The workflow builds immutable images tagged
-with the commit SHA, synchronizes the repository to the host, checks disk
-capacity, and deploys that exact image tag with Docker Compose. Production
-deployments use this workflow. The web client is deployed separately through
-Cloudflare Pages; it is not part of the production Compose deployment.
+Merges to `main` that match the production paths trigger
+[`deploy-prod.yml`](.github/workflows/deploy-prod.yml). It releases commit-SHA
+image tags and verifies the application schema against the last committed
+production baseline before synchronizing the repository and updating services
+with Docker Compose. Application schema changes require separate reviewed
+maintenance. Cloudflare Pages deploys the web client separately.
 
 All four service images receive the release SHA tag. Running Airflow containers
 are replaced only when their image or Compose configuration changes (or a service

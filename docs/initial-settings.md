@@ -1,6 +1,6 @@
 # CI・配信・本番運用
 
-この文書は `.github/workflows/` と `infra/ops/` の現行実装を説明します。
+この文書は [GitHub Actions](../.github/workflows/) と [運用スクリプト](../infra/ops/) の使い方を説明します。
 
 ## MCP クライアントの配信
 
@@ -39,23 +39,14 @@
 - `PROD_ENV` 内の `AIRFLOW_META_DATABASE`, `AIRFLOW_META_USER`, `AIRFLOW_META_PASSWORD`: Airflow メタDB専用の接続設定。既存DBからの移行手順は [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) を参照
 - `TASK_IMAGES_R2_ENDPOINT`, `TASK_IMAGES_R2_BUCKET`, `TASK_IMAGES_R2_ACCESS_KEY_ID`, `TASK_IMAGES_R2_SECRET_ACCESS_KEY`: 課題画像用の非公開R2バケット設定。`production` environment に4項目をまとめて保存し、デプロイ時に `PROD_ENV` に組み込む。直接 `PROD_ENV` に `R2_*` を含める方法も利用できる。未設定・空値ではデプロイを中止する。公開MCPクライアント配信用のリポジトリ Secrets とは独立して設定する。詳細は [`features/task-images.md`](features/task-images.md) を参照
 - `NNCT_GUIDANCE_EVENT_ID`, `NNCT_GUIDANCE_TASK_BINDINGS`: 企業ガイダンス連携を有効にする場合、`production` environment に2項目をまとめて保存する。後者は論理キーと登録済みTaskly課題IDのJSONオブジェクト。デプロイ時に既存の完全な `PROD_ENV` を保持して同名の2設定だけを置き換えるため、`PROD_ENV` 自体の再作成は不要。両方未設定なら既存設定を保持し、片方だけの設定や不正なキー・IDではデプロイを停止する。実際の課題IDや配布資料の内容はGitに含めない。
-- `PROD_COMPOSE_PROFILES`: 追加で有効にする Compose profile。通常は空。スキーマ適用スクリプトが Atlas 用の `schema` profile を一時的に有効化するため、通常デプロイでの指定は不要
+- `PROD_COMPOSE_PROFILES`: 追加で有効にする Compose profile。通常は空
 - `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。API と MCP は `/readyz` を指定します。既存の `/healthz` 設定は検証スクリプトが `/readyz` に置き換えます。設定された経路だけ追加検証します。
 
-`main` への push では次のパスが変更された場合に起動します。
+企業ガイダンスの MCP 委任に使う Actions 変数は [Guidance MCP の設定](operations/no-ddl-code-release.md#optional-guidance-mcp-configuration) を参照してください。
 
-- `apps/server/**`
-- `atlas.hcl`
-- `apps/mcp/**`
-- `apps/email-compose/**`
-- `batches/**`
-- `infra/**`
-- `.dockerignore`
-- `.github/scripts/image-matrix.sh`
-- `.github/scripts/require-prod-env.sh`
-- `.github/scripts/prepare-prod-env.py`
-- `.github/scripts/check-prod-airflow.sh`
-- `.github/workflows/deploy-prod.yml`
+`main` への push が [ワークフローの `push.paths`](../.github/workflows/deploy-prod.yml)
+に一致すると起動します。対象は API、MCP、メール作成サービス、バッチ、インフラ、
+Atlas 設定、デプロイ用のスクリプトとワークフローです。
 
 手動実行も可能で、`full_build=true` が既定です。イメージの build/release は
 共通の `select-runner` が選ぶ runner を使います。選択ジョブ自体と `plan` は常に GitHub-hosted で実行し、
@@ -64,8 +55,8 @@
 `CI_PRIMARY_ONLY=true` はこれらに優先し、選択対象の重いジョブを primary に固定します。
 Lint、MCP・email-compose のチェック、カバレッジ、バッチ単体テスト、実行計画・結果集約、
 通知などの軽いジョブは両変数によらず `ubuntu-latest` を使います。
-2026-11-13 の確認では `CI_PRIMARY_ONLY=true`、`CI_RUNNER` は未設定です。構成・障害時の切り替えは
-[runner pool 手順](../infra/actions-runner/README.md)を参照してください。
+現在の変数は `gh variable list --repo asari194617/taskly` で確認できます。
+構成・障害時の切り替えは [runner pool 手順](../infra/actions-runner/README.md)を参照してください。
 本番反映は `taskly-prod` 専用runnerで実行します。
 
 パス条件には拡張子の除外がないため、上記ディレクトリ内の README 変更も本番デプロイを起動します。
@@ -76,16 +67,16 @@ Web は Cloudflare Pages で別途配信し、この Compose ワークフロー�
 1. 変更パスから `api`, `email-compose`, `mcp`, `airflow` のビルド対象を選択する。
 2. 対象イメージを `linux/amd64` でビルドし、commit SHA タグで GHCR に push する。
 3. 変更のないサービスの既存 `latest` イメージにも同じリリース SHA タグを付け、4サービスのリリースタグを揃える。Airflow の稼働コンテナは更新条件に該当しない限り旧 SHA のまま維持する。
-4. `PROD_ENV` を確認し、`.env` と `infra/.env` を保護してリポジトリを rsync する。
-5. 設定を一時ファイルに転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
-6. 本番ホストで不要なイメージ/ビルドキャッシュを清掃し、空き容量の基準を確認する。
-7. `TASKLY_IMAGE_TAG=<commit SHA>` を指定してイメージを pull する。Redis ACL の entrypoint が変更された場合は Redis を再作成し、DB と Redis の起動を確認する。
-8. Atlasで `apps/server/schema.sql` と実DBの差分を表示し、破壊的変更がないことを確認して適用する。成功後にアプリコンテナを更新する。Airflow のイメージまたは Compose 設定が変わった場合だけ Airflow 3サービスを更新する。独立したメタDB分離スクリプトは通常デプロイでは実行しない。
-9. 更新したコンテナの再作成後、最大10分間 healthcheck を待つ。
-10. API・MCP・Airflow のホスト側 HTTP 応答、Airflow のメタDB・scheduler・DAG processor、全コンテナの20秒間の安定稼働を検証する。
-11. Datadog APM socket への接続と Airflow 内のバッチ実行ファイルを検証し、ディスク監視・清掃用のユーザー crontab を更新する。
+4. `PROD_ENV` と SSH 接続を確認する。書き込み前に、本番のコミット済み基準と稼働中の DB を照合し、対象コミットの `apps/server/schema.sql` と `atlas.hcl` が基準と同一であることを証明する。
+5. デプロイ状態を `in_progress` にしてリポジトリを rsync する。設定を一時ファイルへ転送し、Compose の設定検証後に権限 `600` で両方の `.env` を置き換える。検証に失敗した場合は元の設定に戻す。
+6. 本番ホストの空き容量と Datadog のソケットを確認し、`TASKLY_IMAGE_TAG=<commit SHA>` のイメージを pull する。Redis ACL の entrypoint を変更した場合は Redis を再作成する。
+7. アプリと監視サービスを `docker compose up --no-deps` で更新し、MySQL は稼働を継続する。Airflow 3サービスはイメージまたは Compose 設定が変わった場合か、サービスが欠けている場合に更新する。
+8. API・MCP・Airflow の応答と安定稼働、`account_erasure` DAG の有効化、Datadog APM への接続、Airflow 内のバッチ実行ファイルを検証し、監視・清掃用の crontab を更新する。
+9. 稼働 SHA と DB スキーマを確認してデプロイ状態を `committed` に更新する。その後、対象 SHA と変更前の DB スキーマの digest を再検証する。
 
 同時に複数の push があっても実行中のデプロイはキャンセルせず、後続を待機させます。デプロイ失敗時は別の SSH セッションで Airflow 3サービスの状態を確認し、停止・不健康・確認不能なら Actions にエラーを表示します。
+
+詳細は [コードのみの本番リリース](operations/no-ddl-code-release.md) を参照してください。
 
 Airflow メタDBの初期化・スキーマ更新・旧アプリDBからの分離が必要な場合は、バックアップと DAG の実行状況を確認してから [`operations/airflow-db-separation.md`](operations/airflow-db-separation.md) の明示的な移行手順を実行してください。ベースの Compose は起動時に `db migrate` を実行しません。ただし本番 override の
 `airflow-scheduler.command` は exporter の起動前に `airflow db migrate` を実行します。
@@ -104,8 +95,7 @@ mountします。通常のローカルCompose起動ではこのoverrideを使い
 ### 小容量ホストのメモリ管理
 
 Airflow 3 の実行方式は `LocalExecutor`、既定の実行枠は1です。
-`SequentialExecutor` は Airflow 3.3 では `LocalExecutor` に読み替えられるため、
-実行枠を8にすると待機中にも8個の Python ワーカーが常駐します。
+実行枠を増やすと待機中にも Python ワーカーが常駐し、メモリ使用量が増えます。
 全 DAG・通知チャネル・コールバック・UI は維持し、重なったタスクは順番に実行します。
 ホスト増強後に並列数を上げる場合は `PROD_ENV` に `TASKLY_AIRFLOW_PARALLELISM` を設定します。
 メタDB接続プールは各プロセス2接続、追加接続なしです。
@@ -131,12 +121,11 @@ Prometheus / Grafana / Alertmanager / Blackbox は既存のコンテナ上限よ
 表示だけでは把握できません。ホストには Taskly 外のアプリ・監視Agentも常駐するため、
 それらを含む `free -m` / プロセス別 `VmSwap` も確認します。
 
-反映は通常のデプロイで行います。MySQL の起動引数を変更したリリースでは DB が再作成され、
-接続が一時的に切断されます。切り戻しはこの設定変更を revert したリリースをデプロイします。
+MySQL の起動引数を反映するには、DB の再作成と一時切断を伴うメンテナンスとして
+調整してください。設定を切り戻す場合も同じ手順で反映します。
 旧 Airflow イメージに戻す場合は healthcheck の Compose 設定も同時に戻してください。
-この変更ではアプリDB・AirflowメタDBのスキーマ移行は不要です。
 
-参考: [Airflow LocalExecutor](https://airflow.apache.org/docs/apache-airflow/3.3.0/core-concepts/executor/local.html)、
+参考資料は [Airflow LocalExecutor](https://airflow.apache.org/docs/apache-airflow/3.4.0/core-concepts/executor/local.html)、
 [MySQL Performance Schemaの自動設定](https://dev.mysql.com/doc/refman/8.4/en/performance-schema-startup-configuration.html)、
 [Goのメモリ目標](https://go.dev/doc/gc-guide#Memory_limit)。
 
@@ -156,12 +145,14 @@ MySQL と Atlas 用の一時 MySQL の healthcheck は `--protocol=TCP -h 127.0.
 ローカルでは `.env` を設定して `infra/ops/apply-schema.sh` を実行します。スクリプトは
 Atlasのdry-runを先に表示し、`DROP TABLE`、`DROP COLUMN`、`DROP INDEX`、`MODIFY COLUMN`、
 `CHANGE COLUMN` を含む計画を既定で拒否します。互換期間、検証済みbackup、切り戻し手順を
-レビューした場合だけ `ATLAS_ALLOW_DESTRUCTIVE=true` を明示します。本番では通常のpushを
-破壊的変更に使用せず、手動デプロイの `allow_destructive_schema` を有効にします。本番
-デプロイも同じスクリプトを使い、適用後にアプリを更新します。
+レビューした場合だけ `ATLAS_ALLOW_DESTRUCTIVE=true` を明示します。
 
-新規環境と既存環境は同じ手順です。Atlasは実DBをinspectし、`schema.sql`との差分だけを
-適用します。CIは空DBへの適用、主要テーブルの読み書き、2回目のdry-runが空になることを
+本番デプロイは DB スキーマが基準と同じ場合に進みます。スキーマ変更と初回構築は、
+バックアップ、互換性、適用後の基準の確認を含むメンテナンスとして別途レビューします。
+Atlas の計画は適切な検証環境で作成します。作業手順は
+[スキーマメンテナンス](operations/no-ddl-code-release.md#schema-maintenance) を参照してください。
+
+CIは空DBへの適用、主要テーブルの読み書き、2回目のdry-runが空になることを
 確認します。MySQL DDLは全体をロールバックできないため、途中失敗後は実スキーマを
 Atlasの計画と照合してから修正リリースまたはbackup復元を選びます。
 
@@ -203,5 +194,5 @@ Teams連携の `status_callback` を使用する場合は、デプロイ前に `
 DB 復元、migration の互換性判定、通知バッチ停止、定期訓練は [`operations/recovery-drill.md`](operations/recovery-drill.md) を参照してください。スキーマ変更を含む PR には旧イメージへ戻せる条件を記録します。
 
 1. Actions の失敗ログで対象サービスと healthcheck の理由を確認し、`docker compose ps` と `docker compose logs --tail=100 <service>` で再確認します。
-2. アプリの新イメージが原因なら、直前に成功したデプロイの commit SHA を `TASKLY_IMAGE_TAG` に設定し、`cd "$PROD_WORKDIR/infra"` で `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml docker compose up -d --wait --wait-timeout 600 --no-build server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor` を実行します。MySQL・Redis の volume は削除しません。
+2. アプリの新イメージが原因なら、[復旧手順](operations/recovery-drill.md) に沿ってロールバック対象の SHA、DB との互換性、`.deploy-state` を確認します。状態が `in_progress` の場合は [SSH 切断時の照合手順](operations/ssh-deploy-reconciliation.md) も参照してください。
 3. `./ops/verify-deploy-health.sh` を実行します。DB スキーマ変更が含まれる場合は、イメージだけ戻す前にマイグレーションの互換性を確認します。

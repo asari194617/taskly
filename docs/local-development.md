@@ -13,7 +13,8 @@ The example currently contains three of these four values.
 
 Choose the configuration for the work you are doing:
 
-- For web login, run a separate taskly-auth development environment and register
+- For web login, run a separate [taskly-auth](https://github.com/asari194617/taskly-auth#開発環境)
+  development environment and register
   an OAuth client. Set all four variables, with callback
   `http://localhost:3063/auth/oauth/callback` and web origin
   `WEB_PUBLIC_URL=http://localhost:4321`. `AUTH_ISSUER` must be reachable from
