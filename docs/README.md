@@ -1,6 +1,7 @@
 # Documentation index
 
-Start with [local development](local-development.md) for a new checkout.
+Start with the [repository structure](../README.md#repository-structure) and
+[local development guide](local-development.md) for a new checkout.
 Operational references describe the checked-in implementation; production
 credentials, incident evidence, and user data belong in restricted records.
 
@@ -29,11 +30,11 @@ they do not provision that service:
 - [Session cookies](session-cookie-migration.md)
 - [NNCT company guidance setup](nnct-corp-guidance-development.md), a separate taskly-auth client
 - [Account closure, erasure, and data requests](operations/account-data.md)
-- [Policy editions and consent records](legal/README.md) and [privacy policy reference](legal/privacy-policy.md)
+- [Policy publication and consent records](legal/README.md)
 
 ## Operations and verification
 
-- [CI/CD and production deployment](initial-settings.md)
+- [CI/CD and production deployment](initial-settings.md), [code-only release safeguards](operations/no-ddl-code-release.md), and [SSH deployment reconciliation](operations/ssh-deploy-reconciliation.md)
 - [Repository publication gates and final audit](operations/repository-publication.md)
 - [GitHub Actions runner pool](../infra/actions-runner/README.md) and [required checks](operations/github-actions-required-checks.md)
 - [Readiness](operations/readiness.md), [network ports](operations/network-ports.md), and [monitoring](operations/metrics-monitoring.md)
@@ -62,7 +63,7 @@ currently deployed:
 - [Earlier backlog](remain.md) and [security review notes](improvements.md)
 - [Day shift redesign](new-day-shift.md), [exam proposal](features/0001-exam.md), and [moderation proposal](batches/moderate/README.md)
 - [Email composer requirements](apps/email-compose/README.md)
-- [Proposed terms revision](legal/terms-issue-404.md); not yet effective
+- [Earlier terms revision proposal](legal/terms-issue-404.md)
 
 Feature documents linked in the current sections above describe implemented
 behavior. Other files under `features/` may contain proposals; consult the

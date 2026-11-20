@@ -41,6 +41,7 @@ npm ci
 npm run check
 npm run test:unit
 npm run build
+npm run test:picomatch-exposure
 npm run test:canonical
 npm run test:security-headers
 npx playwright install chromium

@@ -45,4 +45,5 @@ Ruff initially checks syntax errors and undefined names (`E9`, `F63`, `F7`, `F82
 in Python, including Airflow, monitoring and deployment scripts.
 Go vet runs separately in every tracked Go module, including nested notification
 modules that a parent module's `./...` pattern would otherwise skip. It requires
-Go 1.26.10 or newer and access to module dependencies.
+the Go version pinned in the [lint workflow](.github/workflows/lint.yml) or newer
+and access to module dependencies.

@@ -14,7 +14,7 @@
 
 ## 最初の切り分け
 
-1. 障害の検知時刻、最後に正常だった時刻、影響範囲、直前のリリース SHA とAtlasが適用した差分を記録する。復旧担当と代行者を決め、利用者への障害告知と書き込み停止の判断を行う。
+1. 障害の検知時刻、最後に正常だった時刻、影響範囲、直前のリリース SHA を記録する。別途スキーマメンテナンスがあった場合は、その適用差分も記録する。復旧担当と代行者を決め、利用者への障害告知と書き込み停止の判断を行う。
 2. 本番ホストの作業ディレクトリ `infra` で `export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` を設定し、`docker compose ps`、`docker compose logs --tail=100 --no-color server db airflow-scheduler`、`./ops/verify-deploy-health.sh` を確認する。ログの共有時は秘密値を除去する。
 3. DB に異常がある場合、復元前に現状の dump と障害時点の `migrations` 表を保全する。破損や容量不足で dump が取れない場合は理由を記録する。DB volume やバックアップを削除しない。
 4. デプロイ失敗なら下記の「デプロイ失敗」、通知だけなら「通知バッチ停止」、データ破損・喪失なら「DB 復元」へ進む。
@@ -27,15 +27,15 @@ GitHub Actions の本番更新は `deploy-production` concurrency group で直�
 
 旧 `migrations` 履歴は監査用に保持し、改名・削除しない。デプロイ保護チェックは`mysqldump --no-data`を正規化したdigestで、Atlas管理外のスキーマ変更も検知する。
 
-`in_progress` が残った場合、次の run は本番変更前に停止する。**記録を削除して再実行しない。** `docker compose ps`、実際のコンテナイメージ、Airflow の状態、`migrations` 表と対象 SQL、失敗したジョブのログを確認する。Airflow 停止後なら DB とアプリの状態を調べて Airflow を復旧する。migration 後なら旧 API との互換性を確認し、下記の手順で切り戻しまたは修正リリースを選ぶ。復旧して全サービスのヘルスと稼働 SHA、migration 履歴が確定したら、担当者が `infra/ops/deploy-state.sh` の記録をその状態へ手動で調整し、別の担当者が確認してから次のデプロイを実行する。操作内容と判断根拠は障害記録に残す。MySQL DDL の部分適用は migration 履歴だけでは検出できないため、失敗時の SQL と実スキーマの照合が必要。
+`in_progress` が残った場合、次の run は本番変更前に停止する。`docker compose ps`、稼働イメージ、Airflow の状態、失敗したジョブのログ、保存済みのスキーマ証跡を確認し、復旧判断を障害記録に残す。デプロイ記録は保持し、対象 SHA と実スキーマを照合する手順をレビューしてから状態を確定する。[SSH 切断時の照合手順](ssh-deploy-reconciliation.md)にあるワークフローは記載のリリース専用で、別のリリースには対応する復旧手順のレビューが必要。スキーマメンテナンスで MySQL DDL が途中まで適用された場合は、実行済みの SQL を実スキーマと照合する。
 
-`main` の ruleset は `api-build`、`api-empty-database`、`web-build-and-test`、`mcp-build`、`email-compose-build`、`compose-build` を必須チェックとする。これらのワークフローは全 PR で実行する。必要承認数は 0 で、自己レビューでマージできる運用とする。例外権限は設定しない。必須チェックの変更時は、ruleset とこの一覧を同時に更新する。
+`main` の ruleset は署名付きコミットと [必須 Actions チェック](github-actions-required-checks.md)を要求する。必要承認数は 0 で、自己レビューと必須チェックの成功後にマージできる。
 
 同一リポジトリ内の信頼済みPRの重いジョブと本番画像build/releaseは、共通の `select-runner` を介して専用CI poolを使う。Lint、MCP・email-compose のチェック、カバレッジ、バッチ単体テスト、実行計画・結果集約、通知は直接 `ubuntu-latest` を使う。外部fork PRも `ubuntu-latest` に限定する。CI runnerは1ジョブ後にworkspaceを再作成するが、Docker socketへアクセスできるため悪意あるコードに対する隔離ではない。外部forkのコードを未レビューのまま内部ブランチに移して実行しない。本番反映はPR用poolとは別の `taskly-prod` 専用runnerで実行する。通常は heartbeat の鮮度で primary → secondary → `ubuntu-latest` と選択する。`CI_PRIMARY_ONLY=true` の間は選択対象の重いジョブが primary 停止時にもキューで待機する。軽いジョブと選択ジョブ自体は GitHub-hosted のままなので、GitHub-hosted 全体の停止には対応しない。明示的な切り替えとガード解除は [runner 手順](../../infra/actions-runner/README.md)に従う。
 
-リリース前に担当者は `apps/server/schema.sql` のAtlas dry-runをPRに記録し、旧 API イメージが新スキーマで動くか、旧スキーマへ戻す必要があるかを判定する。追加だけの変更でも、旧 API の読み書き経路を検証する。列削除や型変更がある場合は原則として先に互換期間を設け、旧イメージへの即時切り戻しを「不可」と判定する。
+通常の [本番リリース](no-ddl-code-release.md)は、スキーマがコミット済みの基準と一致する場合に進む。別途スキーマを変更する場合は、担当者が Atlas の dry-run を PR に記録し、追加だけの変更でも旧 API の読み書き経路を検証する。列削除や型変更がある場合は原則として先に互換期間を設け、旧イメージへの即時切り戻しを「不可」と判定する。
 
-1. Atlas適用前、または旧 API と新スキーマの互換性を検証済みなら、直前に成功した commit SHA を `TASKLY_IMAGE_TAG` に指定し、`docker compose up -d --wait --wait-timeout 600 --no-build server email-compose mcp airflow-webserver airflow-scheduler airflow-dag-processor` を実行する。DB と Redis の volume は保持する。
+1. 旧 API と稼働中のスキーマの互換性を検証し、切り戻し対象の SHA を確認する。対象のアプリイメージを `TASKLY_IMAGE_TAG` に指定して `docker compose up -d --no-deps --wait --wait-timeout 600 --no-build server email-compose mcp` で切り戻す。Airflow も戻す場合は、対応する設定と稼働 SHA を確認して3サービスを一緒に切り戻す。DB と Redis の volume は保持する。
 2. `./ops/verify-deploy-health.sh` と主要操作を確認する。失敗時のコンテナ状態とログを保存する。
 3. Atlas適用が途中で失敗した場合、dry-runのSQLと`SHOW CREATE TABLE`を照合する。MySQL DDLは計画全体で巻き戻らないため、`schema.sql`を実状態に合わせた修正リリースで収束させるか、DB復元へ進む。
 4. 旧 API が新スキーマと非互換なら、イメージだけを戻さない。書き込みを止め、復元時点以降の更新を失うことを確認したうえで、互換性を回復する migration または DB 復元を選ぶ。復元には下記の訓練で確認済みの手順を使う。

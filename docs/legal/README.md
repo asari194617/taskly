@@ -1,5 +1,15 @@
 # Policy editions and consent records
 
+The [public policy site](https://policies.taskly.iy0306.com/) is maintained in
+[`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web). It
+publishes versioned policy releases from
+[`taskly-policy`](https://github.com/asari194617/taskly-policy). The public
+policy set released as [`v2026-11-16.1`](https://github.com/asari194617/taskly-policy/releases/tag/v2026-11-16.1)
+took effect on 2026-11-16. Taskly's in-app consent still uses the fixed
+`2026-09-22.1` edition defined in
+[`consent.go`](../../apps/server/internal/legal/consent.go) and
+[`ConsentPage.tsx`](../../apps/web/src/react/pages/ConsentPage.tsx).
+
 ## Initial catalogued edition
 
 The three then-public Notion documents were snapshotted on 2026-09-22 as
@@ -17,11 +27,9 @@ privacy   05d950de9df6e88fea9810d6d4c3e5d61167d963fa5e68a1c8fc8c0fad6ae46a
 security  2bcb886a3902897d5fbf57ff0fd2de1c3346fc4172cc85974e75b5d2727f3b5e
 ```
 
-The current public [privacy policy](privacy-policy.md) was revised on
-2026-09-23 (PR #418). It differs from the privacy text in the consent archive.
-The consent flow still records `2026-09-22.1`; this archive must remain
-available at its versioned URL as evidence of the text shown for that edition.
-The policy site's current `/privacy/` path must display the 2026-09-23 text.
+The [2026-09-23 privacy revision](privacy-policy.md) (PR #418) is a historical
+reference. The consent archive preserves the text shown when users accepted
+`2026-09-22.1`.
 
 The web consent page links to immutable paths at
 `https://policies.taskly.iy0306.com/{terms,privacy,security}/2026-09-22.1/`.
@@ -51,13 +59,14 @@ latest event is current. The client never supplies a timestamp or user ID.
 
 ## Publishing a revision
 
-1. Freeze the exact revised text in new `docs/legal/*-VERSION.md` archives.
-   Publish matching immutable paths on the policy site. Preserve all older
-   files and URLs, and verify the served text against the archive.
-2. Update the policy site's current-version pointers, effective date, and
-   change history. Confirm the public text matches the new archive.
+1. Follow the [policy repository's release process](https://github.com/asari194617/taskly-policy#改訂の手順)
+   to freeze the new text and publish the release manifest with an effective
+   date and change history. Preserve older files and URLs.
+2. Verify that the new immutable policy URLs serve the released texts. If the
+   revision requires new in-app consent, archive the same texts in
+   `docs/legal/*-VERSION.md` and coordinate the following steps with the policy release.
 3. Set `Version`, `PreviousVersion`, and a **future** `EffectiveAt` in
-   `internal/legal/consent.go`; update the consent page's `policyVersion`.
+   `apps/server/internal/legal/consent.go` and update the consent page's `policyVersion`.
    Publish a change summary and effective date in the user announcement.
 4. Deploy these changes sufficiently before the effective date to show the
    in-app notice on protected pages. Send the same notice through the existing
