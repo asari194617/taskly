@@ -32,6 +32,7 @@ Web のログイン、認証方法の管理、プロフィール画面には [ta
 - [CI/CD と本番デプロイ](initial-settings.md)、[コードのみのリリースの保護策](operations/no-ddl-code-release.md)、[SSH デプロイ中断時の復旧](operations/ssh-deploy-reconciliation.md)
 - [リポジトリの公開条件と最終監査](operations/repository-publication.md)
 - [GitHub Actions の必須チェック](operations/github-actions-required-checks.md)
+- [PR コメントでの Terraform plan と apply](operations/terraform-pr-comments.md)
 - [準備状態の確認](operations/readiness.md)、[ネットワークポート](operations/network-ports.md)、[監視](operations/metrics-monitoring.md)
 - [Redis ACL の運用](redis-acl-operations.md)と[ディスクの保守](operations/disk-maintenance.md)
 - [暗号化された MySQL バックアップ](operations/mysql-backup.md)、[復旧とロールバック](operations/recovery-drill.md)、[訓練記録テンプレート](operations/recovery-drill-record-template.md)

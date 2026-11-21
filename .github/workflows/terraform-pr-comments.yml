@@ -1,0 +1,191 @@
+name: terraform-pr-comments
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  request:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.type == 'User' &&
+      github.event.comment.author_association == 'OWNER' &&
+      github.event.comment.user.login == github.event.repository.owner.login &&
+      github.ref_protected &&
+      github.run_attempt == '1' &&
+      (github.event.comment.body == '/terraform plan' ||
+        startsWith(github.event.comment.body, '/terraform apply'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      command: ${{ steps.request.outputs.command }}
+      plan_run: ${{ steps.request.outputs.plan_run }}
+      head: ${{ steps.request.outputs.head }}
+      base: ${{ steps.request.outputs.base }}
+      artifact: ${{ steps.request.outputs.artifact }}
+      message: ${{ steps.request.outputs.message }}
+    steps:
+      - id: request
+        name: Resolve command and pull request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { comment, issue, repository } = context.payload;
+            const apply = /^\/terraform apply ([1-9][0-9]{0,18})$/.exec(comment.body);
+            if (comment.body !== '/terraform plan' && apply?.[0] !== comment.body) {
+              core.setOutput('message', 'Usage: `/terraform plan` or `/terraform apply <plan-run-id>`.');
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue.number });
+            if (pr.state !== 'open' || pr.draft || pr.head.repo?.id !== repository.id ||
+                pr.base.repo?.id !== repository.id || pr.base.ref !== repository.default_branch) {
+              core.setOutput('message', 'Terraform commands require an open, ready PR from this repository targeting the default branch.');
+              return;
+            }
+            if (pr.base.sha !== context.sha) {
+              core.setOutput('message', 'The default branch advanced. Post a new command.');
+              return;
+            }
+            const { data: comparison } = await github.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+              owner, repo, basehead: `${pr.base.sha}...${pr.head.sha}`, per_page: 1,
+            });
+            if (comparison.status !== 'ahead') {
+              core.setOutput('message', 'Update the PR branch with the default branch, then post `/terraform plan`.');
+              return;
+            }
+
+            core.setOutput('command', apply ? 'apply' : 'plan');
+            core.setOutput('plan_run', apply?.[1] ?? '');
+            core.setOutput('head', pr.head.sha);
+            core.setOutput('base', pr.base.sha);
+            core.setOutput('artifact', `terraform-pr-${issue.number}-${pr.base.sha}-${pr.head.sha}`);
+
+  terraform:
+    needs: request
+    if: needs.request.outputs.command != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    environment: terraform-${{ needs.request.outputs.command }}
+    concurrency:
+      group: terraform-pr-comments-state
+      cancel-in-progress: false
+      queue: max
+    outputs:
+      artifact_url: ${{ steps.upload.outputs.artifact-url }}
+    steps:
+      - name: Verify the source plan run
+        if: needs.request.outputs.command == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN: ${{ needs.request.outputs.plan_run }}
+          BASE_SHA: ${{ needs.request.outputs.base }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PLAN_RUN" |
+            jq -e --arg sha "$BASE_SHA" --arg branch "$BASE_BRANCH" '
+              .path == ".github/workflows/terraform-pr-comments.yml" and
+              .event == "issue_comment" and .run_attempt == 1 and
+              .conclusion == "success" and .head_sha == $sha and .head_branch == $branch
+            ' >/dev/null || {
+              echo "::error::Use a successful Terraform plan from the current default branch."
+              exit 1
+            }
+      - name: Check out workflow scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          path: workflow
+      - name: Check out the PR commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.request.outputs.head }}
+          persist-credentials: false
+          path: proposal
+      - name: Download the saved plan
+        if: needs.request.outputs.command == 'apply'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          run-id: ${{ needs.request.outputs.plan_run }}
+          github-token: ${{ github.token }}
+          name: ${{ needs.request.outputs.artifact }}
+          path: ${{ runner.temp }}/taskly-terraform-plan
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.17.1'
+          terraform_wrapper: false
+      - id: terraform
+        name: Run Terraform from the pinned PR commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          HEAD_SHA: ${{ needs.request.outputs.head }}
+          BASE_SHA: ${{ needs.request.outputs.base }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          PLAN_KEY: ${{ secrets.TERRAFORM_PLAN_KEY }}
+          TF_HTTP_ADDRESS: ${{ vars.TF_HTTP_ADDRESS }}
+          TF_HTTP_LOCK_ADDRESS: ${{ vars.TF_HTTP_LOCK_ADDRESS }}
+          TF_HTTP_UNLOCK_ADDRESS: ${{ vars.TF_HTTP_UNLOCK_ADDRESS }}
+          TF_HTTP_USERNAME: ${{ secrets.TF_HTTP_USERNAME }}
+          TF_HTTP_PASSWORD: ${{ secrets.TF_HTTP_PASSWORD }}
+          TF_IN_AUTOMATION: 'true'
+        run: bash workflow/.github/scripts/terraform-pr.sh "${{ needs.request.outputs.command }}"
+      - id: upload
+        name: Save the encrypted plan
+        if: steps.terraform.outputs.changes == 'true'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ${{ needs.request.outputs.artifact }}
+          path: ${{ runner.temp }}/taskly-terraform-plan/*.gpg
+          retention-days: 3
+          if-no-files-found: error
+
+  report:
+    needs: [request, terraform]
+    if: always() && needs.request.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Reply on the pull request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          COMMAND: ${{ needs.request.outputs.command }}
+          HEAD_SHA: ${{ needs.request.outputs.head }}
+          REQUEST_MESSAGE: ${{ needs.request.outputs.message }}
+          TERRAFORM_RESULT: ${{ needs.terraform.result }}
+          PLAN_ARTIFACT_URL: ${{ needs.terraform.outputs.artifact_url }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { COMMAND, HEAD_SHA, REQUEST_MESSAGE, TERRAFORM_RESULT, PLAN_ARTIFACT_URL } = process.env;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            let message = REQUEST_MESSAGE || 'Terraform could not resolve the command.';
+            if (COMMAND) {
+              const revision = `\`${HEAD_SHA}\``;
+              if (TERRAFORM_RESULT !== 'success') {
+                message = `Terraform ${COMMAND} finished with status **${TERRAFORM_RESULT}** for ${revision}. See the workflow run for details.`;
+              } else if (COMMAND === 'apply') {
+                message = `Terraform applied the saved plan for ${revision}.`;
+              } else if (PLAN_ARTIFACT_URL) {
+                message = [
+                  `Terraform generated a plan with changes for ${revision}.`,
+                  `Review the [encrypted plan](${PLAN_ARTIFACT_URL}), then post \`/terraform apply ${context.runId}\`.`,
+                ].join('\n\n');
+              } else {
+                message = `Terraform found no changes for ${revision}.`;
+              }
+            }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: context.issue.number,
+              body: `${message}\n\n[Workflow run](${runUrl})`,
+            });
