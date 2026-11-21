@@ -28,7 +28,7 @@ spec.loader.exec_module(m)
 def metadata():
     run = dict(
         id=m.RUN,
-        run_attempt=1,
+        run_attempt=3,
         status="completed",
         conclusion="failure",
         event="push",
@@ -41,7 +41,7 @@ def metadata():
     job = dict(
         id=m.JOB,
         run_id=m.RUN,
-        run_attempt=1,
+        run_attempt=2,
         name="deploy",
         status="completed",
         conclusion="failure",
@@ -87,7 +87,7 @@ class VerifyTests(unittest.TestCase):
     def test_untrusted_or_active_run_and_wrong_phase(self):
         for field, bad in [
             ("id", 3),
-            ("run_attempt", 2),
+            ("run_attempt", 1),
             ("status", "in_progress"),
             ("conclusion", "success"),
             ("event", "pull_request"),
@@ -104,7 +104,7 @@ class VerifyTests(unittest.TestCase):
         for field, bad in [
             ("id", 3),
             ("run_id", 4),
-            ("run_attempt", 2),
+            ("run_attempt", 1),
             ("status", "in_progress"),
             ("conclusion", "cancelled"),
             ("runner_name", "other"),

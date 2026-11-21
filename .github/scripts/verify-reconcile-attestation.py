@@ -16,11 +16,11 @@ from urllib.parse import urlsplit
 
 REPOSITORY = "asari194617/taskly"
 REPOSITORY_ID = 1074628894
-RUN = 43592044959
-JOB = 132440223224
-TARGET = "85222d44a5bf082d36d9dd781889eda73f0ff013"
-ARTIFACT = 14113475260
-ZIP_SHA256 = "80fecd28390042e391ecac96c4949a632f0b1296fc01e5c7cd13f7f89324d8d8"
+RUN = 44874440322
+JOB = 136763282327
+TARGET = "1a2f63b47167ea5bed0bd147eb97e31936e4751c"
+ARTIFACT = 14696511373
+ZIP_SHA256 = "adf6db89d53a3a30b05259c086be47f996bc1a3c9d99f1652e70ba537ff01f6c"
 NAMES = {"taskly-schema-baseline.json", "taskly-schema-proof.json"}
 SUCCESS_STEPS = {
     "Verify SSH connectivity",
@@ -56,7 +56,7 @@ def decode(data):
 def validate_metadata(run, job, artifact):
     if (
         run.get("id") != RUN
-        or run.get("run_attempt") != 1
+        or run.get("run_attempt") != 3
         or run.get("status") != "completed"
         or run.get("conclusion") != "failure"
         or run.get("event") != "push"
@@ -68,7 +68,7 @@ def validate_metadata(run, job, artifact):
         or run.get("head_repository", {}).get("id") != REPOSITORY_ID
         or job.get("id") != JOB
         or job.get("run_id") != RUN
-        or job.get("run_attempt") != 1
+        or job.get("run_attempt") != 2
         or job.get("name") != "deploy"
         or job.get("status") != "completed"
         or job.get("conclusion") != "failure"
@@ -137,7 +137,7 @@ def unpack(data):
 
 
 API_HOST = "api.github.com"
-ARTIFACT_HOST = "productionresultssa10.blob.core.windows.net"
+ARTIFACT_HOST = "productionresultssa8.blob.core.windows.net"
 HTTP_TIMEOUT = 15
 API_PATHS = {
     "actions/runs/" + str(RUN),

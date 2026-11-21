@@ -147,7 +147,7 @@ test('one-time reconciliation is manual protected-main only and binds its releas
     }
   }
   assert.equal(enabled(block, { event_name: 'workflow_dispatch', ref: 'refs/heads/main', ref_protected: false }), false);
-  assert.match(block, /RELEASE_SHA: 85222d44a5bf082d36d9dd781889eda73f0ff013/);
+  assert.match(block, /RELEASE_SHA: 1a2f63b47167ea5bed0bd147eb97e31936e4751c/);
   assert.doesNotMatch(block, /PROD_ENV|rsync|docker compose up|apply-schema|install-user-cron|secrets.GHCR/);
   for (const workflow of ['deploy-prod', 'reconcile-code-only']) {
     const source = readFileSync(new URL(`../workflows/${workflow}.yml`, import.meta.url), 'utf8');

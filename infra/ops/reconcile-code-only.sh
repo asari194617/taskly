@@ -6,7 +6,7 @@ release=${2:?release required}
 baseline=${3:?baseline required}
 digest=${4:?database digest required}
 fail() { echo 'Reconciliation blocked: a release invariant failed; no completion written' >&2; exit 1; }
-[[ $# == 4 && $workdir == /* && $release == 85222d44a5bf082d36d9dd781889eda73f0ff013 && $baseline =~ ^[0-9a-f]{40}$ && $digest =~ ^[0-9a-f]{64}$ ]] || fail
+[[ $# == 4 && $workdir == /* && $release == 1a2f63b47167ea5bed0bd147eb97e31936e4751c && $baseline =~ ^[0-9a-f]{40}$ && $digest =~ ^[0-9a-f]{64}$ ]] || fail
 cd "$workdir/infra"
 [[ $(pwd -P) == "$workdir/infra" && ! -L ops && ! -L ../apps && ! -L ../apps/server ]] || fail
 export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml

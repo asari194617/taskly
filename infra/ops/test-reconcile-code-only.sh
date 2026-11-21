@@ -11,7 +11,7 @@ cp "$root/atlas.hcl" "$temp/host/atlas.hcl"
 touch "$temp/host/infra/.env"
 printf 'CREATE TABLE fixture (id bigint PRIMARY KEY);\n' > "$temp/schema"
 digest=$(sha256sum "$temp/schema" | cut -d' ' -f1)
-release=85222d44a5bf082d36d9dd781889eda73f0ff013
+release=1a2f63b47167ea5bed0bd147eb97e31936e4751c
 baseline=1111111111111111111111111111111111111111
 cat > "$temp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash

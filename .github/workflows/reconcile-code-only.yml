@@ -28,14 +28,14 @@ jobs:
       PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
       PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
       PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
-      RELEASE_SHA: 85222d44a5bf082d36d9dd781889eda73f0ff013
+      RELEASE_SHA: 1a2f63b47167ea5bed0bd147eb97e31936e4751c
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: 85222d44a5bf082d36d9dd781889eda73f0ff013
+          ref: 1a2f63b47167ea5bed0bd147eb97e31936e4751c
           path: .reconcile-release
           fetch-depth: 0
           persist-credentials: false
