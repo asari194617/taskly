@@ -1,6 +1,6 @@
 # 長岡高専の企業ガイダンス
 
-[企業ガイダンスのリポジトリ](https://github.com/asari194617/taskly-nnct-corp-guidance)では、企業検索、指定企業、スケジュール、会場マップ、「気になる」企業を扱います。認証には taskly-auth を使います。ガイダンスは独立したアプリケーションとして起動できます。
+[企業ガイダンスのリポジトリ](https://github.com/asari194617/taskly-nnct-corp-guidance)では、企業検索、指定企業、スケジュール、会場マップ、「気になる」企業を扱います。認証には [taskly-auth](https://github.com/asari194617/taskly-auth) を使います。ガイダンスは独立したアプリケーションとして起動できます。
 
 | サービス | 開発環境 | 本番環境 |
 | --- | --- | --- |
