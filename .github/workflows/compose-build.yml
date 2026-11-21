@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: "26.13.1"
       - name: Test runner and production boundaries
-        run: node --test .github/scripts/production-boundaries.test.mjs
+        run: node --test .github/scripts/production-boundaries.test.mjs .github/scripts/infra-pr-request.test.mjs
       - name: Test production environment deployment
         run: .github/scripts/test-prod-env-deploy.sh
       - name: Test interrupted production deployment guard
