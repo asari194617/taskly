@@ -6,6 +6,8 @@ info:
 servers:
   - url: https://api.taskly.iy0306.com
     description: Production
+  - url: https://local.api.taskly.iy0306.com
+    description: Local HTTPS development
   - url: http://localhost:3063
     description: Local development
 security:

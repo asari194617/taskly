@@ -1,0 +1,67 @@
+{
+	admin off
+	auto_https disable_redirects
+	default_bind 127.0.0.1
+}
+
+(local_tls) {
+	tls {$TASKLY_DEV_TLS_DIR}/taskly.pem {$TASKLY_DEV_TLS_DIR}/taskly-key.pem
+	header X-Robots-Tag "noindex, nofollow"
+}
+
+local.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:4321
+}
+
+local.api.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3063
+}
+
+local.auth.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3068
+}
+
+local.taskly-auth-api.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3067
+}
+
+local.nnct-corp-guidance-2026.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3000
+}
+
+local.api.nnct-corp-guidance-2026.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3071
+}
+
+local.policies.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3001
+}
+
+local.cdn.taskly.iy0306.com {
+	import local_tls
+	handle_path /docs/api/* {
+		root * apps/docs/openapi
+		file_server
+	}
+	handle_path /docs/mcp/clients/* {
+		root * apps/mcp-client-files
+		file_server
+	}
+}
+
+local.mcp.taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3066
+}
+
+local.airflow-taskly.iy0306.com {
+	import local_tls
+	reverse_proxy 127.0.0.1:3065
+}

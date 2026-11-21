@@ -1,0 +1,10 @@
+127.0.0.1 local.taskly.iy0306.com
+127.0.0.1 local.api.taskly.iy0306.com
+127.0.0.1 local.auth.taskly.iy0306.com
+127.0.0.1 local.taskly-auth-api.iy0306.com
+127.0.0.1 local.nnct-corp-guidance-2026.taskly.iy0306.com
+127.0.0.1 local.api.nnct-corp-guidance-2026.taskly.iy0306.com
+127.0.0.1 local.policies.taskly.iy0306.com
+127.0.0.1 local.cdn.taskly.iy0306.com
+127.0.0.1 local.mcp.taskly.iy0306.com
+127.0.0.1 local.airflow-taskly.iy0306.com
