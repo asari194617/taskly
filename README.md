@@ -31,24 +31,28 @@ Taskly は授業と課題を管理するサービスです。
 | [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | `taskly-policy` のリリースを掲載する公開ポリシーサイト |
 | [`taskly-environment-ribbon`](https://github.com/asari194617/taskly-environment-ribbon) | 本番環境とローカル開発環境の画面に印を表示する任意導入の Chrome 拡張機能 |
 
+<a name="local-development"></a>
+
 ## ローカル開発
 
-Taskly と関連サービスを `local.` ドメインで開くには、[ローカル HTTPS のセットアップ](docs/local-development.md#ローカル-https)を使います。以下のループバック HTTP コマンドも、分離した開発環境や自動テストで利用できます。
+Taskly と関連サービスを `local.` の開発ドメインで開く場合は、[ローカル HTTPS のセットアップ](docs/local-development.md#local-https)を参照してください。以下では、単独開発や自動テスト向けのループバック HTTP の起動方法も案内します。
+
+必要なものは以下のとおりです。
 
 - Docker と Docker Compose v2
-- Web クライアントと TypeScript の検証に使う Node.js 26（CI は 26.13.1）と npm
-- ローカル検証に使う Go 1.27.4 以降（CI と Docker ビルドは 1.27.4）
-- 運用スクリプトに使う Bash 4 以降と、Airflow の DB 初期化に使う `jq`
+- Web クライアントと TypeScript の検証用に Node.js 26（CI は 26.13.1）と npm
+- Go のローカル検証用に Go 1.27.4 以上（CI と Docker ビルドと同じバージョン）
+- 運用スクリプト用に Bash 4 以上、Airflow のDB設定用に `jq`
 
-Web ログインは別サービスの **taskly-auth** を使います。認証サービス本体、認証用 DB、OAuth クライアントの登録は別途用意します。API の起動前に、[ローカル開発ガイド](docs/local-development.md)に従って `.env.example` をもとに認証設定を選び、アプリケーションのスキーマを適用してください。
+Web ログインには別の **taskly-auth** サービスと、その開発用DB、OAuth クライアント登録が必要です。[ローカル開発ガイド](docs/local-development.md)を参照し、認証の構成を選んでから `.env` を設定し、API 起動前にスキーマを適用します。
 
-任意で利用できる[長岡高専企業ガイダンスアプリ](docs/nnct-corp-guidance-development.md)は、専用のリポジトリ、DB、OAuth クライアントを使います。この Compose 構成とは別にセットアップします。
+[企業ガイダンス](docs/nnct-corp-guidance-development.md)を開発する場合は、専用のリポジトリ、DB、OAuth クライアントを用意します。
 
-ガイドに従い、リポジトリのルートで `.env` を作成・設定します。
+ローカル開発ガイドに従い、ルートで `.env` を作成してから起動します。
 
 ```bash
 cp .env.example .env
-# 続行する前に認証を設定し、仮のシークレットを置き換える。
+# 認証の構成を決め、サンプルの秘密値を開発用の値に置き換えます。
 chmod 600 .env
 install -m 600 .env infra/.env
 infra/ops/apply-schema.sh
@@ -57,9 +61,9 @@ curl -fsS http://localhost:3063/readyz
 curl -fsS http://localhost:3066/readyz
 ```
 
-MySQL、Redis、email-compose、API、MCP が起動します。Airflow を使う場合は、3 つのサービスを起動する前に [Airflow のセットアップ手順](docs/local-development.md#airflow-のセットアップ任意)に従い、専用のメタデータ DB を初期化します。
+MySQL、Redis、email-compose、API、MCP が起動します。Airflow を使う場合は3つのサービスを起動する前に、[Airflow のセットアップ手順](docs/local-development.md#optional-airflow)に従ってメタデータ用DBを初期化します。
 
-Web クライアントは別途起動します。
+Web クライアントは別のターミナルで起動します。
 
 ```bash
 cp apps/web/.env.example apps/web/.env
@@ -67,30 +71,32 @@ npm --prefix apps/web ci
 npm --prefix apps/web run dev
 ```
 
-| コンポーネント | URL |
+ループバック HTTP の主な接続先は次のとおりです。
+
+| サービス | URL |
 | --- | --- |
 | Web クライアント | `http://localhost:4321` |
-| API / GraphQL | `http://localhost:3063` / `http://localhost:3063/graphql` |
-| API の生存確認 / 準備状態の確認 | `http://localhost:3063/healthz` / `http://localhost:3063/readyz` |
-| API メトリクス | `http://localhost:3064/metrics` |
+| API・GraphQL | `http://localhost:3063` / `http://localhost:3063/graphql` |
+| API の稼働・準備状態 | `http://localhost:3063/healthz` / `http://localhost:3063/readyz` |
+| API のメトリクス | `http://localhost:3064/metrics` |
 | MCP HTTP API | `http://localhost:3066` |
-| Airflow の管理画面 | `http://localhost:3065` |
+| Airflow の画面 | `http://localhost:3065` |
 
-API、メトリクス、MCP、Airflow のポートはホストのループバックにのみバインドします。MySQL、Redis、email-compose は Compose ネットワーク内からのみ接続できます。詳細は[本番環境のポート一覧](docs/operations/network-ports.md)を参照してください。
+API、メトリクス、MCP、Airflow はホストのループバックで待機します。MySQL、Redis、email-compose には Compose のネットワーク内から接続します。詳細は [本番環境のポート一覧](docs/operations/network-ports.md)を参照してください。
 
-ローカル環境は次のコマンドで停止します。開発データを格納する名前付きボリュームは保持されます。
+停止するときは、次を実行します。名前付きボリューム内の開発データは保持されます。
 
 ```bash
 docker compose -f infra/docker-compose.yml down
 ```
 
-DB スキーマの変更は `apps/server/schema.sql` に宣言します。コンテナで動く Atlas でスキーマを適用します。この手順では MySQL を起動し、準備が完了するまで待機します。
+DB スキーマは `apps/server/schema.sql` に定義します。変更を反映するときは、Docker で動作する Atlas を使います。スクリプトが MySQL を起動し、準備が整うのを待ってから適用します。
 
 ```bash
 infra/ops/apply-schema.sh
 ```
 
-コマンドは最初に変更計画を表示します。破壊的変更を適用するには、内容を明示的にレビューしたうえで `ATLAS_ALLOW_DESTRUCTIVE=true` を設定してください。運用スクリプトを実行する前に `infra/.env` を `.env` と同期します。`apps/server/migrations` の過去のファイルは監査用に保存しています。
+適用前に計画が表示されます。破壊的な変更を適用する場合は計画を確認し、明示的に `ATLAS_ALLOW_DESTRUCTIVE=true` を指定します。運用スクリプトを使う前に `infra/.env` を `.env` と同期してください。`apps/server/migrations` は過去の記録です。
 
 ## 検証
 
