@@ -29,34 +29,28 @@ Taskly is a class and task management service.
 | [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | Public policy site that publishes releases from `taskly-policy` |
 | [`taskly-environment-ribbon`](https://github.com/asari194617/taskly-environment-ribbon) | Optional Chrome extension that marks production and local development pages |
 
-## Local development
+<a name="local-development"></a>
 
-Use the [local HTTPS setup](docs/local-development.md#local-https) to open
-Taskly and its companion services on their `local.` domains. The loopback HTTP
-commands below also work for isolated development and automated tests.
+## ローカル開発
 
-Prerequisites:
+Taskly と関連サービスを `local.` の開発ドメインで開く場合は、[ローカル HTTPS のセットアップ](docs/local-development.md#local-https)を参照してください。以下では、単独開発や自動テスト向けのループバック HTTP の起動方法も案内します。
 
-- Docker with Docker Compose v2
-- Node.js 26 (CI uses 26.13.1) and npm for the web client and TypeScript checks
-- Go 1.27.4 or newer for local Go checks, matching the current CI and Docker builds
-- Bash 4+ for operations scripts and `jq` for Airflow database setup
+必要なものは以下のとおりです。
 
-The current web login uses the separate **taskly-auth** service. That service,
-its database, and its OAuth client registration are not included in this
-repository's Compose stack. Read the [local setup guide](docs/local-development.md)
-before starting: `.env.example` needs an auth configuration choice and the
-application schema must exist before the API starts.
+- Docker と Docker Compose v2
+- Web クライアントと TypeScript の検証用に Node.js 26（CI は 26.13.1）と npm
+- Go のローカル検証用に Go 1.27.4 以上（CI と Docker ビルドと同じバージョン）
+- 運用スクリプト用に Bash 4 以上、Airflow のDB設定用に `jq`
 
-The optional [NNCT company guidance application](docs/nnct-corp-guidance-development.md)
-uses a separate repository, database, and OAuth client. Its setup is independent
-of this Compose stack.
+Web ログインには別の **taskly-auth** サービスと、その開発用DB、OAuth クライアント登録が必要です。[ローカル開発ガイド](docs/local-development.md)を参照し、認証の構成を選んでから `.env` を設定し、API 起動前にスキーマを適用します。
 
-From the repository root, create and configure `.env` as described in that guide:
+[企業ガイダンス](docs/nnct-corp-guidance-development.md)を開発する場合は、専用のリポジトリ、DB、OAuth クライアントを用意します。
+
+ローカル開発ガイドに従い、ルートで `.env` を作成してから起動します。
 
 ```bash
 cp .env.example .env
-# Configure auth and replace placeholder secrets before continuing.
+# 認証の構成を決め、サンプルの秘密値を開発用の値に置き換えます。
 chmod 600 .env
 install -m 600 .env infra/.env
 infra/ops/apply-schema.sh
@@ -65,12 +59,9 @@ curl -fsS http://localhost:3063/readyz
 curl -fsS http://localhost:3066/readyz
 ```
 
-This starts MySQL, Redis, email-compose, the API, and MCP. Airflow needs a
-separate metadata database initialization; use the
-[Airflow setup steps](docs/local-development.md#optional-airflow) before starting
-its three services.
+MySQL、Redis、email-compose、API、MCP が起動します。Airflow を使う場合は3つのサービスを起動する前に、[Airflow のセットアップ手順](docs/local-development.md#optional-airflow)に従ってメタデータ用DBを初期化します。
 
-Run the web client separately:
+Web クライアントは別のターミナルで起動します。
 
 ```bash
 cp apps/web/.env.example apps/web/.env
@@ -78,40 +69,32 @@ npm --prefix apps/web ci
 npm --prefix apps/web run dev
 ```
 
-The main local endpoints are:
+ループバック HTTP の主な接続先は次のとおりです。
 
-| Component | URL |
+| サービス | URL |
 | --- | --- |
-| Web client | `http://localhost:4321` |
-| API / GraphQL | `http://localhost:3063` / `http://localhost:3063/graphql` |
-| API liveness / readiness | `http://localhost:3063/healthz` / `http://localhost:3063/readyz` |
-| API metrics | `http://localhost:3064/metrics` |
+| Web クライアント | `http://localhost:4321` |
+| API・GraphQL | `http://localhost:3063` / `http://localhost:3063/graphql` |
+| API の稼働・準備状態 | `http://localhost:3063/healthz` / `http://localhost:3063/readyz` |
+| API のメトリクス | `http://localhost:3064/metrics` |
 | MCP HTTP API | `http://localhost:3066` |
-| Airflow UI | `http://localhost:3065` |
+| Airflow の画面 | `http://localhost:3065` |
 
-The API, metrics, MCP, and Airflow ports bind to host loopback only. MySQL,
-Redis, and email-compose are available only on the Compose network. See the
-[production port inventory](docs/operations/network-ports.md) for details.
+API、メトリクス、MCP、Airflow はホストのループバックで待機します。MySQL、Redis、email-compose には Compose のネットワーク内から接続します。詳細は [本番環境のポート一覧](docs/operations/network-ports.md)を参照してください。
 
-To stop the local stack:
+停止するときは、次を実行します。名前付きボリューム内の開発データは保持されます。
 
 ```bash
 docker compose -f infra/docker-compose.yml down
 ```
 
-Named volumes contain development data and are retained by this command.
-
-Database schema changes are declared in `apps/server/schema.sql`. Apply the
-desired state with the containerized Atlas tool (it starts and waits for MySQL):
+DB スキーマは `apps/server/schema.sql` に定義します。変更を反映するときは、Docker で動作する Atlas を使います。スクリプトが MySQL を起動し、準備が整うのを待ってから適用します。
 
 ```bash
 infra/ops/apply-schema.sh
 ```
 
-The command prints the plan first and refuses destructive changes unless they
-were explicitly reviewed and `ATLAS_ALLOW_DESTRUCTIVE=true` is set. Keep
-`infra/.env` synchronized with `.env` before running operations scripts.
-Historical files in `apps/server/migrations` are kept for audit only.
+適用前に計画が表示されます。破壊的な変更を適用する場合は計画を確認し、明示的に `ATLAS_ALLOW_DESTRUCTIVE=true` を指定します。運用スクリプトを使う前に `infra/.env` を `.env` と同期してください。`apps/server/migrations` は過去の記録です。
 
 ## Verification
 
