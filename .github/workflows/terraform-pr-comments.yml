@@ -15,7 +15,7 @@ jobs:
       github.event.comment.user.login == github.event.repository.owner.login &&
       github.ref_protected &&
       github.run_attempt == '1' &&
-      (github.event.comment.body == '/terraform plan' ||
+      (startsWith(github.event.comment.body, '/terraform plan') ||
         startsWith(github.event.comment.body, '/terraform apply'))
     runs-on: ubuntu-latest
     permissions:
@@ -24,7 +24,7 @@ jobs:
     outputs:
       command: ${{ steps.request.outputs.command }}
       plan_run: ${{ steps.request.outputs.plan_run }}
-      head: ${{ steps.request.outputs.head }}
+      revision_sha: ${{ steps.request.outputs.revision_sha }}
       base: ${{ steps.request.outputs.base }}
       artifact: ${{ steps.request.outputs.artifact }}
       message: ${{ steps.request.outputs.message }}
@@ -36,11 +36,12 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const { comment, issue, repository } = context.payload;
-            const apply = /^\/terraform apply ([1-9][0-9]{0,18})$/.exec(comment.body);
-            if (comment.body !== '/terraform plan' && apply?.[0] !== comment.body) {
-              core.setOutput('message', 'Usage: `/terraform plan` or `/terraform apply <plan-run-id>`.');
+            const command = /^\/terraform (?:(plan) ([0-9a-f]{40})|(apply) ([1-9][0-9]{0,18}))$/.exec(comment.body);
+            if (command?.[0] !== comment.body) {
+              core.setOutput('message', 'Usage: `/terraform plan <full-commit-sha>` or `/terraform apply <plan-run-id>`.');
               return;
             }
+            const [, plan, reviewedSha, apply, planRun] = command;
 
             const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue.number });
             if (pr.state !== 'open' || pr.draft || pr.head.repo?.id !== repository.id ||
@@ -52,17 +53,21 @@ jobs:
               core.setOutput('message', 'The default branch advanced. Post a new command.');
               return;
             }
+            if (plan && reviewedSha !== pr.head.sha) {
+              core.setOutput('message', 'Review the current PR commit and use its full SHA in the plan command.');
+              return;
+            }
             const { data: comparison } = await github.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
               owner, repo, basehead: `${pr.base.sha}...${pr.head.sha}`, per_page: 1,
             });
             if (comparison.status !== 'ahead') {
-              core.setOutput('message', 'Update the PR branch with the default branch, then post `/terraform plan`.');
+              core.setOutput('message', 'Update the PR branch with the default branch, review the new commit, then request a plan.');
               return;
             }
 
             core.setOutput('command', apply ? 'apply' : 'plan');
-            core.setOutput('plan_run', apply?.[1] ?? '');
-            core.setOutput('head', pr.head.sha);
+            core.setOutput('plan_run', planRun ?? '');
+            core.setOutput('revision_sha', reviewedSha ?? pr.head.sha);
             core.setOutput('base', pr.base.sha);
             core.setOutput('artifact', `terraform-pr-${issue.number}-${pr.base.sha}-${pr.head.sha}`);
 
@@ -105,12 +110,6 @@ jobs:
         with:
           persist-credentials: false
           path: workflow
-      - name: Check out the PR commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.request.outputs.head }}
-          persist-credentials: false
-          path: proposal
       - name: Download the saved plan
         if: needs.request.outputs.command == 'apply'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -119,6 +118,12 @@ jobs:
           github-token: ${{ github.token }}
           name: ${{ needs.request.outputs.artifact }}
           path: ${{ runner.temp }}/taskly-terraform-plan
+      - name: Check out the PR commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.request.outputs.revision_sha }}
+          persist-credentials: false
+          path: proposal
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: '1.17.1'
@@ -127,8 +132,9 @@ jobs:
         name: Run Terraform from the pinned PR commit
         env:
           GH_TOKEN: ${{ github.token }}
+          TERRAFORM_COMMAND: ${{ needs.request.outputs.command }}
           PR_NUMBER: ${{ github.event.issue.number }}
-          HEAD_SHA: ${{ needs.request.outputs.head }}
+          HEAD_SHA: ${{ needs.request.outputs.revision_sha }}
           BASE_SHA: ${{ needs.request.outputs.base }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           PLAN_KEY: ${{ secrets.TERRAFORM_PLAN_KEY }}
@@ -138,7 +144,7 @@ jobs:
           TF_HTTP_USERNAME: ${{ secrets.TF_HTTP_USERNAME }}
           TF_HTTP_PASSWORD: ${{ secrets.TF_HTTP_PASSWORD }}
           TF_IN_AUTOMATION: 'true'
-        run: bash workflow/.github/scripts/terraform-pr.sh "${{ needs.request.outputs.command }}"
+        run: bash workflow/.github/scripts/terraform-pr.sh "$TERRAFORM_COMMAND"
       - id: upload
         name: Save the encrypted plan
         if: steps.terraform.outputs.changes == 'true'
@@ -160,7 +166,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           COMMAND: ${{ needs.request.outputs.command }}
-          HEAD_SHA: ${{ needs.request.outputs.head }}
+          HEAD_SHA: ${{ needs.request.outputs.revision_sha }}
           REQUEST_MESSAGE: ${{ needs.request.outputs.message }}
           TERRAFORM_RESULT: ${{ needs.terraform.result }}
           PLAN_ARTIFACT_URL: ${{ needs.terraform.outputs.artifact_url }}
