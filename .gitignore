@@ -45,15 +45,6 @@ __pycache__/
 *.test
 *.out
 
-# Terraform local state and plans
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfplan
-*.tfplan.gpg
-*.tfvars
-*.tfvars.json
-
 batches/backup-mysql/backup-mysql
 batches/que-manager
 batches/day-shift-rotations/day-shift-rotations

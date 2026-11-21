@@ -9,7 +9,7 @@ fail() {
 
 [[ -n "${PLAN_KEY:-}" ]] || fail 'Set the plan encryption key in the GitHub Environment first.'
 
-artifact="$RUNNER_TEMP/taskly-infra-plan"
+artifact="$RUNNER_TEMP/taskly-atlas-plan"
 mkdir -p "$artifact"
 [[ ! -f "$artifact/no-changes" ]] || fail 'The selected plan had no changes.'
 
@@ -17,7 +17,7 @@ plan_key=$PLAN_KEY
 github_token=$GH_TOKEN
 unset PLAN_KEY GH_TOKEN
 # GPG agent sockets have a filesystem path length limit.
-temp=$(mktemp -d /tmp/taskly-tf.XXXXXXXX)
+temp=$(mktemp -d /tmp/taskly-atlas.XXXXXXXX)
 mkdir -p "$temp/gnupg"
 cleanup() {
   cleanup_tool
@@ -32,6 +32,12 @@ gpg_plan() {
 }
 
 check_revision() {
+  GH_TOKEN="$github_token" gh api "repos/$GITHUB_REPOSITORY/collaborators/$COMMENTER_LOGIN/permission" |
+    jq -e --arg id "$COMMENTER_ID" '
+      (.user.id | tostring) == $id and (.permission == "admin" or .permission == "write")
+    ' >/dev/null ||
+    fail 'The commenter no longer has repository write access.'
+
   GH_TOKEN="$github_token" gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" |
     jq -e --arg repo "$GITHUB_REPOSITORY" --arg head "$HEAD_SHA" --arg base "$BASE_SHA" \
       --arg branch "$BASE_BRANCH" '

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import resolveRequest from './infra-pr-request.cjs';
+import resolveRequest from './atlas-pr-request.cjs';
+import selfMerge from './self-merge.cjs';
 
 const base = 'a'.repeat(40);
 const revision = 'b'.repeat(40);
@@ -16,7 +17,7 @@ const savedPlan = {
 };
 const workflow = {
   id: 201,
-  path: '.github/workflows/terraform-pr-comments.yml',
+  path: '.github/workflows/atlas-pr-comments.yml',
   event: 'issue_comment',
   run_attempt: 1,
   conclusion: 'success',
@@ -31,13 +32,16 @@ async function resolve(body, options = {}) {
     repo: { owner: 'owner', repo: 'taskly' },
     sha: base,
     payload: {
-      comment: { body, created_at: commentAt },
+      comment: { body, created_at: commentAt, user: { id: 5, login: 'member', type: 'User' } },
       issue: { number: 3 },
       repository: { id: 7, default_branch: 'main' },
     },
   };
   const github = {
     rest: {
+      repos: { getCollaboratorPermissionLevel: async () => ({
+        data: { permission: options.permission ?? 'write', user: { id: options.userId ?? 5 } },
+      }) },
       pulls: { get: async () => ({ data: {
         state: 'open',
         draft: false,
@@ -55,7 +59,7 @@ async function resolve(body, options = {}) {
       calls.push('verify-signature');
       return { repository: { object: { signature: {
         isValid: true,
-        signer: { login: options.signer ?? 'owner' },
+        signer: { login: options.signer ?? 'member' },
       } } } };
     },
     request: async () => ({ data: { status: options.comparison ?? 'ahead' } }),
@@ -70,15 +74,11 @@ async function resolve(body, options = {}) {
 }
 
 test('plan pins the signed current commit, with an explicit fallback for other signers', async () => {
-  for (const tool of ['terraform', 'atlas']) {
-    const { outputs, calls } = await resolve(`${tool} plan`);
-    assert.equal(outputs.tool, tool);
-    assert.equal(outputs.revision_sha, revision);
-    assert.deepEqual(calls, ['verify-signature']);
-  }
-
-  assert.match((await resolve('terraform plan', { signer: 'someone-else' })).outputs.message, /verified owner signature/);
-  const explicit = await resolve(`/terraform plan ${revision}`, { signer: 'someone-else' });
+  const { outputs, calls } = await resolve('atlas plan');
+  assert.equal(outputs.revision_sha, revision);
+  assert.deepEqual(calls, ['verify-signature']);
+  assert.match((await resolve('atlas plan', { signer: 'owner' })).outputs.message, /verified signature from the commenter/);
+  const explicit = await resolve(`/atlas plan ${revision}`, { signer: 'someone-else' });
   assert.equal(explicit.outputs.command, 'plan');
   assert.deepEqual(explicit.calls, []);
   assert.match((await resolve(`atlas plan ${'c'.repeat(40)}`)).outputs.message, /current PR commit/);
@@ -95,7 +95,7 @@ test('closed, forked, divergent and malformed requests are rejected', async () =
 test('apply selects the latest matching saved result that precedes the comment', async () => {
   const later = { ...savedPlan, id: 104, created_at: commentAt };
   const older = { ...savedPlan, id: 100, created_at: '2026-11-21T12:58:00Z' };
-  const other = { ...savedPlan, id: 103, name: 'terraform-pr-3' };
+  const other = { ...savedPlan, id: 103, name: 'unrelated-pr-3' };
   const newest = { ...savedPlan, id: 102, workflow_run: { ...savedPlan.workflow_run, id: 202 } };
   const { outputs, calls } = await resolve('atlas apply', { artifacts: [older, later, other, newest, savedPlan] });
   assert.equal(outputs.artifact_id, '102');
@@ -112,4 +112,90 @@ test('explicit run selection and workflow provenance remain mandatory', async ()
     assert.match((await resolve('atlas apply', { run })).outputs.message, /successful command run/);
   }
   assert.match((await resolve('atlas apply', { artifacts: [{ ...savedPlan, expired: true }] })).outputs.message, /No saved plan/);
+});
+
+test('Atlas runs only for verified repository writers', async () => {
+  for (const options of [{ permission: 'none' }, { permission: 'read' }, { userId: 9 }]) {
+    assert.deepEqual((await resolve('atlas plan', options)).outputs, {});
+    assert.deepEqual((await resolve('atlas apply', options)).outputs, {});
+  }
+  assert.equal((await resolve('atlas plan', { permission: 'admin' })).outputs.command, 'plan');
+});
+
+const { authorizeSelfMerge, mergeOwnPR } = selfMerge;
+const sha = 'a'.repeat(40);
+
+function fixture(overrides = {}) {
+  const context = {
+    repo: { owner: 'owner', repo: 'taskly' },
+    payload: {
+      comment: { body: `self-merge ${sha}`, user: { id: 25, login: 'member', type: 'User' }, ...overrides.comment },
+      issue: { number: 13 },
+      repository: { id: 90, default_branch: 'main' },
+    },
+  };
+  const github = { rest: {
+    repos: { getCollaboratorPermissionLevel: async () => ({ data: {
+      user: { id: 25 }, permission: 'write', ...overrides.member,
+    } }) },
+    pulls: { get: async () => ({ data: {
+      state: 'open', draft: false, user: { id: 25 },
+      head: { sha, repo: { id: 12345 } },
+      base: { ref: 'main', repo: { id: 90 } },
+      ...overrides.pr,
+    } }) },
+  } };
+  return { github, context };
+}
+
+test('a repository writer can self-merge a pinned PR of their own, including from a fork', async () => {
+  const { github, context } = fixture();
+  assert.deepEqual(await authorizeSelfMerge(github, context), {
+    owner: 'owner', repo: 'taskly', pull_number: 13, sha,
+  });
+});
+
+test('readers, authors without write access, bots and other reviewers cannot request a bypass', async () => {
+  for (const overrides of [
+    { member: { permission: 'read' } },
+    { member: { permission: 'none' } },
+    { member: { user: { id: 99 } } },
+    { comment: { user: { id: 25, type: 'Bot', login: 'member' } } },
+    { pr: { user: { id: 99 } } },
+  ]) {
+    const { github, context } = fixture(overrides);
+    assert.equal(await authorizeSelfMerge(github, context), null);
+    const app = { request: () => assert.fail('App must not be used for an unauthorized request') };
+    await assert.rejects(mergeOwnPR(github, app, context), /no longer matches/);
+  }
+});
+
+test('closed, draft, retargeted and changed PRs are excluded', async () => {
+  for (const pr of [
+    { state: 'closed' }, { draft: true }, { head: { sha: 'b'.repeat(40) } },
+    { base: { ref: 'development', repo: { id: 90 } } },
+    { base: { ref: 'main', repo: { id: 91 } } },
+  ]) {
+    const { github, context } = fixture({ pr });
+    assert.equal(await authorizeSelfMerge(github, context), null);
+  }
+});
+
+test('merge is bound to the approved SHA and waits for GitHub to report a merge', async () => {
+  const { github, context } = fixture();
+  const seen = [];
+  const app = { request: async (route, args) => {
+    seen.push([route, args]);
+    return route.startsWith('PUT')
+      ? { data: { status: 'pending', details: { uuid: 'request-id' } } }
+      : { data: { status: 'merged', details: { sha: 'merge-commit' } } };
+  } };
+  assert.equal(await mergeOwnPR(github, app, context, async () => {}), 'merge-commit');
+  assert.equal(seen[0][1].sha, sha);
+  assert.equal(seen[0][1].bypass_rules, true);
+  assert.equal(seen[0][1].merge_method, 'merge');
+  assert.equal(seen[1][1].uuid, 'request-id');
+
+  const blockedApp = { request: async () => ({ data: { status: 'failed', details: { message: 'Required status check is missing' } } }) };
+  await assert.rejects(mergeOwnPR(github, blockedApp, context), /Required status check is missing/);
 });

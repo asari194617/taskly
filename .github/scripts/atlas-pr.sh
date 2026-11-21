@@ -8,8 +8,8 @@ cleanup_tool() {
     docker network rm "$network" >/dev/null 2>&1 || true
   fi
 }
-# shellcheck source=.github/scripts/infra-pr-common.sh
-source "$(dirname "${BASH_SOURCE[0]}")/infra-pr-common.sh"
+# shellcheck source=.github/scripts/atlas-pr-common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/atlas-pr-common.sh"
 
 command=${1:?Expected plan or apply}
 [[ -n "${ATLAS_DB_USER:-}" && -n "${ATLAS_DB_PASSWORD:-}" ]] ||
