@@ -6,7 +6,7 @@ API と認証サービスは別プロセスです。[リポジトリのローカ
 
 ## ローカル開発
 
-Node.js 26 を使用します（CI は 26.13.1）。このディレクトリで:
+Node.js 26 を使用します（CI は 26.13.1）。このディレクトリで次を実行します。
 
 ```bash
 cp .env.example .env
@@ -14,7 +14,7 @@ npm ci
 npm run dev
 ```
 
-`http://localhost:4321` で起動します。`PUBLIC_API_URL` は API の origin、
+`npm run dev` は Cloudflare CLI の `cf dev` を実行し、Astro 開発サーバーを `http://localhost:4321` で起動します。`PUBLIC_API_URL` は API の origin、
 `PUBLIC_AUTH_OAUTH_START_URL` は API の `/auth/oauth/start`、その他の
 `PUBLIC_AUTH_*` は別途起動する認証サービスの画面 URL に設定します。
 ログイン・ログアウト・プロフィール・セキュリティ画面を確認する際は、

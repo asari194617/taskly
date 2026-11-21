@@ -19,6 +19,8 @@ export default defineConfig({
     command: `PLAYWRIGHT_TEST=1 ASTRO_DEV_BACKGROUND=0 npm run dev -- --host localhost --port ${port}`,
     env: { PUBLIC_AUTH_OAUTH_START_URL: process.env.PUBLIC_AUTH_OAUTH_START_URL },
     url: `http://localhost:${port}/login`,
+    // cf forwards SIGTERM to the Astro process it starts in a separate process group.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

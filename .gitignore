@@ -59,3 +59,10 @@ apps/api/api
 apps/dmarc-processor/dmarc-processor
 apps/server/api
 apps/server/server
+
+# Cloudflare local development
+.cloudflare/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

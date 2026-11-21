@@ -1,6 +1,6 @@
 # Web ブラウザ結合テスト
 
-`npm ci && npx playwright install chromium && npm run test:browser` で実行します。CI は Chromium と Astro 開発サーバーを起動し、失敗時のスクリーンショットとトレースを `web-browser-results` artifact に保存します。
+`npm ci && npx playwright install chromium && npm run test:browser` で実行します。CI は Chromium と `cf dev` 経由の Astro 開発サーバーを起動し、失敗時のスクリーンショットとトレースを `web-browser-results` artifact に保存します。
 
 他の開発サーバーが既定ポートで動いている場合は、`PLAYWRIGHT_PORT=4369 npm run test:browser` のように空いているポートを指定します。
 

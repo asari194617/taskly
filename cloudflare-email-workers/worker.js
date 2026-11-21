@@ -1,4 +1,4 @@
-// 環境変数から設定を読み込みます（wrangler の Vars/Secrets を利用）
+// Worker の環境変数から設定を読み込みます。
 // - DMARC_INBOUND_ENDPOINT: dmarc-processor の公開URL + パス（例: https://api.example.com/dmarc/inbound）
 // - INTEGRATION_SECRET: サーバ側と一致させる共有シークレット（Secret として設定推奨）
 
