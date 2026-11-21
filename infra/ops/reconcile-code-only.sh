@@ -6,29 +6,37 @@ release=${2:?release required}
 baseline=${3:?baseline required}
 digest=${4:?database digest required}
 fail() { echo 'Reconciliation blocked: a release invariant failed; no completion written' >&2; exit 1; }
-[[ $# == 4 && $workdir == /* && $release == 1a2f63b47167ea5bed0bd147eb97e31936e4751c && $baseline =~ ^[0-9a-f]{40}$ && $digest =~ ^[0-9a-f]{64}$ ]] || fail
+[[ $# == 10 && $workdir == /* && $release =~ ^[0-9a-f]{40}$ && $baseline =~ ^[0-9a-f]{40}$ && $digest =~ ^[0-9a-f]{64}$ ]] || fail
+hashes=("$5" "$6" "$7" "$8" "$9" "${10}")
+for hash in "${hashes[@]}"; do [[ $hash =~ ^[0-9a-f]{64}$ ]] || fail; done
 cd "$workdir/infra"
 [[ $(pwd -P) == "$workdir/infra" && ! -L ops && ! -L ../apps && ! -L ../apps/server ]] || fail
 export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
-# Refuse changed host helpers; these hashes are from the exact reviewed release.
-while read -r expected relative; do
+# Refuse host files that differ from the immutable target checkout selected by
+# the owned schema-v2 marker. The workflow passes only bounded SHA-256 values.
+relatives=(
+  ops/deploy-state.sh
+  ops/verify-deploy-health.sh
+  ops/disk-maintenance.sh
+  ops/monitoring-watchdog.sh
+  ../apps/server/schema.sql
+  ../atlas.hcl
+)
+for index in "${!relatives[@]}"; do
+  expected=${hashes[$index]}
+  relative=${relatives[$index]}
   [[ ! -L $relative && -f $relative && $(sha256sum "$relative" | cut -d' ' -f1) == "$expected" ]] || fail
-done <<'HASHES'
-0f09fadb6c0a5596910edc036ab9b46ee64c7887bea6302670e009ff31643546 ops/deploy-state.sh
-072c29d6926f575b563e42f880618f597094a5510d3dbd63bc2c46cc546e5307 ops/verify-deploy-health.sh
-bdeece4ec32a41bd4eb13b2df6f9a7037fc37e537b40c2cd2b5c40cfc39977cd ops/disk-maintenance.sh
-8a1fb41b4088709bd3b72664c94cc1723c32e7388965dcdee18091c8248223b2 ops/monitoring-watchdog.sh
-4dbfb6134dd85a57376e56e651d9e055919aa38fcf239e19488cd881e1ac3cc7 ../apps/server/schema.sql
-bcff51d3b8913b0967a3d2a8bef200a2ad1cc63f3a9605f9fd3eaffaa7077b1d ../atlas.hcl
-HASHES
+done
 python3 - "$workdir/.deploy-state" "$release" "$baseline" "$digest" <<'PYTHON'
-import os, stat, sys
+import os, re, stat, sys
 from pathlib import Path
 p = Path(sys.argv[1])
 s = p.lstat()
 if not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid() or stat.S_IMODE(s.st_mode) != 0o600 or s.st_size > 1024:
     sys.exit(1)
-if p.read_text().splitlines() != ['in_progress', sys.argv[3], sys.argv[2], sys.argv[4], 'schema-v1']:
+lines = p.read_text().splitlines()
+if (len(lines) != 6 or lines[:5] != ['in_progress', sys.argv[3], sys.argv[2], sys.argv[4], 'schema-v2']
+        or re.fullmatch(r'[0-9a-f]{40}', lines[5]) is None):
     sys.exit(1)
 PYTHON
 # All commands before complete are observations only; never unpause or reinstall.

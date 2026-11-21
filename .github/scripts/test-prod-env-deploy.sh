@@ -7,7 +7,7 @@ trap 'rm -rf "$tmp"' EXIT
 assert() { "$@" || exit 1; }
 python3 "$repo/.github/scripts/prepare-prod-env.test.py"
 python3 "$repo/.github/scripts/verify-no-ddl-release.test.py"
-python3 "$repo/.github/scripts/verify-reconcile-attestation.test.py"
+python3 "$repo/.github/scripts/prepare-reconcile-baseline.test.py"
 bash "$repo/infra/ops/test-reconcile-code-only.sh"
 bash "$repo/.github/scripts/test-prod-ssh.sh"
 bash "$repo/.github/scripts/test-run-prod-script.sh"

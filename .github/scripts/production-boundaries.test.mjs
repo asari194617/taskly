@@ -139,7 +139,7 @@ test('failed deployment notifications ignore non-main and successful runs', () =
   }
 });
 
-test('one-time reconciliation is manual protected-main only and binds its release', () => {
+test('reconciliation is manual protected-main only and selects the owned unfinished release', () => {
   const block = job('reconcile-code-only', 'reconcile');
   for (const event_name of ['push', 'pull_request', 'workflow_run', 'workflow_dispatch']) {
     for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
@@ -147,7 +147,10 @@ test('one-time reconciliation is manual protected-main only and binds its releas
     }
   }
   assert.equal(enabled(block, { event_name: 'workflow_dispatch', ref: 'refs/heads/main', ref_protected: false }), false);
-  assert.match(block, /RELEASE_SHA: 1a2f63b47167ea5bed0bd147eb97e31936e4751c/);
+  assert.doesNotMatch(block, /workflow_dispatch:\s+inputs:|RELEASE_SHA: [0-9a-f]{40}/);
+  assert.match(block, /recovery-baseline/);
+  assert.match(block, /ref: \$\{\{ env\.RECOVERY_TARGET_SHA \}\}/);
+  assert.match(block, /prepare-reconcile-baseline\.py/);
   assert.doesNotMatch(block, /PROD_ENV|rsync|docker compose up|apply-schema|install-user-cron|secrets.GHCR/);
   for (const workflow of ['deploy-prod', 'reconcile-code-only']) {
     const source = readFileSync(new URL(`../workflows/${workflow}.yml`, import.meta.url), 'utf8');
@@ -164,7 +167,7 @@ test('production source cannot share stdin with children or skip its committed-s
     assert.doesNotMatch(source, /bash -s/);
     assert.match(source, /run-prod-script.sh/);
     assert.match(source, /name: Verify committed production release/);
-    assert.match(source, /--committed-digest "\$SCHEMA_DATABASE_DIGEST"/);
+    assert.match(source, new RegExp(`--committed-digest "\\$${workflow === 'deploy-prod' ? 'SCHEMA' : 'RECOVERY'}_DATABASE_DIGEST"`));
     assert.match(source, /taskly-completed-baseline.json/);
     assert.ok(source.indexOf('name: Verify committed production release') > source.indexOf(workflow === 'deploy-prod' ? 'name: Mark production deployment complete' : 'name: Verify every remaining invariant and complete the exact release'));
   }
