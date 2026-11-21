@@ -1,6 +1,6 @@
 # Taskly
 
-Taskly は授業と課題を管理するサービスです。
+Taskly は日直と課題を管理するサービスです。
 
 <a name="repository-structure"></a>
 
