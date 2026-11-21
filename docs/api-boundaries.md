@@ -12,7 +12,7 @@
 | ヘルスチェック | REST | なし |
 | MCP ツール | MCP サーバーの REST | MCP トークン |
 
-認証サービスは別リポジトリで管理し、このリポジトリの Compose には含めません。
+認証サービスは [taskly-auth](https://github.com/asari194617/taskly-auth) で管理します。このリポジトリの Compose には含めません。
 API は認証後のセッションを管理し、ユーザー投影を同期します。
 [ローカル設定](local-development.md)、[所有権ゲート](auth-identity-write-inventory.md)、
 [プロフィール同期](account-profile-ownership.md)を参照してください。

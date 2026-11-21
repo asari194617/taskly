@@ -51,6 +51,12 @@
 
 ### Taskly でローカル OAuth を使う
 
+認証 API と画面は [taskly-auth](https://github.com/asari194617/taskly-auth) のチェックアウトから起動します。Taskly と同じ親ディレクトリにチェックアウトする例です。
+
+```bash
+git clone https://github.com/asari194617/taskly-auth.git
+```
+
 認証と Taskly を起動する前に、共有 Docker ネットワークを作成します。
 
 ```bash
@@ -58,7 +64,7 @@ docker network inspect taskly-local-https >/dev/null 2>&1 ||
   docker network create --internal taskly-local-https
 ```
 
-開発用の OAuth クライアントシークレットとコールバック URL を両サービスで揃えます。taskly-auth は HTTPS 用の Compose ファイルを重ねて起動します。Taskly のルートにある `.env` の該当項目を次の値へ置き換え、`infra/.env` に同期します。Taskly の起動前に、[スキーマを適用](#application-stack)してください。
+開発用の OAuth クライアントシークレットとコールバック URL を両サービスで揃えます。認証サービスは [taskly-auth のローカル HTTPS 手順](https://github.com/asari194617/taskly-auth#ローカル-https)に従って起動します。Taskly のルートにある `.env` の該当項目を次の値へ置き換え、`infra/.env` に同期します。Taskly の起動前に、[スキーマを適用](#application-stack)してください。
 
 ```dotenv
 WEB_PUBLIC_URL=https://local.taskly.iy0306.com

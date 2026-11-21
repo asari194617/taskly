@@ -17,7 +17,7 @@
 
 ## 認証とアカウントデータ
 
-Web のログイン、認証情報、プロフィール画面では別サービスの taskly-auth を使います。以下の資料では、データの管理主体を切り替える条件と同期仕様を説明します。認証サービスの構築は taskly-auth 側で行います。
+Web のログイン、認証方法の管理、プロフィール画面には [taskly-auth](https://github.com/asari194617/taskly-auth) を使います。認証サービスの起動は [開発環境のセットアップ](https://github.com/asari194617/taskly-auth#開発環境)、認証 DB の移行と切り戻しは [本番認証 DB 移行手順](https://github.com/asari194617/taskly-auth/blob/main/docs/production-migration.md)を参照してください。以下の資料では、Taskly 側でデータの管理主体を切り替える条件と同期仕様を説明します。
 
 - [認証データの書き込み箇所と移行条件](auth-identity-write-inventory.md)
 - [ユーザープロジェクション](auth-user-projection-sync.md)と[プロフィールの管理主体](account-profile-ownership.md)

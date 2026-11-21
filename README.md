@@ -25,7 +25,7 @@ Taskly は授業と課題を管理するサービスです。
 
 | リポジトリ | 役割 |
 | --- | --- |
-| [`taskly-auth`](https://github.com/asari194617/taskly-auth)（非公開） | Taskly と長岡高専企業ガイダンスで共用するログイン、OAuth、アカウント設定 |
+| [`taskly-auth`](https://github.com/asari194617/taskly-auth) | Taskly と長岡高専企業ガイダンスで共用するログイン、OAuth、アカウント設定 |
 | [`taskly-nnct-corp-guidance`](https://github.com/asari194617/taskly-nnct-corp-guidance) | 長岡高専企業ガイダンスの Web アプリ、API、Taskly の課題完了と連携する MCP |
 | [`taskly-policy`](https://github.com/asari194617/taskly-policy) | 版管理されたポリシー本文とリリースマニフェスト |
 | [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | `taskly-policy` のリリースを掲載する公開ポリシーサイト |
@@ -44,7 +44,7 @@ Taskly と関連サービスを `local.` の開発ドメインで開く場合は
 - Go のローカル検証用に Go 1.27.4 以上（CI と Docker ビルドと同じバージョン）
 - 運用スクリプト用に Bash 4 以上、Airflow のDB設定用に `jq`
 
-Web ログインには別の **taskly-auth** サービスと、その開発用DB、OAuth クライアント登録が必要です。[ローカル開発ガイド](docs/local-development.md)を参照し、認証の構成を選んでから `.env` を設定し、API 起動前にスキーマを適用します。
+Web ログインを試すには、[taskly-auth の開発環境](https://github.com/asari194617/taskly-auth#開発環境)を起動し、開発用 DB と OAuth クライアントを用意します。[ローカル開発ガイド](docs/local-development.md)を参照し、認証の構成を選んでから Taskly 側の `.env` を設定し、API 起動前にスキーマを適用します。
 
 [企業ガイダンス](docs/nnct-corp-guidance-development.md)を開発する場合は、専用のリポジトリ、DB、OAuth クライアントを用意します。
 
