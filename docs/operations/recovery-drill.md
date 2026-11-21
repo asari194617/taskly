@@ -31,7 +31,10 @@ GitHub Actions の本番更新は `deploy-production` concurrency group で直�
 
 `main` の ruleset は署名付きコミットと [必須 Actions チェック](github-actions-required-checks.md)を要求する。必要承認数は 0 で、自己レビューと必須チェックの成功後にマージできる。
 
-同一リポジトリ内の信頼済みPRの重いジョブと本番画像build/releaseは、共通の `select-runner` を介して専用CI poolを使う。Lint、MCP・email-compose のチェック、カバレッジ、バッチ単体テスト、実行計画・結果集約、通知は直接 `ubuntu-latest` を使う。外部fork PRも `ubuntu-latest` に限定する。CI runnerは1ジョブ後にworkspaceを再作成するが、Docker socketへアクセスできるため悪意あるコードに対する隔離ではない。外部forkのコードを未レビューのまま内部ブランチに移して実行しない。本番反映はPR用poolとは別の `taskly-prod` 専用runnerで実行する。通常は heartbeat の鮮度で primary → secondary → `ubuntu-latest` と選択する。`CI_PRIMARY_ONLY=true` の間は選択対象の重いジョブが primary 停止時にもキューで待機する。軽いジョブと選択ジョブ自体は GitHub-hosted のままなので、GitHub-hosted 全体の停止には対応しない。明示的な切り替えとガード解除は [runner 手順](../../infra/actions-runner/README.md)に従う。
+PR の CI、本番のイメージ公開とデプロイ、復旧ジョブは GitHub-hosted runner で
+実行する。本番 SSH ジョブは保護された `main` 上でのみ動作し、`production`
+environment の鍵とホスト鍵を使用する。GitHub Actions が停止している場合の
+手動対応は、この文書と [SSH リリース復旧手順](ssh-deploy-reconciliation.md) を参照する。
 
 通常の [本番リリース](no-ddl-code-release.md)は、スキーマがコミット済みの基準と一致する場合に進む。別途スキーマを変更する場合は、担当者が Atlas の dry-run を PR に記録し、追加だけの変更でも旧 API の読み書き経路を検証する。列削除や型変更がある場合は原則として先に互換期間を設け、旧イメージへの即時切り戻しを「不可」と判定する。
 

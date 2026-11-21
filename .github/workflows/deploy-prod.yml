@@ -24,11 +24,6 @@ on:
         description: Rebuild all production images
         type: boolean
         default: true
-      runner_override:
-        description: Runner for image build and release jobs
-        type: choice
-        options: [auto, primary, secondary, ubuntu-latest]
-        default: auto
 
 concurrency:
   group: deploy-production
@@ -40,26 +35,17 @@ env:
   PRODUCTION_PLATFORM: linux/amd64
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
-  select-runner:
-    # Reject non-main manual dispatches before any image publication or host work.
-    if: github.ref == 'refs/heads/main' && github.ref_protected
-    uses: ./.github/workflows/select-runner.yml
-    with:
-      runner_override: ${{ inputs.runner_override || 'auto' }}
-
   plan:
-    needs: select-runner
+    if: github.ref == 'refs/heads/main' && github.ref_protected
     runs-on: ubuntu-latest
     outputs:
       count: ${{ steps.matrix.outputs.count }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       redis_acl_changed: ${{ steps.matrix.outputs.redis_acl_changed }}
       airflow_changed: ${{ steps.matrix.outputs.airflow_changed }}
-      runner: ${{ needs.select-runner.outputs.label }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -103,30 +89,22 @@ jobs:
   publish-images:
     needs: plan
     if: needs.plan.outputs.count != '0'
-    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
-      # The pool shares host disk with PR jobs.
-      max-parallel: 1
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      - name: Restore workspace ownership
-        run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" alpine:3.20 chown -R "$(id -u):$(id -g)" /workspace
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Check Docker bridge DNS before publishing
-        run: bash .github/scripts/check-build-registry-dns.sh
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
         with:
-          # BuildKit 0.32 cannot unpack the Airflow base image on this host.
-          # Keep an isolated builder per runner, pinned to the verified version.
           driver: docker-container
           driver-opts: image=moby/buildkit:v0.26.2@sha256:de10faf919fc71ba4eb1dd7bd6449566d012b0c9436b1c61bfee21d621b009aa
       - name: Record build start
@@ -152,7 +130,7 @@ jobs:
   release-images:
     needs: [plan, publish-images]
     if: ${{ always() && github.ref == 'refs/heads/main' && github.ref_protected && needs.plan.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
-    runs-on: ${{ fromJSON(needs.plan.outputs.runner) }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -192,7 +170,7 @@ jobs:
   deploy:
     needs: [plan, release-images]
     if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.ref_protected && needs.plan.result == 'success' && needs.release-images.result == 'success' }}
-    runs-on: [self-hosted, taskly-prod]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
     permissions:
@@ -202,6 +180,7 @@ jobs:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
       PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_HOST_KEY: ${{ secrets.PROD_SSH_HOST_KEY }}
       PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
       PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
       PROD_WORKDIR: ${{ secrets.PROD_WORKDIR }}
@@ -216,8 +195,6 @@ jobs:
       PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
       PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
     steps:
-      - name: Restore workspace ownership
-        run: docker run --rm -v "$GITHUB_WORKSPACE:/workspace" alpine:3.20 chown -R "$(id -u):$(id -g)" /workspace
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -235,7 +212,8 @@ jobs:
         run: .github/scripts/require-prod-env.sh
       - name: Record deploy start
         run: echo "DEPLOY_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Prepare SSH (agent + askpass)
+      - name: Prepare production SSH
+        id: production_ssh
         timeout-minutes: 2
         run: .github/scripts/prepare-prod-ssh.sh
       - name: Verify SSH connectivity
@@ -400,7 +378,7 @@ jobs:
             --output "$RUNNER_TEMP/taskly-completed-proof.json"
       - name: Check Airflow after deploy failure
         timeout-minutes: 5
-        if: ${{ failure() || cancelled() }}
+        if: ${{ (failure() || cancelled()) && steps.production_ssh.outcome == 'success' }}
         continue-on-error: true
         run: .github/scripts/check-prod-airflow.sh
       - name: Deploy summary

@@ -8,17 +8,12 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
-  select-runner:
-    uses: ./.github/workflows/select-runner.yml
-
   build:
     name: api-build
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
@@ -37,8 +32,7 @@ jobs:
 
   empty-database:
     name: api-empty-database
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     services:
       mysql:
         image: mysql:8.4

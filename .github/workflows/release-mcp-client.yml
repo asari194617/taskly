@@ -7,19 +7,11 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
-  select-runner:
-    # Native Windows/macOS builds cannot run on the Linux primary host.
-    # Defer the entire release rather than publish an incomplete set of clients.
-    if: vars.CI_PRIMARY_ONLY != 'true'
-    uses: ./.github/workflows/select-runner.yml
-
   build-linux:
-    needs: select-runner
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -56,7 +48,6 @@ jobs:
           path: artifacts/*
 
   build-windows:
-    needs: select-runner
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -92,7 +83,6 @@ jobs:
           path: artifacts/*
 
   build-macos:
-    needs: select-runner
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -131,8 +121,8 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [select-runner, build-linux, build-windows, build-macos]
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
     env:
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}

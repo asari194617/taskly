@@ -23,17 +23,24 @@
 
 これらは当日に確認した事実です。以降の公開判断には、その時点の証跡を使います。`secret-scan` ワークフローは PR と `main` へのプッシュで、チェックサムを検証した Gitleaks バイナリと読み取り専用トークンを使い、GitHub ホストランナーで取得済みの履歴を調べます。出力は秘匿化します。GitHub 標準のセキュリティ機能を補完するもので、Issue、過去の PR キャッシュ、ログ、アーティファクト、非公開の参照の列挙は行いません。
 
-## PR を作成できる範囲とランナーの境界
+## 現在の PR 受付とランナーの設定
 
-公開計画では、リポジトリとその本番デプロイを一緒に管理します。外部からのコードのコントリビューションは受け付けません。GitHub の設定を `has_pull_requests=true` と `pull_request_creation_policy=collaborators_only` に保ちます。メンテナーは PR、レビュー、必須チェックを経てマージし、外部ユーザーは PR を作成できません。`CONTRIBUTING.md` の方針をリポジトリ設定で強制します。[GitHub の PR アクセス設定](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/disabling-pull-requests)を参照してください。
+フォークからの PR を受け付けます。GitHub の設定は `has_pull_requests=true` と `pull_request_creation_policy=all` です。すべてのジョブは GitHub-hosted runner で実行し、リポジトリにセルフホストランナーは登録しません。外部コントリビューター全員についてワークフローの実行承認を要求し、メンテナーはワークフローの変更を確認してから承認します。
 
-2026-11-04 に REST API で設定を適用して再取得しました。コラボレーターは所有者のみで、開いていた PR は同じリポジトリから所有者が作成した 1 件だけでした。制限の例外として残す必要のある外部 PR はありませんでした。公開直前に両方の一覧を再確認します。
+`main` のルールセットは署名済みコミットと必須チェックを要求します。既定の `GITHUB_TOKEN` は読み取り専用です。フォークの PR ワークフローは読み取り専用トークンを使い、リポジトリや本番のシークレットにはアクセスできません。フォークのカバレッジを投稿するワークフローは既定ブランチから実行し、Actions の読み取りと PR へのコメントに必要な権限を使います。投稿前に、実行元のフォークとコミットをカバレッジのメタデータおよび現在の PR と照合します。公開 Issue やコメントをトリガーに追加する場合は権限と入力の扱いを個別にレビューします。
 
-共有ランナー選択処理の GitHub ホストランナーへのフォールバックは多層防御の一部です。ランナーのラベルとコンテナの作り直しだけでは、悪意のあるコードを隔離できません。ホストの Docker ソケットを持つジョブは他のコンテナやボリュームへアクセスできるため、これらのランナーに実行可能なコードを投入できるのは信頼できるメンテナーだけです。コラボレーターの招待、GitHub App のアクセス変更、外部コードの取り込みは、この前提でレビューします。本番の保護策、専用ランナー、保護された Environment は引き続き使用します。
+本番 SSH の認証情報は `production` Environment に保存し、デプロイを `main` ブランチに限定します。本番ジョブも保護された `main` の参照を確認し、登録済みの Ed25519 公開鍵で SSH の接続先を照合します。[本番デプロイ手順](../initial-settings.md#本番デプロイ)を参照してください。
 
-PR 作成とともにイベントトリガーも監査します。公開 Issue・コメント・レビューの内容で特権ジョブを起動したり、内容をコードとして評価したりしてはいけません。現在のワークフローには `issues`、`issue_comment`、`pull_request_review`、`pull_request_target` トリガーはありません。既存の `workflow_run` の利用側には固有の入力検証が必要です。新規 PR を制限しても過去のアーティファクトは無害化されません。
+設定は GitHub API から確認できます。
 
-将来外部 PR を受け付ける前には、信頼できないコードを実行する環境の境界を再設計し検証します。非公開のデプロイ用リポジトリは、その運用形態で取り得る選択肢です。外部 PR を制限する現在の公開計画では分離を必須としません。ワークフローを実行できるすべてのアクターに [GitHub のセルフホストランナーのガイド](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners)が適用されます。
+```sh
+gh api repos/asari194617/taskly --jq '{has_pull_requests, pull_request_creation_policy}'
+gh api repos/asari194617/taskly/actions/runners --jq '.total_count'
+gh api repos/asari194617/taskly/actions/permissions/fork-pr-contributor-approval --jq '.approval_policy'
+gh api repos/asari194617/taskly/environments/production/deployment-branch-policies --jq '.branch_policies'
+```
+
+期待値は順に、`true` と `all`、ランナー 0 件、`all_external_contributors`、`branch` 型の `main` ルール 1 件です。
 
 ## 最終監査の再実行
 
@@ -61,7 +68,9 @@ gitleaks git "$audit_dir/repository.git" --log-opts=--all --redact \
 
 未公開の作業と必要な復旧用バンドルは、非公開のストレージに保存します。`https://github.com/asari194617/taskly.git` から新しくクローンし、レビュー済みの変更だけを新しいブランチに適用します。古いクローンの履歴をマージしたり、古いブランチやタグを整理済みのリポジトリへ戻したりしないでください。最終監査で保存・検証したローカル Git バンドルは非公開の復旧用です。
 
-## 公開範囲の変更手順
+## 当初の公開範囲の変更手順
+
+以下はコラボレーター限定で公開した当時の手順です。現在の設定は上の「現在の PR 受付とランナーの設定」を参照してください。
 
 1. コンテンツ監査を完了し、アクセスを制限した復旧証跡とレビュー済みのコミット・参照一覧を記録します。コラボレーター限定の PR 設定、信頼済みのコラボレーターと App の一覧、既存の外部 PR がないことを確認します。
 2. 進行中の本番作業が完了してから、移行の間だけ Actions を停止します。

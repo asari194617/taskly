@@ -1,6 +1,0 @@
-self-hosted-runner:
-  labels:
-    - taskly-ci
-    - taskly-ci-primary
-    - taskly-ci-secondary
-    - taskly-prod
