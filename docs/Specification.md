@@ -5,11 +5,11 @@
 > [文書索引](README.md)を参照してください。認証・プロフィールは別サービスの
 > taskly-auth が担当し、ネイティブクライアントの構想はこのリポジトリの実装範囲に含みません。
 
-# Overview
+# 概要
 
-A simple, fast class management service.
+シンプルで高速な授業管理サービス。
 
-## Platforms
+## 対応プラットフォーム
 
 - Web (PWA対応)
 - iOS
@@ -45,18 +45,18 @@ A simple, fast class management service.
     というbodyを含むPOSTリクエストを送信できます。このエンドポイントのURLも作成してください。
     
 
-## Languages
+## 対応言語
 
-- Japanese
-- English
+- 日本語
+- 英語
 
-## Themes
+## テーマ
 
-- Dark
-- Light (Default)
-- Device-preferences
+- ダーク
+- ライト（既定）
+- 端末の設定に従う
 
-# Features
+# 機能
 
 - 課題のCRUD・通知・検索
 - 日直の通知✅
@@ -76,19 +76,19 @@ A simple, fast class management service.
     - セッションの管理
     - アカウントのログ閲覧
 
-## Way to notification
+## 通知方法
 
-- Email
+- メール
 - Web Push
-- Notify to Teams (via Email, Build with Power-Automate)
-- Push notification from native-app
+- Teams 通知（メール経由で Power Automate を実行）
+- ネイティブアプリからのプッシュ通知
 
-# Technical Details
+# 技術仕様
 
-## Tech stacks
+## 技術構成
 
 - アプリケーションサーバー/バッチ処理: Go (Fiber)
-- Front: Astro (Shadcnを利用し、CloudFlare Pagesにデプロイ)
+- フロントエンド：Astro (Shadcnを利用し、CloudFlare Pagesにデプロイ)
 - iOS/iPad: Swift
 - Android: Kotlin
 - Mac: Swift
@@ -98,28 +98,28 @@ A simple, fast class management service.
 - CI/CD: GitHub Actions (API、MCP、メール生成、Airflowイメージのビルドと本番デプロイ)
 - DB: MySQL✅
 - メール生成: React Email
-- Metrics: Prometheus, Datadog (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)✅
+- メトリクス：Prometheus、Datadog (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)✅
 - (APIとiCalとMCPとTeamsを除く)各プラットフォームとアプリケーションサーバーのやりとり: GraphQL✅
 - APIプラットフォーム: REST API✅
 
 現在の API 用途と例外は [api-boundaries.md](./api-boundaries.md) を参照。
 
-## Schemas
+## スキーマ
 
 [schema.md](./schema.md)
 
-## Pages
+## ページ
 
 - 課題一覧(トップ)
 - 期限を過ぎた課題(無限スクロールを実装)
 - 設定
 
-### Note
+### 補足
 
 - それぞれの課題は、期限が近い順, 日付ごとでトップページに表示される
 - 期限を過ぎた課題は表示しない
 
-## Attention
+## 注意事項
 
 - 明日も行うことを通知する文面は毎回異なるため、GeminiのAPIに投げて判定してもらってください。
 - メールを判定する際、Gemini APIが判定に失敗した場合や、メールが届かなかった場合はDiscordのWebhookにembedsで通知してください。
@@ -144,7 +144,7 @@ A simple, fast class management service.
         FOREIGN KEY (user_id) REFERENCES users(id)
     );
     
-    -- TOTP (Authenticator App)
+    -- TOTP（認証アプリ）
     CREATE TABLE totp_secrets (
         id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
         user_id BIGINT UNSIGNED NOT NULL UNIQUE, -- 通常ユーザー1人につき1つ

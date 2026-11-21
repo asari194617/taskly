@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
   <head>
-    <title>Taskly API Document</title>
+    <title>Taskly API リファレンス</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
@@ -22,9 +22,135 @@
     <script>
       Scalar.createApiReference('#app', {
         url: './openapi.yaml',
-        proxyUrl: 'https://proxy.scalar.com', 
-        title: 'API Document',
+        proxyUrl: 'https://proxy.scalar.com',
+        title: 'Taskly API リファレンス',
         theme: 'default',
+        localization: {
+          locale: 'ja',
+          translations: {
+            common: {
+              description: '説明',
+              httpMethod: 'HTTP メソッド',
+              path: 'パス',
+              copyDefault: '既定値をコピー',
+              copyExample: '例をコピー',
+            },
+            search: {
+              label: '検索',
+              inputLabel: '検索語を入力',
+              open: '検索を開く',
+              placeholder: '検索…',
+              clear: '検索をクリア',
+              noResults: '検索結果がありません',
+              keyboardShortcut: 'キーボードショートカット',
+              results: 'API リファレンスの検索結果',
+              navigate: '移動',
+              select: '選択',
+              instructions: '上下の矢印キーで移動し、Enter キーで選択します。入力すると結果を絞り込めます。',
+              entryHeading: '見出し',
+              entryOperation: '操作',
+            },
+            navigation: {
+              introduction: '概要',
+              openMenu: 'メニューを開く',
+              closeMenu: 'メニューを閉じる',
+              openGroup: 'グループを開く',
+              closeGroup: 'グループを閉じる',
+              operations: '操作',
+              endpoints: '{name} のエンドポイント',
+              showAllEndpoints: '{name} のすべてのエンドポイントを表示',
+              sidebarFor: '{name} のナビゲーション',
+              mainContent: '{name} の API リファレンス',
+              collapsed: '折りたたみ済み',
+            },
+            server: { label: 'サーバー', select: 'サーバーを選択' },
+            authentication: {
+              title: '認証',
+              detailsRequired: '認証が必要です',
+              detailsOptional: '認証は任意です',
+              apiKey: 'API キー',
+              apiKeyHeader: 'ヘッダー「{name}」で API キーを送信します。',
+              authentication: '認証',
+              required: '認証必須',
+              optional: '認証は任意',
+            },
+            clientLibraries: {
+              heading: 'クライアントライブラリ',
+              more: 'その他',
+              selectAll: 'すべてのクライアントから選択',
+              searchLabel: 'クライアントを検索',
+              changeClient: 'コード例の言語を変更',
+            },
+            operation: {
+              codeSampleUnavailable: 'この例のコードサンプルはありません。',
+              codeSample: 'コード例',
+              body: '本文',
+              cookies: 'Cookie',
+              headers: 'ヘッダー',
+              pathParameters: 'パスパラメーター',
+              queryParameters: 'クエリパラメーター',
+              requestBody: 'リクエスト本文',
+              responses: 'レスポンス',
+              testRequest: 'リクエストを試す',
+              selectedContentType: '選択中のコンテンツタイプ',
+            },
+            response: {
+              exampleResponses: 'レスポンス例',
+              noBody: '本文なし',
+              showSchema: 'スキーマを表示',
+              status: 'ステータス',
+            },
+            schema: {
+              default: '既定値',
+              example: '例',
+              examples: '例',
+              formatDate: 'RFC 3339 の 5.6 節で定義された日付形式（例：2017-07-21）',
+              formatDateTime: 'RFC 3339 の 5.6 節で定義された日時形式（例：2017-07-21T17:32:28Z）',
+              formatInt32: '32 ビット符号付き整数',
+              formatInt64: '64 ビット符号付き整数',
+              formatPassword: '入力値を伏せて表示する形式',
+              formatBase64: 'Base64 でエンコードした文字列（例：U3dhZ2dlciByb2Nrcw==）',
+              formatBinary: 'ファイルなどのバイナリデータ',
+              max: '最大',
+              min: '最小',
+              nullable: 'null を許容',
+              readOnly: '読み取り専用',
+              required: '必須',
+              type: '型',
+              typeInteger: '整数',
+              writeOnly: '書き込み専用',
+            },
+            download: {
+              openapi: 'OpenAPI 定義をダウンロード',
+              asFormat: '{label}（{format} 形式）',
+            },
+            models: { label: 'モデル' },
+            actions: {
+              copyAsMarkdown: 'Markdown としてコピー',
+              copied: 'コピーしました',
+              copyMarkdownFailed: 'Markdown のコピーに失敗しました',
+              copyLink: 'リンクをコピー',
+              copyLinkTo: '{name} へのリンクをコピー',
+              copyToClipboard: 'リンクをクリップボードへコピー',
+              copyEndpointUrl: 'エンドポイントの URL をコピー',
+              showMore: 'もっと表示',
+            },
+            agent: { askAi: 'AI に質問', askAiAgent: 'AI エージェントに質問', close: '閉じる' },
+            apiClient: {
+              authSelector: { required: '必須', optional: '任意' },
+              codeInputLite: { required: '必須' },
+              dataTableInput: {
+                clearValue: '入力値を消去',
+                resetValue: '既定値に戻す',
+                showPassword: '入力値を表示',
+                hidePassword: '入力値を隠す',
+              },
+              openApiClientButton: { openAPIClient: 'API クライアントを開く' },
+              requestAuthTab: { name: '名前', value: '値', cancel: 'キャンセル', authorize: '認証する' },
+            },
+            footer: { poweredByScalar: 'Scalar を使用' },
+          },
+        },
       })
     </script>
   </body>

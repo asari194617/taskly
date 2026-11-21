@@ -1,38 +1,36 @@
-# Datadog APM integration
+# Datadog APM 連携
 
-This service is instrumented with Datadog for tracing (HTTP/Fiber, GORM/MySQL) and optional profiling.
+Datadog で HTTP（Fiber）と DB（GORM / MySQL）のトレースを収集します。プロファイリングも任意で有効にできます。
 
-Environment variables (read automatically by the tracer):
+## トレーサーが自動で読み取る環境変数
 
-- DD_TRACE_AGENT_URL: Agent URL. Docker Compose uses `unix:///var/run/datadog/apm.socket`.
-- DD_DOGSTATSD_URL: Runtime metrics URL. Docker Compose uses `unix:///var/run/datadog/dsd.socket`.
-- DD_AGENT_HOST: Datadog Agent host (default 127.0.0.1)
-- DD_TRACE_AGENT_PORT: Agent trace port (default 8126)
-- DD_SERVICE: Service name (default taskly-server)
-- DD_ENV: Environment (e.g. prod, staging)
-- DD_VERSION: Version string (e.g. git sha)
-- DD_API_KEY: Not needed by the app directly; required for the Agent if using remote intake
-- DD_PROFILING_ENABLED: Set to "true" to enable the in-process CPU/heap profiler
-- DD_DB_SERVICE: Optional override for DB service name (default: "${DD_SERVICE}-db")
+- `DD_TRACE_AGENT_URL` はエージェントの URL。Docker Compose では `unix:///var/run/datadog/apm.socket`
+- `DD_DOGSTATSD_URL` はランタイムメトリクスの送信先。Docker Compose では `unix:///var/run/datadog/dsd.socket`
+- `DD_AGENT_HOST` は Datadog Agent のホスト（既定値 `127.0.0.1`）
+- `DD_TRACE_AGENT_PORT` はトレースの送信先ポート（既定値 `8126`）
+- `DD_SERVICE` はサービス名（既定値 `taskly-server`）
+- `DD_ENV` は環境名（例：`prod`、`staging`）
+- `DD_VERSION` はバージョン文字列（例：Git のコミット SHA）
+- `DD_API_KEY` はエージェントがリモートの受け入れ先に送信する場合に必要。アプリは直接参照しない
+- `DD_PROFILING_ENABLED=true` でプロセス内の CPU・ヒーププロファイラーを有効化
+- `DD_DB_SERVICE` で DB サービス名を上書き可能（既定値 `${DD_SERVICE}-db`）
 
-What’s instrumented:
+## 計装対象
 
-- Fiber HTTP server: request spans for each route
-- GORM (MySQL): query spans via database/sql wrapper + gorm plugin
-- Tracer runtime metrics enabled (GC, goroutines, etc.)
-- Optional pprof-like Datadog profiler (if DD_PROFILING_ENABLED=true)
+- Fiber HTTP サーバーのルートごとのリクエストスパン
+- `database/sql` ラッパーと GORM プラグインを経由した MySQL のクエリスパン
+- トレーサーのランタイムメトリクス（GC、ゴルーチンなど）
+- pprof と同様の Datadog プロファイラー（`DD_PROFILING_ENABLED=true` の場合）
 
-How to verify locally:
+## ローカルでの確認
 
-1. Run a Datadog Agent with APM enabled. Compose expects the standard
-   `/var/run/datadog/apm.socket` and `/var/run/datadog/dsd.socket` sockets;
-   a server started outside Compose can use `${DD_AGENT_HOST}:${DD_TRACE_AGENT_PORT}`.
-2. Start the server and hit a few routes
-3. In Datadog APM, look for the service DD_SERVICE and DB child service DD_DB_SERVICE
+1. APM を有効にした Datadog Agent を起動します。Compose は標準ソケット `/var/run/datadog/apm.socket` と `/var/run/datadog/dsd.socket` を参照します。Compose の外で起動したサーバーは `${DD_AGENT_HOST}:${DD_TRACE_AGENT_PORT}` に接続できます。
+2. サーバーを起動し、いくつかのルートにリクエストを送信します。
+3. Datadog APM でサービス `DD_SERVICE` と DB の子サービス `DD_DB_SERVICE` を確認します。
 
-Notes:
+## 運用上の補足
 
-- `DD_TRACE_AGENT_URL` takes precedence over `DD_AGENT_HOST` and `DD_TRACE_AGENT_PORT`.
-- The production Compose override mounts only the Agent socket directory and does not publish APM or DogStatsD ports.
-- The tracer reads many settings automatically from env vars; no code change is needed per environment.
-- To filter noisy routes from traces, adjust the Fiber middleware options.
+- `DD_TRACE_AGENT_URL` は `DD_AGENT_HOST` と `DD_TRACE_AGENT_PORT` より優先されます。
+- 本番環境の Compose の上書き設定はエージェントのソケットディレクトリだけをマウントします。APM や DogStatsD のポートは公開しません。
+- トレーサーは各種設定を環境変数から自動で読み取ります。環境ごとのコード変更は不要です。
+- トレースから不要なルートを除外するには、Fiber ミドルウェアのオプションを調整します。

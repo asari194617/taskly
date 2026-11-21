@@ -1,25 +1,16 @@
-# Policy editions and consent records
+# ポリシーの版と同意記録
 
-The [public policy site](https://policies.taskly.iy0306.com/) is maintained in
-[`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web). It
-publishes versioned policy releases from
-[`taskly-policy`](https://github.com/asari194617/taskly-policy). The public
-policy set released as [`v2026-11-16.1`](https://github.com/asari194617/taskly-policy/releases/tag/v2026-11-16.1)
-took effect on 2026-11-16. Taskly's in-app consent still uses the fixed
-`2026-09-22.1` edition defined in
-[`consent.go`](../../apps/server/internal/legal/consent.go) and
-[`ConsentPage.tsx`](../../apps/web/src/react/pages/ConsentPage.tsx).
+[公開ポリシーサイト](https://policies.taskly.iy0306.com/)は [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) が管理し、[`taskly-policy`](https://github.com/asari194617/taskly-policy) で版管理されたリリースを掲載します。[`v2026-11-16.1`](https://github.com/asari194617/taskly-policy/releases/tag/v2026-11-16.1) の公開ポリシーは 2026-11-16 に効力を生じました。Taskly のアプリ内同意には、[`consent.go`](../../apps/server/internal/legal/consent.go) と [`ConsentPage.tsx`](../../apps/web/src/react/pages/ConsentPage.tsx) で定義する固定版 `2026-09-22.1` を引き続き使います。
 
-## Initial catalogued edition
+## 最初に登録した版
 
-The three then-public Notion documents were snapshotted on 2026-09-22 as
-consent edition `2026-09-22.1`. The archived texts are:
+当時 Notion で公開していた 3 文書を 2026-09-22 に保存し、同意版 `2026-09-22.1` として登録しました。
 
-- [Terms](terms-2026-09-22.1.md)
-- [Privacy policy](privacy-2026-09-22.1.md)
-- [Security policy](security-2026-09-22.1.md)
+- [利用規約](terms-2026-09-22.1.md)
+- [プライバシーポリシー](privacy-2026-09-22.1.md)
+- [セキュリティポリシー](security-2026-09-22.1.md)
 
-SHA-256 of the archived Markdown (in the order above):
+保存した Markdown の SHA-256 は上の順に以下のとおりです。
 
 ```text
 terms     688178ab0fac56e973747d16168313c2bb7b998e6a3fd9c3527d46fa72f4046d
@@ -27,84 +18,34 @@ privacy   05d950de9df6e88fea9810d6d4c3e5d61167d963fa5e68a1c8fc8c0fad6ae46a
 security  2bcb886a3902897d5fbf57ff0fd2de1c3346fc4172cc85974e75b5d2727f3b5e
 ```
 
-The [2026-09-23 privacy revision](privacy-policy.md) (PR #418) is a historical
-reference. The consent archive preserves the text shown when users accepted
-`2026-09-22.1`.
+[2026-09-23 のプライバシーポリシー改定](privacy-policy.md)（PR #418）は履歴資料です。同意アーカイブにはユーザーが `2026-09-22.1` に同意した際に表示された本文を保存します。
 
-The web consent page links to immutable paths at
-`https://policies.taskly.iy0306.com/{terms,privacy,security}/2026-09-22.1/`.
-The archived edition is the evidence of what was displayed for an event.
-Publishing a new document on the policy site alone must never change the
-archived edition or the server's accepted version.
+Web の同意画面は `https://policies.taskly.iy0306.com/{terms,privacy,security}/2026-09-22.1/` の固定 URL にリンクします。保存版は同意時に表示した内容の証拠です。ポリシーサイトに新しい文書を掲載するだけで、保存版やサーバーが受け入れる版を変更してはいけません。
 
-## Migration and access
+## 移行とアクセス
 
-The `policy_consents` definition in `apps/server/schema.sql` adds append-only
-events with user ID, acceptance time, all three document versions and the display language. The legacy
-`users.is_agreed_policies` value is retained for old API compatibility but
-cannot establish when or which text a user accepted. No synthetic events are
-created. Every existing user, including one with that flag set, must explicitly
-accept the catalogued edition once. The first protected web load redirects to
-`/consent`; authenticated REST, GraphQL and iCal access is denied until the
-current edition is recorded. Account inspection, consent, logout and deletion
-remain available before acceptance.
+`apps/server/schema.sql` の `policy_consents` には、ユーザー ID、同意日時、3 文書の版、表示言語を追記専用のイベントとして記録します。旧 `users.is_agreed_policies` は API の互換性のために保持します。この値から同意日時や同意した本文は確定できず、合成イベントは生成しません。そのフラグが立っている既存ユーザーも含め、すべてのユーザーは登録版に一度明示的に同意する必要があります。保護された Web ページに最初にアクセスすると `/consent` へ転送します。現行版への同意が記録されるまで、認証済みの REST、GraphQL、iCal へのアクセスは拒否します。同意前も、アカウント情報の確認、同意、ログアウト、アカウント削除は利用できます。
 
-`accepted_at` is a MySQL `DATETIME(6)`; the API's MySQL connection uses
-`Asia/Tokyo` when writing and reading it. Exports must label it JST and convert
-to UTC explicitly when needed.
+`accepted_at` は MySQL の `DATETIME(6)` です。API の MySQL 接続は読み書きに `Asia/Tokyo` を使用します。エクスポートには JST と明記し、必要なら明示的に UTC に変換します。
 
-The consent event and compatibility flag update share a transaction. A stale
-version or invalid display language is rejected. The server decides whether the
-latest event is current. The client never supplies a timestamp or user ID.
+同意イベントの記録と互換フラグの更新は同じトランザクションで行います。旧版や無効な表示言語は拒否します。最新イベントが現行版に対するものかをサーバーが判断し、タイムスタンプとユーザー ID はクライアントから受け取りません。
 
-## Publishing a revision
+## 改定版の公開
 
-1. Follow the [policy repository's release process](https://github.com/asari194617/taskly-policy#改訂の手順)
-   to freeze the new text and publish the release manifest with an effective
-   date and change history. Preserve older files and URLs.
-2. Verify that the new immutable policy URLs serve the released texts. If the
-   revision requires new in-app consent, archive the same texts in
-   `docs/legal/*-VERSION.md` and coordinate the following steps with the policy release.
-3. Set `Version`, `PreviousVersion`, and a **future** `EffectiveAt` in
-   `apps/server/internal/legal/consent.go` and update the consent page's `policyVersion`.
-   Publish a change summary and effective date in the user announcement.
-4. Deploy these changes sufficiently before the effective date to show the
-   in-app notice on protected pages. Send the same notice through the existing
-   email announcement process, recording the audience and send time in the
-   release record. For the terms, this must happen before effectiveness under
-   article 11. A release is not ready if that notification has not been sent.
-5. Test an existing user before and after `EffectiveAt`: the prior version
-   remains usable before that instant; after it, protected APIs return 403
-   until a new event is recorded. A user may accept the new version early.
+1. [ポリシーリポジトリの改定手順](https://github.com/asari194617/taskly-policy#改訂の手順)に従い、新しい本文を確定し、施行日と変更履歴を含むリリースマニフェストを公開します。旧版のファイルと URL は保存します。
+2. 新しい固定 URL でリリースした本文が表示されることを確認します。アプリ内で再同意が必要な場合は、同じ本文を `docs/legal/*-VERSION.md` に保存し、以下の手順をポリシーリリースと調整します。
+3. `apps/server/internal/legal/consent.go` の `Version`、`PreviousVersion`、**将来日時**の `EffectiveAt` を設定し、同意画面の `policyVersion` を更新します。利用者向けの告知には変更の概要と施行日を掲載します。
+4. 施行日より十分前にデプロイし、保護されたページでアプリ内告知を表示します。既存のメール告知手順で同じ案内を送り、対象者と送信日時をリリース記録に残します。利用規約は第 11 条により施行前に通知する必要があります。この通知の送信をもってリリース準備が整います。
+5. 既存ユーザーで `EffectiveAt` の前後を検証します。それまでは従来版の同意で利用でき、以降は新しいイベントが記録されるまで保護された API が 403 を返します。利用者は施行前にも新版に同意できます。
 
-Changing `Version` makes reconsent mandatory for all three documents. If a
-future change needs notice without new consent, that should be a deliberate
-policy decision and code change reviewed separately; it must not be inferred
-from the legacy boolean.
+`Version` を変更すると 3 文書すべてに対する再同意が必須になります。将来の改定で告知のみが必要な場合は、ポリシー上の判断とコード変更を別途レビューし、旧フラグから推測で判断しないでください。
 
-## Retention and access
+## 保存期間と閲覧権限
 
-Keep consent events for five years after account closure, unless a legal hold
-requires longer retention. The user row is soft-deleted while events are
-retained. After that period, delete events as part of the account erasure
-process before hard-deleting the user. Document any deletion in the erasure
-audit record.
+法的な保全措置で延長する必要がある場合を除いて、アカウント閉鎖後 5 年間、同意イベントを保管します。保管中、ユーザー行は論理削除します。期間終了後はアカウント消去手順で同意イベントを先に削除し、ユーザー行を物理削除します。削除は消去の監査記録に残します。
 
-Only operators with the `admin` role and a documented support or legal need
-may request an event export. The application exposes no list or mutation for
-these events; managers and ordinary users cannot query them through GraphQL or
-REST. Production database read access and exports are controlled by the
-operations team, with access and purpose recorded in the incident/support
-ticket. Exports must include the archive revision and be removed when that
-request is closed.
+イベントのエクスポートを依頼できるのは、`admin` ロールを持ち、サポートや法務上の必要性を記録した運用担当者のみです。アプリはイベントの一覧・変更操作を提供せず、マネージャーや一般ユーザーは GraphQL や REST から参照できません。本番 DB の読み取りとエクスポートは運用チームが管理し、アクセスと目的はインシデントまたはサポートチケットに記録します。エクスポートには保存版を明記し、依頼の終了時に削除します。
 
-## Deployment and rollback
+## デプロイとロールバック
 
-Apply `apps/server/schema.sql` with Atlas before deploying an API that uses
-consent events; see [schema operations](../initial-settings.md#dbスキーマ管理).
-Historical migration numbers are not deployment commands. An older API that
-predates consent events ignores the table and can continue reading and writing
-the legacy boolean; it will not create consent events. Rolling back only the API image leaves events intact.
-If the migration itself must be undone, stop consent writes, take a verified
-backup, and use a reviewed corrective migration. Do not drop the event table
-to roll back the feature.
+同意イベントを使う API のデプロイ前に、Atlas で `apps/server/schema.sql` を適用します。[スキーマ運用手順](../initial-settings.md#dbスキーマ管理)を参照してください。過去のマイグレーション番号をデプロイコマンドとして使わないでください。同意イベントの導入前の API はテーブルを参照せず、旧フラグの読み書きを続けられます。この間は同意イベントを作成しません。API イメージだけを戻す場合はイベントが保持されます。マイグレーション自体を取り消す必要がある場合は、同意の書き込みを停止し、検証済みバックアップを作成して、レビュー済みの修正マイグレーションを使います。この機能のロールバックのためにイベントテーブルを削除しないでください。

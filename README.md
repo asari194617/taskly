@@ -1,33 +1,35 @@
 # Taskly
 
-Taskly is a class and task management service.
+Taskly は授業と課題を管理するサービスです。
 
-## Repository structure
+<a name="repository-structure"></a>
 
-| Path | Role |
+## リポジトリの構成
+
+| パス | 役割 |
 | --- | --- |
-| [`apps/web/`](apps/web/) | Astro and React web client deployed to Cloudflare Pages |
-| [`apps/server/`](apps/server/) | Go and Fiber API with GraphQL and REST, backed by MySQL and Redis |
-| [`apps/mcp/`](apps/mcp/) and [`apps/mcp-client-files/`](apps/mcp-client-files/) | TypeScript MCP HTTP service, stdio bridge, and client distribution files |
-| [`apps/email-compose/`](apps/email-compose/) | Node.js gRPC service that renders transactional email |
-| [`apps/docs/openapi/`](apps/docs/openapi/) | OpenAPI definition and API documentation page |
-| [`batches/`](batches/) | Go jobs for notifications, day-shift rotations, moderation, and database backups |
-| [`infra/`](infra/) | Docker Compose stacks, Airflow DAGs and runtime, monitoring, CI runners, and operations scripts |
-| [`cloudflare-email-workers/`](cloudflare-email-workers/) | Inbound email forwarding Worker configured by [`wrangler.toml`](wrangler.toml) |
-| [`docs/`](docs/) | Development guides, architecture, and operations runbooks |
-| [`.github/workflows/`](.github/workflows/) | CI, release, deployment, and scheduled workflows |
-| [`scripts/`](scripts/) | Repository tooling, including Go linting |
-| [`samples/`](samples/) and [`login/`](login/) | Standalone Airflow Compose example and login screenshot |
+| [`apps/web/`](apps/web/) | Astro と React による Web クライアント。Cloudflare Pages に配信 |
+| [`apps/server/`](apps/server/) | Go と Fiber による GraphQL・REST API。MySQL と Redis を使用 |
+| [`apps/mcp/`](apps/mcp/) と [`apps/mcp-client-files/`](apps/mcp-client-files/) | TypeScript 製の MCP HTTP サービス、stdio ブリッジ、クライアント配布用ファイル |
+| [`apps/email-compose/`](apps/email-compose/) | 通知や認証メールを生成する Node.js 製の gRPC サービス |
+| [`apps/docs/openapi/`](apps/docs/openapi/) | OpenAPI 定義と API リファレンス |
+| [`batches/`](batches/) | 通知、日直、モデレーション、DB バックアップを行う Go ジョブ |
+| [`infra/`](infra/) | Docker Compose 構成、Airflow の DAG と実行環境、監視、CI ランナー、運用スクリプト |
+| [`cloudflare-email-workers/`](cloudflare-email-workers/) | [`wrangler.toml`](wrangler.toml) で設定する受信メール転送 Worker |
+| [`docs/`](docs/) | 開発ガイド、システム構成、運用手順 |
+| [`.github/workflows/`](.github/workflows/) | CI、リリース、デプロイ、定期実行ワークフロー |
+| [`scripts/`](scripts/) | Go の静的解析など、リポジトリ用のツール |
+| [`samples/`](samples/) と [`login/`](login/) | 単独で動作する Airflow の Compose 設定例とログイン画面のスクリーンショット |
 
-### Related repositories
+### 関連リポジトリ
 
-| Repository | Role |
+| リポジトリ | 役割 |
 | --- | --- |
-| [`taskly-auth`](https://github.com/asari194617/taskly-auth) (private) | Shared login, OAuth, and account settings used by Taskly and NNCT company guidance |
-| [`taskly-nnct-corp-guidance`](https://github.com/asari194617/taskly-nnct-corp-guidance) | NNCT company guidance web app, API, and MCP integration with Taskly task completion |
-| [`taskly-policy`](https://github.com/asari194617/taskly-policy) | Versioned policy text and release manifests |
-| [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | Public policy site that publishes releases from `taskly-policy` |
-| [`taskly-environment-ribbon`](https://github.com/asari194617/taskly-environment-ribbon) | Optional Chrome extension that marks production and local development pages |
+| [`taskly-auth`](https://github.com/asari194617/taskly-auth)（非公開） | Taskly と長岡高専企業ガイダンスで共用するログイン、OAuth、アカウント設定 |
+| [`taskly-nnct-corp-guidance`](https://github.com/asari194617/taskly-nnct-corp-guidance) | 長岡高専企業ガイダンスの Web アプリ、API、Taskly の課題完了と連携する MCP |
+| [`taskly-policy`](https://github.com/asari194617/taskly-policy) | 版管理されたポリシー本文とリリースマニフェスト |
+| [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | `taskly-policy` のリリースを掲載する公開ポリシーサイト |
+| [`taskly-environment-ribbon`](https://github.com/asari194617/taskly-environment-ribbon) | 本番環境とローカル開発環境の画面に印を表示する任意導入の Chrome 拡張機能 |
 
 <a name="local-development"></a>
 
@@ -96,10 +98,9 @@ infra/ops/apply-schema.sh
 
 適用前に計画が表示されます。破壊的な変更を適用する場合は計画を確認し、明示的に `ATLAS_ALLOW_DESTRUCTIVE=true` を指定します。運用スクリプトを使う前に `infra/.env` を `.env` と同期してください。`apps/server/migrations` は過去の記録です。
 
-## Verification
+## 検証
 
-Install each Node package's dependencies first (`npm --prefix apps/<component> ci`;
-MCP uses `ci --legacy-peer-deps`). Run the checks relevant to the component you changed:
+最初に各 Node.js パッケージの依存関係を `npm --prefix apps/<component> ci` でインストールします（MCP は `ci --legacy-peer-deps`）。変更したコンポーネントに応じて確認を実行してください。
 
 ```bash
 (cd apps/server && go test ./...)
@@ -116,48 +117,26 @@ npm --prefix apps/web run test:security-headers
 docker compose -f infra/docker-compose.yml config --quiet
 ```
 
-The web [browser tests](apps/web/tests/browser/README.md),
-[real API E2E tests](apps/web/tests/e2e/README.md), and
-[Airflow Python tests](docs/operations/airflow-python-tests.md) have additional
-setup. Notification delivery channels are separate Go modules: run `go test ./...`
-in each of `batches/notifications/delivery-channels/{common,email,discord,web-push}`
-when changing them. See [coverage checks](docs/testing/coverage.md) for CI details.
+Web の[ブラウザテスト](apps/web/tests/browser/README.md)、[実 API を使う E2E テスト](apps/web/tests/e2e/README.md)、[Airflow の Python テスト](docs/operations/airflow-python-tests.md)には追加のセットアップがあります。通知の配信チャネルは個別の Go モジュールです。変更した場合は `batches/notifications/delivery-channels/{common,email,discord,web-push}` の各ディレクトリで `go test ./...` を実行します。CI の詳細は[カバレッジの確認](docs/testing/coverage.md)を参照してください。
 
-## Documentation
+## ドキュメント
 
-See [`docs/README.md`](docs/README.md) for the documentation index and the
-distinction between current references and historical planning material.
-Useful entry points include:
+[ドキュメント一覧](docs/README.md)から、現行の資料と過去の要件・提案を参照できます。
 
-- [`docs/Specification.md`](docs/Specification.md): product requirements and planning notes
-- [`docs/schema.md`](docs/schema.md): schema overview (the executable source is `apps/server/schema.sql`)
-- [`docs/mcp-docs.md`](docs/mcp-docs.md): MCP client and server guide
-- [`docs/initial-settings.md`](docs/initial-settings.md): CI/CD and production operations
-- [`apps/docs/openapi/openapi.yaml`](apps/docs/openapi/openapi.yaml): OpenAPI definition
+- [`docs/Specification.md`](docs/Specification.md) — プロダクト要件と計画
+- [`docs/schema.md`](docs/schema.md) — スキーマの概要。実際の定義は `apps/server/schema.sql`
+- [`docs/mcp-docs.md`](docs/mcp-docs.md) — MCP クライアントとサーバーのガイド
+- [`docs/initial-settings.md`](docs/initial-settings.md) — CI/CD と本番運用
+- [`apps/docs/openapi/openapi.yaml`](apps/docs/openapi/openapi.yaml) — OpenAPI 定義
 
-## Production deployment
+## 本番デプロイ
 
-Merges to `main` that match the production paths trigger
-[`deploy-prod.yml`](.github/workflows/deploy-prod.yml). It releases commit-SHA
-image tags and verifies the application schema against the last committed
-production baseline before synchronizing the repository and updating services
-with Docker Compose. Application schema changes require separate reviewed
-maintenance. Cloudflare Pages deploys the web client separately.
+対象パスに変更がある PR が `main` にマージされると、[`deploy-prod.yml`](.github/workflows/deploy-prod.yml) が起動します。コミット SHA をタグとするイメージをリリースし、アプリケーションのスキーマを直前に確定した本番の基準状態と照合してから、リポジトリを同期して Docker Compose でサービスを更新します。スキーマ変更は別途レビューして保守作業を行います。Web クライアントは Cloudflare Pages が個別にデプロイします。
 
-All four service images receive the release SHA tag. Running Airflow containers
-are replaced only when their image or Compose configuration changes (or a service
-is missing), so their running SHA can differ from the API/MCP/email-compose SHA.
-Even a README-only change under `apps/server`, `apps/mcp`, `apps/email-compose`,
-`batches`, or `infra` matches the deployment paths. See
-[deployment operations](docs/initial-settings.md) and the
-[runner pool guide](infra/actions-runner/README.md).
+4 つすべてのサービスイメージにリリースの SHA タグを付けます。実行中の Airflow コンテナを再作成するのはイメージや Compose 設定が変わったとき、またはサービスが存在しないときです。このため Airflow の稼働中の SHA は API、MCP、email-compose の SHA と異なる場合があります。`apps/server`、`apps/mcp`、`apps/email-compose`、`batches`、`infra` 配下は README だけの変更もデプロイ対象です。[デプロイ手順](docs/initial-settings.md)と[ランナープールの運用ガイド](infra/actions-runner/README.md)を参照してください。
 
-## Source availability and licensing
+## ソースコードの公開とライセンス
 
-Taskly is not currently offered under a repository-wide open-source license.
-Unless a file or directory contains its own license, all rights are reserved by its copyright holders. In particular,
-`apps/mcp-client-files` is separately available under the MIT License contained
-in that directory.
+現在、Taskly はリポジトリ全体に適用されるオープンソースライセンスを採用していません。個別のライセンスを明記したファイルやディレクトリを除き、著作権者がすべての権利を留保します。`apps/mcp-client-files` は同ディレクトリにある MIT ライセンスのもとで利用できます。
 
-See [`LICENSE`](LICENSE) for the scope of these terms and
-[`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing a contribution.
+適用範囲は [`LICENSE`](LICENSE) を参照してください。コントリビューションを提案する場合は [`CONTRIBUTING.md`](CONTRIBUTING.md) を事前に確認してください。

@@ -33,9 +33,9 @@ Gmailでロゴを表示するには、認証局が発行するVMCまたはCMCと
 
 参考資料:
 
-- [Google Workspace: Set up BIMI](https://support.google.com/a/answer/10911320)
-- [Microsoft: Does Exchange Online support BIMI verification?](https://learn.microsoft.com/en-au/answers/questions/5569074/does-exchange-online-support-bimi-verification)
-- [DigiCert: Compare Common and Verified Mark Certificates](https://www.digicert.com/tls-ssl/compare-mark-certificates)
+- [Google Workspace の BIMI 設定](https://support.google.com/a/answer/10911320)
+- [Microsoft の Exchange Online における BIMI 対応](https://learn.microsoft.com/en-au/answers/questions/5569074/does-exchange-online-support-bimi-verification)
+- [DigiCert の CMC と VMC の比較](https://www.digicert.com/tls-ssl/compare-mark-certificates)
 
 ## リリース後の確認
 

@@ -27,7 +27,7 @@ GitHub Actions の本番更新は `deploy-production` concurrency group で直�
 
 旧 `migrations` 履歴は監査用に保持し、改名・削除しない。デプロイ保護チェックは`mysqldump --no-data`を正規化したdigestで、Atlas管理外のスキーマ変更も検知する。
 
-`in_progress` が残った場合、次の run は本番変更前に停止する。`docker compose ps`、稼働イメージ、Airflow の状態、失敗したジョブのログ、保存済みのスキーマ証跡を確認し、復旧判断を障害記録に残す。デプロイ記録は削除・手編集しない。実際の障害を修復した後、[SSH 切断時の照合手順](ssh-deploy-reconciliation.md)の入力なし`reconcile-code-only-release`をprotected mainから実行する。`schema-v2` markerが選ぶアプリ・Airflow SHA、schema digest、immutable Git source、全healthが一致した場合だけ`committed`へ確定する。旧markerや部分適用はfail closedとなる。スキーマメンテナンスで MySQL DDL が途中まで適用された場合は、実行済みの SQL を実スキーマと照合する。
+`in_progress` が残った場合、次の実行は本番環境へ変更を加える前に停止します。`docker compose ps`、稼働イメージ、Airflow の状態、失敗したジョブのログ、保存済みのスキーマ証跡を確認し、復旧判断を障害記録に残します。デプロイ記録は削除・手編集しないでください。実際の障害を修復してから、[SSH 切断時の照合手順](ssh-deploy-reconciliation.md)に従い、入力のない `reconcile-code-only-release` を保護された `main` から実行します。`schema-v2` マーカーが指定するアプリケーションと Airflow の SHA、スキーマダイジェスト、不変の Git ソース、各サービスの正常性がすべて一致した場合だけ、状態を `committed` に確定します。旧形式のマーカーや部分適用の場合は処理を中止します。スキーマの保守で MySQL DDL が途中まで適用された場合は、実行済み SQL を実スキーマと照合します。
 
 `main` の ruleset は署名付きコミットと [必須 Actions チェック](github-actions-required-checks.md)を要求する。必要承認数は 0 で、自己レビューと必須チェックの成功後にマージできる。
 

@@ -1,47 +1,31 @@
-# Picomatch GHSA-fc5q-39xc-vjpf risk acceptance
+# Picomatch GHSA-fc5q-39xc-vjpf のリスク受容
 
-## Decision
+## 判断
 
-Dependabot alert 384 is accepted temporarily as a non-production-reachable
-build-time risk. The decision was recorded on 2026-11-18 and applies only while
-all controls below remain true.
+Dependabot アラート 384 を、本番環境のリクエストから到達できないビルド時のリスクとして暫定的に受容します。2026-11-18 に記録した判断であり、以下の対策がすべて有効な間に限ります。
 
-The advisory affects every published picomatch version through 4.0.7 and does
-not identify a patched release. The proposed upstream fix was closed without
-being merged, so upgrading or overriding the package cannot currently remove
-the finding with an upstream-supported release.
+アドバイザリの対象は、4.0.7 までに公開されたすべての picomatch です。修正済みのリリースは記載されていません。上流の修正案はマージされずにクローズされたため、上流がサポートするリリースへの更新やバージョンの上書きでは、この指摘を解消できません。
 
-## Taskly exposure
+## Taskly への影響範囲
 
-- `apps/web` is built with Astro's explicit `output: "static"` mode and only
-  the generated `dist` directory is deployed to Cloudflare Pages.
-- Picomatch is transitive build tooling. Application source does not import it,
-  and the generated static artifact does not contain its parser.
-- Public request data is never used as a glob pattern. Glob patterns processed
-  during the build come from trusted repository source and tool configuration.
+- `apps/web` は Astro の `output: "static"` を明示してビルドし、生成した `dist` ディレクトリのみを Cloudflare Pages にデプロイします。
+- Picomatch はビルドツールの間接依存です。アプリケーションのソースからはインポートせず、生成した静的ファイルにもパーサーは含まれません。
+- 公開リクエストのデータは glob パターンとして使いません。ビルド時に処理するパターンの出典は、信頼されたリポジトリのソースとツール設定です。
 
-The advisory's denial-of-service condition therefore cannot be triggered by a
-request to the deployed Taskly application. The remaining exposure is limited
-to a developer or CI build evaluating repository-controlled configuration.
+デプロイ済みの Taskly に対するリクエストから、アドバイザリにあるサービス拒否の条件は生じません。影響範囲は、開発者または CI のビルドがリポジトリ管理下の設定を処理するときに限られます。
 
-## Enforced controls
+## CI で検証する対策
 
-`npm run test:picomatch-exposure`, run after the production build in web CI,
-fails if:
+Web CI は本番ビルド後に `npm run test:picomatch-exposure` を実行し、以下の場合に失敗します。
 
-- picomatch becomes a direct application dependency;
-- the Astro output is no longer explicitly static;
-- application source imports picomatch; or
-- picomatch parser signatures appear in the deployed `dist` artifact.
+- picomatch がアプリケーションの直接依存になる
+- Astro の出力形式が明示的な静的出力でなくなる
+- アプリケーションのソースで picomatch をインポートする
+- デプロイ対象の `dist` に picomatch のパーサーを示す特徴が見つかる
 
-## Reassessment triggers
+## 再評価の条件
 
-Remove this acceptance and upgrade or replace the dependency when a supported
-patched release becomes available. Reassess immediately if Taskly adds server
-rendering, imports picomatch directly, accepts user-controlled glob patterns,
-or changes the deployment artifact beyond the static `dist` directory.
-
-References:
+サポート対象の修正版が利用可能になったら、このリスク受容を終了し、依存関係を更新または置き換えます。サーバーレンダリングの追加、picomatch の直接インポート、ユーザーが指定する glob パターンの受け入れ、静的な `dist` ディレクトリ以外へのデプロイ対象の変更があれば、直ちに再評価します。
 
 - [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
-- [Upstream remediation proposal](https://github.com/micromatch/picomatch/pull/235)
+- [上流の修正案](https://github.com/micromatch/picomatch/pull/235)

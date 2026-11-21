@@ -2,12 +2,12 @@ openapi: 3.0.3
 info:
   title: Taskly API
   version: 0.1.0
-  description: Initial draft of Taskly REST API.
+  description: Taskly REST API の初期草案です。
 servers:
   - url: https://api.taskly.iy0306.com
-    description: Production
+    description: 本番環境
   - url: http://localhost:3063
-    description: Local
+    description: ローカル環境
 tags:
   - name: auth
   - name: users
@@ -20,24 +20,24 @@ tags:
 paths:
   /healthz:
     get:
-      summary: Process liveness check
+      summary: プロセスの生存確認
       tags: [auth]
       responses:
         "200":
-          description: API process is running; dependencies are not checked
+          description: API プロセスが稼働しています。依存先は確認しません。
   /readyz:
     get:
-      summary: API readiness check
-      description: Pings MySQL and Redis with a two second deadline.
+      summary: API の準備状態を確認
+      description: MySQL と Redis の応答を 2 秒の制限時間で確認します。
       tags: [auth]
       responses:
         "200":
-          description: MySQL and Redis are available
+          description: MySQL と Redis を利用できます
         "503":
-          description: A required dependency is unavailable
+          description: 必要な依存サービスを利用できません
   /auth/request-code:
     post:
-      summary: Request login code via email
+      summary: ログインコードのメール送信を要求
       tags: [auth]
       requestBody:
         required: true
@@ -51,16 +51,15 @@ paths:
               required: [email]
       responses:
         "202":
-          description: Code sent
+          description: コードを送信しました
   /auth/login:
     post:
-      summary: Start password login or complete MFA authentication
+      summary: パスワードでログインを開始、または多要素認証を完了
       description: |
-        Password login is a two-call flow when MFA is enabled. Submit `email`
-        and `password` first; the API returns a short-lived opaque
-        `auth_transaction`. Submit that value with exactly one MFA factor in a
-        second request. Never resend the password with an auth transaction.
-        Passwordless accounts may continue to submit `email` with one factor.
+        多要素認証が有効な場合、パスワードログインは 2 回のリクエストで行います。
+        まず `email` と `password` を送ります。API は短時間だけ有効な不透明の `auth_transaction` を返します。
+        2 回目はこの値と認証要素を 1 つだけ送ります。認証トランザクションと一緒にパスワードを再送しないでください。
+        パスワードを設定していないアカウントは、引き続き `email` と認証要素 1 つを送信できます。
       tags: [auth]
       requestBody:
         required: true
@@ -76,7 +75,7 @@ paths:
                   writeOnly: true
                 auth_transaction:
                   type: string
-                  description: Opaque, single-use MFA transaction returned by the password step
+                  description: パスワード認証時に返された、1 回限り有効な不透明の多要素認証トランザクション
                 code:
                   type: string
                 totp:
@@ -89,7 +88,7 @@ paths:
                 - required: [email]
       responses:
         "200":
-          description: Logged in
+          description: ログインしました
           content:
             application/json:
               schema:
@@ -99,7 +98,7 @@ paths:
                   token: { type: string }
                   jwt: { type: string }
         "202":
-          description: Password accepted; MFA is required
+          description: パスワードを確認しました。多要素認証が必要です。
           content:
             application/json:
               schema:
@@ -113,22 +112,22 @@ paths:
                     type: array
                     items: { type: string, enum: [email_code, totp, recovery] }
         "401":
-          description: Invalid credentials, MFA, or expired/consumed transaction
+          description: 認証情報もしくは多要素認証が無効、またはトランザクションが期限切れ・使用済みです
   /auth/logout:
     post:
-      summary: Logout current session
+      summary: 現在のセッションからログアウト
       tags: [auth]
       responses:
         "204":
-          description: No content
+          description: レスポンス本文なし
   /apikeys:
     get:
-      summary: List API keys for current user
+      summary: 現在のユーザーの API キー一覧を取得
       tags: [users]
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
     post:
-      summary: Create a new API key (respecting limits)
+      summary: 新しい API キーを作成（上限あり）
       tags: [users]
       requestBody:
         required: false
@@ -139,10 +138,10 @@ paths:
               properties:
                 description: { type: string }
       responses:
-        "201": { description: Created }
+        "201": { description: 作成しました }
   /apikeys/{id}:
     patch:
-      summary: Invalidate or update an API key
+      summary: API キーを無効化または更新
       tags: [users]
       parameters:
         - in: path
@@ -158,23 +157,23 @@ paths:
               properties:
                 is_valid: { type: boolean }
       responses:
-        "200": { description: Updated }
+        "200": { description: 更新しました }
   /users/me:
     get:
-      summary: Get current user
+      summary: 現在のユーザーを取得
       tags: [users]
       responses:
         "200":
-          description: User profile
+          description: ユーザーのプロフィール
   /2fa/totp/setup:
     post:
-      summary: Begin TOTP setup (returns secret and otpauth)
+      summary: TOTP の設定を開始（シークレットと otpauth を返す）
       tags: [auth]
       responses:
-        "200": { description: Setup info }
+        "200": { description: セットアップ情報 }
   /2fa/totp/activate:
     post:
-      summary: Activate TOTP after verifying code
+      summary: コードの検証後に TOTP を有効化
       tags: [auth]
       requestBody:
         required: true
@@ -186,22 +185,22 @@ paths:
                 code: { type: string }
               required: [code]
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /2fa/totp/disable:
     post:
-      summary: Disable TOTP for current user
+      summary: 現在のユーザーの TOTP を無効化
       tags: [auth]
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /2fa/recovery/generate:
     post:
-      summary: Generate recovery codes (replaces existing unused)
+      summary: リカバリーコードを生成（既存の未使用コードを置き換える）
       tags: [auth]
       responses:
-        "200": { description: New codes returned }
+        "200": { description: 新しいコードを返しました }
   /tasks:
     get:
-      summary: List tasks with search and cursor pagination
+      summary: 課題一覧を取得（検索とカーソルページングに対応）
       tags: [tasks]
       parameters:
         - in: query
@@ -221,7 +220,7 @@ paths:
           schema: { type: integer }
       responses:
         "200":
-          description: OK
+          description: 成功
           content:
             application/json:
               schema:
@@ -235,7 +234,7 @@ paths:
                     additionalProperties:
                       type: string
     post:
-      summary: Create task
+      summary: 課題を作成
       tags: [tasks]
       requestBody:
         required: true
@@ -245,10 +244,10 @@ paths:
               $ref: "#/components/schemas/TaskInput"
       responses:
         "201":
-          description: Created
+          description: 作成しました
   /tasks/{id}:
     get:
-      summary: Get task
+      summary: 課題を取得
       tags: [tasks]
       parameters:
         - in: path
@@ -256,9 +255,9 @@ paths:
           schema: { type: integer }
           required: true
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
     patch:
-      summary: Update task
+      summary: 課題を更新
       tags: [tasks]
       parameters:
         - in: path
@@ -272,9 +271,9 @@ paths:
             schema:
               $ref: "#/components/schemas/TaskInput"
       responses:
-        "200": { description: Updated }
+        "200": { description: 更新しました }
     delete:
-      summary: Delete task (admin/manager)
+      summary: 課題を削除（管理者・マネージャー）
       tags: [tasks]
       parameters:
         - in: path
@@ -282,17 +281,17 @@ paths:
           schema: { type: integer }
           required: true
       responses:
-        "204": { description: Deleted }
+        "204": { description: 削除しました }
   /integrations/teams/inbound:
     post:
-      summary: Inbound Teams webhook (Power Automate)
+      summary: Teams からの受信用 Webhook（Power Automate）
       tags: [integrations]
       parameters:
         - in: header
           name: X-Teams-Integration-Secret
           required: true
           schema: { type: string }
-          description: Shared secret to authenticate inbound requests from Power Automate.
+          description: Power Automate からの受信リクエストを認証する共有シークレット。
         - in: header
           name: Idempotency-Key
           required: false
@@ -311,26 +310,26 @@ paths:
                 deadline:
                   type: string
                   format: date
-                  description: Defaults to the reception date when omitted.
+                  description: 省略時は受信日を使います。
                 status_callback:
                   type: string
                   format: uri
-                  description: HTTPS URL whose origin must be listed in TEAMS_CALLBACK_ALLOWED_ORIGINS.
+                  description: HTTPS URL。オリジンが TEAMS_CALLBACK_ALLOWED_ORIGINS に登録されている必要があります。
               required: [email, title, subject_id]
       responses:
-        "202": { description: Job committed, with job_id and status in the response }
-        "409": { description: Idempotency key was used with another request }
-        "503": { description: Database unavailable; request was not accepted }
+        "202": { description: ジョブをコミットしました。応答に job_id と status を含めます。 }
+        "409": { description: 同じ冪等性キーが別のリクエストで使用済みです }
+        "503": { description: DB を利用できないため、リクエストを受理しませんでした }
   /integrations/dayshift/inbound:
     post:
-      summary: Inbound webhook to mark Day Shift unfulfilled when an email about 日直 is detected
+      summary: 日直に関するメールを検出したとき、日直を未達成にする受信用 Webhook
       tags: [integrations]
       parameters:
         - in: header
           name: X-Taskly-Secret
           required: true
           schema: { type: string }
-          description: Shared secret for Day Shift inbound.
+          description: 日直の受信用の共有シークレット。
       requestBody:
         required: true
         content:
@@ -344,18 +343,18 @@ paths:
                   {
                     type: string,
                     format: date,
-                    description: Override target date; default is today,
+                    description: 対象日を上書きします。既定値は今日です。,
                   }
       responses:
-        "202": { description: Accepted }
+        "202": { description: 受理しました }
   /admin/permissions:
     get:
-      summary: List all permission overrides
+      summary: 権限の上書き設定をすべて取得
       tags: [admin]
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
     post:
-      summary: Create a permission override
+      summary: 権限の上書き設定を作成
       tags: [admin]
       requestBody:
         required: true
@@ -370,10 +369,10 @@ paths:
                 value: { type: string, nullable: true }
               required: [user_id, target, method]
       responses:
-        "201": { description: Created }
+        "201": { description: 作成しました }
   /admin/permissions/{id}:
     delete:
-      summary: Delete a permission override
+      summary: 権限の上書き設定を削除
       tags: [admin]
       parameters:
         - in: path
@@ -381,10 +380,10 @@ paths:
           schema: { type: integer }
           required: true
       responses:
-        "204": { description: Deleted }
+        "204": { description: 削除しました }
   /admin/users:
     get:
-      summary: List users with roles and block status
+      summary: ロールとブロック状態を含むユーザー一覧を取得
       tags: [admin]
       parameters:
         - in: query
@@ -394,10 +393,10 @@ paths:
           name: limit
           schema: { type: integer, default: 100 }
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
   /admin/users/{id}/roles:
     post:
-      summary: Grant a role to the user
+      summary: ユーザーにロールを付与
       tags: [admin]
       parameters:
         - in: path
@@ -414,10 +413,10 @@ paths:
                 role: { type: string, enum: [admin, manager] }
               required: [role]
       responses:
-        "201": { description: Granted }
+        "201": { description: 付与しました }
   /admin/users/{id}/roles/{role}:
     delete:
-      summary: Revoke a role from the user
+      summary: ユーザーのロールを取り消し
       tags: [admin]
       parameters:
         - in: path
@@ -429,10 +428,10 @@ paths:
           required: true
           schema: { type: string, enum: [admin, manager] }
       responses:
-        "204": { description: Revoked }
+        "204": { description: 取り消しました }
   /admin/users/{id}/block:
     post:
-      summary: Block a user (optional expiry)
+      summary: ユーザーをブロック（期限は任意）
       tags: [admin]
       parameters:
         - in: path
@@ -449,10 +448,10 @@ paths:
                 reason: { type: string, nullable: true }
                 expires_at: { type: string, format: date-time, nullable: true }
       responses:
-        "201": { description: Blocked }
+        "201": { description: ブロックしました }
   /admin/users/{id}/unblock:
     post:
-      summary: Unblock a user
+      summary: ユーザーのブロックを解除
       tags: [admin]
       parameters:
         - in: path
@@ -460,17 +459,17 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        "204": { description: Unblocked }
+        "204": { description: ブロックを解除しました }
   /integrations/teams/status:
     post:
-      summary: Callback endpoint for Teams processing status
+      summary: Teams の処理状態を受け取るコールバック
       tags: [integrations]
       parameters:
         - in: header
           name: X-Signature
           required: false
           schema: { type: string }
-          description: HMAC-SHA256 signature of the body in the format `sha256=<hex>`. Required if signing is enabled.
+          description: リクエスト本文の HMAC-SHA256 署名。形式は `sha256=<hex>` です。署名が有効な場合は必須です。
       requestBody:
         required: true
         content:
@@ -483,22 +482,22 @@ paths:
                 message_id: { type: string }
                 conversation_id: { type: string }
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
   /admin/dayshift/assignments:
     get:
-      summary: List Day Shift assignments (recent)
+      summary: 最近の日直の割り当て一覧を取得
       tags: [admin, dayshift]
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
   /admin/dayshift/rotate:
     post:
-      summary: Rotate to next business day and assign pair
+      summary: 翌営業日に進め、ペアを割り当て
       tags: [admin, dayshift]
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /admin/dayshift/{date}/status:
     post:
-      summary: Update assignment status for a date
+      summary: 指定日の割り当て状態を更新
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -517,10 +516,10 @@ paths:
                 notes: { type: string, nullable: true }
               required: [status]
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /admin/dayshift/{date}/shift:
     post:
-      summary: Shift assignment to next business day
+      summary: 割り当てを翌営業日に移動
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -528,15 +527,15 @@ paths:
           required: true
           schema: { type: string, format: date }
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /admin/dayshift/cycles:
     get:
-      summary: List cycles
+      summary: サイクル一覧を取得
       tags: [admin, dayshift]
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
     post:
-      summary: Create a cycle
+      summary: サイクルを作成
       tags: [admin, dayshift]
       requestBody:
         required: true
@@ -550,10 +549,10 @@ paths:
                 description: { type: string }
               required: [begin_date, finish_date, description]
       responses:
-        "201": { description: Created }
+        "201": { description: 作成しました }
   /admin/dayshift/cycles/{id}:
     delete:
-      summary: Delete a cycle
+      summary: サイクルを削除
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -561,10 +560,10 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /admin/dayshift/cycles/{id}/groups:
     get:
-      summary: List groups for a cycle
+      summary: サイクルのグループ一覧を取得
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -572,9 +571,9 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
     post:
-      summary: Add a group to a cycle
+      summary: サイクルにグループを追加
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -591,10 +590,10 @@ paths:
                 user_ids: { type: array, items: { type: integer } }
               required: [user_ids]
       responses:
-        "201": { description: Created }
+        "201": { description: 作成しました }
   /admin/dayshift/cycles/{id}/groups/{groupId}:
     delete:
-      summary: Delete a group from a cycle
+      summary: サイクルからグループを削除
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -606,10 +605,10 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /admin/dayshift/cycles/{id}/groups/reorder:
     post:
-      summary: Reorder groups within the cycle
+      summary: サイクル内のグループを並べ替え
       tags: [admin, dayshift]
       parameters:
         - in: path
@@ -626,10 +625,10 @@ paths:
                 group_ids: { type: array, items: { type: integer } }
               required: [group_ids]
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
   /admin/calendar/upsert-range:
     post:
-      summary: Upsert business calendar for a date range
+      summary: 指定期間の営業日カレンダーを追加・更新
       tags: [admin, calendar]
       requestBody:
         required: true
@@ -644,10 +643,10 @@ paths:
                 notes: { type: string, nullable: true }
               required: [start, end, is_business_day]
       responses:
-        "204": { description: No content }
+        "204": { description: レスポンス本文なし }
   /ical/{token}.ics:
     get:
-      summary: Get iCal feed for a user
+      summary: ユーザーの iCal フィードを取得
       tags: [ical]
       parameters:
         - in: path
@@ -656,19 +655,19 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: iCal content
+          description: iCal データ
           content:
             text/calendar:
               schema:
                 type: string
   /ical/tokens:
     get:
-      summary: List iCal tokens for current user
+      summary: 現在のユーザーの iCal トークン一覧を取得
       tags: [ical]
       responses:
-        "200": { description: OK }
+        "200": { description: 成功 }
     post:
-      summary: Create a new iCal token
+      summary: 新しい iCal トークンを作成
       tags: [ical]
       requestBody:
         required: false
@@ -679,10 +678,10 @@ paths:
               properties:
                 description: { type: string }
       responses:
-        "201": { description: Created }
+        "201": { description: 作成しました }
   /ical/tokens/{id}:
     delete:
-      summary: Delete an iCal token
+      summary: iCal トークンを削除
       tags: [ical]
       parameters:
         - in: path
@@ -690,7 +689,7 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        "204": { description: Deleted }
+        "204": { description: 削除しました }
 components:
   schemas:
     Task:

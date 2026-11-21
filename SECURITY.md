@@ -1,25 +1,16 @@
-# Security Policy
+# セキュリティポリシー
 
-## Supported versions
+## サポート対象
 
-Taskly does not publish versioned application releases. Security fixes are made
-against the latest commit on the default branch, `main`. Older commits and
-deployments are not supported; deploy the latest `main` after a security fix is
-released.
+Taskly はバージョン番号を付けたアプリケーションリリースを公開していません。セキュリティ修正は既定ブランチ `main` の最新コミットに適用します。古いコミットやデプロイはサポート対象外のため、修正の公開後は最新の `main` をデプロイしてください。
 
-## Reporting a vulnerability
+## 脆弱性の報告
 
-Do not disclose a suspected vulnerability in a public issue, pull request, or
-discussion. Report it privately through the repository's **Security** tab by
-opening a private vulnerability report/security advisory and include:
+脆弱性の疑いを公開 Issue、プルリクエスト、ディスカッションで開示しないでください。リポジトリの **Security** タブから非公開の脆弱性レポートを作成し、以下を記載してください。
 
-- the affected component and commit or deployment
-- reproduction steps and proof-of-concept details
-- the likely impact
-- any suggested mitigation
+- 影響を受けるコンポーネントと対象のコミット、またはデプロイ
+- 再現手順と概念実証の詳細
+- 想定される影響
+- 提案できる緩和策
 
-Repository maintainers will acknowledge the report, assess severity, and
-coordinate remediation and disclosure through the private advisory. If the
-Security tab is unavailable to you, contact a repository maintainer privately
-and ask for a secure reporting channel without sending exploit details in the
-first message.
+メンテナーは報告の受領を連絡し、深刻度を評価したうえで、非公開のアドバイザリを通じて修正と開示を調整します。**Security** タブを利用できない場合は、メンテナーに個別に連絡して安全な報告経路を確認してください。最初の連絡には脆弱性を悪用する詳細を含めないでください。

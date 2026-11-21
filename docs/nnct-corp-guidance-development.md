@@ -30,14 +30,9 @@ PDF と地図画像は別の非公開 R2 バケットで保管します。認証
 
 認証サービスのオリジンは独立して設定できます。ループバック HTTP では taskly-auth の既定の `localhost` を使用します。別の名前で起動している場合は、ガイダンスの `AUTH_ISSUER` にその実際の issuer を設定します。
 
-## Start the database and import private data
+## DB を起動して非公開データを取り込む
 
-For the guidance repository, use Node.js 26.13.1 (`.nvmrc`) and Go 1.27.4
-(`go.mod`). Taskly's own checks use its own manifests and workflows. Python 3.12,
-the Python data-extraction dependencies (including Pillow), and the `tesseract`
-OCR command are needed when importing a supplied guidebook. Install Tesseract
-with `brew install tesseract` on macOS or `sudo apt-get install tesseract-ocr`
-on Ubuntu. Run the following in a separate checkout:
+ガイダンスリポジトリでは Node.js 26.13.1（`.nvmrc`）と Go 1.27.4（`go.mod`）を使います。Taskly 自体の検証は Taskly のマニフェストとワークフローに従います。配布されたガイドブックの取り込みには Python 3.12、Pillow などのデータ抽出用依存関係、OCR 用の `tesseract` が必要です。macOS では `brew install tesseract`、Ubuntu では `sudo apt-get install tesseract-ocr` でインストールします。別のチェックアウトで以下を実行します。
 
 ```bash
 git clone https://github.com/asari194617/taskly-nnct-corp-guidance.git
@@ -47,15 +42,9 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r scripts/requirements-data.txt
 ```
 
-The database container initializes a new development volume from `schema.sql`.
-It is independent of Taskly's database and taskly-auth's database. Existing
-volumes require deliberate schema updates; changing the Compose environment
-does not change credentials already stored in MySQL.
+DB コンテナは新しい開発ボリュームを `schema.sql` で初期化します。Taskly と taskly-auth の DB から独立しています。既存ボリュームには明示的なスキーマ更新が必要です。Compose の環境変数を変えても、MySQL に保存済みの認証情報は変わりません。
 
-An existing guidance database needs `migrations/001_preferences.sql` before
-running the API with roster-number preferences. A new volume already receives
-that table from `schema.sql`. For an existing **development** Compose database,
-apply the reviewed additive migration as follows:
+既存のガイダンス DB では、名簿番号の設定に対応した API の起動前に `migrations/001_preferences.sql` を適用します。新規ボリュームでは `schema.sql` がテーブルを作成します。既存の**開発用** Compose DB に、レビュー済みの追加マイグレーションを適用するには以下を実行します。
 
 ```bash
 docker compose exec -T db sh -c \
@@ -63,12 +52,9 @@ docker compose exec -T db sh -c \
   < migrations/001_preferences.sql
 ```
 
-Production migrations are a separate administrator operation; the application
-DB account has no DDL privileges and routine image deployment does not apply
-this migration. Follow the guidance repository's deployment instructions.
+本番のマイグレーションは管理者が別途行います。アプリの DB アカウントに DDL 権限はなく、通常のイメージデプロイでもこのマイグレーションは適用しません。ガイダンスリポジトリのデプロイ手順に従ってください。
 
-Choose an input PDF and a private output directory **outside every Git checkout**.
-Replace the example paths before running the extractor:
+入力 PDF と非公開の出力先を選びます。出力先は**すべての Git チェックアウトの外**に置き、抽出前に例のパスを置き換えます。
 
 ```bash
 export GUIDANCE_PDF='/absolute/path/to/guidebook.pdf'
@@ -79,38 +65,15 @@ go run ./cmd/import-guidance -check -input "$DATA_DIR/guidance.json"
 go run ./cmd/import-guidance -input "$DATA_DIR/guidance.json"
 ```
 
-These DB credentials are for the isolated development Compose environment only.
-The extractor validates references and creates the private JSON, map images,
-and documents used by the API. Interactive booth bounds come from the actual
-PDF rectangles, with booth numbers resolved by OCR. Extraction stops when that
-mapping is ambiguous. Update the extracted JSON and images together; existing
-data without booth bounds must be re-extracted and imported for the interactive
-map. Do not copy its output, database exports, or
-credentials into either repository, frontend assets, or public CI artifacts.
+例の DB 認証情報は、分離された開発用 Compose 環境専用です。抽出ツールは参照関係を検証し、API が使う非公開 JSON、マップ画像、資料を生成します。操作可能なブースの範囲は実際の PDF 上の矩形を使い、ブース番号を OCR で特定します。対応が曖昧な場合は抽出を中止します。抽出済み JSON と画像は一緒に更新します。ブースの範囲がない既存データで操作可能なマップを使うには、再抽出と再取り込みが必要です。出力、DB エクスポート、認証情報は両リポジトリ、フロントエンドのアセット、公開 CI アーティファクトに入れないでください。
 
-The importer still validates the local source files and transactionally writes
-the dataset and document allowlist to MySQL. It does not upload document bytes
-to R2. `DATA_DIR` in the commands above is the administrator's private working
-directory; it is not an API runtime setting or a directory to mount into the
-API container.
+インポーターはローカルのソースファイルを検証し、データセットと資料の許可リストをトランザクションで MySQL に書き込みます。資料の本体は R2 にアップロードしません。上記の `DATA_DIR` は管理者の非公開作業ディレクトリです。API の実行時設定やコンテナへのマウントには使いません。
 
-Before using the application, upload **only** files listed in the private
-JSON's `documents` array to the private document bucket, using each
-`file_name` as its object key. Keep extracted JSON, standalone student-assignment
-exports, and DB exports out of both R2 buckets. Use separate administrator write credentials
-for upload, then read the objects back and verify checksums, MIME types,
-`Content-Disposition: inline`, and `Cache-Control: no-store`. Confirm that an
-unsigned request is denied. The authoritative upload, CORS, permission, and
-rollback steps are in the guidance repository's
-[private R2 runbook](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/private-r2.md).
+アプリケーションの利用前に、非公開 JSON の `documents` 配列にあるファイル**だけ**を非公開の資料バケットにアップロードします。各 `file_name` をオブジェクトキーにします。抽出 JSON、名簿番号別の割り当てデータの単独エクスポート、DB エクスポートはどちらの R2 バケットにも入れません。アップロードには管理者用の書き込み認証情報を使います。アップロード後はオブジェクトを読み戻し、チェックサム、MIME タイプ、`Content-Disposition: inline`、`Cache-Control: no-store` を検証します。署名のないリクエストが拒否されることも確認します。アップロード、CORS、権限、ロールバックの詳細は、ガイダンスリポジトリの[非公開 R2 運用手順](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/private-r2.md)を参照してください。
 
-## Configure private document storage
+## 非公開の資料ストレージを設定する
 
-For development, use a private development document bucket or an already
-running loopback S3-compatible service. The API requires an R2 endpoint,
-bucket, and credentials and does not fall back to local files. It signs with
-AWS SDK for Go v2, region `auto`, and path-style object URLs. Replace all example
-values below with that development storage configuration:
+開発には非公開の開発用資料バケット、またはループバックで稼働中の S3 互換サービスを使います。API には R2 のエンドポイント、バケット、認証情報が必要で、ローカルファイルへのフォールバックはありません。署名には AWS SDK for Go v2、リージョン `auto`、パス形式のオブジェクト URL を使います。以下の例を開発用ストレージの設定に置き換えます。
 
 ```bash
 export DOCUMENT_STORAGE='r2'
@@ -120,23 +83,13 @@ export R2_ACCESS_KEY_ID='replace-with-bucket-scoped-read-only-access-key-id'
 export R2_SECRET_ACCESS_KEY='replace-with-bucket-scoped-read-only-secret'
 ```
 
-Use Object Read only credentials restricted to that exact private bucket.
-Do not reuse the public UI deployment key or an administrator upload key.
-Pass these settings to the Go process only, never through `NEXT_PUBLIC_*`,
-the frontend build, Git, or CI logs. For a loopback object service, an HTTP
-`R2_ENDPOINT` is accepted only on a loopback hostname and with an HTTP
-development API origin. Configure the service and its bucket to accept the
-same signing method and development credentials.
+対象の非公開バケットに限定した、オブジェクト読み取り専用の認証情報を使います。公開 UI のデプロイキーや管理者のアップロードキーは流用しないでください。この設定は Go プロセスだけに渡し、`NEXT_PUBLIC_*`、フロントエンドビルド、Git、CI ログには含めません。ループバックで動作するオブジェクトサービスでは、ホストがループバックで API の開発用オリジンも HTTP の場合だけ、HTTP の `R2_ENDPOINT` を指定できます。サービスとバケットは、同じ署名方式と開発用の認証情報を受け付けるよう設定します。
 
-Allow the development UI origin `http://127.0.0.1:3000` for the document
-bucket's GET/HEAD CORS policy as described in the private R2 runbook. Keep
-the bucket private without a public custom domain or `r2.dev` access. GET
-and HEAD use different signatures; a presigned GET URL cannot be reused for
-a HEAD request.
+非公開 R2 運用手順に従い、資料バケットの GET・HEAD の CORS ポリシーで開発用 UI オリジン `http://127.0.0.1:3000` を許可します。バケットは公開カスタムドメインも `r2.dev` アクセスも設定せず、非公開を維持します。GET と HEAD の署名は異なるため、署名済みの GET URL は HEAD リクエストに流用できません。
 
-## Start the API and web client
+## API と Web クライアントを起動する
 
-In the same terminal as the import, configure the API and start it:
+取り込みと同じターミナルで API を設定して起動します。
 
 ```bash
 export ADDR='127.0.0.1:3071'
@@ -149,12 +102,9 @@ export SESSION_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 go run ./cmd/api
 ```
 
-Keep the generated encryption key in private development configuration if
-sessions must survive restarts. The API reads process environment variables;
-copying `.env.example` alone does not load them into `go run`. DSNs contain shell
-metacharacters and must remain quoted when exporting them.
+セッションを再起動後も維持する場合は、生成した暗号鍵を非公開の開発設定に保存します。API はプロセスの環境変数を読み取ります。`.env.example` をコピーするだけでは `go run` に設定が読み込まれません。DSN にはシェルの特殊文字が含まれるため、エクスポート時の引用符を維持します。
 
-In a second terminal, from the guidance checkout:
+別のターミナルで、ガイダンスのチェックアウトから実行します。
 
 ```bash
 npm --prefix apps/web ci
@@ -162,77 +112,31 @@ npm --prefix deploy/r2 ci
 NEXT_PUBLIC_API_URL='http://127.0.0.1:3071' npm --prefix apps/web run dev
 ```
 
-Open `http://127.0.0.1:3000` and sign in through the development auth service.
-`GET /healthz` checks MySQL connectivity; `GET /readyz` also requires an imported
-dataset. An unauthenticated request to `/api/guidance`, `/api/documents/{id}`, or
-`/api/bookmarks` must return `401`. Saved companies belong to the signed-in
-Taskly account and are stored in the guidance database.
+`http://127.0.0.1:3000` を開き、開発用認証サービスからログインします。`GET /healthz` は MySQL 接続を確認し、`GET /readyz` はデータセットの取り込み済み状態も確認します。未認証で `/api/guidance`、`/api/documents/{id}`、`/api/bookmarks` にアクセスすると `401` が返ることを確認します。「気になる」企業はログイン中の Taskly アカウントに紐付き、ガイダンス DB に保存されます。
 
-The static pages are `/` (home), `/search/`, `/favorites/`, `/schedule/`,
-`/documents/`, and `/map/`. Production Cloudflare rewrites each page to its
-own exported `index.html`, preserving its URL and query string. These are
-separate pages; the old `?view=` URLs are compatibility links. The map fills
-the area between the header and mobile navigation. Online PDF/map requests go
-directly to private R2 rather than the Go server's filesystem.
+静的ページは `/`（ホーム）、`/search/`、`/favorites/`、`/schedule/`、`/documents/`、`/map/` にあります。本番では Cloudflare が URL とクエリ文字列を保持したまま、各ページを対応するエクスポート済み `index.html` に内部転送します。これらは独立したページで、従来の `?view=` URL は互換用です。マップはヘッダーとモバイルのナビゲーションの間を埋めます。オンラインの PDF・マップは Go サーバーのファイルシステムを経由せず、非公開 R2 から直接取得します。
 
-On first login, set the roster number for Ec4 in the setup dialog, or choose to
-do it later. The API accepts numbers with an assignment in the imported guide,
-and stores the selection per Taskly account. The setting can be changed from
-the user menu or favorites page and is shared across devices. It is not an inference
-of the user's enrollment and is not stored in the URL.
+初回ログイン時はセットアップダイアログで Ec4 の名簿番号を設定するか、後で設定することを選びます。API は取り込み済みのガイドに割り当てがある番号を受け付け、Taskly アカウントごとに選択を保存します。ユーザーメニューまたは「気になる」ページから変更でき、端末間で共有します。この設定から在籍は推定せず、URL にも保存しません。
 
-New logins have an absolute 30-day local session. The API encrypts the upstream
-access and rotating refresh tokens and refreshes access automatically without
-extending that deadline. It continues checking the upstream identity for
-protected requests. Existing short sessions keep their previous deadline
-until the next login; roster preferences and saved companies are retained.
+新規ログインのローカルセッションには 30 日の絶対期限があります。API は上流のアクセストークンとローテーションするリフレッシュトークンを暗号化し、この期限を延ばさずにアクセスを自動更新します。保護されたリクエストでは引き続き上流の ID を確認します。既存の短いセッションは次回ログインまで従来の期限を維持し、名簿番号の設定と「気になる」企業も保持されます。
 
-Document links are issued after authentication and last at most five minutes,
-bounded by the session time remaining at issuance. The PDF or map URL can open
-without a viewer Cookie and remains usable until its R2 signature expires.
-Logout prevents new URL issuance but does **not** immediately revoke URLs
-already issued by R2. Do not include these temporary bearer URLs in public
-logs, issue comments, or test artifacts.
+資料リンクは認証後に発行し、発行時のセッション残存時間を上限として、最長 5 分間有効です。PDF・マップ URL は閲覧者の Cookie なしで開くことができ、R2 の署名の期限まで利用できます。ログアウトすると新しい URL は発行できませんが、R2 が発行済みの URL は即時に失効しません。この一時 URL を公開ログ、Issue コメント、テストアーティファクトに含めないでください。
 
-## Offline reference at the venue
+## 会場でのオフライン閲覧
 
-After an online visit, the same device can read the last successfully fetched
-companies, schedule, assigned visits, favorites, home state, and downloaded map
-images for up to 24 hours. The snapshot is scoped to the confirmed account and
-roster; account changes, logout, `401`, and roster changes clear it. Offline
-mode is read-only: completion, favorites, and roster edits are disabled, and
-reconnection reloads the server state without replaying queued writes.
+オンラインで利用した後、同じ端末で、最後に取得できた企業情報、スケジュール、指定訪問、お気に入り、ホームの情報、ダウンロード済みのマップ画像を最大 24 時間閲覧できます。保存データは確認済みのアカウントと名簿番号に紐付きます。アカウント切り替え、ログアウト、`401`、名簿番号変更で削除します。オフライン時は閲覧専用で、課題の完了、お気に入り、名簿番号を変更できません。再接続時は書き込みを再送せず、サーバーの状態を再取得します。
 
-The Service Worker caches only the public static shell. Private snapshots and
-map image bytes are stored separately in IndexedDB; authentication data,
-presigned URLs, and PDFs are not cached. PDF viewing and external forms need
-connectivity. The existing private R2 bucket's exact-UI-origin GET/HEAD CORS
-policy permits map-byte retrieval without making objects public or replacing
-short presigned URLs with permanent links.
+Service Worker がキャッシュするのは公開の静的ファイルだけです。非公開のスナップショットと地図画像は別途 IndexedDB に保存し、認証データ、署名付き URL、PDF はキャッシュしません。PDF の閲覧と外部フォームには接続が必要です。既存の非公開 R2 バケットは正確な UI オリジンからの GET・HEAD を CORS で許可します。オブジェクトを公開したり、短時間の署名付き URL を恒久リンクに変えたりせずにマップ画像を取得できます。
 
-The normal guidance build generates `/offline-worker.js` with its asset
-manifest. The existing R2 deploy step regenerates it from the final
-CSP-protected HTML and uploads assets, HTML, then the worker. Installing
-`deploy/r2` dependencies supplies the `parse5` parser used by CSP preparation
-and the deployment tests. Normal builds and deployments use the existing
-Cloudflare setup without a new Worker service or bucket.
+通常のガイダンスビルドはアセットマニフェスト付きの `/offline-worker.js` を生成します。既存の R2 デプロイ手順は CSP を適用した最終 HTML からこのファイルを再生成し、アセット、HTML、Worker の順でアップロードします。`deploy/r2` の依存関係を入れると、CSP の準備とデプロイテストで使う `parse5` が利用できます。通常のビルド・デプロイには既存の Cloudflare 設定を使い、別の Worker サービスやバケットは不要です。
 
-A zone-level browser TTL override can supersede the R2 object's `no-cache`.
-Keep the cache rule scoped only to the exact UI host and `/offline-worker.js`,
-with edge caching disabled and browser TTL set to `respect_origin`. Deployment
-verification checks the public worker's JavaScript MIME, `no-cache`, and byte
-identity with the final uploaded worker. Immutable asset policies and the
-zone-wide TTL remain unchanged.
+ゾーンのブラウザー TTL の上書きは、R2 オブジェクトの `no-cache` に優先する場合があります。キャッシュルールは正確な UI ホストと `/offline-worker.js` のみに限定し、エッジキャッシュを無効にし、ブラウザー TTL を `respect_origin` にします。デプロイ後は公開 Worker の JavaScript MIME タイプ、`no-cache`、最終アップロードとバイト単位での一致を検証します。不変アセット用のポリシーとゾーン全体の TTL は維持します。
 
-Check the public UI URL after deployment; the source of truth for expiry,
-cache boundaries, CSP, and worker verification is the guidance
-[offline guide](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/offline.md).
+デプロイ後に公開 UI URL を確認します。有効期限、キャッシュの範囲、CSP、Worker の検証条件は、ガイダンスリポジトリの[オフラインガイド](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/offline.md)を参照してください。
 
-## Guidance lint and formatting
+## ガイダンスの静的解析とフォーマット
 
-Run these commands from the **guidance checkout**, not the Taskly repository.
-The npm scripts live in `apps/web` but invoke a runner for the whole guidance
-repository: Biome 2.6.7, Ruff 0.17.5, `go vet`, and `gofmt`.
+以下は**ガイダンスのチェックアウト**から実行します。npm スクリプトは `apps/web` にありますが、Biome 2.6.7、Ruff 0.17.5、`go vet`、`gofmt` を使ってガイダンスリポジトリ全体を検査します。
 
 ```bash
 cd /absolute/path/to/taskly-nnct-corp-guidance
@@ -245,215 +149,75 @@ npm --prefix apps/web run lint
 npm --prefix apps/web run format:check
 ```
 
-Use `npm --prefix apps/web run format` to apply formatting, then rerun lint
-and the formatting check. CI runs both checks for all changes without applying
-formatting or committing files. See the guidance
-[code-quality guide](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/code-quality.md)
-for the measured source types and exclusions. These commands do not change
-Taskly's lint or CI configuration.
+フォーマットを適用するには `npm --prefix apps/web run format` を実行し、静的解析とフォーマットチェックを再実行します。CI はすべての変更で両方を確認し、フォーマットの適用やコミットは行いません。対象のソース形式と除外は、ガイダンスの[コード品質ガイド](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/code-quality.md)を参照してください。これらのコマンドは Taskly の静的解析や CI の設定には影響しません。
 
-## Verification and production operations
+## 検証と本番運用
 
-Use the guidance repository's verification instructions and workflows for its
-unit tests, real-MySQL integration tests, browser E2E tests, and Go, frontend,
-and Docker builds. PR reports distinguish unit, integration, and browser
-coverage. Required checks run for all PR changes, including documentation-only
-changes; they must not use path filters that leave a required check unreported.
-The measured Go application, frontend, importer, and PDF-extraction tests have
-80% minimums. Guidance's real-MySQL run selects `^TestMySQL` and separately
-requires 80% statement coverage across `internal/server`. The deployed Service
-Worker functions are measured separately in Node with 80% minimums for lines, branches,
-and functions. Chromium page E2E coverage is reported separately from unit,
-MySQL, and Service Worker coverage.
+単体テスト、実 MySQL の統合テスト、ブラウザー E2E テスト、Go・フロントエンド・Docker のビルドには、ガイダンスリポジトリの検証手順とワークフローを使います。PR では単体、統合、ブラウザーのカバレッジを個別にレポートします。ドキュメントのみの変更を含む全 PR で必須チェックが動きます。パスフィルターにより必須チェックの結果が報告されなくなる構成は使いません。Go アプリケーション、フロントエンド、インポーター、PDF 抽出の対象テストは最低 80% を要求します。実 MySQL の実行は `^TestMySQL` を選択し、`internal/server` のステートメントカバレッジも別途 80% 以上を要求します。配信対象の Service Worker の関数は Node.js で別に計測し、行、分岐、関数それぞれで最低 80% を要求します。Chromium のページ E2E のカバレッジは、単体、MySQL、Service Worker とは別に報告されます。
 
-The browser E2E helper `node scripts/e2e-run.mjs` starts its own loopback
-S3-compatible object service alongside the test OAuth service, real Go API,
-and disposable MySQL database. It uses synthetic files and independent SigV4,
-expiry, Range, and HEAD validation; real R2 credentials and production documents
-are not needed. Follow the guidance repository's
-[testing guide](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/testing.md)
-for the disposable DB variables, browser installation, and execution steps.
+ブラウザー E2E 用の `node scripts/e2e-run.mjs` は、テスト用 OAuth、実際の Go API、使い捨て MySQL DB に加え、専用の S3 互換サービスをループバックで起動します。合成ファイルを使い、SigV4、有効期限、Range、HEAD を独立に検証します。実 R2 の認証情報や本番資料は不要です。使い捨て DB の変数、ブラウザーのインストール、実行手順はガイダンスの[テストガイド](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/testing.md)に従ってください。
 
-The guidance repository uses separate `production-ui` and `production-api`
-GitHub Actions environments with GitHub-hosted runners. The public UI upload
-and private document reads use separate bucket-scoped credentials. API
-deployment uses a dedicated SSH key restricted to the
-deployment command, with a pinned server host identity. Runtime DB credentials,
-the session encryption key, and the private bucket's read-only key stay on the
-application server. PDF/PNG objects stay in private R2; source extraction and
-import validation happen in an administrator's private working directory.
-The runtime Compose configuration does not mount document files or read
-`DATA_DIR`.
-See the guidance repository's deployment instructions for environment settings,
-data import, readiness checks, and rollback. Taskly's Compose files and
-`infra/ops/apply-schema.sh` do not deploy or migrate this separate service.
+ガイダンスのリポジトリは GitHub ホストランナーを使い、GitHub Actions の Environment を `production-ui` と `production-api` に分けます。公開 UI のアップロードと、非公開資料の読み取りでは、それぞれ該当バケットに限定した別の認証情報を使います。API のデプロイには、デプロイコマンドに限定した専用 SSH 鍵を使い、サーバーのホスト ID を固定します。実行時 DB の認証情報、セッション暗号鍵、非公開バケットの読み取り専用キーはアプリケーションサーバーに置きます。PDF・PNG オブジェクトは非公開 R2 に保管し、原本の抽出と取り込みの検証は管理者の非公開作業ディレクトリで行います。実行時の Compose 構成はファイルをマウントせず、`DATA_DIR` も読み取りません。
 
-## Taskly completion synchronization
+環境設定、データの取り込み、準備状態の確認、ロールバックはガイダンスリポジトリのデプロイ手順を参照してください。Taskly の Compose ファイルと `infra/ops/apply-schema.sh` は、この別サービスのデプロイやマイグレーションを行いません。
 
-The optional first-party bridge stores no separate completion flags. Guidance
-reads and updates Taskly's existing `tasks_users_completions` records; checking
-or unchecking either service is reflected by the next read in the other.
-Opening the guidance homepage never creates shared class tasks.
+## Taskly の課題完了を同期する
 
-Newly checking a designated term's visit survey in Guidance also checks its
-assigned visit if that visit was not already complete. The automatic origin
-persists on the canonical row across reloads and service restarts. Undoing
-either end of this automatically owned pair **in Guidance**, within the same
-event and assignment scope, clears both checks. Earlier manual visits and
-later explicit manual checks in either service are preserved. Repeating an
-already-complete survey does not recreate a manually undone visit.
+任意の自社ガイダンス連携は、独立した完了フラグを保存しません。ガイダンスは Taskly の既存の `tasks_users_completions` を読み書きします。片方で完了を付けたり外したりすると、もう片方の次回読み取りに反映されます。ガイダンスのホームを開くだけで学級共通の課題が作成されることはありません。
 
-Taskly's own controls remain single-item manual operations: they release the
-affected automatic pair ownership without changing the other item's check.
-If the roster/company assignment scope changes, Guidance preserves the other
-completion and retires the stale automatic origin.
+ガイダンスで指定した時限の訪問アンケートを新たに完了すると、対応する指定訪問が未完了なら同時に完了します。自動完了の由来は正規の行に保存するため、再読み込み後やサービス再起動後も保持されます。同じイベントと割り当て範囲で、この自動連動したペアのどちらかを**ガイダンス側で**取り消すと、両方の完了を外します。以前に手動で完了した訪問や、その後どちらかのサービスで明示的に手動完了したものは保持します。完了済みのアンケートを再度完了にしても、手動で取り消した訪問は再完了しません。
 
-First provision or identify the intended canonical tasks through the normal
-Taskly administration workflow. Keep the real task IDs and imported event data
-in private operator configuration, outside Git. Configure the Taskly API with:
+Taskly 側の操作は、引き続き 1 件ずつの手動操作です。対象項目の自動連動を解除し、他方の完了は変えません。名簿番号・企業の割り当て範囲が変わる場合、ガイダンスは他方の完了を保持し、古い自動完了の由来を解除します。
 
-- `NNCT_GUIDANCE_EVENT_ID`: the imported event's exact opaque namespace.
-- `NNCT_GUIDANCE_TASK_BINDINGS`: a JSON object mapping logical keys to existing
-  positive, unique Taskly task IDs. Accepted keys are `assigned-visit-N`,
-  `visit-survey-N` (`N` is 1–99), `overall-survey`, and `sheet-submission`.
-  Both fixed keys and at least one key from each numbered group are required;
-  at most 64 bindings are accepted. The guidance API validates its needed keys
-  against its private imported schedule and selected roster assignment.
-- The existing confidential `AUTH_ISSUER`, `AUTH_CLIENT_ID`, and
-  `AUTH_CLIENT_SECRET`, and the existing `WEB_PUBLIC_URL`. Production requires
-  HTTPS. There is no additional service-wide integration secret.
+まず通常の Taskly 管理手順で連携先の課題を作成するか、既存の対象課題を特定します。実際の課題 ID と取り込んだイベントデータは、Git の外の非公開運用設定に置きます。Taskly API には以下を設定します。
 
-For example, this **synthetic** shape illustrates the binding format; replace
-all values with private operator configuration and never use example IDs in
-production:
+- `NNCT_GUIDANCE_EVENT_ID` は取り込んだイベントの正確な不透明な名前空間です。
+- `NNCT_GUIDANCE_TASK_BINDINGS` は論理キーを既存の正の一意な Taskly 課題 ID に対応付ける JSON オブジェクトです。受け付けるキーは `assigned-visit-N`、`visit-survey-N`（`N` は 1〜99）、`overall-survey`、`sheet-submission` です。固定キー両方と番号付きの各グループから少なくとも 1 件が必要です。バインディングは最大 64 件です。ガイダンス API は、非公開の取り込み済みスケジュールと選択した名簿番号の割り当てに照らし、必要なキーを検証します。
+- 既存の機密クライアント用 `AUTH_ISSUER`、`AUTH_CLIENT_ID`、`AUTH_CLIENT_SECRET` と既存の `WEB_PUBLIC_URL` も設定します。本番では HTTPS が必要です。サービス全体の追加の連携シークレットはありません。
+
+下記はバインディング形式を示す**架空の例**です。全値を非公開の運用設定に置き換え、本番では例の ID を使わないでください。
 
 ```json
 {"assigned-visit-2":101,"visit-survey-2":102,"overall-survey":103,"sheet-submission":104}
 ```
 
-Restart the Taskly API after changing configuration. Without valid configuration
-the bridge returns `503`; existing Taskly routes continue to work. To roll back
-the integration, remove the two `NNCT_GUIDANCE_*` values and restart. Existing
-tasks and canonical user completion records remain intact.
+設定変更後は Taskly API を再起動します。有効な設定がなければ連携は `503` を返し、既存の Taskly ルートは動作を続けます。連携をロールバックするには、2 つの `NNCT_GUIDANCE_*` の値を削除して再起動します。既存の課題と正規のユーザー完了記録は保持されます。
 
-### Survey/assigned-visit rollout
+### 訪問アンケートと指定訪問の連動を導入する
 
-Reuse the existing event namespace, bindings, tasks, and form links. This update
-adds no environment keys, replacement tasks, or form provisioning.
+既存のイベント名前空間、バインディング、課題、フォームのリンクを再利用します。環境変数、代替課題、フォームの追加は不要です。
 
-The authoritative Taskly schema is `apps/server/schema.sql`. The canonical
-`tasks_users_completions` table gains three nullable provenance columns:
-`auto_event_id`, `auto_source_task_id`, and `auto_assignment_scope`. Existing
-rows remain manual with NULL provenance. Apply this through Taskly's Atlas
-workflow, not a historical `apps/server/migrations` file or Guidance DB migration.
+Taskly の正式なスキーマは `apps/server/schema.sql` です。正規の `tasks_users_completions` テーブルに、由来を記録する NULL 許容列 `auto_event_id`、`auto_source_task_id`、`auto_assignment_scope` を追加します。既存の行には由来を NULL とし、手動完了として扱います。`apps/server/migrations` の履歴ファイルやガイダンス DB のマイグレーションではなく、Taskly の Atlas 手順で適用してください。
 
-From the **Taskly repository root**, apply the Atlas plan before starting the
-new Taskly API, using the environment described in
-[local development](local-development.md):
+[ローカル開発](local-development.md)の環境設定を使い、**Taskly リポジトリのルート**で、新しい Taskly API の起動前に Atlas の計画を適用します。
 
 ```bash
 infra/ops/apply-schema.sh
 docker compose -f infra/docker-compose.yml up -d --build --wait server
 ```
 
-**Prepare the Taskly schema and API before deploying the Guidance
-API version that sends linked requests.** If the production schema still needs
-these columns, use the separate [schema maintenance procedure](operations/no-ddl-code-release.md#schema-maintenance).
-The Taskly production workflow checks the established schema baseline before
-updating the API. Verify Taskly first, coordinate both services during rollback,
-and retain the added nullable columns. Task IDs, form links, event data, and
-production configuration stay outside Git.
+**連動リクエストを送るガイダンス API をデプロイする前に、Taskly のスキーマと API を準備してください。** 本番スキーマに列がなければ、別途[スキーマの保守手順](operations/no-ddl-code-release.md#スキーマの保守)を実施します。Taskly の本番ワークフローは API の更新前に確立済みのスキーマ基準を検証します。Taskly を先に検証し、ロールバック時は両サービスを調整して、追加した NULL 許容列を保持します。課題 ID、フォームのリンク、イベントデータ、本番設定は Git の外に置きます。
 
-Only the guidance backend calls `GET /integrations/nnct-guidance/tasks` and
-`PUT /integrations/nnct-guidance/tasks/{key}`. It forwards the signed-in user's
-current Taskly-auth access token as `Authorization: Bearer …` and sends the
-exact `X-Guidance-Event-ID`. The browser never receives this token, confidential
-client credentials, or a cross-user identifier. Taskly introspects each request
-using its own confidential client and accepts only the dedicated first-party
-client `nnct-corp-guidance-2026`, `taskly-api` audience, trusted issuer,
-`taskly:login` scope, live token, and numeric user subject. Development tests use
-the same client identity in an isolated synthetic auth environment; unrelated
-OAuth clients cannot write through the bridge.
+`GET /integrations/nnct-guidance/tasks` と `PUT /integrations/nnct-guidance/tasks/{key}` を呼び出すのはガイダンスのバックエンドだけです。ログイン中のユーザーの有効な taskly-auth アクセストークンを `Authorization: Bearer …` で転送し、正確な `X-Guidance-Event-ID` を送ります。ブラウザーにはこのトークン、機密クライアントの認証情報、ユーザー間の識別子を渡しません。Taskly は自身の機密クライアントで毎回イントロスペクションを行い、専用の自社クライアント `nnct-corp-guidance-2026`、対象者 `taskly-api`、信頼された発行者、スコープ `taskly:login`、有効なトークン、数値のユーザーサブジェクトを要求します。開発テストでは分離した合成認証環境に同じクライアント ID を使います。無関係な OAuth クライアントからは連携経由で書き込めません。
 
-GET returns `{event_id,tasks:[{key,task_id,completed,completion_disabled,taskly_url}]}`.
-An ordinary PUT sends `{completed:boolean}` and returns the updated task object.
-Linked Guidance operations add `link_assigned_visit:true` and a validated,
-opaque `assignment_scope`; responses include the counterpart in `related_tasks`.
-This mode checks/undoes a survey or undoes its assigned visit; explicitly
-checking a visit remains a single-item manual operation.
-These are backend protocol fields, not operator settings or browser-supplied
-task IDs. Both tasks are validated and updated in one transaction; explicit
-manual checks retain the single-item operation.
-Both modes support checking and undoing a check for the authenticated subject.
-Both responses use `Cache-Control: no-store`. Deleted/blocked accounts, current
-policy consent, task moderation, task read permissions, and disabled completion
-are enforced. A disabled task can still be unchecked, matching Taskly's normal
-completion behavior. Event mismatch or disabled checking returns `409`;
-unlisted keys return `404`; inaccessible tasks return `403`. Identity or database
-outages fail closed and never manufacture an incomplete state.
+GET は `{event_id,tasks:[{key,task_id,completed,completion_disabled,taskly_url}]}` を返します。通常の PUT は `{completed:boolean}` を送り、更新された課題オブジェクトを受け取ります。ガイダンスの連動操作は `link_assigned_visit:true` と、検証済みの不透明な `assignment_scope` を付けます。応答は相手の課題を `related_tasks` に含めます。このモードではアンケートの完了・取り消し、または指定訪問の取り消しを行います。指定訪問を明示的に完了する場合は、1 件の手動操作です。これらのフィールドはバックエンド間のプロトコルで、運用設定やブラウザーから渡す課題 ID ではありません。連動操作では両方の課題を同一トランザクションで検証・更新します。
 
-The PR coverage comment includes the entire guidance bridge package with an
-80% minimum. Synthetic OAuth/SQLite tests exercise identity, ownership,
-configuration, and failure handling; `api-empty-database` also runs
-`TestMySQLGuidanceBridgeCanonicalRoundTrip` against MySQL on every PR change.
-That test exercises the real bridge and Taskly GraphQL completion routes in both
-directions, including undo, retries, and disabled completion. No production data
-or credentials are needed.
+どちらのモードも認証したユーザー本人の完了と取り消しを扱い、応答には `Cache-Control: no-store` を設定します。削除・ブロック済みアカウント、現行ポリシーへの同意、課題のモデレーション、読み取り権限、完了の無効化を検証します。完了が無効な課題でも、Taskly の通常操作と同じく取り消しは可能です。イベント不一致や完了の無効化は `409`、未登録のキーは `404`、参照できない課題は `403` を返します。認証や DB に障害があれば処理を拒否し、未完了状態を推測して返しません。
 
-For the cross-service browser suite, `apps/server/cmd/guidance-e2e` starts the
-real Taskly bridge and GraphQL routes with synthetic data and in-process Redis.
-It requires `TASKLY_GUIDANCE_E2E=1`, a nonproduction `NODE_ENV`, literal loopback
-`ADDR`, a loopback `TASKLY_E2E_MYSQL_DSN` whose database is exactly
-`taskly_guidance_e2e`, and a loopback HTTP `AUTH_ISSUER`. It refuses nonempty
-databases rather than deleting existing data. Start from `apps/server` so it can
-read `schema.sql`, or pass `TASKLY_E2E_SCHEMA_PATH`. Supply the synthetic issuer's
-`AUTH_CLIENT_ID` and `AUTH_CLIENT_SECRET`. `/__test/ready` reports readiness;
-`/__test/fixture` returns synthetic user IDs, local sessions, task bindings, and
-the event namespace. These routes and sessions exist only in this loopback test
-command; the production Docker entrypoint builds `cmd/server` exclusively.
-The fixture includes an explicitly read-denied user for authorization failure
-coverage. Browser tests use the actual `/graphql/` completion mutations for
-Taskly-side changes and the guidance proxy for the opposite direction.
+PR のカバレッジコメントはガイダンス連携パッケージ全体を対象とし、最低 80% を要求します。合成 OAuth / SQLite テストは ID、管理主体、設定、障害時の処理を検証します。`api-empty-database` はすべての PR の変更で、MySQL に対し `TestMySQLGuidanceBridgeCanonicalRoundTrip` も実行します。このテストは実際の連携と Taskly の GraphQL 完了ルートを双方向で検証し、取り消し、再試行、完了の無効化も含みます。本番データや認証情報は不要です。
 
-Before rollout, verify the synthetic bridge, real-MySQL, and browser cases for
-pair creation, both Guidance undo directions, manual-check preservation,
-native Taskly single-item behavior and ownership release, retries, scope
-changes, user isolation, and failed-write rollback. Record the actual CI results.
+サービス横断のブラウザーテストでは `apps/server/cmd/guidance-e2e` が、合成データとプロセス内 Redis を使い、実際の Taskly の連携と GraphQL ルートを起動します。`TASKLY_GUIDANCE_E2E=1`、本番以外の `NODE_ENV`、リテラルのループバック `ADDR`、ループバックを指し DB 名が正確に `taskly_guidance_e2e` の `TASKLY_E2E_MYSQL_DSN`、HTTP のループバック `AUTH_ISSUER` が必要です。データのある DB は削除せず、起動を拒否します。`schema.sql` を読み込めるように `apps/server` から起動するか、`TASKLY_E2E_SCHEMA_PATH` を渡します。合成発行者の `AUTH_CLIENT_ID` と `AUTH_CLIENT_SECRET` を設定してください。`/__test/ready` は準備状態を報告し、`/__test/fixture` は合成ユーザー ID、ローカルセッション、課題バインディング、イベント名前空間を返します。これらのルートとセッションはループバックのテストコマンドにのみ存在し、本番の Docker エントリーポイントは `cmd/server` だけをビルドします。フィクスチャには、認可失敗を検証する読み取り権限を明示的に拒否されたユーザーも含みます。ブラウザーテストは Taskly 側の変更に実際の `/graphql/` の完了ミューテーションを使い、逆方向にガイダンスのプロキシを使います。
 
+導入前に合成連携、実 MySQL、ブラウザーのケースを検証します。対象はペアの作成、ガイダンスで両方向からの取り消し、手動完了の保持、Taskly の単一項目操作と連動の解除、再試行、範囲の変更、ユーザーの分離、書き込み失敗時のロールバックです。実際の CI 結果を記録します。
 
-## Delegated ChatGPT task access
+## ChatGPT への課題アクセスの委任
 
-The Guidance MCP backend exchanges a live, consented ChatGPT access token with
-Taskly Auth before it calls the Taskly task bridge. It does not forward the MCP
-access token to Taskly. Taskly's existing `AUTH_CLIENT_ID` and
-`AUTH_CLIENT_SECRET` continue to authenticate its introspection requests.
-The MCP backend has its own confidential client credential in the Guidance API
-runtime; that credential does not belong in this repository or the browser.
+ガイダンスの MCP バックエンドは、利用者が同意した有効な ChatGPT アクセストークンを taskly-auth で交換してから Taskly の課題連携を呼び出します。MCP アクセストークンは Taskly に転送しません。Taskly は既存の `AUTH_CLIENT_ID` と `AUTH_CLIENT_SECRET` を引き続きイントロスペクションで使います。MCP バックエンドには、ガイダンス API の実行環境に専用の機密クライアント認証情報があり、このリポジトリやブラウザーには含めません。
 
-For this optional policy, configure the Taskly API runtime with its trusted
-`API_PUBLIC_URL` origin and `NNCT_GUIDANCE_MCP_PARENT_RESOURCE` equal to the exact
-Guidance API `/mcp` resource registered in Taskly Auth. Both must use HTTPS in
-production. Missing or invalid delegation settings reject delegated tokens
-while preserving the existing `nnct-corp-guidance-2026` web-token policy.
-Neither resource is derived from request headers.
+この任意のポリシーを使うには、Taskly API の実行環境で信頼された `API_PUBLIC_URL` オリジンを設定し、`NNCT_GUIDANCE_MCP_PARENT_RESOURCE` を taskly-auth に登録したガイダンス API の正確な `/mcp` リソースと一致させます。本番ではいずれも HTTPS が必要です。委任設定がないか無効な場合は委任トークンを拒否し、既存の `nnct-corp-guidance-2026` の Web トークンのポリシーは維持します。どちらのリソースもリクエストヘッダーから組み立てません。
 
-The exchanged token must have client `nnct-guidance-mcp-backend`, actor
-`nnct-guidance-mcp-backend`, original client `nnct-guidance-chatgpt`, and original
-resource equal to `NNCT_GUIDANCE_MCP_PARENT_RESOURCE`. Its audience is exactly
-`API_PUBLIC_URL` plus `/integrations/nnct-guidance/tasks`. Taskly Auth bounds the
-token to 60 seconds, checks the parent grant and token family on every
-introspection, and does not issue a refresh token for the exchange. The Taskly
-bridge also rejects an expiry more than 60 seconds ahead of its current clock.
+交換後のトークンは、クライアントとアクターがともに `nnct-guidance-mcp-backend`、元のクライアントが `nnct-guidance-chatgpt`、元のリソースが `NNCT_GUIDANCE_MCP_PARENT_RESOURCE` と一致する必要があります。対象者は `API_PUBLIC_URL` に `/integrations/nnct-guidance/tasks` を付けた値と厳密に一致します。taskly-auth はトークンの有効期間を 60 秒以内に制限し、イントロスペクションのたびに親の認可とトークンファミリーを検証します。交換でリフレッシュトークンは発行しません。Taskly の連携でも、現在時刻より 60 秒を超えて先の有効期限は拒否します。
 
-Each exchange grants one operation: `guidance:tasks:read` for `GET /tasks`, or
-`guidance:tasks:write` for `PUT /tasks/:key` under that integration prefix.
-Combining scopes or presenting the Guidance MCP audience is rejected. The same
-canonical permission, consent, account block, completion and survey-link
-transaction rules apply as for the existing web integration. These credentials
-do not authorize Taskly's general REST or GraphQL APIs.
+交換では所定の連携プレフィックスの下で 1 つの操作だけを許可します。`GET /tasks` は `guidance:tasks:read`、`PUT /tasks/:key` は `guidance:tasks:write` を使います。複数スコープを組み合わせたり、対象者にガイダンス MCP を指定したりすると拒否します。通常の Web 連携と同じ権限、同意、アカウントブロック、完了、アンケート連動のトランザクション規則を適用します。この認証情報で Taskly の一般向け REST・GraphQL API は利用できません。
 
-The always-run `pr-coverage` jobs measure bridge unit and disposable-MySQL
-integration coverage independently, each with an 80% minimum. The MySQL selector
-`^TestMySQLGuidance` includes the delegated-token tests alongside the existing
-atomic completion and provenance tests. Use only an isolated synthetic test
-database when running those cases locally.
+常に実行する `pr-coverage` ジョブは連携の単体テストと使い捨て MySQL の統合テストのカバレッジを独立に計測し、どちらも最低 80% を要求します。MySQL のセレクター `^TestMySQLGuidance` は既存の原子的な完了処理や由来のテストとともに、委任トークンのテストも選択します。ローカルで実行する場合は、分離した合成テスト用 DB のみを使います。

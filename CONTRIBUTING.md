@@ -1,25 +1,16 @@
-# Contributing
+# コントリビューション
 
-Taskly is not currently accepting external code contributions. Pull request
-creation is restricted to collaborators in the repository settings. Maintainers
-continue to use branches, pull requests, review, and the required checks before
-merging.
+現在、Taskly は外部からのコードのコントリビューションを受け付けていません。リポジトリの設定により、プルリクエストを作成できるのはコラボレーターのみです。メンテナーは引き続きブランチとプルリクエストを使い、レビューと必須チェックを経てマージします。
 
-Public issues may be used for reproducible bug reports and narrowly scoped feature requests,
-but maintainers may close requests that contain private data, security details,
-or material outside the project's scope.
+公開 Issue は、再現可能な不具合の報告や対象を絞った機能提案に利用できます。個人情報やセキュリティ上の詳細を含むもの、プロジェクトの範囲外のものは、メンテナーが閉じる場合があります。
 
-Do not submit suspected vulnerabilities through a public issue or pull request.
-Follow [`SECURITY.md`](SECURITY.md) instead.
+脆弱性の疑いは公開 Issue やプルリクエストに記載せず、[`SECURITY.md`](SECURITY.md) の報告手順に従ってください。
 
-Opening an issue or pull request does not grant a license to use Taskly source
-code and does not change the repository-wide rights notice in
-[`LICENSE`](LICENSE). A contribution policy and contributor license terms will
-be published before external code contributions are accepted.
+Issue やプルリクエストを作成しても、Taskly のソースコードを利用するライセンスは付与されず、[`LICENSE`](LICENSE) に記載されたリポジトリ全体の権利の取り扱いは変わりません。外部からコードを受け付ける前に、コントリビューション方針とコントリビューター向けのライセンス条件を公開します。
 
-## Local lint checks
+## ローカルでの静的解析
 
-Run these from the repository root:
+リポジトリのルートで実行します。
 
 ```sh
 npm ci
@@ -30,20 +21,10 @@ python3 -m venv /tmp/taskly-lint-venv
 /tmp/taskly-lint-venv/bin/ruff check .
 ```
 
-The `lint` workflow runs all three checks on every pull request and on main.
-Biome is pinned in the root lockfile and checks supported JavaScript, TypeScript,
-JSX, JSON, CSS and HTML files across the web app, MCP, email service, email Worker,
-and repository scripts. Generated protobuf and build output are excluded.
-`npm run lint:fix` applies safe Biome fixes; formatting is not enforced.
-Astro-specific checks remain covered by `npm run check` in `apps/web`.
+`lint` ワークフローはすべてのプルリクエストと `main` で 3 種類のチェックを実行します。Biome のバージョンはルートのロックファイルで固定し、Web アプリ、MCP、メールサービス、メール Worker、リポジトリ内のスクリプトにある JavaScript、TypeScript、JSX、JSON、CSS、HTML を検査します。生成済みの protobuf とビルド出力は対象外です。`npm run lint:fix` は Biome の安全な修正を適用します。フォーマットは強制しません。Astro 固有の検査は引き続き `apps/web` の `npm run check` が行います。
 
-The initial Biome policy enables recommended correctness rules and selected
-suspicious-code rules. Unused imports/variables/parameters and React hook rules
-are deferred until existing code is cleaned up; style and accessibility policies
-are not enabled yet. See `biome.json` for the exact enforced rules.
-Ruff initially checks syntax errors and undefined names (`E9`, `F63`, `F7`, `F82`)
-in Python, including Airflow, monitoring and deployment scripts.
-Go vet runs separately in every tracked Go module, including nested notification
-modules that a parent module's `./...` pattern would otherwise skip. It requires
-the Go version pinned in the [lint workflow](.github/workflows/lint.yml) or newer
-and access to module dependencies.
+Biome では推奨される正しさのルールと、不審なコードを検出する一部のルールを有効にしています。未使用の import・変数・引数と React フックのルールは既存コードの整理後に導入します。スタイルとアクセシビリティのルールは現在無効です。適用するルールは `biome.json` を確認してください。
+
+Ruff は Airflow、監視、デプロイのスクリプトを含む Python コードの構文エラーと未定義名（`E9`、`F63`、`F7`、`F82`）を検査します。
+
+Go vet は追跡対象の全 Go モジュールで個別に実行します。親モジュールの `./...` では対象にならない通知用のネストしたモジュールも含みます。[lint ワークフロー](.github/workflows/lint.yml)で固定したバージョン以降の Go と、モジュールの依存関係へのアクセスが必要です。

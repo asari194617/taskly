@@ -35,7 +35,7 @@
 - Types:
   - `GET /settings/notification-types` → `{ TASK, TASK_MORNING, TASK_EVENING, DAYSHIFT }`
   - `POST /settings/notification-types` body `{ key: string, value: bool }`
-- Devices（Web Push）:
+- 端末（Web Push）:
   - `GET /push/devices` → `[ { id, name, is_enabled } ]`
   - `POST /push/devices/:id` body `{ is_enabled: bool }`
 - Web Push 購読:
@@ -88,15 +88,15 @@ mutation UpdatePrefs($id: Int!) {
 `deadline_until=NONE`（時間指定なし）の課題は朝夕とも通知しません。
 Queue Manager、Email、Discord に同じ範囲を適用します。
 
-- Queue Manager（`batches/notifications/que-manager`）:
+- キュー管理（`batches/notifications/que-manager`）:
   - 対象課題を Web Push キューに投入。`TASK` と時間帯に応じた `TASK_MORNING`/`TASK_EVENING` を適用。
   - 日直は 08:30 の日直 DAG が担当者を確定してキューに投入する。
   - Email はキュー投入せず、配信時に対象課題とユーザーを取得する。
-- Web Push Delivery（`batches/notifications/delivery-channels/web-push`）:
+- Web Push 配信（`batches/notifications/delivery-channels/web-push`）:
   - `channel='webpush'` を購読ごとに配信する。成功済み購読は再実行時に再送しない。Airflow の `notifications` DAG と日直 DAG から実行される。
-- Email Delivery（`batches/notifications/delivery-channels/email`）:
+- メール配信（`batches/notifications/delivery-channels/email`）:
   - `notifications` DAG から実行され、ユーザーごとの課題ダイジェストを email-compose の gRPC と SMTP で送信する。`TASK` と実行時刻に応じた `TASK_MORNING`/`TASK_EVENING` を適用する。
-- Discord Delivery（`batches/notifications/delivery-channels/discord`）:
+- Discord 配信（`batches/notifications/delivery-channels/discord`）:
   - `notifications` DAG から実行される。
 
 対象ユーザーと実行順序は [`batches/notifications/README.md`](batches/notifications/README.md) を参照してください。

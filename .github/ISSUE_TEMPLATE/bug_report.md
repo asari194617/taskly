@@ -1,38 +1,42 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: 不具合の報告
+about: Taskly の改善に役立つ不具合を報告する
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**不具合の概要**
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+発生した不具合を簡潔に記載してください。
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**再現手順**
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+1. 「…」を開く
+2. 「…」をクリックする
+3. 「…」までスクロールする
+4. エラーが表示される
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**期待する動作**
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+本来どのような動作を期待していたかを記載してください。
 
-**Additional context**
-Add any other context about the problem here.
+**スクリーンショット**
+
+説明に役立つ場合は、スクリーンショットを添付してください。
+
+**パソコンで発生した場合の環境**
+
+- OS とバージョン
+- ブラウザーとバージョン
+
+**スマートフォンで発生した場合の環境**
+
+- 機種
+- OS とバージョン
+- ブラウザーとバージョン
+
+**補足情報**
+
+報告に関連する補足があれば記載してください。

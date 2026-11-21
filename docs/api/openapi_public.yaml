@@ -1,13 +1,13 @@
 openapi: 3.0.3
 info:
-  title: Taskly Public API
+  title: Taskly 公開 API
   version: 1.0.0
-  description: Public REST surface accessible with an API key. All requests must include the X-API-Key header.
+  description: API キーで利用できる公開 REST API です。すべてのリクエストに X-API-Key ヘッダーを含めてください。
 servers:
   - url: https://api.taskly.iy0306.com
-    description: Production
+    description: 本番環境
   - url: http://localhost:3063
-    description: Local development
+    description: ローカル開発環境
 security:
   - ApiKeyAuth: []
 components:
@@ -43,7 +43,7 @@ components:
           type: boolean
         is_completion_disabled:
           type: boolean
-          description: Whether completion marking is disabled for this task.
+          description: この課題の完了操作が無効になっているかどうか。
         deadline:
           type: string
           format: date
@@ -72,7 +72,7 @@ components:
 paths:
   /tasks:
     get:
-      summary: List tasks with pagination
+      summary: 課題の一覧をページ単位で取得
       parameters:
         - in: query
           name: overdue
@@ -100,7 +100,7 @@ paths:
             type: integer
       responses:
         "200":
-          description: OK
+          description: 成功
           content:
             application/json:
               schema:
@@ -115,7 +115,7 @@ paths:
                     additionalProperties:
                       type: string
     post:
-      summary: Create a task
+      summary: 課題を作成
       requestBody:
         required: true
         content:
@@ -132,20 +132,20 @@ paths:
                 is_self_check_required: { type: boolean }
                 is_completion_disabled:
                   type: boolean
-                  description: If omitted, uses the configured default for the task type.
+                  description: 省略時は課題の種類ごとに設定された既定値を使います。
                 deadline: { type: string, format: date }
                 deadline_since: { type: string }
                 deadline_until: { type: string }
       responses:
         "201":
-          description: Created
+          description: 作成しました
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
   /tasks/{id}:
     patch:
-      summary: Update a task
+      summary: 課題を更新
       parameters:
         - in: path
           name: id
@@ -168,19 +168,19 @@ paths:
                 is_completion_disabled:
                   type: boolean
                   nullable: true
-                  description: Disabling completion clears existing completion marks. Omission preserves the current setting.
+                  description: 完了操作を無効にすると、既存の完了記録を消去します。省略時は現在の設定を保持します。
                 deadline: { type: string, format: date, nullable: true }
                 deadline_since: { type: string, nullable: true }
                 deadline_until: { type: string, nullable: true }
       responses:
         "200":
-          description: OK
+          description: 成功
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
     delete:
-      summary: Delete a task
+      summary: 課題を削除
       parameters:
         - in: path
           name: id
@@ -189,19 +189,19 @@ paths:
             type: integer
       responses:
         "204":
-          description: No Content
+          description: レスポンス本文なし
   /users/me:
     get:
-      summary: Get current user profile
+      summary: 現在のユーザーのプロフィールを取得
       responses:
         "200":
-          description: OK
+          description: 成功
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserMe"
     patch:
-      summary: Update current user profile
+      summary: 現在のユーザーのプロフィールを更新
       requestBody:
         required: true
         content:
@@ -213,4 +213,4 @@ paths:
                   type: string
       responses:
         "204":
-          description: No Content
+          description: レスポンス本文なし

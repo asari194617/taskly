@@ -1,10 +1,10 @@
-# Taskly (Web app)
+# Taskly Web アプリ
 
 Astro / React による Web クライアントです。静的ビルドを Cloudflare Pages に配信します。
 API と認証サービスは別プロセスです。[リポジトリのローカル開発手順](../../docs/local-development.md)
 で API と taskly-auth の設定を確認してください。
 
-## Local development
+## ローカル開発
 
 Node.js 26 を使用します（CI は 26.13.1）。このディレクトリで:
 
@@ -24,17 +24,15 @@ npm run dev
 `npm run storybook` はコンポーネントの開発画面（port 6006）、
 `npm run build-storybook` はその静的ビルドを生成します。
 
-Preview builds use `https://taskly.iy0306.com` as their canonical origin by
-default. To publish a preview-specific canonical origin, provide `SITE_URL` in
-the build environment, for example:
+プレビュービルドの正規オリジンは既定で `https://taskly.iy0306.com` です。プレビュー専用の正規オリジンを公開する場合は、次のようにビルド時の環境変数 `SITE_URL` を指定します。
 
 ```bash
 SITE_URL=https://preview.example.com npm run build
 ```
 
-## Web checks
+## Web クライアントの検証
 
-Run with Node 26 from `apps/web`:
+`apps/web` で Node.js 26 を使い、以下を実行します。
 
 ```bash
 npm ci
@@ -48,17 +46,8 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-`check` runs Astro and TypeScript diagnostics across pages and React code. The
-web CI workflow runs these checks for every pull request because
-`web-build-and-test` is a required check.
+`check` はページと React コードに対し、Astro と TypeScript の診断を実行します。必須チェックの `web-build-and-test` に含まれるため、Web の CI はすべてのプルリクエストでこれらの検証を行います。
 
-Unit tests cover API clients, task state transitions, session and redirect
-handling, notification settings, and supporting UI logic. The
-[mocked browser suite](tests/browser/README.md) covers login redirects, task
-creation/editing/completion/search, Web Push settings, mobile navigation, and
-admin subject creation. The [real API E2E suite](tests/e2e/README.md) runs against
-an isolated MySQL/Redis/API stack and verifies persisted task changes and admin
-authorization failures. See the linked guides for fixtures and limitations.
+単体テストでは API クライアント、課題の状態遷移、セッションとリダイレクト、通知設定、関連する UI ロジックを確認します。[モックを使うブラウザテスト](tests/browser/README.md)は、ログイン時のリダイレクト、課題の作成・編集・完了・検索、Web Push 設定、モバイルでの画面遷移、管理者による科目作成を確認します。[実 API を使う E2E テスト](tests/e2e/README.md)は、分離した MySQL、Redis、API の構成で、課題の変更が永続化されることと管理者権限のない操作が拒否されることを確認します。フィクスチャと制約は各ガイドを参照してください。
 
-OAuth credentials, MFA, and passkeys are tested in taskly-auth. OS notification
-dialogs and real push delivery still require manual browser verification.
+OAuth 認証情報、多要素認証、パスキーは taskly-auth で検証します。OS の通知ダイアログと実際のプッシュ配信はブラウザーで手動確認します。

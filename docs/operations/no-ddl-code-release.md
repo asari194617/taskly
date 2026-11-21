@@ -1,92 +1,40 @@
-# Code-only production releases
+# コードのみの本番リリース
 
-`deploy-prod` updates application images only when the authoritative schema is
-identical to the last successfully deployed revision. It does not invoke Atlas,
-start `atlas-dev-db`, or recreate MySQL/Redis because an application environment
-variable changed. This keeps the existing shared database running on the
-production host with approximately 2 GiB RAM.
+`deploy-prod` は、正式なスキーマが直近で正常にデプロイしたリビジョンと同一の場合だけ、アプリケーションのイメージを更新します。Atlas の実行や `atlas-dev-db` の起動は行いません。アプリケーションの環境変数が変わっても MySQL・Redis は再作成しません。これにより、約 2 GiB の RAM を持つ本番ホストで既存の共有 DB を稼働させ続けます。
 
-## Required proof
+## 必須の証跡
 
-Before a deployment marker, rsync, or environment installation, the workflow
-streams the reviewed checkout's `infra/ops/deploy-state.sh schema-baseline` over
-the existing deployment SSH connection. The installed older helper does not
-need to support this mode. This read-only operation requires:
+デプロイマーカーの作成、rsync、環境設定の配置に先立ち、ワークフローはレビュー済みのチェックアウトにある `infra/ops/deploy-state.sh schema-baseline` を既存のデプロイ用 SSH 接続に送ります。ホストに配置されている古いスクリプトがこのモードに対応している必要はありません。この読み取り専用の処理には以下が必要です。
 
-- An owned, non-symlink, mode0600 `.deploy-state` marked `committed` with
-  `schema-v1` or `schema-v2`; both recorded release SHAs must match. Version 2
-  also binds the healthy Airflow SHA that must remain active.
-- Healthy existing core applications, MySQL and Redis; the running application
-  SHA and normalized live database schema digest must match that committed state.
-- Regular `apps/server/schema.sql` and `atlas.hcl` files on the host, with no
-  symlink in any source path component.
+- 実行ユーザーが所有する権限 `0600` の通常ファイル `.deploy-state`。シンボリックリンクは禁止し、状態は `committed`、形式は `schema-v1` または `schema-v2` とし、記録された 2 つのリリース SHA が一致していること。`schema-v2` では、稼働を続ける正常な Airflow の SHA も紐付ける
+- 既存の主要アプリケーション、MySQL、Redis が正常で、稼働中のアプリケーション SHA と正規化した稼働中 DB のスキーマダイジェストが確定済みの状態と一致すること
+- ホストの `apps/server/schema.sql` と `atlas.hcl` が通常ファイルで、パスの各構成要素にシンボリックリンクがないこと
 
-Only the target/baseline SHAs, database digest and source-file SHA-256 values are
-returned. Tokens, connection strings, environment contents, SQL text and rows
-are not included. The workflow saves these bounded JSON records as its
-`taskly-code-only-schema-<release>` artifact for seven days.
+返すのはリリース対象と基準の SHA、DB ダイジェスト、ソースファイルの SHA-256 だけです。トークン、接続文字列、環境設定の内容、SQL 本文、行データは含みません。ワークフローはサイズを制限したこの JSON を `taskly-code-only-schema-<release>` アーティファクトとして 7 日間保存します。
 
-On the GitHub runner, `.github/scripts/verify-no-ddl-release.py` requires the
-exact target commit to be checked out, the baseline to be an ancestor, and both
-authoritative source files to have identical bytes at the two Git revisions.
-The host source hashes must also match that baseline revision. Modified working
-copies, missing history, unrelated baselines, first deployments without a known
-state, changed SQL/configuration, and malformed attestations stop the release
-before any host write. No flag or workflow input bypasses this check.
+GitHub ランナーの `.github/scripts/verify-no-ddl-release.py` は、リリース対象コミットが正確にチェックアウトされ、基準がその祖先で、2 つの正式なソースファイルが両リビジョンでバイト単位に一致することを要求します。ホスト側のソースハッシュも基準リビジョンと一致する必要があります。作業ツリーの変更、履歴の欠落、無関係な基準、既知の状態がない初回デプロイ、SQL・設定の変更、証跡の形式不正があれば、ホストへの書き込み前に停止します。このチェックを迂回するフラグやワークフロー入力はありません。
 
-Git calls disable replacement objects, graft processing, commit-graph shortcuts
-and lazy object fetching. Legacy graft files, alternate object stores,
-partial-clone configuration and repository/history environment overrides are
-rejected rather than repaired. The proof uses the actual immutable objects and
-their ancestry in a complete checkout; persistent runner metadata cannot
-substitute another tree for a release SHA.
+Git の呼び出しでは置換オブジェクト、graft 処理、コミットグラフを使う省略処理、オブジェクトの遅延取得を無効にします。古い graft ファイル、代替オブジェクトストア、部分クローン設定、リポジトリや履歴を上書きする環境変数がある場合は処理を拒否します。証跡には完全なチェックアウトにある不変のオブジェクトと祖先関係を使います。ランナーに残ったメタデータで、リリース SHA を別のツリーに読み替えることはできません。
 
-The expected baseline SHA, database digest and whether Airflow is changing are
-passed to `begin`. New markers record the exact expected Airflow SHA alongside
-the application target. A change between attestation and deployment stops
-`begin`; an unexpected application image, Airflow image or schema change during
-the code-only release stops `complete` and retains `in_progress` for operator
-review. Follow the existing
-[recovery procedure](recovery-drill.md) rather than deleting that record.
+想定する基準 SHA、DB ダイジェスト、Airflow を変更するかどうかを `begin` に渡します。新しいマーカーには対象アプリケーションとともに Airflow の正確な想定 SHA を記録します。証跡取得からデプロイまでに変更があれば `begin` を中止します。コードのみのリリース中に、アプリケーションイメージ、Airflow イメージ、スキーマに想定外の変更があれば `complete` を中止して、運用担当者が確認できるよう `in_progress` を保持します。この記録を削除せず、既存の[復旧手順](recovery-drill.md)に従ってください。
 
-Application containers use `docker compose up --no-deps`; the existing database
-and Redis are not included in that command. The separate, existing Redis ACL
-change detection may still explicitly recreate Redis when its policy changes.
-Image tags, readiness checks, deploy serialization and the core release-SHA
-checks remain in force.
+アプリケーションコンテナには `docker compose up --no-deps` を使います。このコマンドに既存 DB と Redis は含めません。別途存在する Redis ACL の変更検知は、ポリシーが変更された場合に明示的に Redis を再作成できます。イメージタグ、準備状態の確認、デプロイの直列化、主要なリリース SHA の検証は引き続き適用します。
 
-## Schema maintenance
+<a name="schema-maintenance"></a>
 
-DDL releases and initial provisioning require a separate reviewed maintenance
-procedure with backups, compatibility checks and a verified resulting baseline.
-`infra/ops/apply-schema.sh` remains an explicit operator tool, but it starts an
-Atlas development database and must not be run on this constrained production
-host. Compute and validate a schema plan on a suitable isolated runner, then
-review the production application and baseline establishment separately. The
-automatic code-only workflow fails until a valid unchanged baseline exists;
-it does not infer one or silently start a development database.
+## スキーマの保守
 
-## Optional Guidance MCP configuration
+DDL を含むリリースと初回構築には、バックアップ、互換性確認、結果の基準状態の検証を含む、別途レビュー済みの保守作業が必要です。`infra/ops/apply-schema.sh` は運用担当者が明示的に実行するツールです。Atlas 用の開発 DB を起動するため、リソースの限られた本番ホストで実行しないでください。適切に分離したランナーでスキーマ変更計画を作成・検証し、本番への適用と基準の確立は別途レビューしてください。コードのみの自動ワークフローは変更されていない有効な基準が存在するまで失敗します。基準の推測や、開発 DB の暗黙的な起動は行いません。
 
-After the Taskly delegation changes and this deployment path pass review/CI,
-set the nonsecret repository or `production` environment Actions variable
-`NNCT_GUIDANCE_MCP_PARENT_RESOURCE` to the exact Guidance MCP resource URI. The
-workflow passes it as `DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE` through a
-structured environment entry. `prepare-prod-env.py` validates a canonical HTTPS
-URL with the exact `/mcp` path and appends only that key to the existing canonical
-`PROD_ENV`. It rejects userinfo, query/fragment, whitespace/control characters,
-encoded path aliases and dotenv interpolation. It never prints the value or
-existing secrets.
+<a name="optional-guidance-mcp-configuration"></a>
 
-Absent or empty Actions variables preserve the existing environment verbatim,
-including an existing parent-resource entry. The two existing required Guidance
-event/binding settings remain a separate group. Taskly uses its existing trusted
-`API_PUBLIC_URL` and OAuth introspection credentials; it does not receive the new
-Auth/Guidance MCP backend secret. Activating the OAuth client also requires its
-separate reviewed Auth/Guidance configuration and the actual exact ChatGPT
-callback URI; no wildcard or guessed callback is configured here.
+## 任意の企業ガイダンス MCP 設定
 
-## Local verification
+Taskly の委任の変更とこのデプロイ経路がレビュー・CI を通過した後、リポジトリまたは `production` 環境の Actions 変数 `NNCT_GUIDANCE_MCP_PARENT_RESOURCE` に、ガイダンス MCP の正確なリソース URI を設定します。この値はシークレットではありません。ワークフローは構造化された環境設定で `DEPLOY_NNCT_GUIDANCE_MCP_PARENT_RESOURCE` として渡します。`prepare-prod-env.py` はパスが正確に `/mcp` である正規の HTTPS URL を検証し、既存の正規化された `PROD_ENV` にこのキーのみを追記します。ユーザー情報、クエリ、フラグメント、空白、制御文字、エンコードされたパスの別表現、dotenv の変数展開は拒否します。設定値や既存のシークレットは出力しません。
+
+Actions 変数が未設定または空の場合は、既存の親リソース設定を含め、環境設定をそのまま保持します。既存の必須のガイダンスイベントとバインディングの 2 項目は別の設定グループです。Taskly は既存の信頼された `API_PUBLIC_URL` と OAuth イントロスペクション用の認証情報を使い、Auth・ガイダンス間の新しい MCP バックエンドシークレットは受け取りません。OAuth クライアントを有効にするには、別途レビュー済みの Auth・ガイダンス側の設定と、実際の正確な ChatGPT コールバック URI が必要です。ワイルドカードや推測した URI はここでは設定しません。
+
+## ローカルでの検証
 
 ```sh
 python3 .github/scripts/prepare-prod-env.test.py
@@ -95,7 +43,4 @@ bash .github/scripts/test-prod-env-deploy.sh
 bash infra/ops/test-deploy-state.sh
 ```
 
-These tests use synthetic Git repositories, schema files, and Docker command
-stubs. They verify unchanged/changed/unknown baselines, exact target binding,
-schema drift, metadata preservation, and rejection before Docker mutation. They
-do not access the production database or create a development DB container.
+テストには合成した Git リポジトリ、スキーマファイル、Docker コマンドのスタブを使います。変更なし・変更あり・不明の基準、対象の厳密な紐付け、スキーマドリフト、メタデータの保持、および Docker に変更を加える前の拒否を確認します。本番 DB へのアクセスや、開発 DB コンテナの作成は行いません。

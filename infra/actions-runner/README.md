@@ -1,107 +1,62 @@
-# Single-job GitHub Actions runner pool
+# 1 ジョブごとに作り直す GitHub Actions ランナープール
 
-Heavy jobs in trusted same-repository PRs and production image jobs use containerized runners. The primary
-pool has the `taskly-ci-primary` label and the existing fallback host has the
-`taskly-ci-secondary` label. Up to four CI slots per host are supported. GitHub registrations are persistent, but every runner process accepts
-only one job (`run.sh --once`). systemd then starts a new container from the
-pinned image, so the workspace and container filesystem are discarded between
-jobs. The image includes Playwright browser dependencies, Python/venv, build
-tools, and Docker Compose for the CI jobs.
+同一リポジトリ内の信頼済み PR の重いジョブと、本番イメージのジョブはコンテナランナーを使います。主プールのラベルは `taskly-ci-primary`、既存の予備ホストは `taskly-ci-secondary` です。ホストあたり最大 4 つの CI スロットに対応します。GitHub への登録は保持しますが、各ランナープロセスが受け付けるのは `run.sh --once` による 1 ジョブだけです。その後 systemd が固定したイメージからコンテナを作り直し、作業領域とコンテナのファイルシステムをジョブごとに破棄します。イメージには Playwright のブラウザー依存関係、Python と venv、ビルドツール、Docker Compose が含まれます。
 
-Each slot on the primary host:
+主ホストの各スロットには以下を適用します。
 
-- runs in a fresh container with 1.25 CPUs, 7 GiB memory, and a process limit;
-- shares a unique temporary runner directory at the same host/container path,
-  including runner externals and temporary scripts needed by child containers;
-- uses the host network so published service ports are reachable at localhost;
-  MySQL/Redis use random loopback ports, and real-API E2E jobs are serialized;
-- serializes each workflow's image builds to limit peak disk use and removes the loaded
-  CI-only Airflow image after verification;
-- keeps only its GitHub runner credentials in a read-only Docker volume;
-- mounts the host Docker socket for trusted image build jobs;
-- accepts only trusted repository code; external fork PRs stay on GitHub-hosted runners.
+- CPU 1.25 コア、メモリ 7 GiB、プロセス数制限付きの新規コンテナで動作します。
+- スロット固有の一時ランナーディレクトリをホストとコンテナの同じパスで共有します。子コンテナが使うランナーの外部ツールと一時スクリプトも含みます。
+- ホストネットワークを使い、公開されたサービスポートに localhost で接続します。MySQL と Redis はループバックのランダムなポートを使い、実 API の E2E ジョブは直列化します。
+- ディスク使用量のピークを抑えるため、ワークフロー内のイメージビルドを直列化し、検証後に CI 専用の Airflow イメージを削除します。
+- GitHub ランナーの認証情報だけを読み取り専用の Docker ボリュームに保持します。
+- 信頼済みのイメージビルドジョブ用に、ホストの Docker ソケットをマウントします。
+- 信頼できるリポジトリのコードのみを実行します。外部フォークの PR は GitHub ホストランナーを使います。
 
-The reusable `select-runner` workflow checks fresh heartbeat runs and selects the
-primary pool first, the secondary pool second, then `ubuntu-latest`. Its small
-selection job runs on GitHub-hosted infrastructure so it cannot be stranded by
-either self-hosted pool. A heartbeat is fresh for 15 minutes; a busy or offline
-pool naturally becomes ineligible when it cannot complete the scheduled check.
-External fork PRs always select `ubuntu-latest`. Set the repository variable
-`CI_RUNNER` to `primary`, `secondary`, or `ubuntu-latest` for an explicit override
-of jobs using the selector.
-Production deployment and release-drift checks use the separate `taskly-prod`
-label and its own registration volume. It is recycled after every job in the
-same way as the CI slots. A separate label or container does not isolate it
-from a CI slot with access to the same host Docker socket.
+再利用可能な `select-runner` ワークフローは直近のハートビート実行を確認し、主プール、予備プール、`ubuntu-latest` の順で選びます。選択ジョブ自体は小規模で GitHub ホストランナー上で動くため、どちらのセルフホストプールが停止していても実行できます。ハートビートの有効期間は 15 分です。混雑や停止で定期チェックを完了できないプールは、期間経過後に選択対象から外れます。外部フォークの PR は常に `ubuntu-latest` を選びます。選択処理を使うジョブで明示的に指定するには、リポジトリ変数 `CI_RUNNER` を `primary`、`secondary`、`ubuntu-latest` のいずれかに設定します。
 
-## Lightweight jobs on GitHub-hosted runners
+本番デプロイとリリースドリフトの確認には、専用ラベル `taskly-prod` と専用の登録ボリュームを使います。CI スロットと同様にジョブごとに作り直します。同じホストの Docker ソケットへアクセスできる CI スロットとの間に、ラベルやコンテナだけで隔離は実現できません。
 
-The following jobs run directly on `ubuntu-latest`, independently of `CI_RUNNER`
-and `CI_PRIMARY_ONLY`, so they do not compete for self-hosted build slots:
+## GitHub ホストランナーで動く軽量ジョブ
 
-- Biome, Go vet, and Ruff lint checks;
-- MCP and email-compose builds and tests;
-- batch unit tests, Compose validation/image planning, and final result aggregation;
-- PR coverage tests, metadata, and coverage comments, including fork comments;
-- weekly Discord reports and failed-deploy notifications;
-- the runner selector itself and production image planning.
+次のジョブは `CI_RUNNER` と `CI_PRIMARY_ONLY` にかかわらず、`ubuntu-latest` で直接実行します。セルフホストのビルドスロットを占有しません。
 
-Production planning still depends on the protected-main selector gate and forwards
-its selected runner to image build and release jobs. API tests (including the
-database suite), browser tests, E2E, and Docker image builds continue to use the
-shared selector. Production SSH jobs keep the dedicated `taskly-prod` runner.
+- Biome、Go vet、Ruff の静的解析
+- MCP と email-compose のビルド・テスト
+- バッチの単体テスト、Compose の検証とイメージ計画、最終結果の集約
+- PR のカバレッジテストとメタデータ処理、フォーク向けを含むカバレッジコメント
+- Discord の週次レポート、デプロイ失敗時の通知
+- ランナーの選択処理自体と本番イメージの計画
 
-Standard GitHub-hosted runners are free for this public repository. Artifact and
-cache storage have separate allowances; see [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+本番の計画処理は引き続き保護された `main` の選択処理を経由し、選ばれたランナーをイメージビルドとリリースのジョブへ渡します。DB を含む API テスト、ブラウザーテスト、E2E、Docker イメージビルドも同じ選択処理を使います。本番の SSH ジョブは専用の `taskly-prod` で実行します。
 
-## Primary-only guard for heavy jobs
+この公開リポジトリでは標準の GitHub ホストランナーを無料で利用できます。アーティファクトとキャッシュの保存には別枠があります。[GitHub Actions の課金](https://docs.github.com/en/billing/concepts/product-billing/github-actions)を参照してください。
 
-Normal operation uses the independent hosted selector and heartbeat fallback
-above. Check current repository variables, runner registrations, and recent
-heartbeat/job results before changing the pool. Registration status alone does
-not establish that a pool can run work.
+## 重いジョブを主プールに固定する設定
 
-Set `CI_PRIMARY_ONLY=true` to force heavy selected jobs to primary without
-consulting heartbeats. It takes
-precedence over `CI_RUNNER` and dispatch overrides, so a busy/offline primary
-queues heavy jobs. Secondary heartbeats are skipped. External-fork jobs remain
-GitHub-hosted. Lightweight jobs and the selector always stay GitHub-hosted, so this
-guard no longer permits CI to operate through a complete hosted-runner outage.
-Production release-drift checks always use `taskly-prod`. The secret scan also
-always uses GitHub-hosted runners, independent of this guard.
+通常は、独立したホストランナーでの選択と上記のハートビートによるフォールバックを使います。プール設定を変更する際は、現在のリポジトリ変数、ランナーの登録、直近のハートビートとジョブ結果を確認します。登録状態だけでは、プールが実際にジョブを実行できるかは分かりません。
 
-The MCP client release workflow is deferred entirely while the guard is set:
-its Windows/macOS executables need native runners. After the allowance is
-restored, clear the guard and re-run any deferred release for its tag. The guard
-does not expire automatically. Do not leave `CI_RUNNER=primary` set when restoring
-normal fallback.
+`CI_PRIMARY_ONLY=true` にすると、ハートビートに関係なく対象の重いジョブを主プールに固定します。この設定は `CI_RUNNER` と手動実行時の上書きに優先し、主プールが混雑・停止している間は重いジョブが待機します。予備プールのハートビートはスキップします。外部フォークのジョブは引き続き GitHub ホストランナーで実行します。軽量ジョブと選択処理は常に同ランナーを使うため、GitHub ホストランナーが完全に停止した場合は、この設定でも CI を継続できません。本番のリリースドリフト確認は常に `taskly-prod`、シークレットスキャンは常に GitHub ホストランナーを使います。
+
+設定中は MCP クライアントのリリースワークフローを延期します。Windows・macOS の実行ファイルには各 OS のネイティブランナーが必要です。利用枠が回復したら設定を解除し、延期したリリースを該当のタグで再実行します。設定は自動で失効しません。通常のフォールバックに戻すときは `CI_RUNNER=primary` も解除してください。
 
 ```bash
 gh variable set CI_PRIMARY_ONLY --body true --repo asari194617/taskly
-# Once the allowance is restored:
+# 利用枠が回復したら解除する。
 gh variable delete CI_PRIMARY_ONLY --repo asari194617/taskly
 gh variable list --repo asari194617/taskly
 ```
 
-## Host installation
+## ホストへのインストール
 
-Run the installer as root on an Ubuntu runner host. It installs Docker when
-needed, creates the unprivileged `taskly-runner` service account, builds the
-pinned image, and installs the root-owned launchers and systemd unit:
+Ubuntu のランナーホストで、root としてインストーラーを実行します。必要に応じて Docker をインストールし、非特権のサービスアカウント `taskly-runner` を作成し、固定したイメージをビルドして、root 所有の起動スクリプトと systemd ユニットをインストールします。
 
 ```bash
 sudo infra/actions-runner/install-host.sh
 ```
 
-Job workspaces are created below `/var/lib/taskly-runner/work` by default. This
-keeps runner binaries, checkouts, and child-container bind mounts off `/tmp`,
-which is a small tmpfs on some Ubuntu installations. The launcher installs its
-cleanup trap before populating a workspace, so a failed initialization does not
-leak disk space.
+ジョブの作業領域は既定で `/var/lib/taskly-runner/work` 配下に作成します。Ubuntu の構成によっては `/tmp` が小さな tmpfs なので、ランナーの実行ファイル、チェックアウト、子コンテナのバインドマウントには使いません。起動スクリプトは作業領域にファイルを置く前にクリーンアップ用のトラップを設定するため、初期化の失敗でディスクを占有し続けることを防ぎます。
 
-The default per-job limits are 3 CPUs and 7 GiB. Override them for the host's
-capacity. For example, configure four primary slots only when the host has
-sufficient CPU and memory:
+ジョブあたりの既定の上限は CPU 3 コアとメモリ 7 GiB です。ホストの容量に合わせて上書きしてください。たとえば主プールの 4 スロットは、CPU とメモリに余裕がある場合にだけ設定します。
 
 ```bash
 sudo env TASKLY_RUNNER_CPUS=1.25 TASKLY_RUNNER_MEMORY=7g \
@@ -110,7 +65,7 @@ sudo env TASKLY_RUNNER_CPUS=1.25 TASKLY_RUNNER_MEMORY=7g \
   infra/actions-runner/install-host.sh
 ```
 
-Example configuration for a smaller secondary host with one CI slot:
+小規模な予備ホストで CI スロットを 1 つ動かす場合の設定例です。
 
 ```bash
 sudo env TASKLY_RUNNER_CPUS=2 TASKLY_RUNNER_MEMORY=2300m \
@@ -119,10 +74,7 @@ sudo env TASKLY_RUNNER_CPUS=2 TASKLY_RUNNER_MEMORY=2300m \
   infra/actions-runner/install-host.sh
 ```
 
-Do not enable more concurrent slots than the host can support. Create a
-repository runner registration token, then register the required CI slots and
-the production slot. Registration tokens are short-lived and are not stored on
-the host.
+ホストが同時に処理できる数までスロットを有効にしてください。リポジトリのランナー登録用トークンを作成し、必要な CI スロットと本番スロットを登録します。トークンの有効期間は短く、ホストには保存しません。
 
 ```bash
 for slot in 1 prod; do
@@ -132,84 +84,39 @@ for slot in 1 prod; do
 done
 ```
 
-CI slot names and labels come from `TASKLY_RUNNER_NAME_PREFIX` and
-`TASKLY_RUNNER_CI_LABEL`. The production slot always registers as `taskly-prod`
-with the `taskly-prod` label. Check registrations and services after installation:
+CI スロットの名前とラベルは `TASKLY_RUNNER_NAME_PREFIX` と `TASKLY_RUNNER_CI_LABEL` から決まります。本番スロットの名前とラベルは常に `taskly-prod` です。インストール後に登録とサービスを確認します。
 
 ```bash
 systemctl is-active taskly-runner@1.service taskly-runner@prod.service
 docker ps --filter label=taskly.actions-runner=single-job
 ```
 
-The credential volumes are copied into each fresh container rather than mounted
-writable. A job therefore cannot persist changes to its runner registration or
-workspace. The Docker socket remains equivalent to host-level access, which is
-why only trusted same-repository code may select either CI pool. Container recycling
-is not a security boundary against malicious code with Docker access. External
-fork code must not be copied into a trusted branch without review.
+認証情報のボリュームは新規コンテナにコピーし、書き込み可能な状態ではマウントしません。ジョブによるランナー登録や作業領域への変更を次の実行に持ち越さないためです。Docker ソケットへのアクセスはホストレベルのアクセスに相当するため、両 CI プールでは信頼できる同一リポジトリのコードだけを実行します。コンテナを作り直しても Docker にアクセスできる悪意のあるコードを隔離できません。外部フォークのコードを信頼済みブランチへ取り込むにはレビューが必要です。
 
-## Updating existing slots
+## 既存スロットの更新
 
-Build the new image before installing `run-slot.sh`. Existing slots finish their
-current job with the old launcher; systemd picks up the new launcher on their
-next start. Allow active jobs to complete before restarting an idle slot.
-Keep the previous image and launcher until CI is verified for rollback.
-For the pinned Node and Python runtimes, dispatch `update-primary-runners` and
-`update-secondary-runner` from protected `main`. The first workflow verifies
-the four primary CI slots and the production slot; the second verifies the
-secondary CI slot. The runner image uses Python 3.14.10 for `python3`.
+`run-slot.sh` をインストールする前に新しいイメージをビルドします。既存のスロットは旧起動スクリプトで現在のジョブを終え、systemd は次の起動から新しいスクリプトを使います。スロットを再起動する場合は実行中のジョブが完了するまで待ちます。ロールバックに備え、CI の検証が終わるまで前のイメージと起動スクリプトを保持します。固定した Node.js と Python のランタイムを更新するには、保護された `main` から `update-primary-runners` と `update-secondary-runner` を実行します。前者は主プールの CI スロット 4 つと本番スロット、後者は予備プールの CI スロットを検証します。ランナーイメージの `python3` は Python 3.14.10 です。
 
-The host bind directory is created under the configured
-`TASKLY_RUNNER_WORK_ROOT`, with a runner-owned subdirectory. The launcher
-removes it when the job finishes,
-including files left by root in job containers. After a forced host shutdown,
-remove stale directories only after checking no runner/container uses them.
+ホストのバインド用ディレクトリは `TASKLY_RUNNER_WORK_ROOT` 配下に作成し、その下にランナーが所有するディレクトリを置きます。起動スクリプトはジョブ完了後、コンテナ内の root が作ったファイルも含めて削除します。ホストが強制停止した場合、残ったディレクトリはランナーとコンテナが使っていないことを確認してから削除します。
 
-Runner selection, lightweight jobs, the final fallback, and native client builds
-use standard GitHub-hosted runners. Public-repository compute is free; private
-repositories consume their included allowance before additional billing applies.
-Review workflow changes before approving any external fork run;
-a PR can propose changes to its own workflow definitions.
+ランナー選択、軽量ジョブ、最後のフォールバック、ネイティブクライアントのビルドは標準の GitHub ホストランナーで動作します。公開リポジトリのコンピューティングは無料で、非公開リポジトリは利用枠を使い切ると追加課金の対象になります。PR 自体がワークフローの変更を提案できるため、外部フォークの実行を承認する前に差分を確認してください。
 
+## スロットを安全に停止する手順
 
-## Stop a slot safely
+スロットが待機状態になるまで待ってから systemd サービスを停止します。ユニットの `ExecStop` は `taskly-ci-slot-N` を明示的に停止します。Docker クライアントだけを止めると、コンテナがオンラインのままジョブを受け付ける場合があります。`KillMode=mixed` と起動スクリプトのシグナル処理により、終了時のクリーンアップで一時作業領域を削除します。通常の 1 ジョブ終了時にコンテナがすでに消えていれば問題ありません。
 
-Wait for the slot to become idle before stopping its systemd service. The unit's
-`ExecStop` explicitly stops `taskly-ci-slot-N`; stopping only the Docker client
-can leave the container online and accepting jobs. `KillMode=mixed` and the
-launcher's signal handler allow its EXIT cleanup to remove the temporary
-workspace. A missing container is harmless during a normal single-job exit.
+起動スクリプトとユニットを更新したら `sudo systemctl daemon-reload` を実行します。待機中のスロットを停止した後は、`systemctl is-active taskly-runner@N.service` と `docker ps --filter name=taskly-ci-slot-N` の両方を確認します。本番スロットのサービス名は `taskly-runner@prod.service`、コンテナ名は `taskly-prod` です。
 
-After updating the launcher and unit, run `sudo systemctl daemon-reload`.
-Check both `systemctl is-active taskly-runner@N.service` and
-`docker ps --filter name=taskly-ci-slot-N` after stopping an idle slot.
-For the production slot, use `taskly-runner@prod.service` and container name
-`taskly-prod`.
+## ハードウェア障害が疑われる場合
 
-## Investigating suspected hardware corruption
+無関係なプログラムの異常終了、新規ダウンロードしたモジュールの不正なバイト列、Git の pack・inflate の繰り返し失敗は、ホストのハードウェア障害を示す場合があります。調査中は対象ホストへの CI と本番ジョブの割り当てを停止します。コンテナの再作成やキャッシュの削除で故障したメモリは修復できません。
 
-Unrelated programs crashing, invalid bytes in freshly downloaded modules, or
-repeated Git pack/inflate failures can indicate host hardware problems. Stop
-assigning CI and production jobs to the affected host while investigating.
-Rebuilding runner containers or deleting caches does not repair failing memory.
+運用担当者が承認した保守時間にメモリ診断を行います。広いメモリ範囲を複数回診断し、依存関係の完全性、アプリケーションのテスト、新規イメージのビルドを確認してからスロットを復旧します。診断ログ、失敗回数、ホスト識別子、修理証跡、インシデントの時系列はアクセスを制限した運用記録に保存します。ランナー登録がオンラインでも、ハードウェアの正常性は別途確認が必要です。
 
-Use an operator-approved maintenance window for memory diagnostics. Validate
-substantial RAM over multiple passes, dependency integrity, application tests,
-and fresh image builds before restoring slots. Keep diagnostic logs, failure
-counts, host identifiers, repair evidence, and incident timelines in restricted
-operations records. Online runner registrations do not establish hardware health.
+## 公開リポジトリの実行境界
 
-## Public repository boundary
+リポジトリの `collaborators_only` ポリシーは外部からの PR 作成を拒否します。メンテナーは PR、レビュー、マージの手順を維持します。この運用形態ではリポジトリを分離する必要はありません。コラボレーターと GitHub App のアクセスは信頼できるアクターに絞り、未レビューの外部コードを取り込まないでください。
 
-External PR creation is blocked by the repository's `collaborators_only` PR
-policy. Maintainers retain their PR/review/merge workflow; repository separation
-is not required for this contribution model. Keep collaborator and GitHub App
-access limited to trusted actors, and do not import unreviewed external code.
+ランナー選択はジョブのルーティングを行います。外部 PR を将来有効にすると、PR の変更からワークフローのラベルを直接編集できるため、実行環境の隔離を先に再設計してください。コンテナの作り直しとラベルの分離だけでは、ホストの Docker にアクセスできるコードを隔離できません。
 
-The runner selector is routing logic, not an access-control boundary. If external
-PRs are enabled in the future, they could edit workflow labels directly. Before
-changing that policy, redesign the untrusted execution boundary. Container
-recycling and distinct labels do not contain code with host Docker access.
-
-Follow the [publication gates](../../docs/operations/repository-publication.md)
-for policy readback, event-trigger review, and verification before public release.
+公開前の設定値の読み戻し、イベントトリガーのレビュー、検証は[公開条件](../../docs/operations/repository-publication.md)に従ってください。
