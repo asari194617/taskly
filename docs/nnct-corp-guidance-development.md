@@ -1,59 +1,34 @@
-# NNCT company guidance service
+# 長岡高専の企業ガイダンス
 
-The [taskly-nnct-corp-guidance repository](https://github.com/asari194617/taskly-nnct-corp-guidance)
-provides the company directory, assigned visits, schedule, venue maps, and saved
-companies for the NNCT guidance event. It is a separate application using
-taskly-auth; it is not required to start the Taskly application stack.
+[企業ガイダンスのリポジトリ](https://github.com/asari194617/taskly-nnct-corp-guidance)では、企業検索、指定企業、スケジュール、会場マップ、「気になる」企業を扱います。認証には taskly-auth を使います。ガイダンスは独立したアプリケーションとして起動できます。
 
-| Component | Development | Production |
+| サービス | 開発環境 | 本番環境 |
 | --- | --- | --- |
-| Next.js web client | `https://local.nnct-corp-guidance-2026.taskly.iy0306.com` | `https://nnct-corp-guidance-2026.taskly.iy0306.com` |
+| Next.js の画面 | `https://local.nnct-corp-guidance-2026.taskly.iy0306.com` | `https://nnct-corp-guidance-2026.taskly.iy0306.com` |
 | Go API | `https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com` | `https://api.nnct-corp-guidance-2026.taskly.iy0306.com` |
-| MySQL | Dedicated Compose DB, host loopback `3308` | Separate database and DB account in the production MySQL deployment |
+| MySQL | 専用の Compose DB。ホストからはループバックの `3308` | 本番 MySQL 上の専用データベースとDBアカウント |
 
-The web client is statically exported to a dedicated Cloudflare R2 bucket.
-The Go API runs on the application server and stores event information,
-user-specific saved companies, and roster-number preferences in MySQL. A
-separate **private** R2 bucket stores the PDF documents and map images. After
-authentication, the API issues S3 presigned URLs and the browser reads document
-bytes directly from R2. The API does not read local document files or mount a
-document volume. Source documents, extracted data, and credentials remain
-outside Git; the public UI bucket receives only the static web build.
+Web クライアントは静的に書き出し、専用の Cloudflare R2 バケットで配信します。Go API はアプリケーションサーバーで動作し、開催情報、利用者ごとの「気になる」企業、名簿番号の設定を MySQL に保存します。
 
-## Register a development OAuth client
+PDF と地図画像は別の非公開 R2 バケットで保管します。認証後に API が S3 署名付き URL を発行し、ブラウザは R2 から直接資料を取得します。API に資料用ボリュームはマウントしません。原本、抽出データ、認証情報は Git の外に置き、公開用バケットには静的な画面のみを配信します。
 
-Use the [shared local HTTPS setup](local-development.md#local-https) and the
-[guidance repository's HTTPS settings](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/development.md#ローカル-https).
-For HTTPS, register `https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com/auth/callback`
-in the development auth configuration. The following instructions and examples
-use the older loopback HTTP workflow.
+<a name="register-a-development-oauth-client"></a>
 
-Start a separate [taskly-auth development environment](https://github.com/asari194617/taskly-auth#開発環境)
-and prepare a development user there. In that environment, append this entry to
-`OAUTH_PUBLIC_CLIENTS_JSON`, retaining any existing registrations:
+## 開発用 OAuth クライアントの登録
+
+[共通のローカル HTTPS 手順](local-development.md#local-https)と[ガイダンスの HTTPS 設定](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/development.md#ローカル-https)に従って起動します。HTTPS を使う場合は、開発用の認証環境で `https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com/auth/callback` を登録します。
+
+ループバック HTTP を使う場合は、[taskly-auth の開発環境](https://github.com/asari194617/taskly-auth#開発環境)を起動して開発用ユーザーを用意し、`OAUTH_PUBLIC_CLIENTS_JSON` の配列に次の登録を追加します。他のクライアントの登録は保持し、同じ client ID の登録があれば更新してください。
 
 ```json
 {"client_id":"nnct-corp-guidance-2026","redirect_uri":"http://127.0.0.1:3071/auth/callback"}
 ```
 
-The setting is an array of these objects. Recreate the development auth service
-after changing its configuration. The guidance service uses a public OAuth
-client with PKCE S256 and does not need Taskly's confidential client secret or
-its internal synchronization token. Do not replace the existing `taskly-web`
-client or change Taskly's authentication ownership flags for this setup.
-Use the dedicated client ID above in the isolated development auth environment
-as well: Taskly's first-party guidance bridge accepts that identity only.
-Production uses a separate auth environment and its registered HTTPS callback.
+設定を変更したら、開発用の認証コンテナを再作成します。ガイダンスは PKCE S256 を使う公開クライアントです。Taskly の OAuth クライアントシークレットや内部同期用トークンは不要です。`taskly-web` と認証の所有権フラグは現在の設定を使います。Taskly と連携する開発環境では、ガイダンス専用の client ID `nnct-corp-guidance-2026` を使います。本番では別の認証環境に登録した HTTPS のコールバックを使います。
 
-Use `127.0.0.1` consistently for the guidance UI, API, and callback. taskly-auth accepts an
-HTTP public-client callback on a loopback IP, but not an HTTP `localhost`
-callback. The guidance API also requires the browser Origin to match its
-configured UI origin exactly.
+ループバック HTTP の画面・API・コールバックは `127.0.0.1` に揃えます。taskly-auth の公開クライアントで HTTP コールバックを使う場合、ホストにはループバック IP が必要です。ガイダンス API に送信するブラウザの `Origin` は、設定した画面のオリジンと完全に一致させます。
 
-The identity provider has its own origin. Keep taskly-auth's default issuer and
-authentication UI/API on `localhost`, as described in its setup guide. If that
-service already uses a different origin, set the guidance `AUTH_ISSUER` to its
-actual issuer; do not change only one side of the provider's browser/API setup.
+認証サービスのオリジンは独立して設定できます。ループバック HTTP では taskly-auth の既定の `localhost` を使用します。別の名前で起動している場合は、ガイダンスの `AUTH_ISSUER` にその実際の issuer を設定します。
 
 ## Start the database and import private data
 

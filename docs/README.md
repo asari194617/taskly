@@ -1,7 +1,6 @@
 # Documentation index
 
-Start with the [repository structure](../README.md#repository-structure) and
-[local development guide](local-development.md) for a new checkout.
+新しくチェックアウトしたら、[リポジトリの構成](../README.md#repository-structure)と[ローカル開発ガイド](local-development.md)を確認してください。
 Operational references describe the checked-in implementation; production
 credentials, incident evidence, and user data belong in restricted records.
 
@@ -28,7 +27,7 @@ they do not provision that service:
 - [User projections](auth-user-projection-sync.md) and [profile ownership](account-profile-ownership.md)
 - [Account lifecycle synchronization](auth-account-lifecycle-sync.md)
 - [Session cookies](session-cookie-migration.md)
-- [NNCT company guidance setup](nnct-corp-guidance-development.md), a separate taskly-auth client
+- [長岡高専の企業ガイダンスのセットアップ](nnct-corp-guidance-development.md), a separate taskly-auth client
 - [Account closure, erasure, and data requests](operations/account-data.md)
 - [Policy publication and consent records](legal/README.md)
 
