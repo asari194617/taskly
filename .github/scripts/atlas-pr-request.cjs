@@ -1,12 +1,16 @@
+const isRepoWriter = require('./repo-writer.cjs');
+
 module.exports = async function resolveRequest(github, context, core) {
   const { owner, repo } = context.repo;
   const { comment, issue, repository } = context.payload;
-  const command = /^\/?(terraform|atlas) (plan|apply)(?: (\S+))?$/.exec(comment.body);
+  if (!await isRepoWriter(github, context.repo, comment.user)) return;
+  core.setOutput('respond', 'true');
+  const command = /^\/?atlas (plan|apply)(?: (\S+))?$/.exec(comment.body);
   const respond = (message) => core.setOutput('message', message);
   if (command?.[0] !== comment.body) {
-    return respond('Usage: `terraform plan`, `terraform apply`, `atlas plan` or `atlas apply`.');
+    return respond('Usage: `atlas plan` or `atlas apply`.');
   }
-  const [, tool, operation, argument] = command;
+  const [, operation, argument] = command;
   const argumentFormat = operation === 'plan' ? /^[0-9a-f]{40}$/ : /^[1-9][0-9]{0,18}$/;
   if (argument && !argumentFormat.test(argument)) {
     return respond(operation === 'plan' ? 'Use a full 40-character commit SHA.' : 'Use a numeric plan run ID.');
@@ -35,8 +39,8 @@ module.exports = async function resolveRequest(github, context, core) {
         }
       `, { owner, repo, sha: revision });
       const signature = source?.object?.signature;
-      if (!signature?.isValid || signature.signer?.login !== owner) {
-        return respond(`Review the current commit, then post \`${tool} plan ${revision}\`. An argument-free plan requires a verified owner signature.`);
+      if (!signature?.isValid || signature.signer?.login !== comment.user.login) {
+        return respond(`Review the current commit, then post \`atlas plan ${revision}\`. An argument-free plan requires a verified signature from the commenter.`);
       }
     }
   }
@@ -48,7 +52,7 @@ module.exports = async function resolveRequest(github, context, core) {
     return respond('Update the PR branch with the default branch, review the new commit, then request a plan.');
   }
 
-  const artifactName = `${tool}-pr-${issue.number}-${pr.base.sha}-${revision}`;
+  const artifactName = `atlas-pr-${issue.number}-${pr.base.sha}-${revision}`;
   if (operation === 'apply') {
     const endpoint = argument
       ? 'GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts'
@@ -62,19 +66,18 @@ module.exports = async function resolveRequest(github, context, core) {
     eligible.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
     const selected = eligible[0];
     if (!selected) {
-      return respond(`No saved plan exists for this PR commit. Request \`${tool} plan\` and review its result.`);
+      return respond(`No saved plan exists for this PR commit. Request \`atlas plan\` and review its result.`);
     }
     const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: selected.workflow_run.id });
-    if (run.path !== '.github/workflows/terraform-pr-comments.yml' || run.event !== 'issue_comment' ||
+    if (run.path !== '.github/workflows/atlas-pr-comments.yml' || run.event !== 'issue_comment' ||
         run.run_attempt !== 1 || run.conclusion !== 'success' || run.head_sha !== pr.base.sha ||
         run.updated_at >= comment.created_at) {
-      return respond(`The saved plan did not come from a successful command run. Request a new \`${tool} plan\`.`);
+      return respond(`The saved plan did not come from a successful command run. Request a new \`atlas plan\`.`);
     }
     core.setOutput('plan_run', String(run.id));
     core.setOutput('artifact_id', String(selected.id));
   }
 
-  core.setOutput('tool', tool);
   core.setOutput('command', operation);
   core.setOutput('revision_sha', revision);
   core.setOutput('base', pr.base.sha);
