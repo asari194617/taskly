@@ -125,7 +125,9 @@ Web の[ブラウザテスト](apps/web/tests/browser/README.md)、[実 API を�
 
 [ドキュメント一覧](docs/README.md)から、現行の資料と過去の要件・提案を参照できます。
 
-- [`docs/Specification.md`](docs/Specification.md) — プロダクト要件と計画
+- [現行仕様](docs/Specification.md) — 利用者と外部クライアントから見える挙動
+- [システム構成と設計](docs/architecture.md) — サービスとデータの責務
+- [構想と過去の提案](docs/roadmap.md) — ネイティブアプリなどの旧案
 - [`docs/schema.md`](docs/schema.md) — スキーマの概要。実際の定義は `apps/server/schema.sql`
 - [`docs/mcp-docs.md`](docs/mcp-docs.md) — MCP クライアントとサーバーのガイド
 - [`docs/initial-settings.md`](docs/initial-settings.md) — CI/CD と本番運用
