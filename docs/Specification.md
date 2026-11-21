@@ -1,213 +1,39 @@
-# Taskly
+# Taskly の現行仕様
 
-> この文書は当初の要件・将来構想を含む資料です。✅やコード例は現在の実装完了を保証しません。
-> 現行の構成・起動方法は [README](../README.md)、実装済み機能と運用手順は
-> [文書索引](README.md)を参照してください。認証・プロフィールは別サービスの
-> taskly-auth が担当し、ネイティブクライアントの構想はこのリポジトリの実装範囲に含みません。
+Taskly は授業の課題と日直を管理するサービスです。この文書は、リポジトリの現行実装に基づいて、利用者と外部クライアントから見える挙動を説明します。サービス間の責務は[システム構成と設計](architecture.md)、将来の案は[構想と過去の提案](roadmap.md)、開発・運用手順は[ドキュメント一覧](README.md)を参照してください。
 
-# 概要
+## Web クライアント
 
-シンプルで高速な授業管理サービス。
+- ブラウザーで利用でき、PWA 用のマニフェストと Service Worker を提供します。
+- 画面は日本語・英語に対応します。ライト・ダークテーマを切り替えられ、テーマの指定がなければ端末の設定に従います。配信メールの言語は画面の言語とは別に設定できます。
 
-## 対応プラットフォーム
+## 課題
 
-- Web (PWA対応)
-- iOS
-- Android
-- Mac
-- Windows
-- API✅
-- iCal (カレンダーとして購読可能にする)✅
-- MCP(Model Context Protocol)サーバー
-- Teams (特定のメールアドレスに送信することでPower Automateが実行)✅
-    - タイトルは`[Taskly]tasks:add`としてください。✅
-    - 本文は下記のようにしてください。タイトルの形式は`教科名: **実験1のレポート提出(○/△ ○○時まで)**`のような形にしてください。descriptionにはtasksテーブルでいう`description`や提出の有無を記載してください。✅
-    
-    ```json
-    {
-      "title": "タイトル",
-      "description": "説明"
-    }
-    ```
-    
-    - 処理には時間がかかるので、タスク追加時に非同期処理として実装する。✅
-    - 処理が終了すると、任意のエンドポイントに
-    
-    ```json
-    {
-      "is_success": true,
-      "task_id": "@{body('Parse_JSON')?['task_id']}",
-      "message_id": "@{outputs('Post_message_in_a_chat_or_channel')?['body/id']}",
-      "conversation_id": "@{outputs('Post_message_in_a_chat_or_channel')?['body/conversationId']}"
-    }
-    ```
-    
-    というbodyを含むPOSTリクエストを送信できます。このエンドポイントのURLも作成してください。
-    
+- 課題一覧の通常表示は今日以降の締切を対象とし、締切が近い順に日付ごとに表示します。検索はタイトルと説明を対象とし、期限切れも検索できます。API では期限切れだけに絞り込めます。
+- 課題の作成、編集、画像の添付、利用者ごとの完了状態の切り替えに対応します。課題ごとに完了操作を無効にできます。
+- 一般ユーザーは既定で課題を作成でき、自分の課題を編集できます。削除には追加の権限が必要です。管理ロール（`admin`、`manager`）は他の利用者の課題も編集・削除できます。一般ユーザーへの非表示課題の扱いと API ごとの権限は、API の詳細を参照してください。
 
-## 対応言語
+一覧・検索・権限は [API の課題操作](api-boundaries.md#課題操作の契約)、画面の操作は [Web の課題操作](clients/web/README.md)と[課題の画像](features/task-images.md)を参照してください。
 
-- 日本語
-- 英語
+## 通知と日直
 
-## テーマ
+- 期限が近い課題を朝 07:00 と夕方 17:00（JST）に通知します。利用者はメールと Web Push の配信方法、および通知の種類を設定できます。時間帯ごとの対象と配信条件は[通知設定・配信](notifications.md)を参照してください。
+- 日直は、有効期間内のサイクルに登録されたグループを順番に担当へ割り当てます。毎日 03:00（JST）に担当順を更新し、土日・祝日や学校カレンダーで日直を行わない日は更新をスキップします。有効なサイクルがある日直実施日は、08:30（JST）に当日の担当者へ通知します。
+- 管理画面で日直のサイクル、グループ、担当順を管理できます。所定の日直メールを受け付ける連携口もあります。連携の入出力は[日直メールの受信](apps/server/day-shift-skip.md#日直メールの受信)を参照してください。
 
-- ダーク
-- ライト（既定）
-- 端末の設定に従う
+## アカウントと管理
 
-# 機能
+- ログイン、ログアウト、プロフィールと認証方法の管理は taskly-auth と連携します。Taskly の利用には、適用されるポリシーへの同意が必要です。ブロック中のユーザーは認証が必要な機能を利用できません。
+- 管理画面ではユーザーの検索、ブロックと解除、ロール・権限の管理、教科、日直、通報、モデレーション、課題タイプの初期設定を扱います。操作ごとに必要なロールが異なります。
+- 利用者はアカウントを閉鎖でき、データは保持期限の経過後に消去されます。
 
-- 課題のCRUD・通知・検索
-- 日直の通知✅
-- (ユーザー画面)APIキーの管理✅
-- ブロックリスト
-- アカウントシステム
-    - ログイン✅
-    - ログアウト✅
-    - パスワードの設定(デフォルトはメールに送られる6桁の番号で認証)✅
-    - 表示名の設定(デフォルトはメールアドレス)✅
-    - アカウント削除 (レコードの削除ではなく`is_deleted`フラグで対応)✅
-    - 2段階認証の設定
-        - パスキー
-        - TOTP
-        - メール(パスワード有効時のみ切り替え可能に)
-        - リカバリーコード
-    - セッションの管理
-    - アカウントのログ閲覧
+[アカウントの担当範囲](account-profile-ownership.md)、[ポリシーと同意](legal/README.md)、[管理操作の認可](apps/server/graphql-admin-authorization.md)、[退会とデータ消去](auth-account-lifecycle-sync.md)を参照してください。
 
-## 通知方法
+## 外部連携
 
-- メール
-- Web Push
-- Teams 通知（メール経由で Power Automate を実行）
-- ネイティブアプリからのプッシュ通知
-
-# 技術仕様
-
-## 技術構成
-
-- アプリケーションサーバー/バッチ処理: Go (Fiber)
-- フロントエンド：Astro (Shadcnを利用し、CloudFlare Pagesにデプロイ)
-- iOS/iPad: Swift
-- Android: Kotlin
-- Mac: Swift
-- Windows: WinUI 3
-- CDN: CloudFlare R2 (S3のクライアントを使って管理)✅
-- 明日もやるかどうかの判定: Gemini’s API (毎回文面が異なるため)
-- CI/CD: GitHub Actions (API、MCP、メール生成、Airflowイメージのビルドと本番デプロイ)
-- DB: MySQL✅
-- メール生成: React Email
-- メトリクス：Prometheus、Datadog (アプリケーションサーバー側にローカルからのみアクセスできる`/metrics`エンドポイントを用意してください)✅
-- (APIとiCalとMCPとTeamsを除く)各プラットフォームとアプリケーションサーバーのやりとり: GraphQL✅
-- APIプラットフォーム: REST API✅
-
-現在の API 用途と例外は [api-boundaries.md](./api-boundaries.md) を参照。
-
-## スキーマ
-
-[schema.md](./schema.md)
-
-## ページ
-
-- 課題一覧(トップ)
-- 期限を過ぎた課題(無限スクロールを実装)
-- 設定
-
-### 補足
-
-- それぞれの課題は、期限が近い順, 日付ごとでトップページに表示される
-- 期限を過ぎた課題は表示しない
-
-## 注意事項
-
-- 明日も行うことを通知する文面は毎回異なるため、GeminiのAPIに投げて判定してもらってください。
-- メールを判定する際、Gemini APIが判定に失敗した場合や、メールが届かなかった場合はDiscordのWebhookにembedsで通知してください。
-- 手動でも未履行扱いを行えるようにしてください。
-- 正規表現で「日直」が入ったメールをPower Automateで抽出し、APIを叩かせます。このためのエンドポイントも作成してください。
-- モノレポで構築してください。✅
-- 正常系だけではなく異常系の動作も実装してください。✅
-- 権限管理のために`<Permission>`コンポーネントを作成して利用してください。✅
-- 2段階認証については、以下のような形でテーブルを作ってください(必要があれば適宜変えてもいいです)。パスキーは複数登録できるようにしてください。✅
-    
-    ```sql
-    -- パスキー (WebAuthn)
-    CREATE TABLE passkeys (
-        id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-        user_id BIGINT UNSIGNED NOT NULL,
-        credential_id VARCHAR(255) UNIQUE NOT NULL, -- クレデンシャルID
-        public_key TEXT NOT NULL,
-        sign_count BIGINT NOT NULL,
-        device_name VARCHAR(255), -- ユーザーが識別するための名前
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    
-    -- TOTP（認証アプリ）
-    CREATE TABLE totp_secrets (
-        id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-        user_id BIGINT UNSIGNED NOT NULL UNIQUE, -- 通常ユーザー1人につき1つ
-        secret VARCHAR(255) NOT NULL, -- 暗号化して保存
-        is_active BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    
-    -- リカバリーコード
-    CREATE TABLE recovery_codes (
-        id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-        user_id BIGINT UNSIGNED NOT NULL,
-        hashed_code VARCHAR(255) NOT NULL, -- ハッシュ化して保存
-        is_used BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-    ```
-    
-- それぞれのプラットフォーム、デザインシステムにネイティブでベストな実装を目指してください。(バッチで課題件数を表示するなど)
-- 通常、ユーザーは有効なAPIキーを10個まで発行できます(上限に達しても、キーを無効にすれば新しいキーを発行できます)。adminの場合は制限なく利用できます。managerの場合は100個まで利用できます。
-- ユーザーのAPIキーの上限は、adminまたはmanagerがpermissionsにtargetを`api_key_limit`を設定された場合にはvalueの値の個数まで作成できます。
-- APIドキュメントをOpenAPIのYAML形式で作成してください。
-- 日直の通知は毎日8:30に行ってください。
-- Redisにセッション情報を記録して、高速化してください。
-- 管理画面も作成し(Webのみ)、adminとmanagerがアクセスできるようにしてください。
-- 管理画面でのカレンダー管理で、日付範囲を指定したイベントの追加ができるようにしてください。
-- 日直のループ終了が近くなったら、バッチ処理でday_shift_assignmentsテーブルに次のサイクルを自動的に追加してください。このバッチ処理は毎日実行し、終了が近いか確認させてください。ただしday_shift_cyclesテーブルにバッチ処理時点で有効期間内のサイクルがない場合は、この処理を実施せず、DiscordのWebhookのembedsでエラーを出せるようにしてください。
-- すべてのユーザーは通常、課題を追加・編集できます。adminまたはmanagerは削除ができます。
-- iCalのURLやAPIキーは設定から発行できるようにしてください。✅
-- iCalのURLを発行する場合は、URLクエリにtokenを入れたものを発行してください。✅
-- アプリケーションサーバーとフロントはサブドメインを分けるため、適切なCORSを設定してください。
-- それぞれのサービスは最終的にDockerコンテナにしたいです。✅
-- タスクを追加する際は、Outlookを介してPower Automateで通知します。送信先メールアドレスは環境変数で設定できるようにしてください。✅
-  - このタイトルは`[Taskly]tasks:add`としてください。✅
-
-## 管理画面
-
-主にこれらの機能を入れて欲しいです。
-
-- ユーザー一覧・検索・編集機能
-- ユーザーのブロック/ブロック解除
-- ロール（admin/manager）の付与・剥奪
-- 権限(permissions)の設定
-- カレンダーの編集（日付範囲指定での休日/営業日設定）
-- 日直サイクルの管理
-- システム全体のログ閲覧
-
-# Notes
-
-## 全体
-
-- ブロックリストに入っているユーザーはすべての機能を利用できません。ログイン時に確認してください。
-- GitHub Actionsを使用して、アプリケーションサーバーとMCPサーバー用(これらを一つにまとめても構いません)のCI/CDパイプラインを構築してください。
-- Webについて、Shadcnのコンポーネントを使用する際は自力実装ではなく必ず`npx shadcn@latest add <component>`で追加してください。
-
-## 日直について
-
-- 原則、平日に二人ずつ割り当て(ペアは一緒でサイクル)
-- 未履行の場合は次の日も継続される
-- 未履行である場合、特定の送信者からタイトルまたは本文に「日直」の文字列を含むメールが届く
-- 未履行であることを知らせるメールは毎回文面が異なります。
-- 臨時休校などのために、日直をずらす操作が発生することがあります。
-- 日直のメンバーは一定期間ごとに変更されます。
-- 当該ユーザーに対してメールで通知します。
+| 機能 | 利用方法と制約 |
+| --- | --- |
+| 公開 REST API | 設定から API キーを発行し、`X-API-Key` で認証します。発行時の上限は無効化していないキーを数え、一般ユーザーは既定で 10 件、`manager` は 100 件、`admin` は無制限です。一般ユーザーの上限は個別に設定できます。[公開 OpenAPI](../apps/docs/openapi/openapi.yaml) |
+| iCal | 設定から購読 URL を発行します。トークンは `/ical/{token}.ics` のパスに含まれます。期限のあるトークンや取得対象の詳細は [iCal フィード](ical-feed.md)を参照してください。 |
+| MCP | 設定から MCP トークンを発行して接続します。MCP での課題操作はトークン所有者の課題に限られます。[MCP ガイド](mcp-docs.md) |
+| Teams | Power Automate と連携して、課題の受信と投稿を行います。連携の契約と非同期処理は [Teams・日直の連携](apps/server/day-shift-skip.md)と[連携ジョブ](integration-jobs.md)を参照してください。 |

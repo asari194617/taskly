@@ -4,6 +4,7 @@
 
 ## システム構成と機能
 
+- [Taskly の現行仕様](Specification.md)と[システム構成と設計](architecture.md)
 - [リポジトリ概要](../README.md)と [Web クライアントの開発](../apps/web/README.md)
 - [API の責務](api-boundaries.md)、[公開 OpenAPI](../apps/docs/openapi/openapi.yaml)、[スキーマの概要](schema.md)
 - [Web での課題操作](clients/web/README.md)と[モバイルでの課題入力](clients/web/mobile-task-entry.md)
@@ -13,7 +14,7 @@
 - [iCal フィード](ical-feed.md)と [MCP ガイド](mcp-docs.md)
 - [メール生成サービス](../apps/email-compose/README.md)と[送信者ロゴ](email-sender-logo.md)
 - [セキュリティ関連の破壊的操作の確認](features/security-destructive-action-confirmations.md)、[モバイルの設定画面遷移](features/settings-mobile-navigation.md)、[ヘッダーロゴによる画面遷移](features/header-logo-navigation.md)
-- [GraphQL の管理者権限](apps/server/graphql-admin-authorization.md)と[日直のスキップ](apps/server/day-shift-skip.md)
+- [GraphQL の管理者権限](apps/server/graphql-admin-authorization.md)と[Teams と日直の連携](apps/server/day-shift-skip.md)
 
 ## 認証とアカウントデータ
 
@@ -27,8 +28,9 @@ Web のログイン、認証方法の管理、プロフィール画面には [ta
 - [アカウントの閉鎖、データ消去、開示請求](operations/account-data.md)
 - [ポリシーの公開と同意記録](legal/README.md)
 
-## 運用と検証
+## 開発・運用と検証
 
+- [コントリビューションガイド](../CONTRIBUTING.md)と[ローカル開発ガイド](local-development.md)
 - [CI/CD と本番デプロイ](initial-settings.md)、[コードのみのリリースの保護策](operations/no-ddl-code-release.md)、[SSH デプロイ中断時の復旧](operations/ssh-deploy-reconciliation.md)
 - [リポジトリの公開条件と最終監査](operations/repository-publication.md)
 - [GitHub Actions の必須チェック](operations/github-actions-required-checks.md)
@@ -43,16 +45,12 @@ Web のログイン、認証方法の管理、プロフィール画面には [ta
 
 説明と実行時の設定が異なる場合、アプリケーションのスキーマは `apps/server/schema.sql` と `atlas.hcl`、デプロイは `infra/docker-compose.yml` と `infra/docker-compose.prod.yml` を優先します。環境設定は `.env.example`、ワークフローは `.github/workflows/`、アプリの設定は各マニフェストを確認してください。`apps/server/migrations` は過去の変更記録で、現在のスキーマ適用は Atlas が行います。OpenAPI ファイルは REST の仕様を記載しています。GraphQL の実行用スキーマは `apps/server/internal/handler/graphql/` にあります。
 
-## 要件と過去の資料
+## 構想と履歴資料
 
-以下の資料は、要件や過去の提案を記録しています。現在の実装状況や本番環境を確認する際は、資料にあるチェックマークやスキーマ例に加え、現行の実装や設定を確認してください。
+以下は当初の構想、設計案、作業メモの記録です。利用できる機能の確認には[現行仕様](Specification.md)を参照してください。
 
-- [当初のプロダクト要件](Specification.md)（ネイティブクライアントの計画を含む）
+- [構想と過去の提案](roadmap.md)（ネイティブクライアントなど）
 - [過去のバックログ](remain.md)と[セキュリティレビューの記録](improvements.md)
 - [日直機能の再設計](new-day-shift.md)、[試験機能の提案](features/0001-exam.md)、[モデレーションの提案](batches/moderate/README.md)
 - [メール生成サービスの要件](apps/email-compose/README.md)
 - [過去の利用規約改定案](legal/terms-issue-404.md)
-
-上の「システム構成と機能」から参照している機能の資料は実装済みの挙動を説明しています。`features/` 内のその他の資料には提案も含まれるため、現行の挙動は実装と照合してください。
-
-挙動、設定、ポート、必須の環境変数、デプロイ手順を変更した場合は、関連する現行資料も更新してください。
