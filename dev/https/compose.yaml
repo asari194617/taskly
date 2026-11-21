@@ -1,0 +1,46 @@
+# Use as an overlay on infra/docker-compose.yml. Paths are relative to infra/.
+services:
+  server:
+    depends_on:
+      auth-tls:
+        condition: service_started
+    environment:
+      SSL_CERT_DIR: /etc/ssl/certs:/usr/local/share/ca-certificates
+    volumes:
+      - type: bind
+        source: ${TASKLY_DEV_TLS_DIR:?set TASKLY_DEV_TLS_DIR}/rootCA.pem
+        target: /usr/local/share/ca-certificates/taskly-dev.crt
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      default:
+      local-https:
+        aliases: [taskly-dev-api]
+  airflow-webserver:
+    environment:
+      AIRFLOW__API__BASE_URL: https://local.airflow-taskly.iy0306.com
+      AIRFLOW__WEBSERVER__BASE_URL: https://local.airflow-taskly.iy0306.com
+  auth-tls:
+    image: caddy:2.11.9-alpine
+    volumes:
+      - ../dev/https/Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - type: bind
+        source: ${TASKLY_DEV_TLS_DIR:?set TASKLY_DEV_TLS_DIR}/taskly.pem
+        target: /certs/taskly.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${TASKLY_DEV_TLS_DIR:?set TASKLY_DEV_TLS_DIR}/taskly-key.pem
+        target: /certs/taskly-key.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      local-https:
+        aliases: [local.taskly-auth-api.iy0306.com]
+networks:
+  local-https:
+    name: taskly-local-https
+    external: true

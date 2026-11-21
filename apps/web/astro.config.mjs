@@ -9,11 +9,12 @@ export default defineConfig({
   // default. Set SITE_URL explicitly only when a deployment should be indexed
   // under a different public origin.
   site: process.env.SITE_URL || "https://taskly.iy0306.com",
-  server: { port: 4321 },
+  server: { port: 4321, allowedHosts: ["local.taskly.iy0306.com"] },
   devToolbar: { enabled: process.env.PLAYWRIGHT_TEST !== "1" },
   integrations: [react()],
 
   vite: {
     plugins: [tailwindcss()],
+    server: { strictPort: true },
   },
 });

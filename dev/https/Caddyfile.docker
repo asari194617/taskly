@@ -1,0 +1,9 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+local.taskly-auth-api.iy0306.com {
+	tls /certs/taskly.pem /certs/taskly-key.pem
+	reverse_proxy taskly-dev-auth:3067
+}

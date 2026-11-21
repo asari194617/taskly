@@ -27,9 +27,13 @@ Taskly is a class and task management service.
 | [`taskly-nnct-corp-guidance`](https://github.com/asari194617/taskly-nnct-corp-guidance) | NNCT company guidance web app, API, and MCP integration with Taskly task completion |
 | [`taskly-policy`](https://github.com/asari194617/taskly-policy) | Versioned policy text and release manifests |
 | [`taskly-policy-web`](https://github.com/asari194617/taskly-policy-web) | Public policy site that publishes releases from `taskly-policy` |
-| [`taskly-production-ribbon`](https://github.com/asari194617/taskly-production-ribbon) | Optional Chrome extension that marks Taskly production pages |
+| [`taskly-environment-ribbon`](https://github.com/asari194617/taskly-environment-ribbon) | Optional Chrome extension that marks production and local development pages |
 
 ## Local development
+
+Use the [local HTTPS setup](docs/local-development.md#local-https) to open
+Taskly and its companion services on their `local.` domains. The loopback HTTP
+commands below also work for isolated development and automated tests.
 
 Prerequisites:
 

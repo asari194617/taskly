@@ -7,8 +7,8 @@ taskly-auth; it is not required to start the Taskly application stack.
 
 | Component | Development | Production |
 | --- | --- | --- |
-| Next.js web client | `http://127.0.0.1:3000` | `https://nnct-corp-guidance-2026.taskly.iy0306.com` |
-| Go API | `http://127.0.0.1:3071` | `https://api.nnct-corp-guidance-2026.taskly.iy0306.com` |
+| Next.js web client | `https://local.nnct-corp-guidance-2026.taskly.iy0306.com` | `https://nnct-corp-guidance-2026.taskly.iy0306.com` |
+| Go API | `https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com` | `https://api.nnct-corp-guidance-2026.taskly.iy0306.com` |
 | MySQL | Dedicated Compose DB, host loopback `3308` | Separate database and DB account in the production MySQL deployment |
 
 The web client is statically exported to a dedicated Cloudflare R2 bucket.
@@ -21,6 +21,12 @@ document volume. Source documents, extracted data, and credentials remain
 outside Git; the public UI bucket receives only the static web build.
 
 ## Register a development OAuth client
+
+Use the [shared local HTTPS setup](local-development.md#local-https) and the
+[guidance repository's HTTPS settings](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/development.md#ローカル-https).
+For HTTPS, register `https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com/auth/callback`
+in the development auth configuration. The following instructions and examples
+use the older loopback HTTP workflow.
 
 Start a separate [taskly-auth development environment](https://github.com/asari194617/taskly-auth#開発環境)
 and prepare a development user there. In that environment, append this entry to
