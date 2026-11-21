@@ -12,12 +12,15 @@ function job(workflow, name) {
 
 function enabled(block, github, results = {}) {
   const condition = block.match(/^    if: (.+)$/m)?.[1];
-  const expression = (condition === '>-' ? block.match(/^    if: >-\n((?: {6}[^\n]+\n)+)/m)?.[1].trim().replace(/\s+/g, ' ') : condition)
+  const source = condition === '>-'
+    ? block.match(/^    if: >-\n((?: {6}[^\n]+\n)+)/m)?.[1]
+    : condition;
+  assert.ok(source, 'job has an explicit condition');
+  const expression = source.trim().replace(/\s+/g, ' ')
     .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
     .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
     // GitHub expression string equality is case-insensitive.
     .replace(/github\.ref == '([^']+)'/g, 'github.ref.toLowerCase() === "$1".toLowerCase()');
-  assert.ok(expression, 'job has an explicit condition');
   return runInNewContext(expression, {
     github,
     needs: Object.fromEntries(Object.entries(results).map(([name, result]) => [name, { result }])),
