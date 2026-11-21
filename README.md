@@ -15,7 +15,7 @@ Taskly は授業と課題を管理するサービスです。
 | [`apps/docs/openapi/`](apps/docs/openapi/) | OpenAPI 定義と API リファレンス |
 | [`batches/`](batches/) | 通知、日直、モデレーション、DB バックアップを行う Go ジョブ |
 | [`infra/`](infra/) | Docker Compose 構成、Airflow の DAG と実行環境、監視、運用スクリプト |
-| [`cloudflare-email-workers/`](cloudflare-email-workers/) | [`wrangler.toml`](wrangler.toml) で設定する受信メール転送 Worker |
+| [`cloudflare-email-workers/`](cloudflare-email-workers/) | [`cf dev`](cloudflare-email-workers/README.md) でローカル確認できる受信メール転送 Worker |
 | [`docs/`](docs/) | 開発ガイド、システム構成、運用手順 |
 | [`.github/workflows/`](.github/workflows/) | CI、リリース、デプロイ、定期実行ワークフロー |
 | [`scripts/`](scripts/) | Go の静的解析など、リポジトリ用のツール |
@@ -63,13 +63,15 @@ curl -fsS http://localhost:3066/readyz
 
 MySQL、Redis、email-compose、API、MCP が起動します。Airflow を使う場合は3つのサービスを起動する前に、[Airflow のセットアップ手順](docs/local-development.md#optional-airflow)に従ってメタデータ用DBを初期化します。
 
-Web クライアントは別のターミナルで起動します。
+Web クライアントは別のターミナルで起動します。`npm run dev` はプロジェクトに固定した Cloudflare CLI（`cf`）から Astro を起動します。
 
 ```bash
 cp apps/web/.env.example apps/web/.env
 npm --prefix apps/web ci
 npm --prefix apps/web run dev
 ```
+
+受信メール Worker や課題画像を試す場合は [Cloudflare のローカル開発](docs/local-development.md#cloudflare-local-development)を参照してください。
 
 ループバック HTTP の主な接続先は次のとおりです。
 

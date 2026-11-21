@@ -143,7 +143,7 @@ install -m 600 .env infra/.env
 
 サービスは `env_file` からルートの `.env` を読みます。運用スクリプトは `infra/` に移動して実行するため、Compose ファイル内の `${...}` の展開には `infra/.env` が使われます。
 
-SMTP、R2 の画像ストレージ、Web Push の VAPID キー、Gemini、Teams、FTPS バックアップを動かすには、それぞれの開発用認証情報が必要です。SMTP リレーは Compose に含まれません。開発用の送信先を設定するまでは外部連携と定期ジョブを停止しておきます。
+SMTP、Web Push の VAPID キー、Gemini、Teams、FTPS バックアップを動かすには、それぞれの開発用認証情報が必要です。課題画像は [ローカル R2](#cloudflare-local-development)を利用できます。SMTP リレーは Compose に含まれません。開発用の送信先を設定するまでは外部連携と定期ジョブを停止しておきます。
 
 [企業ガイダンス](nnct-corp-guidance-development.md)は、独立したリポジトリ、DB、公開 OAuth クライアントを使います。ガイダンスを開発する場合は、別途その起動手順に従ってください。
 
@@ -170,9 +170,46 @@ npm --prefix apps/web ci
 npm --prefix apps/web run dev
 ```
 
-Web クライアントの待受先は `http://localhost:4321` です。ログイン、ログアウト、プロフィール、セキュリティ画面を試す場合は、使用する認証環境に合わせて `PUBLIC_AUTH_*` の URL を設定します。
+`npm run dev` は `cf dev` から Astro を起動します。Web クライアントの待受先は `http://localhost:4321` です。ログイン、ログアウト、プロフィール、セキュリティ画面を試す場合は、使用する認証環境に合わせて `PUBLIC_AUTH_*` の URL を設定します。
 
 API と MCP のループバックポートはそれぞれ `3063` と `3066` です。MySQL、Redis、email-compose には Compose のネットワークから接続します。Go や MCP をホストで直接起動する場合は、開発用のポートマッピングかトンネルを用意し、`DB_HOST`、`DB_PORT`、Redis の接続設定を合わせてください。
+
+<a name="cloudflare-local-development"></a>
+
+## Cloudflare のローカル開発
+
+Web と受信メール Worker は、各パッケージのロックファイルに固定された Cloudflare CLI（`cf`）で起動します。ローカル起動に Cloudflare へのログインは不要です。[Cloudflare CLI の開発ガイド](https://developers.cloudflare.com/cf/projects/)
+
+### 課題画像をローカル R2 で試す
+
+[通常のループバック HTTP 設定](#loopback-http-and-shared-setup)で、[API 起動前にスキーマを適用](#application-stack)してください。画像のアップロード・表示・削除を試す場合は、API と MCP の起動コマンドに R2 用の Compose ファイルを追加します。
+
+```bash
+docker compose -f infra/docker-compose.yml -f dev/cloudflare/compose.yaml \
+  up -d --build --wait server mcp r2
+```
+
+R2 サービスは `cf dev` で開発用バケット `taskly-task-images-local` を起動します。Compose が API にローカルの接続先と開発用の認証情報を渡すため、`.env` の `R2_*` は空欄で構いません。API が返す署名付き URL と API 自身の S3 リクエストは、ともに `http://127.0.0.1:8788/cdn-cgi/local/r2/s3` を使います。
+
+[ローカル S3 API](https://developers.cloudflare.com/r2/local-development/#serve-buckets-over-the-s3-api)は実験機能で、ループバックの `Host` と `Origin` を受け付けます。ブラウザーで `http://localhost:4321` を開いて課題画像を試してください。Airflow のアカウント消去ジョブで R2 連携を検証する場合は、別途、開発用の非公開バケットと認証情報を設定してください。
+
+画像の一覧は `http://127.0.0.1:8788/cdn-cgi/local/explorer` で確認できます。CLI からバケット内の既存のキーを取得するには、次を実行します。
+
+```bash
+docker compose -f infra/docker-compose.yml -f dev/cloudflare/compose.yaml \
+  exec -T r2 ./node_modules/.bin/cf r2 objects get '<object-key>' \
+  --bucket-name taskly-task-images-local --mode r2 --local > downloaded-image
+```
+
+停止時も同じ Compose ファイルを指定します。画像は開発用の名前付きボリューム `r2-data` に残ります。
+
+```bash
+docker compose -f infra/docker-compose.yml -f dev/cloudflare/compose.yaml down
+```
+
+### 受信メール Worker を試す
+
+[受信メール Worker の手順](../cloudflare-email-workers/README.md#local-development)に従って `cf dev` を起動し、ローカルのメール受信イベントを使って転送を確認します。
 
 <a name="optional-airflow"></a>
 

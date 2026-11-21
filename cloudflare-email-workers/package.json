@@ -1,0 +1,13 @@
+{
+  "name": "taskly-email-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cf dev --ip 127.0.0.1 --port 8787",
+    "dev:r2": "cf dev --mode r2"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-rc.2",
+    "wrangler": "4.166.0"
+  }
+}

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "cf dev",
     "build": "astro build",
     "check": "astro check",
     "preview": "astro preview",
@@ -53,6 +53,7 @@
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "^5.1.0",
     "autoprefixer": "10.6.2",
+    "cf": "1.0.0-rc.2",
     "postcss": "8.5.33",
     "storybook": "10.6.7",
     "tailwindcss": "^4.3.5",

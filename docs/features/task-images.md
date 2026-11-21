@@ -22,7 +22,9 @@ SVG は active content を含められるため許可しない。サイズ制限
 
 ## 設定
 
-API の環境変数に以下を設定する。
+ローカル開発では [`cf dev` で起動する R2](../local-development.md#cloudflare-local-development)を利用できる。
+
+本番の API の環境変数に以下を設定する。
 
 ```dotenv
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com

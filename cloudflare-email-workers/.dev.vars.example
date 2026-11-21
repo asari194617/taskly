@@ -1,0 +1,2 @@
+DMARC_INBOUND_ENDPOINT=http://127.0.0.1:3063/integrations/email/inbound
+INTEGRATION_SECRET=change_me_email_inbound_secret
