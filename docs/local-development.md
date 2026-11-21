@@ -1,20 +1,15 @@
-# Local development
+# ローカル開発
 
-Run commands from the repository root unless a different directory is shown.
-Use the tool versions listed in [README](../README.md). These steps use development databases.
+特に指定がなければ、コマンドはリポジトリのルートで実行します。ツールのバージョンは [README](../README.md) を参照してください。ここでは開発用 DB を使います。
 
-## Local HTTPS
+<a name="local-https"></a>
 
-Use a shared Caddy proxy on your development machine for all of the aliases.
-Install [Caddy](https://caddyserver.com/docs/install) and
-[mkcert](https://github.com/FiloSottile/mkcert#installation). On macOS, use
-`brew install caddy mkcert`. Keep all service processes on loopback or on
-Docker networks.
+## ローカル HTTPS
 
-1. Open `/etc/hosts` with `sudoedit /etc/hosts` and add the entries from
-   [`dev/https/hosts`](../dev/https/hosts). Update any existing entries for
-   these hostnames so that each resolves to `127.0.0.1`.
-2. Generate the certificate and start the HTTPS proxy from the Taskly checkout:
+開発機上の共通 Caddy プロキシで、各サービスのホスト名を扱います。[Caddy](https://caddyserver.com/docs/install) と [mkcert](https://github.com/FiloSottile/mkcert#installation) をインストールします。macOS では `brew install caddy mkcert` を実行します。各プロセスはループバックか Docker ネットワーク内で動かしてください。
+
+1. `sudoedit /etc/hosts` で `/etc/hosts` を開き、[`dev/https/hosts`](../dev/https/hosts) のエントリを追加します。同じホスト名がすでにあれば、それぞれ `127.0.0.1` を指すように更新します。
+2. Taskly のチェックアウトから証明書を生成し、HTTPS プロキシを起動します。
 
    ```bash
    export TASKLY_DEV_TLS_DIR="$HOME/.local/share/taskly/https"
@@ -22,58 +17,41 @@ Docker networks.
    caddy run --config dev/https/Caddyfile --adapter caddyfile
    ```
 
-   `mkcert -install` installs your personal development CA. Restart your
-   browser if it was already running. Keep the CA private key in the mkcert
-   directory and keep the TLS directory outside your checkout. If your OS
-   restricts low ports, grant the Caddy executable permission to bind port
-   443. On Linux, for example, use
-   `sudo setcap cap_net_bind_service=+ep "$(command -v caddy)"`. On macOS,
-   if the bind fails with a permission error, run Caddy from the same directory with:
+   `mkcert -install` は開発用の個人 CA をインストールします。ブラウザーが起動中なら再起動してください。CA の秘密鍵は mkcert のディレクトリに置き、TLS ディレクトリはチェックアウトの外に置きます。OS が小さい番号のポートを制限する場合は Caddy の実行ファイルに 443 番ポートを使う権限を付与します。Linux の例は `sudo setcap cap_net_bind_service=+ep "$(command -v caddy)"` です。macOS で権限エラーが出た場合は同じディレクトリから以下で Caddy を起動します。
 
    ```bash
    sudo env TASKLY_DEV_TLS_DIR="$TASKLY_DEV_TLS_DIR" "$(command -v caddy)" \
      run --config dev/https/Caddyfile --adapter caddyfile
    ```
 
-   Port 443 must be free.
-3. Start the services you want to use. Leave Caddy running in its terminal.
-   Each HTTPS origin works once its corresponding upstream is running.
+   443 番ポートが空いている必要があります。
+3. 使うサービスを起動します。Caddy は起動したターミナルで動かしたままにします。各 HTTPS オリジンは対応する転送先の起動後に利用できます。
 
-| Service | Local HTTPS URL | Loopback upstream |
+| サービス | ローカル HTTPS の URL | ループバックの転送先 |
 | --- | --- | --- |
-| Taskly web | https://local.taskly.iy0306.com | `4321` |
+| Taskly Web | https://local.taskly.iy0306.com | `4321` |
 | Taskly API | https://local.api.taskly.iy0306.com | `3063` |
-| Auth UI | https://local.auth.taskly.iy0306.com/login | `3068` |
-| Auth API and OAuth issuer | https://local.taskly-auth-api.iy0306.com | `3067` |
-| Guidance UI | https://local.nnct-corp-guidance-2026.taskly.iy0306.com | `3000` |
-| Guidance API and optional MCP endpoint | https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com | `3071` |
-| Policy web | https://local.policies.taskly.iy0306.com | `3001` |
-| CDN files in this repository | https://local.cdn.taskly.iy0306.com/docs/api/index.html | `dev/https/Caddyfile` serves files from the checkout |
+| 認証 UI | https://local.auth.taskly.iy0306.com/login | `3068` |
+| 認証 API と OAuth 発行者 | https://local.taskly-auth-api.iy0306.com | `3067` |
+| 企業ガイダンス UI | https://local.nnct-corp-guidance-2026.taskly.iy0306.com | `3000` |
+| 企業ガイダンス API と任意の MCP エンドポイント | https://local.api.nnct-corp-guidance-2026.taskly.iy0306.com | `3071` |
+| ポリシーサイト | https://local.policies.taskly.iy0306.com | `3001` |
+| このリポジトリの CDN ファイル | https://local.cdn.taskly.iy0306.com/docs/api/index.html | `dev/https/Caddyfile` がチェックアウト内のファイルを配信 |
 | Taskly MCP HTTP API | https://local.mcp.taskly.iy0306.com | `3066` |
-| Airflow UI (optional) | https://local.airflow-taskly.iy0306.com | `3065` |
+| Airflow の管理画面（任意） | https://local.airflow-taskly.iy0306.com | `3065` |
 
-The [auth setup](https://github.com/asari194617/taskly-auth#ローカル-https),
-[guidance setup](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/development.md),
-and [policy web setup](https://github.com/asari194617/taskly-policy-web#ローカル-開発)
-configure those upstreams. The CDN alias serves checked-in OpenAPI files and MCP
-client installer sources. Select the local HTTPS API server in Swagger UI.
-Published binaries and production-only assets still
-come from the published CDN. MySQL, Redis, email-compose gRPC, and the Airflow
-worker processes communicate on their development networks.
+各転送先は[認証](https://github.com/asari194617/taskly-auth#ローカル-https)、[企業ガイダンス](https://github.com/asari194617/taskly-nnct-corp-guidance/blob/main/docs/development.md)、[ポリシーサイト](https://github.com/asari194617/taskly-policy-web#ローカル-開発)のセットアップ手順で設定します。CDN のローカルホストは、追跡対象の OpenAPI ファイルと MCP クライアントインストーラーのソースを配信します。API リファレンスのサーバー選択でローカル HTTPS API を選んでください。公開済みのバイナリと本番専用アセットは引き続き公開 CDN から取得します。MySQL、Redis、email-compose の gRPC、Airflow のワーカープロセスは開発用ネットワーク内で通信します。
 
-### Taskly with local OAuth
+### Taskly のローカル OAuth
 
-Create the shared internal Docker network once before starting auth and Taskly:
+認証と Taskly を起動する前に、共用の内部 Docker ネットワークを一度作成します。
 
 ```bash
 docker network inspect taskly-local-https >/dev/null 2>&1 ||
   docker network create --internal taskly-local-https
 ```
 
-Configure both services with the same development OAuth client secret and
-callback, then start taskly-auth with its HTTPS Compose overlay. Start Taskly
-after applying its schema as described below. Replace the matching values in
-the Taskly root `.env` and sync it into `infra/.env`:
+両サービスに同じ開発用 OAuth クライアントシークレットとコールバックを設定し、taskly-auth を HTTPS 用の Compose 上書き設定で起動します。Taskly は後述のスキーマ適用後に起動します。Taskly のルートにある `.env` の該当項目を次のように置き換え、`infra/.env` に同期します。
 
 ```dotenv
 WEB_PUBLIC_URL=https://local.taskly.iy0306.com
@@ -90,7 +68,7 @@ ADMIN_REVIEW_URL=https://local.taskly.iy0306.com/admin/moderation
 ICAL_BASE_URL=https://local.api.taskly.iy0306.com/ical
 ```
 
-In `apps/web/.env`, replace the matching URLs with the following:
+`apps/web/.env` では、該当の URL を以下で置き換えます。
 
 ```dotenv
 PUBLIC_API_URL=https://local.api.taskly.iy0306.com
@@ -105,8 +83,7 @@ PUBLIC_AUTH_RECOVERY_URL=https://local.auth.taskly.iy0306.com/security
 PUBLIC_AUTH_TOTP_URL=https://local.auth.taskly.iy0306.com/security
 ```
 
-Run the development Compose stack with the HTTPS overlay. Export the same
-`TASKLY_DEV_TLS_DIR` in any shell that runs this overlay.
+開発用 Compose 構成を HTTPS 用の上書き設定と合わせて起動します。この設定を使うシェルでは同じ `TASKLY_DEV_TLS_DIR` をエクスポートしてください。
 
 ```bash
 docker compose -f infra/docker-compose.yml -f dev/https/compose.yaml up -d --build --wait server mcp
@@ -115,12 +92,7 @@ curl -fsS https://local.api.taskly.iy0306.com/readyz
 curl -fsS https://local.mcp.taskly.iy0306.com/readyz
 ```
 
-For a fresh pair of development databases, [seed an auth user](https://github.com/asari194617/taskly-auth#2-開発ユーザーを用意する)
-and find its `id` in the auth database's `users` table. Create a matching
-entry in the Taskly development DB with the same ID and email before
-visiting `https://local.taskly.iy0306.com/login`. For example, use the
-following command after replacing the ID and email with the values in your
-development auth DB:
+開発用 DB が両方とも新規の場合は、[認証用ユーザーを作成](https://github.com/asari194617/taskly-auth#2-開発ユーザーを用意する)し、認証 DB の `users` テーブルで `id` を確認します。`https://local.taskly.iy0306.com/login` を開く前に、同じ ID とメールアドレスを使うユーザーを Taskly の開発 DB に登録します。以下を使う場合は、ID とメールアドレスを開発用認証 DB の値に置き換えてください。
 
 ```bash
 docker compose -f infra/docker-compose.yml exec -T db sh -c \
@@ -130,87 +102,39 @@ VALUES (1, 'taskly-local-demo@nagaoka-ct.ac.jp', 'Development User', 1);
 SQL
 ```
 
-The overlay gives the API container its own route to the exact OAuth issuer on
-the shared network and mounts the public CA certificate for TLS verification.
-Your workstation resolves that same issuer from `/etc/hosts`. Use the same
-overlays when recreating or stopping the services. After regenerating the
-certificate, restart Caddy and recreate the Taskly `auth-tls` and `server`
-containers so they load the new files. Node clients that do not use your system
-CA store can set `NODE_EXTRA_CA_CERTS="$TASKLY_DEV_TLS_DIR/rootCA.pem"`.
+上書き設定は、共用ネットワーク上の正確な OAuth 発行者に API コンテナが接続する経路を設け、TLS 検証に使う公開 CA 証明書をマウントします。開発機は同じ発行者を `/etc/hosts` で名前解決します。サービスの再作成や停止にも同じ Compose ファイルを指定してください。証明書を再生成したら Caddy を再起動し、Taskly の `auth-tls` と `server` コンテナを再作成して新しいファイルを読み込ませます。システムの CA ストアを使わない Node.js クライアントでは `NODE_EXTRA_CA_CERTS="$TASKLY_DEV_TLS_DIR/rootCA.pem"` を設定できます。
 
-The Airflow startup command further down can use both Compose files if you
-want Airflow to generate URLs for its local HTTPS hostname. To remove local
-HTTPS, stop Caddy, remove these aliases from `/etc/hosts`, and restore the
-application URLs used by your earlier setup.
+Airflow がローカル HTTPS のホスト名で URL を生成するようにするには、後述の Airflow 起動コマンドに両方の Compose ファイルを指定します。ローカル HTTPS を廃止するには、Caddy を停止し、`/etc/hosts` から追加したホスト名を削除して、以前のアプリケーション URL に戻します。
 
-## Loopback HTTP and shared setup
+## ループバック HTTP と共通設定
 
-### Environment and authentication
+### 環境設定と認証
 
-Copy `.env.example` to `.env` and edit it before starting services. The API rejects
-partial OAuth configuration: `AUTH_ISSUER`, `AUTH_CLIENT_ID`,
-`AUTH_CLIENT_SECRET`, and `AUTH_REDIRECT_URI` must all be populated or all empty.
-The example currently contains three of these four values. `WEB_PUBLIC_URL`
-is set in two places in the example. Keep both values equal or delete the duplicate.
+サービスを起動する前に `.env.example` を `.env` にコピーして編集します。OAuth の `AUTH_ISSUER`、`AUTH_CLIENT_ID`、`AUTH_CLIENT_SECRET`、`AUTH_REDIRECT_URI` はすべて設定するか、すべて空にしてください。API は一部のみ設定された状態では起動しません。例には 4 項目のうち 3 項目が設定されています。`WEB_PUBLIC_URL` は例の 2 か所に設定されているため、同じ値にするか、重複を削除してください。
 
-For the loopback HTTP workflow, choose the configuration for the work you are doing:
+- Web ログインを使う場合は [taskly-auth](https://github.com/asari194617/taskly-auth#開発環境) の開発環境を別途起動し、OAuth クライアントを登録します。4 つの変数をすべて設定し、コールバックは `http://localhost:3063/auth/oauth/callback`、Web オリジンは `WEB_PUBLIC_URL=http://localhost:4321` とします。ブラウザーと API コンテナの両方から `AUTH_ISSUER` に接続できる必要があります。API コンテナ内の `localhost` はそのコンテナ自身を指します。taskly-auth はこのリポジトリの構成には含まれません。
+- OAuth プロバイダーなしで API のみを開発する場合は 4 つの変数を空にして、例にある `AUTH_*_EXTERNAL` フラグを `0` のままにします。API は起動できますが、Web のログイン画面は OAuth にリダイレクトします。UI を自動検証する場合は、分離された[実 API の E2E フィクスチャ](../apps/web/tests/e2e/README.md)または[モックを使うブラウザテスト](../apps/web/tests/browser/README.md)を使います。
 
-- For web login, run a separate [taskly-auth](https://github.com/asari194617/taskly-auth#開発環境)
-  development environment and register
-  an OAuth client. Set all four variables, with callback
-  `http://localhost:3063/auth/oauth/callback` and web origin
-  `WEB_PUBLIC_URL=http://localhost:4321`. `AUTH_ISSUER` must be reachable from
-  the API container as well as the browser; `localhost` inside the API container
-  refers to that container. This repository does not provision taskly-auth.
-- For API-only development without an OAuth provider, set all four variables to
-  empty and leave the example's `AUTH_*_EXTERNAL` flags at `0`. The API can start,
-  but the current web login page still redirects to OAuth. Use the isolated
-  [real API E2E fixtures](../apps/web/tests/e2e/README.md) or
-  [mocked browser tests](../apps/web/tests/browser/README.md) for automated UI work.
+認証データの管理主体を外部サービスへ移す場合は、[`auth_migration_config.go`](../apps/server/auth_migration_config.go) にある 8 個の管理主体フラグをすべて同時に `1` にします。`AUTH_PROFILE_EXTERNAL=1` には `AUTH_USERS_EXTERNAL=1` も必要です。`AUTH_INTERNAL_TOKEN`（32 文字以上）と 3 つの同期 URL も設定します。管理主体の変更前に、[認証データの移行条件](auth-identity-write-inventory.md)、[ユーザープロジェクション](auth-user-projection-sync.md)、[プロフィールの管理主体](account-profile-ownership.md)、[アカウントのライフサイクル](auth-account-lifecycle-sync.md)を参照してください。データコピーと OAuth クライアント登録は認証システム側で行います。
 
-When enabling external auth ownership, all eight ownership flags listed in
-[`auth_migration_config.go`](../apps/server/auth_migration_config.go) must be `1`
-together; `AUTH_PROFILE_EXTERNAL=1` also requires `AUTH_USERS_EXTERNAL=1`.
-Configure `AUTH_INTERNAL_TOKEN` (at least 32 characters) and the three sync URLs
-as well. Consult the [identity cutover inventory](auth-identity-write-inventory.md),
-[user projection](auth-user-projection-sync.md),
-[profile ownership](account-profile-ownership.md), and
-[account lifecycle](auth-account-lifecycle-sync.md) before changing ownership.
-Copying data and registering the OAuth client happen in the separate auth system.
+`JWT_SECRET`、`TOTP_ENC_KEY`、MySQL と Redis のパスワード、連携用シークレットには開発用の値を設定します。開発環境でも `JWT_SECRET` は空にできません。アプリケーション DB と Airflow メタデータ DB では DB 名とアカウントを分けます。`AIRFLOW_META_PASSWORD` に使用できるのは英数字、`_`、`-` だけです。3 つの Airflow サービスすべてに同じ空でない `AIRFLOW__API_AUTH__JWT_SECRET` を明示的に設定してください。スケジューラーにはほかの 2 サービスが使うフォールバックがありません。個別のシークレットは `openssl rand -hex 32` で生成できます。
 
-Replace `JWT_SECRET`, `TOTP_ENC_KEY`, MySQL and Redis passwords, and integration
-secrets with development values. `JWT_SECRET` must be nonempty even in development.
-Use different names and accounts for the application DB and Airflow metadata DB.
-`AIRFLOW_META_PASSWORD` accepts only letters, digits, `_`, and `-`.
-Set `AIRFLOW__API_AUTH__JWT_SECRET` explicitly to the same nonempty value for all
-three Airflow services; the scheduler does not have the fallback used by the
-other two services. `openssl rand -hex 32` can generate individual secrets.
-
-Keep these two ignored files synchronized after edits:
+編集後は、Git の管理対象外である次の 2 ファイルを同期します。
 
 ```bash
 chmod 600 .env
 install -m 600 .env infra/.env
 ```
 
-Services load the root `.env` through `env_file`. Operations scripts change into
-`infra/`, where Compose reads `infra/.env` for `${...}` interpolation. A service's
-`env_file` alone does not supply that interpolation.
+サービスは `env_file` からルートの `.env` を読み込みます。運用スクリプトは `infra/` に移動するため、Compose は変数 `${...}` の展開に `infra/.env` を読み込みます。各サービスの `env_file` だけでは、この展開に値が渡りません。
 
-SMTP, R2 image storage, Web Push VAPID keys, Gemini, Teams, and FTPS backups
-require their own development credentials to exercise those features. The
-Compose stack does not include an SMTP relay. Leave outbound integrations and
-scheduled jobs disabled until their development destinations are configured.
+SMTP、R2 画像ストレージ、Web Push の VAPID 鍵、Gemini、Teams、FTPS バックアップを動かすには、それぞれ開発用の認証情報が必要です。Compose の構成には SMTP リレーは含まれません。開発用の送信先が整うまで、外部送信と定期ジョブは無効にしてください。
 
-The optional [NNCT company guidance service](nnct-corp-guidance-development.md)
-has its own repository, database, and public OAuth client registration. Follow
-its setup separately when working on that application; it is not part of this
-Compose stack.
+[長岡高専企業ガイダンス](nnct-corp-guidance-development.md)は専用のリポジトリ、DB、公開 OAuth クライアントを使います。そのアプリを開発する場合は、この Compose 構成とは別にセットアップします。
 
-## Application stack
+## アプリケーションの起動
 
-Apply the schema before starting the API. Use the HTTPS Compose command above
-in place of the second line when using the HTTPS overlay:
+API を起動する前にスキーマを適用します。HTTPS 用の上書き設定を使う場合は、2 行目を前述の HTTPS 用 Compose コマンドに置き換えます。
 
 ```bash
 infra/ops/apply-schema.sh
@@ -219,14 +143,9 @@ curl -fsS http://localhost:3063/readyz
 curl -fsS http://localhost:3066/readyz
 ```
 
-Atlas runs in Docker and needs no host installation. Its `schema` profile adds a
-disposable MySQL instance for schema analysis. The helper starts the application
-DB, prints the plan, applies non-destructive changes, and removes the disposable
-container afterward. Review [schema operations](initial-settings.md#dbスキーマ管理)
-for existing databases. `apps/server/migrations` is historical; there is no
-`go run ./cmd/migrate` command.
+Atlas は Docker 内で動くため、ホストへのインストールは不要です。`schema` プロファイルはスキーマ解析用の一時 MySQL を追加します。スクリプトはアプリ用 DB を起動して計画を表示し、非破壊的な変更を適用してから一時コンテナを削除します。既存 DB には[スキーマ運用手順](initial-settings.md#dbスキーマ管理)を参照してください。`apps/server/migrations` は過去の記録です。`go run ./cmd/migrate` コマンドはありません。
 
-Then start the web client in a separate terminal:
+次に別のターミナルで Web クライアントを起動します。
 
 ```bash
 cp apps/web/.env.example apps/web/.env
@@ -234,17 +153,13 @@ npm --prefix apps/web ci
 npm --prefix apps/web run dev
 ```
 
-The web client listens on `http://localhost:4321`. Set its `PUBLIC_AUTH_*` URLs
-for your auth environment when testing login, logout, profile, or security pages.
-The API and MCP listen on loopback ports `3063` and `3066`. MySQL, Redis, and
-email-compose are reachable by Compose services only. Running Go or MCP directly
-on the host requires a development port mapping or tunnel and corresponding
-`DB_HOST`, `DB_PORT`, and Redis settings.
+Web クライアントは `http://localhost:4321` で待ち受けます。ログイン、ログアウト、プロフィール、セキュリティ画面を検証するときは、認証環境に合わせて `PUBLIC_AUTH_*` の URL を設定してください。API と MCP はループバックのポート `3063`、`3066` で待ち受けます。MySQL、Redis、email-compose には Compose のサービスからのみ接続できます。Go API や MCP をホストで直接実行するには、開発用のポートマッピングまたはトンネルと、対応する `DB_HOST`、`DB_PORT`、Redis 設定が必要です。
 
-## Optional Airflow
+<a name="optional-airflow"></a>
 
-For a **new development database**, initialize metadata after the application
-stack is running. `jq` must be available on the host:
+## Airflow のセットアップ（任意）
+
+**新規の開発 DB** では、アプリケーションの起動後にメタデータを初期化します。ホストに `jq` が必要です。
 
 ```bash
 docker compose -f infra/docker-compose.yml build airflow-webserver
@@ -253,19 +168,11 @@ docker compose -f infra/docker-compose.yml up -d --no-build --wait --wait-timeou
   airflow-webserver airflow-scheduler airflow-dag-processor
 ```
 
-`prepare-airflow-db.sh` creates the separate DB and grants and runs
-`airflow db migrate`. With an existing environment, stop and review the
-[metadata migration runbook](operations/airflow-db-separation.md) first; the
-script can also move legacy Airflow tables and change database privileges.
-The base Compose file does not migrate metadata on service startup.
+`prepare-airflow-db.sh` はメタデータ専用 DB を作成し、権限を付与して `airflow db migrate` を実行します。既存環境に対しては、先に作業を止めて[メタデータ移行手順](operations/airflow-db-separation.md)を確認してください。このスクリプトは過去の Airflow テーブルの移動や DB 権限の変更も行う場合があります。基本の Compose 構成はサービス起動時にメタデータを移行しません。
 
-The UI is `http://localhost:3065`; on first startup the image entrypoint creates
-the FAB user from `_AIRFLOW_WWW_USER_USERNAME` / `_AIRFLOW_WWW_USER_PASSWORD`
-(defaults: `airflow` / `airflow`, for local development only). Confirm the DAGs
-and keep them paused until their data and outbound services are ready. Schedules
-and job responsibilities are listed in [batches](../batches/README.md).
+管理画面は `http://localhost:3065` です。初回起動時にイメージのエントリーポイントが `_AIRFLOW_WWW_USER_USERNAME` と `_AIRFLOW_WWW_USER_PASSWORD` から FAB ユーザーを作成します（既定値は両方とも `airflow`。ローカル開発専用）。DAG を確認し、データと送信先サービスを用意するまでは一時停止のままにします。スケジュールとジョブの役割は[バッチ一覧](../batches/README.md)を参照してください。
 
-## Stopping and troubleshooting
+## 停止とトラブルシューティング
 
 ```bash
 docker compose -f infra/docker-compose.yml ps
@@ -273,9 +180,4 @@ docker compose -f infra/docker-compose.yml logs --tail=100 server mcp
 docker compose -f infra/docker-compose.yml down
 ```
 
-`down` retains named volumes. After changing environment variables, use `up -d`
-to recreate affected services. Changing MySQL passwords in `.env` does not update
-the accounts in an existing MySQL volume; update those accounts deliberately.
-An API that fails before listening commonly has partial OAuth configuration or
-missing tables. If `/healthz` works but `/readyz` fails, check
-[dependency readiness](operations/readiness.md).
+`down` は名前付きボリュームを保持します。環境変数を変更したら `up -d` で対象サービスを再作成します。既存の MySQL ボリューム内のアカウントは、`.env` のパスワードを変えても更新されないため、アカウント側を個別に更新してください。API が待ち受けを開始できない場合は、OAuth 設定の不足やテーブルの欠落を確認します。`/healthz` が成功して `/readyz` が失敗する場合は、[依存サービスの準備状態](operations/readiness.md)を確認してください。

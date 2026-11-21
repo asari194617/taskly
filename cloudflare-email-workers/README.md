@@ -1,18 +1,17 @@
-# Cloudflare Email Worker (Inbound Forwarder)
+# Cloudflare Email Worker による受信メールの転送
 
-This Worker receives emails from Cloudflare Email Routing (Email Workers) and forwards them to Taskly's server-side endpoint with a header secret.
+Cloudflare Email Routing で受信したメールを Taskly のサーバー側エンドポイントに転送します。認証用シークレットはリクエストヘッダーに含めます。
 
-## Deploy
+## デプロイ
 
-- Create a new Email Worker in Cloudflare (Email > Email Routing > Workers)
-- Use `email-worker.js` as the script
-- Bind these environment variables:
-  - `EMAIL_INBOUND_ENDPOINT` – e.g. `https://your.server/integrations/email/inbound`
-  - `EMAIL_INTEGRATION_SECRET` – must match the server's `EMAIL_INTEGRATION_SECRET`
-- Configure Email Routing rules to send target messages to this Worker.
+- Cloudflare の **Email > Email Routing > Workers** で新しい Email Worker を作成します。
+- スクリプトには `email-worker.js` を指定します。
+- 環境変数 `EMAIL_INBOUND_ENDPOINT` に転送先（例：`https://your.server/integrations/email/inbound`）を設定します。
+- `EMAIL_INTEGRATION_SECRET` にはサーバー側の同名変数と同じ値を設定します。
+- Email Routing のルールで対象のメールをこの Worker に送ります。
 
-## Notes
+## 転送時の処理
 
-- The Worker forwards the raw RFC822 email as base64 in `raw`. Parsing of attachments (DMARC XML, ZIP, etc.) is handled server-side.
-- `text` and `html` bodies are not extracted by the Worker to keep it lightweight; server can extract from `raw` if needed.
-- The server endpoint returns HTTP 202 on success and sends Discord embeds for DMARC/bounce/generic events.
+- RFC 822 形式のメール全体を Base64 に変換し、`raw` として送ります。DMARC XML や ZIP などの添付ファイルはサーバー側で解析します。
+- Worker の処理を軽く保つため、`text` と `html` の本文は抽出しません。必要に応じてサーバーが `raw` から抽出します。
+- 転送先のエンドポイントは成功時に HTTP 202 を返し、DMARC、バウンス、その他のイベントを Discord に埋め込みメッセージとして送ります。

@@ -38,7 +38,7 @@
 
 `account_erasure`、日直インデックス更新、日直通知などには Python 実装もあります。
 Go のバッチ実行ファイルは Airflow イメージ内の `/opt/airflow/bin` に配置します。
-ローカルの初期化は [開発手順](../docs/local-development.md#optional-airflow)、
+ローカルの初期化は [開発手順](../docs/local-development.md#airflow-のセットアップ任意)、
 Python の検証は [Airflow テスト](../docs/operations/airflow-python-tests.md)を参照してください。
 
 ## 各バッチの説明

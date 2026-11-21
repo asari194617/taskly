@@ -1,126 +1,43 @@
-# Repository publication controls and audit
+# リポジトリ公開の管理と監査
 
-Track the release decision in [#445](https://github.com/asari194617/taskly/issues/445).
-The current visibility decision and transition evidence are recorded there.
-Publishing source does not change the licensing terms in `LICENSE`.
+公開の判断は [#445](https://github.com/asari194617/taskly/issues/445) で追跡します。現在の公開範囲と移行の証跡もそこに記録しています。ソースを公開しても `LICENSE` の条件は変わりません。
 
-## Final content audit (2026-11-06)
+## 最終コンテンツ監査（2026-11-06）
 
-- A fresh remote mirror contained 159 branch refs, 9 tag refs, 180 pull refs,
-  and 1,281 reachable commits; its pack was about 5 MiB. No compiled executable
-  signatures or the eight removed incident/extraction/setup document paths were
-  found in those reachable objects. This supersedes the older observation that
-  advertised pull refs retained large binaries; it does not prove that GitHub's
-  cached diffs or unadvertised objects have been purged.
-- Gitleaks 8.30.1 scanned all fetched refs with the five previously reviewed,
-  exact fingerprints in `.gitleaksignore`: no additional findings. The two
-  previously identified legacy commit objects returned HTTP 404 through GitHub's
-  Git commit API. This is an availability observation, not proof of server erasure.
-- All 676 PRs were inventoried: no cross-repository PRs. GitHub returned 179
-  diffs, which were scanned; 497 old diffs returned HTTP 422 after the history
-  rewrite and could not be scanned. Issue/PR bodies, comments, review metadata,
-  and five asset-free releases were also inspected; metadata secret scans were
-  clean. No wiki repository was available to the authenticated owner.
-- Of 1,828 completed Actions runs, 1,208 log archives were available and 620
-  returned HTTP 410. All 727 artifacts listed at the final snapshot were fetched
-  and inspected, along with previously fetched artifacts that expired during the
-  audit. Archive entries were extracted without trusting their path names;
-  nested ZIP/gzip/tar/zstd payloads were decoded and binary strings inspected.
-  Text was materialized with a scanner-supported extension so `.bin` names did
-  not silently bypass Gitleaks. There were no remaining extraction errors.
-- The expanded diff/log/artifact scan covered about 344 MB and returned 369
-  candidates: 211 container image commit tags, 32 Go checksum contexts, 90
-  localhost-only CI fixture headers, and 36 occurrences of expired Docker Hub
-  image-download signatures. The latter were upstream S3 download URLs with a
-  20-minute lifetime ending on November 2, not Taskly credentials. Every candidate
-  was classified; no unresolved credential finding remains. No new broad scanner
-  exclusions were added to the repository.
-- Known production and runner connection identifiers were absent from reachable
-  Git objects and the inspected metadata, diffs, logs, and artifacts. Public
-  contact/author addresses retain the policy in #439. Raw archives, findings,
-  and recovery evidence remain in restricted local storage, outside this repo.
-- Cache metadata and workflow cache paths were reviewed: Go/Node dependency
-  caches and Docker build caches, with environment files excluded from build
-  contexts. Cache payload bytes were not downloaded or scanned. Anonymous access
-  to the four application GHCR packages returned HTTP 401; publishing source does
-  not authorize changing package visibility. Package administration and the full
-  GitHub App installation inventory were unavailable with the audit token's
-  scopes. Existing workflow integrations and webhook destinations were reviewed;
-  re-audit any future integration or collaborator change.
+- 新たに取得したリモートのミラーには、ブランチの参照 159 件、タグの参照 9 件、PR の参照 180 件、到達可能なコミット 1,281 件があり、パックは約 5 MiB でした。到達可能なオブジェクトには、コンパイル済み実行ファイルを示すシグネチャや、削除したインシデント・抽出・構築文書 8 件のパスは見つかりませんでした。公開されている PR 参照が大きなバイナリを保持していたという以前の観測は、この結果で更新します。GitHub のキャッシュ済みの差分や、公開されていないオブジェクトの消去までは確認できていません。
+- Gitleaks 8.30.1 で、取得した全参照を `.gitleaksignore` にあるレビュー済みの完全一致フィンガープリント 5 件を適用して調べた結果、追加の検出はありませんでした。以前特定した古いコミットオブジェクト 2 件は GitHub の Git commit API で HTTP 404 を返しました。取得できないことまでは確認できましたが、サーバーから消去された証拠にはなりません。
+- 全 676 件の PR を棚卸しし、別リポジトリからの PR はありませんでした。GitHub から取得できた差分 179 件をスキャンしました。履歴の書き換え後、過去の差分 497 件は HTTP 422 を返し、確認できませんでした。Issue・PR の本文、コメント、レビューのメタデータ、添付アセットのないリリース 5 件も調査し、メタデータのシークレットスキャンで検出はありませんでした。認証済みの所有者がアクセスできる Wiki リポジトリはありませんでした。
+- 完了済みの Actions 実行 1,828 件のうち、ログアーカイブを取得できたのは 1,208 件で、620 件は HTTP 410 を返しました。最終時点で一覧にあったアーティファクト 727 件すべてと、監査中に期限切れとなった取得済みのものを確認しました。アーカイブのエントリはパス名を信頼せずに展開し、入れ子の ZIP・gzip・tar・zstd をデコードしてバイナリの文字列も調べました。`.bin` という名前で Gitleaks の対象外にならないよう、テキストは対応する拡張子で保存しました。未解決の展開エラーはありませんでした。
+- 差分・ログ・アーティファクトの追加スキャンは約 344 MB を対象とし、候補は 369 件でした。コンテナイメージのコミットタグ 211 件、Go のチェックサムを含む箇所 32 件、localhost 専用 CI フィクスチャのヘッダー 90 件、期限切れの Docker Hub イメージ取得署名 36 件です。最後の 36 件は、11 月 2 日に失効した有効期間 20 分の上流 S3 ダウンロード URL です。全候補を分類し、未解決の認証情報の検出はありません。リポジトリに新たな広範囲のスキャン除外は加えていません。
+- 既知の本番およびランナーの接続識別子は、到達可能な Git オブジェクトと調査済みのメタデータ、差分、ログ、アーティファクトにありませんでした。公開用の連絡先と作成者のアドレスには #439 の方針を適用します。元のアーカイブ、検出結果、復旧証跡はリポジトリ外のアクセス制限されたローカルストレージに保存します。
+- キャッシュのメタデータとワークフローのキャッシュパスを確認しました。対象は Go・Node の依存関係と Docker のビルドキャッシュで、環境ファイルはビルドコンテキストから除外されます。キャッシュの本体はダウンロードもスキャンもしていません。アプリケーションの GHCR パッケージ 4 件への匿名アクセスは HTTP 401 を返しました。ソース公開はパッケージの公開範囲の変更を承認するものではありません。監査トークンのスコープではパッケージの管理と GitHub App インストールの完全な棚卸しを行えませんでした。既存のワークフロー連携と Webhook の送信先を確認しました。連携やコラボレーターを変更する場合は再監査します。
 
-## Verified publication (2026-11-06)
+## 公開時の確認（2026-11-06）
 
-The existing repository was made public after [PR #755](https://github.com/asari194617/taskly/pull/755)
-passed its checks and self-review. Actions was temporarily disabled during the
-transition and then restored with its previous selected-action and SHA-pin policy.
-Anonymous repository API and Git ref reads succeeded. The four application GHCR
-packages still rejected anonymous access with HTTP 401.
+[PR #755](https://github.com/asari194617/taskly/pull/755) が必須チェックとセルフレビューを通過した後、既存リポジトリを公開しました。移行中は Actions を一時停止し、その後、従来どおり許可したアクションのみを使用し SHA で固定する設定で再開しました。リポジトリ API と Git 参照は匿名で読み取れました。アプリケーションの GHCR パッケージ 4 件は引き続き匿名アクセスを HTTP 401 で拒否しました。
 
-- The main ruleset requires signed commits, PRs, six application checks, and
-  `secret-scan`, with no bypass actors. Actions defaults to a read-only token and
-  requires full action SHA pins. Production credentials are Environment secrets;
-  the repository secret names contain no `PROD_*` or task-image storage secrets.
-- The production Environment restricts deployments to protected branches and
-  disallows administrator bypass. It now adds a one-minute wait timer; it does
-  not require independent human approval. A [post-publication deployment](https://github.com/asari194617/taskly/actions/runs/42223511036)
-  completed successfully on the dedicated production runner.
-- Secret scanning, push protection, Dependabot alerts/security updates, and
-  private vulnerability reporting were enabled and read back. Initial secret
-  and Dependabot alert inventories were empty. [CodeQL's initial analysis](https://github.com/asari194617/taskly/actions/runs/42223452717)
-  succeeded for Actions, Go, JavaScript/TypeScript, and Python on hosted runners.
-  Its twelve initial findings and their remediation/triage are tracked in #443.
-- Collaborator-only PR creation remained enabled, with only the owner in the
-  collaborator inventory. All external contributors also require fork-workflow
-  approval as defense in depth. An independent signed-in outsider account was
-  unavailable: the anonymous API readback verifies the configured policy, but is
-  not an end-to-end attempt to create an outsider PR. Maintainer PR/check evidence
-  is recorded in #445; external PR creation was never temporarily enabled.
+- `main` のルールセットは署名済みコミット、PR、アプリケーションの必須チェック 6 件と `secret-scan` を要求し、バイパスできるアクターはありません。Actions の既定トークンは読み取り専用で、アクションには完全な SHA が必要です。本番の認証情報は Environment のシークレットです。リポジトリのシークレット名に `PROD_*` や課題画像ストレージ用のものはありません。
+- `production` Environment は保護されたブランチにデプロイを限定し、管理者のバイパスを許可しません。1 分間の待機タイマーを設定し、別の担当者による承認は要求していません。[公開後のデプロイ](https://github.com/asari194617/taskly/actions/runs/42223511036)は専用の本番ランナーで成功しました。
+- シークレットスキャン、プッシュ保護、Dependabot のアラートとセキュリティ更新、非公開の脆弱性報告を有効にして設定を再取得しました。初回のシークレットと Dependabot のアラート一覧は空でした。[CodeQL の初回解析](https://github.com/asari194617/taskly/actions/runs/42223452717)は GitHub ホストランナーで Actions、Go、JavaScript / TypeScript、Python すべてに成功しました。初回の指摘 12 件の修正・判定は #443 で追跡します。
+- PR の作成は引き続きコラボレーターに限定し、コラボレーター一覧には所有者のみが含まれます。多層防御として、外部コントリビューター全員についてフォークのワークフロー実行に承認を要求します。別の外部アカウントでの確認はできませんでした。匿名 API から確認できるのは設定値までで、外部ユーザーが PR を作成する操作の検証ではありません。メンテナーの PR とチェックの証跡は #445 に記録し、外部からの PR 作成を一時的に許可することはありませんでした。
 
-These are dated observations, not a permanent authorization to publish. The
-`secret-scan` workflow checks fetched history on PRs and main pushes using a
-checksum-verified Gitleaks binary, read-only token, redacted output, and a
-GitHub-hosted runner. It supplements GitHub's native security features. It does
-not enumerate GitHub issues, old PR caches, logs, artifacts, or hidden refs.
+これらは当日に確認した事実です。以降の公開判断には、その時点の証跡を使います。`secret-scan` ワークフローは PR と `main` へのプッシュで、チェックサムを検証した Gitleaks バイナリと読み取り専用トークンを使い、GitHub ホストランナーで取得済みの履歴を調べます。出力は秘匿化します。GitHub 標準のセキュリティ機能を補完するもので、Issue、過去の PR キャッシュ、ログ、アーティファクト、非公開の参照の列挙は行いません。
 
-## PR admission and runner boundary
+## PR を作成できる範囲とランナーの境界
 
-The publication plan keeps this repository and its production deployment together.
-External code contributions are not accepted. GitHub's repository setting must
-remain `has_pull_requests=true` and
-`pull_request_creation_policy=collaborators_only`: maintainers retain the required
-PR/review/merge workflow, while outsiders cannot create PRs. This is an enforced
-repository setting, not just the policy in `CONTRIBUTING.md`. See
-[GitHub's PR access documentation](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/disabling-pull-requests).
+公開計画では、リポジトリとその本番デプロイを一緒に管理します。外部からのコードのコントリビューションは受け付けません。GitHub の設定を `has_pull_requests=true` と `pull_request_creation_policy=collaborators_only` に保ちます。メンテナーは PR、レビュー、必須チェックを経てマージし、外部ユーザーは PR を作成できません。`CONTRIBUTING.md` の方針をリポジトリ設定で強制します。[GitHub の PR アクセス設定](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/disabling-pull-requests)を参照してください。
 
-On 2026-11-04 the setting was applied and read back through the REST API. The
-collaborator inventory contained only the owner, and the only open PR was from
-the owner in this repository. There were no open external PRs to grandfather
-into the restricted policy. Recheck both inventories immediately before publishing.
+2026-11-04 に REST API で設定を適用して再取得しました。コラボレーターは所有者のみで、開いていた PR は同じリポジトリから所有者が作成した 1 件だけでした。制限の例外として残す必要のある外部 PR はありませんでした。公開直前に両方の一覧を再確認します。
 
-The shared selector's hosted fallback is defense in depth. Runner labels and
-container recycling do not isolate malicious code: a job with the host Docker
-socket can reach other containers and volumes. Only trusted maintainers may
-submit executable code to these runners. Review any collaborator invitation,
-GitHub App access change, and imported external code with that trust in mind.
-The production guards, dedicated runner, and protected Environment remain in use.
+共有ランナー選択処理の GitHub ホストランナーへのフォールバックは多層防御の一部です。ランナーのラベルとコンテナの作り直しだけでは、悪意のあるコードを隔離できません。ホストの Docker ソケットを持つジョブは他のコンテナやボリュームへアクセスできるため、これらのランナーに実行可能なコードを投入できるのは信頼できるメンテナーだけです。コラボレーターの招待、GitHub App のアクセス変更、外部コードの取り込みは、この前提でレビューします。本番の保護策、専用ランナー、保護された Environment は引き続き使用します。
 
-Audit event triggers as well as PR creation. Public issue/comment/review content
-must not start privileged jobs or be evaluated as code. The current workflows
-have no `issues`, `issue_comment`, `pull_request_review`, or
-`pull_request_target` triggers. Existing `workflow_run` consumers require their
-own input validation; restricting new PRs does not sanitize old artifacts.
+PR 作成とともにイベントトリガーも監査します。公開 Issue・コメント・レビューの内容で特権ジョブを起動したり、内容をコードとして評価したりしてはいけません。現在のワークフローには `issues`、`issue_comment`、`pull_request_review`、`pull_request_target` トリガーはありません。既存の `workflow_run` の利用側には固有の入力検証が必要です。新規 PR を制限しても過去のアーティファクトは無害化されません。
 
-Before enabling external PRs in the future, redesign the untrusted execution
-boundary and validate it first. A private deployment repository is an option for
-that future contribution model, not a prerequisite for the current publication
-plan with external PR creation blocked. GitHub's
-[self-hosted runner guidance](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners)
-still applies to every actor allowed to execute workflows.
+将来外部 PR を受け付ける前には、信頼できないコードを実行する環境の境界を再設計し検証します。非公開のデプロイ用リポジトリは、その運用形態で取り得る選択肢です。外部 PR を制限する現在の公開計画では分離を必須としません。ワークフローを実行できるすべてのアクターに [GitHub のセルフホストランナーのガイド](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#hardening-for-self-hosted-runners)が適用されます。
 
-## Repeatable final audit
+## 最終監査の再実行
 
-Use a new restricted directory, not an existing developer clone: local stale
-tags and worktrees can retain history that the remote no longer advertises.
+リモートがすでに公開していない履歴が古いタグや worktree に残り得るため、既存の開発クローンの代わりにアクセスを制限した新規ディレクトリを使います。
 
 ```bash
 umask 077
@@ -130,57 +47,25 @@ git -C "$audit_dir/repository.git" fsck --full
 git -C "$audit_dir/repository.git" for-each-ref --format='%(refname)' \
   > "$audit_dir/refs.txt"
 git -C "$audit_dir/repository.git" count-objects -vH
-# Run from a reviewed checkout containing .gitleaksignore; install Gitleaks 8.30.1.
+# .gitleaksignore を含むレビュー済みのチェックアウトで Gitleaks 8.30.1 を使う。
 gitleaks git "$audit_dir/repository.git" --log-opts=--all --redact \
   --ignore-gitleaks-allow --gitleaks-ignore-path=.gitleaksignore \
   --report-format=json --report-path="$audit_dir/secrets.json"
 ```
 
-Inspect binary signatures and removed document paths across reachable blobs,
-not only the main tree. Review production identifiers and personal data separately;
-a clean secret scan is not a privacy audit. Keep raw findings, old operations
-documents, credentials, and recovery bundles outside the repository. The existing
-public contact address and author address follow the decision recorded in #439.
+`main` のツリーに加え、到達可能なすべての blob で、バイナリのシグネチャと削除した文書パスを調べます。シークレットスキャンとは別に、本番の識別子や個人情報も点検します。検出結果の元データ、古い運用文書、認証情報、復旧用のバンドルはリポジトリ外に保管します。公開する連絡先と作成者のアドレスは #439 の決定に従います。
 
-Also audit open/closed issues, PR bodies/diffs/reviews, comments, releases, wiki,
-Actions logs/artifacts/caches, and packages. Do not infer safety from retention
-settings or a smaller clone. GitHub-owned pull refs cannot be deleted by pushing;
-GitHub Support only assists with qualifying sensitive-data removal, not arbitrary
-binary cleanup. See [GitHub's removal procedure](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
+開いているものと閉じた Issue、PR の本文・差分・レビュー、コメント、リリース、Wiki、Actions のログ・アーティファクト・キャッシュ、パッケージも監査します。保持設定やクローンの縮小だけで安全と判断しないでください。GitHub が管理する PR 参照をプッシュで削除することはできません。GitHub Support が対応するのは条件を満たす機密データの削除です。[GitHub の削除手順](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)を参照してください。
 
-### Existing clones after history cleanup
+### 履歴の整理後に既存クローンを扱う
 
-Keep unpublished work and any required recovery bundle in private storage. Start
-from a fresh clone of `https://github.com/asari194617/taskly.git`, then reapply only
-reviewed changes onto a new branch. Do not merge an old clone's history or push its
-stale branches/tags back into the sanitized repository. The final audit retained
-and verified a private local Git bundle; it is not a release artifact.
+未公開の作業と必要な復旧用バンドルは、非公開のストレージに保存します。`https://github.com/asari194617/taskly.git` から新しくクローンし、レビュー済みの変更だけを新しいブランチに適用します。古いクローンの履歴をマージしたり、古いブランチやタグを整理済みのリポジトリへ戻したりしないでください。最終監査で保存・検証したローカル Git バンドルは非公開の復旧用です。
 
-## Visibility transition
+## 公開範囲の変更手順
 
-1. Complete the content audit. Preserve restricted recovery evidence and record
-   the reviewed commit/ref inventory. Verify the collaborators-only PR policy,
-   trusted collaborator/App inventory, and absence of existing external PRs.
-2. Quiesce Actions for the transition after active production operations finish.
-3. Change visibility and immediately read back `collaborators_only`; retain
-   `has_pull_requests=true` so maintainer PRs remain usable. Keep read-only default
-   tokens, SHA pins, the main ruleset and required checks (including `secret-scan`),
-   and production credentials in the protected `production` Environment. Configure
-   a one-minute Environment wait timer, retaining protected-branch restrictions
-   and disabled administrator bypass. This preserves the owner's automatic
-   deployment workflow; a timer is not independent human approval. An all-external-contributors
-   run approval policy is additional protection, not a replacement for blocked
-   external PR creation.
-4. Enable and verify secret scanning, push protection, Dependabot alerts/updates,
-   and private vulnerability reporting. Verify the route in `SECURITY.md` works.
-5. Restore the saved Actions policy after those controls are verified, then enable
-   CodeQL default setup on GitHub-hosted runners for Actions, Go,
-   JavaScript/TypeScript, and Python. Wait for its initial analysis and triage
-   alerts; CodeQL requires Actions to be enabled to complete this validation.
-   Verify that an account without
-   collaborator access cannot create a PR, and that maintainer PRs still run the
-   required checks. Do not temporarily reopen external PR creation to test runner
-   routing. If a separate test account is unavailable, record that validation gap
-   explicitly; owner-authenticated readback is not an outsider test.
-6. Record results in #437, #439, #441, #443, and #445. Only mark a gate complete
-   when its current evidence meets the issue's completion conditions.
+1. コンテンツ監査を完了し、アクセスを制限した復旧証跡とレビュー済みのコミット・参照一覧を記録します。コラボレーター限定の PR 設定、信頼済みのコラボレーターと App の一覧、既存の外部 PR がないことを確認します。
+2. 進行中の本番作業が完了してから、移行の間だけ Actions を停止します。
+3. 公開範囲を変更し、直ちに `collaborators_only` を読み戻します。メンテナーが PR を使えるよう `has_pull_requests=true` を維持します。読み取り専用の既定トークン、SHA 固定、`main` のルールセットと必須チェック（`secret-scan` を含む）、保護された `production` Environment の本番認証情報を維持します。Environment には 1 分の待機タイマーを設定し、保護ブランチへの制限と管理者バイパスの無効化を維持します。これにより所有者の自動デプロイを維持します。タイマーとは別に人の承認を要求する設定はありません。外部コントリビューター全員の実行承認は、外部 PR の作成制限に追加する保護策です。
+4. シークレットスキャン、プッシュ保護、Dependabot のアラート・更新、非公開の脆弱性報告を有効にして確認します。`SECURITY.md` にある報告経路の動作も確認します。
+5. 保護策の検証後に保存済みの Actions ポリシーを復元し、GitHub ホストランナーで Actions、Go、JavaScript / TypeScript、Python の CodeQL 既定セットアップを有効にします。CodeQL の初回解析には Actions が必要です。解析完了を待ってからアラートを判定します。コラボレーター権限のないアカウントは PR を作成できず、メンテナーの PR には必須チェックが動くことを確認します。ランナーの割り当てを試すために外部 PR の作成を一時的に許可しないでください。外部のテストアカウントがなければ、所有者の認証で設定を確認した範囲と、未検証の外部操作を記録します。
+6. 結果を #437、#439、#441、#443、#445 に記録します。その時点の証跡が Issue の完了条件を満たす場合だけ、該当の条件を完了とします。

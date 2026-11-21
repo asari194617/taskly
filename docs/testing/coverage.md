@@ -1,20 +1,15 @@
-# PR coverage policy
+# プルリクエストのカバレッジ方針
 
-Pull requests enforce a 75% minimum for deterministic core logic. The coverage
-comment names the measured scope so the percentage is not confused with a
-whole-repository figure.
+プルリクエストでは、決定的に検証できる中核ロジックに最低 75% のカバレッジを求めます。カバレッジコメントは計測範囲を明記し、リポジトリ全体の値と区別できるようにします。
 
-| Group | Included scope | Excluded from the percentage |
+| グループ | 計測範囲 | カバレッジの計算対象外 |
 | --- | --- | --- |
-| API core | GraphQL request validation/types and task-list policy | process bootstrap, database-bound resolver wiring, external service setup |
-| Guidance bridge (80% minimum) | complete `internal/guidancebridge` OAuth identity, runtime allowlist, canonical completion API | no source files excluded; MySQL upsert roundtrip runs separately in `api-empty-database` |
-| Notification core | shared recipient eligibility, deadlines, badges, and DSN helpers | batch process bootstrap and vendor transports |
-| Email core | deterministic digest payload and localization (`coverage_core.go`) | SMTP/gRPC transport |
-| Web push core | recipient policy and idempotent delivery state (`coverage_core.go`) | network transport and process bootstrap |
-| Web logic | API clients, task-list model, auth/session and login-flow modules listed in `vitest.config.ts` | React rendering, vendored UI primitives, Astro pages |
-| MCP runtime | compiled application/runtime modules exercised by unit and stdio tests | CLI bootstrap |
+| API の中核 | GraphQL のリクエスト検証・型、課題一覧のポリシー | プロセスの初期化、DB に依存するリゾルバーの接続処理、外部サービスの設定 |
+| 企業ガイダンス連携（最低 80%） | `internal/guidancebridge` 全体の OAuth ID、実行時の許可リスト、正規の課題完了 API | 対象外のソースファイルなし。MySQL の upsert を含む往復テストは `api-empty-database` で別途実行 |
+| 通知の中核 | 配信先の判定、締切、バッジ、DSN の共通処理 | バッチプロセスの初期化、外部サービスへの送信処理 |
+| メールの中核 | 決定的に検証できるダイジェストのペイロードとローカライズ（`coverage_core.go`） | SMTP / gRPC の通信処理 |
+| Web Push の中核 | 宛先ポリシーと冪等な配信状態（`coverage_core.go`） | ネットワーク通信とプロセスの初期化 |
+| Web のロジック | `vitest.config.ts` に記載された API クライアント、課題一覧モデル、認証・セッション、ログインフローのモジュール | React の描画、取り込んだ UI 部品、Astro ページ |
+| MCP ランタイム | 単体テストと stdio テストが実行するコンパイル済みのアプリケーション・ランタイムモジュール | CLI の初期化 |
 
-Excluded code is still compiled and its existing unit, integration, browser,
-and workflow tests continue to run. New deterministic business logic should be
-placed in the measured scope; exclusions must not be expanded merely to satisfy
-the threshold.
+計算対象外のコードもコンパイルし、既存の単体・統合・ブラウザー・ワークフローテストを引き続き実行します。新しい決定的なビジネスロジックは計測範囲に追加してください。最低値を満たすためだけに対象外の範囲を広げないでください。

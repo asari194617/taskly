@@ -1,4 +1,4 @@
-# mcp-client-files
+# Taskly MCP クライアントの配布ファイル
 
 Taskly MCP クライアント配布用ファイル群（Cloudflare R2 配信前提）。
 

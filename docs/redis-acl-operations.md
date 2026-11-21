@@ -1,65 +1,36 @@
-# Redis ACL operations
+# Redis ACL の運用
 
-Production Redis disables the default user. The Taskly API authenticates with the
-`REDIS_USERNAME` and `REDIS_PASSWORD` values injected through the existing
-encrypted production environment secret. Do not commit either value.
+本番の Redis ではデフォルトユーザーを無効にします。Taskly API は、既存の暗号化された本番環境用シークレットから渡される `REDIS_USERNAME` と `REDIS_PASSWORD` で認証します。どちらの値もコミットしないでください。
 
-The application user is limited to these commands:
+アプリケーション用ユーザーに許可するコマンドは以下のとおりです。
 
-- `PING`, `SELECT`, `GET`, `SET`, `DEL`, `INCR`, `EXPIRE`
-- `SADD`, `SMEMBERS`, `SREM`
-- `EVAL` for atomically releasing the MFA transaction lock
+- `PING`、`SELECT`、`GET`、`SET`、`DEL`、`INCR`、`EXPIRE`
+- `SADD`、`SMEMBERS`、`SREM`
+- 多要素認証トランザクションのロックを原子的に解除する `EVAL`
 
-It can access only Taskly authentication, rate-limit, WebAuthn, TOTP, and session
-key prefixes, including `auth_transaction:*` for short-lived MFA transactions.
-Scripts remain subject to Redis ACL command and key checks. Administrative
-commands, Pub/Sub, arbitrary keys, and all other command categories remain denied.
-When the ACL entrypoint changes, production deployment recreates Redis so the
-new policy takes effect; the `redis-data` volume remains mounted.
+アクセスできるのは Taskly の認証、レート制限、WebAuthn、TOTP、セッション用のキープレフィックスです。短時間だけ有効な多要素認証トランザクションの `auth_transaction:*` も含みます。スクリプトも Redis ACL のコマンドとキーの検査を受けます。管理コマンド、Pub/Sub、任意のキー、その他のコマンドカテゴリは拒否します。ACL エントリーポイントの変更時には、本番デプロイが Redis を再作成して新しいポリシーを適用します。`redis-data` ボリュームは引き続きマウントします。
 
-## Initial rollout
+## 初回の導入
 
-1. Generate a strong secret outside the repository, for example with
-   `openssl rand -base64 48`.
-2. Add `REDIS_USERNAME=taskly` and `REDIS_PASSWORD=<generated secret>` to the
-   encrypted production environment secret before deploying this change.
-3. Deploy Redis and the API together. The Redis health check authenticates before
-   reporting healthy, and the API exits during startup if credentials are absent
-   or rejected.
-4. Verify from inside the Redis container that unauthenticated `PING` returns
-   `NOAUTH`, authenticated `PING` returns `PONG`, an allowed temporary key can be
-   set and deleted, and `CONFIG GET '*'` plus access to an unrelated key return
-   `NOPERM`.
+1. `openssl rand -base64 48` などで、リポジトリの外で強いシークレットを生成します。
+2. デプロイ前に暗号化された本番環境用シークレットへ `REDIS_USERNAME=taskly` と `REDIS_PASSWORD=<generated secret>` を追加します。
+3. Redis と API を一緒にデプロイします。Redis のヘルスチェックは認証してから正常を報告します。認証情報がないか拒否された場合、API は起動中に終了します。
+4. Redis コンテナ内で、未認証の `PING` が `NOAUTH`、認証済みの `PING` が `PONG` を返すことを確認します。許可された一時キーを設定・削除でき、`CONFIG GET '*'` と無関係なキーへのアクセスが `NOPERM` になることも確認します。
 
-The named `redis-data` volume is retained across container recreation. Existing
-sessions therefore remain valid when Redis has persisted them. A session written
-after the most recent Redis snapshot can already be lost by a restart under the
-existing persistence policy; plan a maintenance window if forced logout is not
-acceptable.
+コンテナを再作成しても名前付きボリューム `redis-data` は保持されるため、Redis に永続化済みのセッションは引き続き有効です。既存の永続化ポリシーでは、直近のスナップショット以降に書き込んだセッションは再起動で失われることがあります。強制ログアウトを避ける必要がある場合は、保守時間を確保してください。
 
-## Credential rotation
+## 認証情報のローテーション
 
-1. Choose a new username and password together. This configuration supports one
-   application credential at a time, so schedule a brief maintenance window.
-2. Update the encrypted production environment secret.
-3. Recreate Redis and the API together with `docker compose up -d --force-recreate
-   redis server`.
-4. Run the verification steps above and remove any temporary verification key.
+1. 新しいユーザー名とパスワードを一緒に決めます。この構成で同時に使えるアプリケーション用の認証情報は 1 組なので、短い保守時間を確保します。
+2. 暗号化された本番環境用シークレットを更新します。
+3. `docker compose up -d --force-recreate redis server` で Redis と API を一緒に再作成します。
+4. 上記の確認手順を実行し、検証用の一時キーを削除します。
 
-Changing credentials does not delete Redis data or invalidate stored session
-tokens. To deliberately invalidate every session, stop the API and delete only
-the `session:*` and `user_sessions:*` keys using an explicitly authorized break-
-glass procedure.
+認証情報を変更しても Redis のデータは削除されず、保存済みのセッショントークンは引き続き有効です。意図的に全セッションを無効にする場合は、明示的に承認された緊急手順で API を停止し、`session:*` と `user_sessions:*` のキーだけを削除します。
 
-## Recovery
+## 復旧
 
-- If Redis is unhealthy, inspect container status and logs. Startup errors name
-  the missing variable but never print its value.
-- Restore the matching username/password in the encrypted environment secret and
-  recreate Redis and the API. Do not enable the default user or `nopass` as a
-  workaround.
-- If the ACL file cannot be generated, roll back the application deployment while
-  retaining the `redis-data` volume, correct the secret/configuration, and deploy
-  again.
-- Treat exposure of a credential as an incident: rotate it, review Redis and API
-  logs, and decide whether all sessions must be invalidated.
+- Redis が異常な場合は、コンテナの状態とログを確認します。起動エラーには不足した変数名が表示されますが、値は出力しません。
+- 暗号化された環境シークレットでユーザー名とパスワードの組を復元し、Redis と API を再作成します。回避策としてデフォルトユーザーや `nopass` を有効にしないでください。
+- ACL ファイルを生成できない場合は、`redis-data` ボリュームを保持したままアプリケーションのデプロイをロールバックし、シークレットや設定を修正して再デプロイします。
+- 認証情報が漏えいした場合は、インシデントとして扱います。認証情報をローテーションし、Redis と API のログを確認して、全セッションの無効化が必要か判断します。

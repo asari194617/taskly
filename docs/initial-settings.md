@@ -10,8 +10,8 @@
 
 - `R2_BUCKET`: R2 バケット名
 - `R2_ACCOUNT_ID`: Cloudflare アカウント ID
-- `R2_ACCESS_KEY_ID`: R2 Access Key ID
-- `R2_SECRET_ACCESS_KEY`: R2 Secret Access Key
+- `R2_ACCESS_KEY_ID`: R2 のアクセスキー ID
+- `R2_SECRET_ACCESS_KEY`: R2 のシークレットアクセスキー
 
 `v*` タグの push または手動実行で macOS、Linux、Windows 用バイナリを
 生成し、次のパスへアップロードします。
@@ -42,7 +42,7 @@
 - `PROD_COMPOSE_PROFILES`: 追加で有効にする Compose profile。通常は空
 - `PROD_PUBLIC_API_HEALTH_URL`, `PROD_PUBLIC_MCP_HEALTH_URL`, `PROD_PUBLIC_AIRFLOW_HEALTH_URL`: 公開 Nginx 経路も検証する場合の完全な health URL。API と MCP は `/readyz` を指定します。既存の `/healthz` 設定は検証スクリプトが `/readyz` に置き換えます。設定された経路だけ追加検証します。
 
-企業ガイダンスの MCP 委任に使う Actions 変数は [Guidance MCP の設定](operations/no-ddl-code-release.md#optional-guidance-mcp-configuration) を参照してください。
+企業ガイダンスの MCP 委任に使う Actions 変数は [Guidance MCP の設定](operations/no-ddl-code-release.md#任意の企業ガイダンス-mcp-設定) を参照してください。
 
 `main` への push が [ワークフローの `push.paths`](../.github/workflows/deploy-prod.yml)
 に一致すると起動します。対象は API、MCP、メール作成サービス、バッチ、インフラ、
@@ -150,7 +150,7 @@ Atlasのdry-runを先に表示し、`DROP TABLE`、`DROP COLUMN`、`DROP INDEX`�
 本番デプロイは DB スキーマが基準と同じ場合に進みます。スキーマ変更と初回構築は、
 バックアップ、互換性、適用後の基準の確認を含むメンテナンスとして別途レビューします。
 Atlas の計画は適切な検証環境で作成します。作業手順は
-[スキーマメンテナンス](operations/no-ddl-code-release.md#schema-maintenance) を参照してください。
+[スキーマメンテナンス](operations/no-ddl-code-release.md#スキーマの保守) を参照してください。
 
 CIは空DBへの適用、主要テーブルの読み書き、2回目のdry-runが空になることを
 確認します。MySQL DDLは全体をロールバックできないため、途中失敗後は実スキーマを

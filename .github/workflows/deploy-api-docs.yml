@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - apps/docs/openapi/index.html
+      - apps/docs/openapi/openapi.yaml
       - .github/workflows/deploy-api-docs.yml
   workflow_dispatch:
 
@@ -30,16 +31,22 @@ jobs:
         with:
           python-version: "3.14.10"
       - run: python -m pip install awscli
-      - name: Upload API documentation page
+      - name: API リファレンスと OpenAPI 定義を配信
         run: |
           set -euo pipefail
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp apps/docs/openapi/openapi.yaml "s3://${R2_BUCKET}/docs/api/openapi.yaml" \
+            --endpoint-url "$endpoint" --content-type 'text/yaml; charset=utf-8' \
+            --cache-control no-cache --no-progress
           aws s3 cp apps/docs/openapi/index.html "s3://${R2_BUCKET}/docs/api/index.html" \
             --endpoint-url "$endpoint" --content-type 'text/html; charset=utf-8' \
             --cache-control no-cache --no-progress
-      - name: Verify public noindex metadata
+      - name: 配信内容と noindex を確認
         run: |
           set -euo pipefail
-          curl -fsSL --retry 6 --retry-delay 5 \
-            'https://cdn.taskly.iy0306.com/docs/api/index.html' \
-            | grep -F '<meta name="robots" content="noindex, nofollow" />'
+          base_url='https://cdn.taskly.iy0306.com/docs/api'
+          curl -fsSL --retry 6 --retry-delay 5 "$base_url/index.html" -o "$RUNNER_TEMP/taskly-api-index.html"
+          cmp apps/docs/openapi/index.html "$RUNNER_TEMP/taskly-api-index.html"
+          grep -F '<meta name="robots" content="noindex, nofollow" />' "$RUNNER_TEMP/taskly-api-index.html"
+          curl -fsSL --retry 6 --retry-delay 5 "$base_url/openapi.yaml" -o "$RUNNER_TEMP/taskly-api-openapi.yaml"
+          cmp apps/docs/openapi/openapi.yaml "$RUNNER_TEMP/taskly-api-openapi.yaml"

@@ -1,20 +1,24 @@
 ---
-name: Feature request
-about: Suggest an idea for this project
+name: 機能の提案
+about: Taskly に追加・改善してほしい機能を提案する
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**解決したい問題**
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+困っていることと、どのような場面で起きるかを簡潔に記載してください。
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**希望する機能や動作**
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+どのような機能や動作があれば問題を解決できるかを記載してください。
+
+**検討した代替案**
+
+ほかに検討した解決方法や機能があれば記載してください。
+
+**補足情報**
+
+提案に関連する補足やスクリーンショットがあれば添えてください。

@@ -1,32 +1,18 @@
-# Public iCal feed
+# 公開 iCal フィード
 
-`GET /ical/{token}.ics` returns all tasks created by the token owner, including
-past and future deadlines. There is no date window or task-count limit. Events
-are ordered by deadline and task ID. A task without a deadline produces no event.
+`GET /ical/{token}.ics` は、過去・将来を問わず、トークン所有者が作成したすべての課題を返します。日付範囲や課題件数に上限はありません。予定は締切と課題 ID の順に並びます。締切のない課題は予定を生成しません。
 
-The request reads the token, the owner's notification language, and the tasks
-with their subjects in three database queries, regardless of task count. The
-language selects the English subject name when available; otherwise the
-Japanese name is used. The response is generated on every request so task and
-language changes are visible on the next fetch. No short-term cache or
-conditional response is used because there is no measured subscription traffic
-that justifies the added invalidation behavior.
+課題数にかかわらず、DB クエリ 3 回で、トークン、所有者の通知言語、科目付きの課題を取得します。通知言語が英語で、科目の英語名が登録されていれば英語名を使います。それ以外は日本語名を使います。応答はリクエストごとに生成するため、課題や言語の変更は次回の取得で反映されます。短期キャッシュや条件付き応答の無効化処理を追加する根拠となる購読トラフィックは観測されておらず、これらは利用していません。
 
-An unknown, expired, or deleted user's token returns 404. A database failure
-returns 500 and does not serve a partial calendar as a successful response.
+不明なトークン、期限切れのトークン、削除済みユーザーのトークンには 404 を返します。DB の障害時は 500 を返し、不完全なカレンダーを成功応答として配信しません。
 
-## Verification (2026-09-22)
+## 検証（2026-09-22）
 
-SQLite route tests with 127 and 501 tasks verified all events, the final event,
-the translated subject name, and three queries per request. A dropped task table
-verified that feed generation returns 500. The local benchmark below measures
-generation only (language and task queries plus ICS construction) on Apple M2
-Pro with SQLite; these are not production MySQL latency or memory figures.
+SQLite を使ったルートテストでは、課題 127 件と 501 件について、全予定と末尾の予定、翻訳された科目名、リクエストごとのクエリ 3 回を確認しました。また、課題テーブルが存在しない場合に生成処理が 500 を返すことを確認しました。以下は Apple M2 Pro と SQLite で、言語と課題のクエリおよび ICS の組み立てのみを計測したローカルベンチマークです。本番 MySQL の応答時間やメモリ使用量は含みません。
 
-| Tasks | Time/op | Allocated bytes/op | Allocations/op |
+| 課題数 | 1 回あたりの時間 | 1 回あたりの割り当てバイト数 | 1 回あたりの割り当て回数 |
 | ---: | ---: | ---: | ---: |
 | 127 | 1.23 ms | 368,003 | 7,263 |
 | 501 | 9.41 ms | 1,362,158 | 28,714 |
 
-Run `go test . -run '^$' -bench '^BenchmarkBuildICSForUser$' -benchmem -benchtime=20x -count=1`
-from `apps/server` to repeat the benchmark.
+再計測するには、`apps/server` で `go test . -run '^$' -bench '^BenchmarkBuildICSForUser$' -benchmem -benchtime=20x -count=1` を実行します。

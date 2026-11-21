@@ -1,29 +1,26 @@
-# email-compose service
+# email-compose サービス
 
-A small Node.js gRPC service that composes transactional emails using React Email. It returns HTML and plain text to the Go mailer, which performs the actual sending.
+React Email でメールを生成する小規模な Node.js gRPC サービスです。HTML とプレーンテキストを Go のメール送信処理に返します。
 
-Features:
+## 機能
 
-- gRPC API for login, security verification, and email address confirmation codes,
-  task digests, moderation alerts, day shift notices,
-  and day shift skips, with locale (en/ja)
-- React Email templates styled similar to shadcn/ui
-- i18n via i18next with filesystem backend
-- Sentry and Datadog instrumentation hooks
+- ログイン、セキュリティ確認、メールアドレス確認のコード、課題のダイジェスト、モデレーションの警告、日直の通知とスキップを扱う gRPC API（日本語・英語対応）
+- shadcn/ui に合わせたスタイルの React Email テンプレート
+- ファイルシステムをバックエンドに使う i18next による国際化
+- Sentry と Datadog の計装フック
 
-Environment variables:
+## 環境変数
 
-- EMAIL_COMPOSE_GRPC_HOST (default: 0.0.0.0)
-- EMAIL_COMPOSE_GRPC_PORT (default: 50051)
-- NODE_ENV (development|production)
-- SENTRY_DSN (optional)
-- SENTRY_TRACES_SAMPLE_RATE / SENTRY_PROFILES_SAMPLE_RATE (optional)
-- DD\_\* variables for Datadog (optional)
+- `EMAIL_COMPOSE_GRPC_HOST`（既定値 `0.0.0.0`）
+- `EMAIL_COMPOSE_GRPC_PORT`（既定値 `50051`）
+- `NODE_ENV`（`development` または `production`）
+- `SENTRY_DSN`（任意）
+- `SENTRY_TRACES_SAMPLE_RATE` / `SENTRY_PROFILES_SAMPLE_RATE`（任意）
+- Datadog 用の `DD_*` 変数（任意）
 
-## Local development
+## ローカル開発
 
-Use Node.js 26 for the same checks as CI; the container runtime uses Node.js
-26.13.1. From this directory:
+CI と同じ検証には Node.js 26 を使います。コンテナのランタイムは Node.js 26.13.1 です。このディレクトリで次を実行します。
 
 ```bash
 npm ci
@@ -31,12 +28,6 @@ npm run build
 npm start
 ```
 
-The service listens on gRPC port `50051`. There is no HTTP email-rendering
-endpoint. Compose exposes this port only inside its network. The API and
-notification mailer connect using `EMAIL_COMPOSE_GRPC_ADDR=email-compose:50051`.
-See [`src/proto/email.proto`](src/proto/email.proto) for the RPC contract and the
-[local setup guide](../../docs/local-development.md) for the surrounding stack.
+サービスは gRPC のポート `50051` で待ち受けます。メール生成用の HTTP エンドポイントはありません。Compose ではネットワーク内にのみこのポートを公開します。API と通知のメール送信処理は `EMAIL_COMPOSE_GRPC_ADDR=email-compose:50051` を使って接続します。RPC の仕様は [`src/proto/email.proto`](src/proto/email.proto)、周辺サービスの構成は[ローカル開発ガイド](../../docs/local-development.md)を参照してください。
 
-Code-composition requests accept `expiry_minutes`. Existing `ComposeLoginCode`
-callers that omit it retain the five-minute wording. The two new auth-code RPCs
-default to ten minutes. Callers must set the actual code lifetime explicitly.
+認証コードメールの生成リクエストには `expiry_minutes` を指定できます。既存の `ComposeLoginCode` の呼び出しで値を省略すると、従来どおり有効期限を 5 分と表示します。新しい 2 つの認証コード用 RPC の既定値は 10 分です。呼び出し元はコードの実際の有効期間を明示してください。

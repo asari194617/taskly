@@ -1,73 +1,57 @@
-# Documentation index
+# ドキュメント一覧
 
-Start with the [repository structure](../README.md#repository-structure) and
-[local development guide](local-development.md) for a new checkout.
-Operational references describe the checked-in implementation; production
-credentials, incident evidence, and user data belong in restricted records.
+初めてチェックアウトした場合は、[リポジトリの構成](../README.md#リポジトリの構成)と[ローカル開発ガイド](local-development.md)を確認してください。運用資料はリポジトリ内の実装を説明します。本番環境の認証情報、インシデントの証跡、ユーザーデータはアクセスを制限した記録に保管します。
 
-## Architecture and features
+## システム構成と機能
 
-- [Repository overview](../README.md) and [web development](../apps/web/README.md)
-- [API boundaries](api-boundaries.md), [public OpenAPI](../apps/docs/openapi/openapi.yaml), and [schema overview](schema.md)
-- [Web task behavior](clients/web/README.md) and [mobile task entry](clients/web/mobile-task-entry.md)
-- [Task images](features/task-images.md) and [token expiry input](features/token-expiration-input.md)
-- [Notification settings](notifications.md), [batch delivery](batches/notifications/README.md), and [batch inventory](../batches/README.md)
-- [Integration jobs and transactional outbox](integration-jobs.md)
-- [iCal feed](ical-feed.md) and [MCP guide](mcp-docs.md)
-- [Email composer](../apps/email-compose/README.md) and [sender logo](email-sender-logo.md)
-- [Destructive security confirmations](features/security-destructive-action-confirmations.md), [mobile settings navigation](features/settings-mobile-navigation.md), and [header logo navigation](features/header-logo-navigation.md)
-- [GraphQL admin authorization](apps/server/graphql-admin-authorization.md) and [day shift skips](apps/server/day-shift-skip.md)
+- [リポジトリ概要](../README.md)と [Web クライアントの開発](../apps/web/README.md)
+- [API の責務](api-boundaries.md)、[公開 OpenAPI](../apps/docs/openapi/openapi.yaml)、[スキーマの概要](schema.md)
+- [Web での課題操作](clients/web/README.md)と[モバイルでの課題入力](clients/web/mobile-task-entry.md)
+- [課題の画像](features/task-images.md)と[トークン有効期限の入力](features/token-expiration-input.md)
+- [通知設定](notifications.md)、[バッチによる通知配信](batches/notifications/README.md)、[バッチ一覧](../batches/README.md)
+- [連携ジョブとトランザクショナルアウトボックス](integration-jobs.md)
+- [iCal フィード](ical-feed.md)と [MCP ガイド](mcp-docs.md)
+- [メール生成サービス](../apps/email-compose/README.md)と[送信者ロゴ](email-sender-logo.md)
+- [セキュリティ関連の破壊的操作の確認](features/security-destructive-action-confirmations.md)、[モバイルの設定画面遷移](features/settings-mobile-navigation.md)、[ヘッダーロゴによる画面遷移](features/header-logo-navigation.md)
+- [GraphQL の管理者権限](apps/server/graphql-admin-authorization.md)と[日直のスキップ](apps/server/day-shift-skip.md)
 
-## Authentication and account data
+## 認証とアカウントデータ
 
-The web login, credentials, and profile UI use the separate taskly-auth service.
-These references describe the ownership gates and synchronization contracts;
-they do not provision that service:
+Web のログイン、認証情報、プロフィール画面では別サービスの taskly-auth を使います。以下の資料では、データの管理主体を切り替える条件と同期仕様を説明します。認証サービスの構築は taskly-auth 側で行います。
 
-- [Identity writes and cutover gates](auth-identity-write-inventory.md)
-- [User projections](auth-user-projection-sync.md) and [profile ownership](account-profile-ownership.md)
-- [Account lifecycle synchronization](auth-account-lifecycle-sync.md)
-- [Session cookies](session-cookie-migration.md)
-- [NNCT company guidance setup](nnct-corp-guidance-development.md), a separate taskly-auth client
-- [Account closure, erasure, and data requests](operations/account-data.md)
-- [Policy publication and consent records](legal/README.md)
+- [認証データの書き込み箇所と移行条件](auth-identity-write-inventory.md)
+- [ユーザープロジェクション](auth-user-projection-sync.md)と[プロフィールの管理主体](account-profile-ownership.md)
+- [アカウントのライフサイクル同期](auth-account-lifecycle-sync.md)
+- [セッション Cookie](session-cookie-migration.md)
+- [長岡高専企業ガイダンスのセットアップ](nnct-corp-guidance-development.md)（別の taskly-auth クライアント）
+- [アカウントの閉鎖、データ消去、開示請求](operations/account-data.md)
+- [ポリシーの公開と同意記録](legal/README.md)
 
-## Operations and verification
+## 運用と検証
 
-- [CI/CD and production deployment](initial-settings.md), [code-only release safeguards](operations/no-ddl-code-release.md), and [SSH deployment reconciliation](operations/ssh-deploy-reconciliation.md)
-- [Repository publication gates and final audit](operations/repository-publication.md)
-- [GitHub Actions runner pool](../infra/actions-runner/README.md) and [required checks](operations/github-actions-required-checks.md)
-- [Readiness](operations/readiness.md), [network ports](operations/network-ports.md), and [monitoring](operations/metrics-monitoring.md)
-- [Redis ACL operations](redis-acl-operations.md) and [disk maintenance](operations/disk-maintenance.md)
-- [Encrypted MySQL backups](operations/mysql-backup.md), [recovery and rollback](operations/recovery-drill.md), and [drill record template](operations/recovery-drill-record-template.md)
-- [Airflow metadata separation](operations/airflow-db-separation.md) and [Airflow Python tests](operations/airflow-python-tests.md)
-- [Test coverage](testing/coverage.md), [mocked browser tests](../apps/web/tests/browser/README.md), and [real API E2E tests](../apps/web/tests/e2e/README.md)
-- [Weekly Discord report](operations/weekly-discord.md)
-- [API OpenTelemetry](../apps/server/OPENTELEMETRY.md) and [Datadog](../apps/server/DATADOG.md)
+- [CI/CD と本番デプロイ](initial-settings.md)、[コードのみのリリースの保護策](operations/no-ddl-code-release.md)、[SSH デプロイ中断時の復旧](operations/ssh-deploy-reconciliation.md)
+- [リポジトリの公開条件と最終監査](operations/repository-publication.md)
+- [GitHub Actions ランナープール](../infra/actions-runner/README.md)と[必須チェック](operations/github-actions-required-checks.md)
+- [準備状態の確認](operations/readiness.md)、[ネットワークポート](operations/network-ports.md)、[監視](operations/metrics-monitoring.md)
+- [Redis ACL の運用](redis-acl-operations.md)と[ディスクの保守](operations/disk-maintenance.md)
+- [暗号化された MySQL バックアップ](operations/mysql-backup.md)、[復旧とロールバック](operations/recovery-drill.md)、[訓練記録テンプレート](operations/recovery-drill-record-template.md)
+- [Airflow メタデータ DB の分離](operations/airflow-db-separation.md)と [Airflow の Python テスト](operations/airflow-python-tests.md)
+- [テストカバレッジ](testing/coverage.md)、[モックを使うブラウザテスト](../apps/web/tests/browser/README.md)、[実 API を使う E2E テスト](../apps/web/tests/e2e/README.md)
+- [Discord への週次レポート](operations/weekly-discord.md)
+- API の [OpenTelemetry](../apps/server/OPENTELEMETRY.md) と [Datadog](../apps/server/DATADOG.md)
 
-When prose conflicts with executable configuration, use
-`apps/server/schema.sql` and `atlas.hcl` for the application schema,
-`infra/docker-compose.yml` plus `infra/docker-compose.prod.yml` for deployment,
-`.env.example`, `.github/workflows/`, and application manifests. Files in
-`apps/server/migrations` record earlier changes and are not the current schema
-application mechanism. The OpenAPI files document REST; GraphQL's executable
-schema is in `apps/server/internal/handler/graphql/`.
+説明と実行時の設定が異なる場合、アプリケーションのスキーマは `apps/server/schema.sql` と `atlas.hcl`、デプロイは `infra/docker-compose.yml` と `infra/docker-compose.prod.yml` を優先します。環境設定は `.env.example`、ワークフローは `.github/workflows/`、アプリの設定は各マニフェストを確認してください。`apps/server/migrations` は過去の変更記録で、現在のスキーマ適用は Atlas が行います。OpenAPI ファイルは REST の仕様を記載しています。GraphQL の実行用スキーマは `apps/server/internal/handler/graphql/` にあります。
 
-## Requirements and historical material
+## 要件と過去の資料
 
-The following are requirements or earlier proposals, not an implementation
-status checklist. Their checkmarks and example schemas do not establish what is
-currently deployed:
+以下の資料は、要件や過去の提案を記録しています。現在の実装状況や本番環境を確認する際は、資料にあるチェックマークやスキーマ例に加え、現行の実装や設定を確認してください。
 
-- [Original product requirements](Specification.md), including native client plans
-- [Earlier backlog](remain.md) and [security review notes](improvements.md)
-- [Day shift redesign](new-day-shift.md), [exam proposal](features/0001-exam.md), and [moderation proposal](batches/moderate/README.md)
-- [Email composer requirements](apps/email-compose/README.md)
-- [Earlier terms revision proposal](legal/terms-issue-404.md)
+- [当初のプロダクト要件](Specification.md)（ネイティブクライアントの計画を含む）
+- [過去のバックログ](remain.md)と[セキュリティレビューの記録](improvements.md)
+- [日直機能の再設計](new-day-shift.md)、[試験機能の提案](features/0001-exam.md)、[モデレーションの提案](batches/moderate/README.md)
+- [メール生成サービスの要件](apps/email-compose/README.md)
+- [過去の利用規約改定案](legal/terms-issue-404.md)
 
-Feature documents linked in the current sections above describe implemented
-behavior. Other files under `features/` may contain proposals; consult the
-implementation before treating them as current behavior.
+上の「システム構成と機能」から参照している機能の資料は実装済みの挙動を説明しています。`features/` 内のその他の資料には提案も含まれるため、現行の挙動は実装と照合してください。
 
-Update the relevant current references whenever behavior, configuration, ports,
-required environment variables, or deployment steps change.
+挙動、設定、ポート、必須の環境変数、デプロイ手順を変更した場合は、関連する現行資料も更新してください。
