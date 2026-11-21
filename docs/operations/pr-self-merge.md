@@ -2,11 +2,6 @@
 
 `main` に向けた外部からの PR には、リポジトリの書き込み権限を持つメンバーからの承認が 1 件以上必要です。
 
-書き込み権限を持つメンバーが作成した自分の PR は、GitHub でセルフレビューを提出してから通常のマージボタンを使えます。
+書き込み権限を持つメンバーが作成した PR は、専用 GitHub App が最新コミットを自動で承認します。必須 CI とコミット署名の要件を満たしたら、通常どおり **Merge pull request** を押します。
 
-1. PR の **Files changed** で変更を確認し、**Review changes** を開きます。
-2. 1 行目に `self-review` と入力します。2 行目以降に確認内容を記入できます。
-3. **Comment** を選んでレビューを提出します。専用 App がレビュー対象コミットに承認を付けます。
-4. 必須 CI と署名の要件を満たしたら、通常どおり **Merge pull request** を押します。
-
-PR の作成者とレビュー投稿者が一致し、投稿者に現在も書き込み権限がある場合にだけ App が承認します。コミットを更新した場合は、変更を確認してからセルフレビューを提出し直してください。共通実行先の設定とログは [Taskly PR automation](https://github.com/asari194617/taskly-pr-automation) で管理します。
+通常の PR は作成時に、ドラフト PR は **Ready for review** に切り替えた時点で自動承認の対象になります。コミットを追加した場合は App が更新後のコミットを承認します。共通実行先の設定とログは [Taskly PR automation](https://github.com/asari194617/taskly-pr-automation) で管理します。
