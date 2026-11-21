@@ -115,6 +115,21 @@ curl -fsS https://local.api.taskly.iy0306.com/readyz
 curl -fsS https://local.mcp.taskly.iy0306.com/readyz
 ```
 
+For a fresh pair of development databases, [seed an auth user](https://github.com/asari194617/taskly-auth#2-開発ユーザーを用意する)
+and find its `id` in the auth database's `users` table. Create a matching
+entry in the Taskly development DB with the same ID and email before
+visiting `https://local.taskly.iy0306.com/login`. For example, use the
+following command after replacing the ID and email with the values in your
+development auth DB:
+
+```bash
+docker compose -f infra/docker-compose.yml exec -T db sh -c \
+  'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u"$MYSQL_USER" "$MYSQL_DATABASE"' <<'SQL'
+INSERT INTO users (id, email, display_name, is_registered)
+VALUES (1, 'taskly-local-demo@nagaoka-ct.ac.jp', 'Development User', 1);
+SQL
+```
+
 The overlay gives the API container its own route to the exact OAuth issuer on
 the shared network and mounts the public CA certificate for TLS verification.
 Your workstation resolves that same issuer from `/etc/hosts`. Use the same
