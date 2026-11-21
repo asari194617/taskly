@@ -14,13 +14,14 @@ permissions:
 jobs:
   reconcile:
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.ref_protected }}
-    runs-on: [self-hosted, taskly-prod]
+    runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 15
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
       PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_HOST_KEY: ${{ secrets.PROD_SSH_HOST_KEY }}
       PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
       PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
       PROD_WORKDIR: ${{ secrets.PROD_WORKDIR }}

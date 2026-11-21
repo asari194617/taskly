@@ -8,13 +8,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  actions: read
   contents: read
 
 jobs:
-  select-runner:
-    uses: ./.github/workflows/select-runner.yml
-
   test-batches:
     runs-on: ubuntu-latest
     steps:
@@ -44,10 +40,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "26.13.1"
-      - name: Test runner selection
-        run: node --test .github/scripts/runner-selection.test.mjs
-      - name: Test runner trust boundaries
-        run: .github/scripts/test-runner-boundaries.sh
+      - name: Test runner and production boundaries
+        run: node --test .github/scripts/production-boundaries.test.mjs
       - name: Test production environment deployment
         run: .github/scripts/test-prod-env-deploy.sh
       - name: Test interrupted production deployment guard
@@ -87,12 +81,10 @@ jobs:
           echo "Changed files: ${files[*]}"
           echo "Image matrix: $matrix"
   build-images:
-    needs: [select-runner, plan]
+    needs: plan
     if: needs.plan.outputs.count != '0'
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.label) }}
+    runs-on: ubuntu-latest
     strategy:
-      # Image builders share host disk with Go and browser jobs.
-      max-parallel: 1
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:

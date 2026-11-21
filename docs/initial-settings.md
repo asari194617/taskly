@@ -27,11 +27,14 @@
 
 ワークフロー: `.github/workflows/deploy-prod.yml`
 
-必要な GitHub Secrets:
+SSH を使う本番ジョブには、GitHub の `production` environment に以下の
+Secrets を設定します。environment のデプロイ許可は `main` ブランチに限定し、
+1分の待機時間と管理者によるバイパスの禁止を設定します。
 
-- `PROD_HOST`: 本番ホスト名または IP
+- `PROD_HOST`: GitHub-hosted runner から到達できる本番 SSH ホスト名または IP
 - `PROD_USER`: Docker とユーザー crontab を操作できる SSH ユーザー
-- `PROD_SSH_KEY`: OpenSSH 形式の秘密鍵
+- `PROD_SSH_KEY`: デプロイ用の OpenSSH 形式の秘密鍵
+- `PROD_SSH_HOST_KEY`: 本番 SSH サーバーの Ed25519 ホスト公開鍵（`ssh-ed25519 <base64>` の1行、コメント省略）
 - `PROD_SSH_PASSPHRASE`: 鍵にパスフレーズがある場合のみ
 - `PROD_SSH_PORT`: 省略時は `22`
 - `PROD_WORKDIR`: サーバー上の絶対パス
@@ -48,16 +51,15 @@
 に一致すると起動します。対象は API、MCP、メール作成サービス、バッチ、インフラ、
 Atlas 設定、デプロイ用のスクリプトとワークフローです。
 
-手動実行も可能で、`full_build=true` が既定です。イメージの build/release は
-共通の `select-runner` が選ぶ runner を使います。選択ジョブ自体と `plan` は常に GitHub-hosted で実行し、
-15分以内に成功した heartbeat がある primary、secondary、`ubuntu-latest` の順に選びます。
-手動の `runner_override` またはリポジトリ変数 `CI_RUNNER` で明示できます。
-`CI_PRIMARY_ONLY=true` はこれらに優先し、選択対象の重いジョブを primary に固定します。
-Lint、MCP・email-compose のチェック、カバレッジ、バッチ単体テスト、実行計画・結果集約、
-通知などの軽いジョブは両変数によらず `ubuntu-latest` を使います。
-現在の変数は `gh variable list --repo asari194617/taskly` で確認できます。
-構成・障害時の切り替えは [runner pool 手順](../infra/actions-runner/README.md)を参照してください。
-本番反映は `taskly-prod` 専用runnerで実行します。
+保護された `main` から手動実行もでき、`full_build=true` が既定です。イメージの
+ビルド・公開、SSH デプロイ、稼働 SHA の照合、リリース復旧、Nginx メンテナンスは
+GitHub-hosted の `ubuntu-latest` で実行します。MCP クライアントの配布用バイナリは
+GitHub-hosted の Linux、Windows、macOS でビルドします。
+
+SSH は environment に登録したホスト鍵と照合します。鍵を更新する場合は、信頼済みの
+管理経路から本番ホストの `/etc/ssh/ssh_host_ed25519_key.pub` を確認し、先頭2フィールドを
+`PROD_SSH_HOST_KEY` に登録します。更新後は `main` で
+`production-nginx-maintenance` の `inspect` を実行して接続を確認します。
 
 パス条件には拡張子の除外がないため、上記ディレクトリ内の README 変更も本番デプロイを起動します。
 Web は Cloudflare Pages で別途配信し、この Compose ワークフローではビルドしません。

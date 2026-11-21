@@ -14,7 +14,7 @@ Taskly は授業と課題を管理するサービスです。
 | [`apps/email-compose/`](apps/email-compose/) | 通知や認証メールを生成する Node.js 製の gRPC サービス |
 | [`apps/docs/openapi/`](apps/docs/openapi/) | OpenAPI 定義と API リファレンス |
 | [`batches/`](batches/) | 通知、日直、モデレーション、DB バックアップを行う Go ジョブ |
-| [`infra/`](infra/) | Docker Compose 構成、Airflow の DAG と実行環境、監視、CI ランナー、運用スクリプト |
+| [`infra/`](infra/) | Docker Compose 構成、Airflow の DAG と実行環境、監視、運用スクリプト |
 | [`cloudflare-email-workers/`](cloudflare-email-workers/) | [`wrangler.toml`](wrangler.toml) で設定する受信メール転送 Worker |
 | [`docs/`](docs/) | 開発ガイド、システム構成、運用手順 |
 | [`.github/workflows/`](.github/workflows/) | CI、リリース、デプロイ、定期実行ワークフロー |
@@ -133,7 +133,7 @@ Web の[ブラウザテスト](apps/web/tests/browser/README.md)、[実 API を�
 
 対象パスに変更がある PR が `main` にマージされると、[`deploy-prod.yml`](.github/workflows/deploy-prod.yml) が起動します。コミット SHA をタグとするイメージをリリースし、アプリケーションのスキーマを直前に確定した本番の基準状態と照合してから、リポジトリを同期して Docker Compose でサービスを更新します。スキーマ変更は別途レビューして保守作業を行います。Web クライアントは Cloudflare Pages が個別にデプロイします。
 
-4 つすべてのサービスイメージにリリースの SHA タグを付けます。実行中の Airflow コンテナを再作成するのはイメージや Compose 設定が変わったとき、またはサービスが存在しないときです。このため Airflow の稼働中の SHA は API、MCP、email-compose の SHA と異なる場合があります。`apps/server`、`apps/mcp`、`apps/email-compose`、`batches`、`infra` 配下は README だけの変更もデプロイ対象です。[デプロイ手順](docs/initial-settings.md)と[ランナープールの運用ガイド](infra/actions-runner/README.md)を参照してください。
+4 つすべてのサービスイメージにリリースの SHA タグを付けます。実行中の Airflow コンテナを再作成するのはイメージや Compose 設定が変わったとき、またはサービスが存在しないときです。このため Airflow の稼働中の SHA は API、MCP、email-compose の SHA と異なる場合があります。`apps/server`、`apps/mcp`、`apps/email-compose`、`batches`、`infra` 配下は README だけの変更もデプロイ対象です。GitHub-hosted runner と本番 SSH の設定は[デプロイ手順](docs/initial-settings.md)を参照してください。
 
 ## ソースコードの公開とライセンス
 

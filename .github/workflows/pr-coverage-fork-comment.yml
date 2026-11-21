@@ -10,7 +10,9 @@ permissions:
 
 jobs:
   comment:
-    if: github.event.workflow_run.event == 'pull_request'
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name != github.repository
     permissions:
       actions: read
       pull-requests: write
@@ -44,8 +46,8 @@ jobs:
               return;
             }
             if (metadata.repository === `${owner}/${repo}`) return;
-            if (run.head_repository?.full_name !== metadata.repository) {
-              core.warning('Artifact repository does not match the triggering workflow run');
+            if (run.head_repository?.full_name !== metadata.repository || run.head_sha !== metadata.sha) {
+              core.warning('Artifact repository or commit does not match the triggering workflow run');
               return;
             }
             if (run.pull_requests.length && !run.pull_requests.some(pr => pr.number === metadata.number)) {
@@ -54,7 +56,7 @@ jobs:
             }
             const issue_number = metadata.number;
             const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue_number });
-            if (pr.head.sha !== metadata.sha || pr.head.repo?.full_name !== metadata.repository ||
+            if (pr.state !== 'open' || pr.head.sha !== metadata.sha || pr.head.repo?.full_name !== metadata.repository ||
                 pr.head.ref !== run.head_branch) {
               core.info('PR head changed or metadata does not match; skipping this coverage comment.');
               return;

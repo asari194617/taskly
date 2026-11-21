@@ -15,7 +15,12 @@ permissions:
 
 jobs:
   failed-deploy:
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'failure' }}
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
+      github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     steps:
       - name: Notify Discord
@@ -33,33 +38,25 @@ jobs:
   release-drift:
     if: ${{ github.ref == 'refs/heads/main' && github.ref_protected && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     # This job receives the production SSH key, even though it only reads state.
-    runs-on: [self-hosted, taskly-prod]
+    runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
       DISCORD_WEBHOOK_URL: ${{ secrets.WEEKLY_DISCORD_WEBHOOK_URL }}
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
       PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_HOST_KEY: ${{ secrets.PROD_SSH_HOST_KEY }}
       PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
       PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT || '22' }}
     steps:
-      - name: Install GitHub CLI when absent on self-hosted runner
-        run: |
-          set -euo pipefail
-          if command -v gh >/dev/null 2>&1; then
-            gh --version
-            exit 0
-          fi
-          # The primary pool is Linux/x64; install without sudo or image changes.
-          install_dir="$RUNNER_TEMP/taskly-gh"
-          mkdir -p "$install_dir"
-          curl --fail --silent --show-error --location --retry 3 \
-            https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz \
-            --output "$install_dir/gh.tar.gz"
-          echo "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386  $install_dir/gh.tar.gz" | sha256sum --check -
-          tar -xzf "$install_dir/gh.tar.gz" -C "$install_dir"
-          echo "$install_dir/gh_2.102.0_linux_amd64/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Prepare production SSH
+        timeout-minutes: 2
+        run: .github/scripts/prepare-prod-ssh.sh
       - name: Compare latest release with running API image
         run: |
           set -euo pipefail
@@ -88,19 +85,6 @@ jobs:
           expected_sha=$(jq -r '.head_sha' <<<"$latest")
           run_url=$(jq -r '.html_url' <<<"$latest")
 
-          install -m 700 -d ~/.ssh
-          printf '%s' "$PROD_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p "$PROD_SSH_PORT" "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          eval "$(ssh-agent -s)"
-          if [[ -n "${PROD_SSH_PASSPHRASE:-}" ]]; then
-            printf '#!/bin/sh\nprintf "%%s\\n" "$PROD_SSH_PASSPHRASE"\n' > /tmp/taskly-ssh-askpass.sh
-            chmod 700 /tmp/taskly-ssh-askpass.sh
-            export SSH_ASKPASS=/tmp/taskly-ssh-askpass.sh SSH_ASKPASS_REQUIRE=force DISPLAY=:0
-            setsid -w ssh-add ~/.ssh/id_rsa </dev/null
-          else
-            ssh-add ~/.ssh/id_rsa
-          fi
           image=$(ssh -o BatchMode=yes -p "$PROD_SSH_PORT" "$PROD_USER@$PROD_HOST" \
             'docker ps --filter label=com.docker.compose.service=server --format "{{.Image}}"' | head -n 1)
           deployed_sha=${image##*:}

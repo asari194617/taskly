@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 
@@ -11,12 +11,16 @@ function job(workflow, name) {
 }
 
 function enabled(block, github, results = {}) {
-  const expression = block.match(/^    if: (.+)$/m)?.[1]
+  const condition = block.match(/^    if: (.+)$/m)?.[1];
+  const source = condition === '>-'
+    ? block.match(/^    if: >-\n((?: {6}[^\n]+\n)+)/m)?.[1]
+    : condition;
+  assert.ok(source, 'job has an explicit condition');
+  const expression = source.trim().replace(/\s+/g, ' ')
     .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
     .replace(/needs\.([\w-]+)/g, 'needs["$1"]')
     // GitHub expression string equality is case-insensitive.
     .replace(/github\.ref == '([^']+)'/g, 'github.ref.toLowerCase() === "$1".toLowerCase()');
-  assert.ok(expression, 'job has an explicit condition');
   return runInNewContext(expression, {
     github,
     needs: Object.fromEntries(Object.entries(results).map(([name, result]) => [name, { result }])),
@@ -25,48 +29,21 @@ function enabled(block, github, results = {}) {
   });
 }
 
-test('lightweight jobs use hosted runners without waiting for pool selection', () => {
-  const placements = {
-    lint: ['biome', 'go-vet', 'ruff'],
-    mcp: ['build'],
-    'email-compose': ['build'],
-    'pr-coverage': ['metadata', 'go', 'web', 'mcp', 'comment'],
-    'pr-coverage-fork-comment': ['comment'],
-    'weekly-discord': ['report'],
-    'deploy-prod-watch': ['failed-deploy'],
-    'compose-build': ['test-batches', 'plan', 'build'],
-  };
-  for (const [workflow, names] of Object.entries(placements)) {
-    for (const name of names) {
-      const block = job(workflow, name);
-      assert.match(block, /^    runs-on: ubuntu-latest$/m, `${workflow}/${name}`);
-      assert.doesNotMatch(block, /needs.*select-runner|CI_PRIMARY_ONLY|CI_RUNNER/, `${workflow}/${name}`);
+test('workflow jobs select only GitHub-hosted runners', () => {
+  const directory = new URL('../workflows/', import.meta.url);
+  const workflows = readdirSync(directory).filter(name => /\.ya?ml$/.test(name));
+  assert.ok(workflows.length > 0);
+  for (const name of workflows) {
+    const source = readFileSync(new URL(name, directory), 'utf8');
+    const jobs = source.split(/^jobs:\s*$/m)[1];
+    assert.ok(jobs, name);
+    for (const block of jobs.trimEnd().split(/(?=^  [a-z][\w-]*:\s*$)/m).filter(block => block.trim())) {
+      assert.match(block, /^    runs-on: (?:ubuntu|windows|macos)-latest$/m, `${name}/${block.trim().split(':')[0]}`);
     }
   }
 });
 
-test('heavy jobs retain pool selection and production planning forwards its selection', () => {
-  for (const [workflow, names] of [
-    ['api', ['build', 'empty-database']],
-    ['web', ['build-and-test']],
-    ['e2e', ['web-api-db']],
-    ['compose-build', ['build-images']],
-  ]) {
-    for (const name of names) {
-      assert.match(job(workflow, name), /^    runs-on: \$\{\{ fromJSON\(needs\.select-runner\.outputs\.label\) \}\}$/m);
-    }
-  }
-  const plan = job('deploy-prod', 'plan');
-  assert.match(plan, /^    runs-on: ubuntu-latest$/m);
-  // Preserve the protected-main gate and runner override for image builds.
-  assert.match(plan, /^    needs: select-runner$/m);
-  assert.match(plan, /^      runner: \$\{\{ needs\.select-runner\.outputs\.label \}\}$/m);
-  for (const name of ['publish-images', 'release-images']) {
-    assert.match(job('deploy-prod', name), /^    runs-on: \$\{\{ fromJSON\(needs\.plan\.outputs\.runner\) \}\}$/m);
-  }
-});
-
-test('hosted image result aggregation runs even if a build or selection fails', () => {
+test('hosted image result aggregation runs even if a build fails', () => {
   const block = job('compose-build', 'build');
   assert.match(block, /^    needs: \[plan, build-images, test-batches\]$/m);
   assert.equal(enabled(block, {}, { plan: 'success', 'build-images': 'failure', 'test-batches': 'success' }), true);
@@ -76,11 +53,11 @@ test('hosted image result aggregation runs even if a build or selection fails', 
 });
 
 for (const [workflow, name, results] of [
-  ['deploy-prod', 'select-runner', {}],
+  ['deploy-prod', 'plan', {}],
   ['deploy-prod', 'release-images', { plan: 'success', 'publish-images': 'success' }],
   ['deploy-prod', 'deploy', { plan: 'success', 'release-images': 'success' }],
   ['nginx-maintenance', 'maintain', {}],
-  ['update-primary-runners', 'install', {}],
+  ['deploy-api-docs', 'publish', {}],
 ]) {
   test(`${workflow}/${name} accepts main and rejects other dispatch refs`, () => {
     const block = job(workflow, name);
@@ -109,11 +86,13 @@ test('failed/skipped image planning cannot publish or deploy', () => {
   }), true, 'a successful plan with no changed images still tags the release');
 });
 
-test('production SSH jobs stay on the production runner and environment', () => {
+test('production SSH jobs use the production environment and pinned host identity', () => {
   for (const [workflow, name] of [['deploy-prod', 'deploy'], ['deploy-prod-watch', 'release-drift'], ['nginx-maintenance', 'maintain'], ['reconcile-code-only', 'reconcile']]) {
     const block = job(workflow, name);
-    assert.match(block, /^    runs-on: \[self-hosted, taskly-prod\]$/m);
     assert.match(block, /^    environment: production$/m);
+    assert.match(block, /secrets\.PROD_SSH_HOST_KEY/);
+    assert.match(block, /prepare-prod-ssh\.sh/);
+    assert.doesNotMatch(block, /ssh-keyscan/);
   }
 });
 
@@ -128,14 +107,21 @@ test('release drift checks accept only scheduled or manual main runs', () => {
   }
 });
 
-test('failed deployment notifications ignore non-main and successful runs', () => {
+test('failed deployment notifications accept only failed main pushes or manual runs in this repository', () => {
   const block = job('deploy-prod-watch', 'failed-deploy');
-  for (const head_branch of ['main', 'feature']) {
-    for (const conclusion of ['failure', 'success', 'skipped']) {
-      assert.equal(enabled(block, {
-        event_name: 'workflow_run', event: { workflow_run: { head_branch, conclusion } },
-      }), head_branch === 'main' && conclusion === 'failure');
-    }
+  const repository = 'owner/taskly';
+  const run = { event: 'push', head_branch: 'main', conclusion: 'failure', head_repository: { full_name: repository } };
+  for (const [overrides, expected] of [
+    [{}, true],
+    [{ event: 'workflow_dispatch' }, true],
+    [{ event: 'pull_request' }, false],
+    [{ head_repository: { full_name: 'contributor/taskly' } }, false],
+    [{ head_branch: 'feature' }, false],
+    [{ conclusion: 'success' }, false],
+  ]) {
+    assert.equal(enabled(block, {
+      repository, event_name: 'workflow_run', event: { workflow_run: { ...run, ...overrides } },
+    }), expected);
   }
 });
 
