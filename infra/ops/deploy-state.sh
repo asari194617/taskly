@@ -2,17 +2,24 @@
 # Run from the release checkout over SSH before any host write, and after health checks.
 set -euo pipefail
 
-action=${1:?schema-baseline, begin or complete required}
+action=${1:?schema-baseline, recovery-baseline, begin or complete required}
 workdir=${2:?production workdir required}
-release=${3:?release SHA required}
+release=${3-}
 expected_baseline=${4-}
 expected_digest=${5-}
-[[ $# -le 5 ]] || { echo 'Unexpected deployment guard arguments' >&2; exit 1; }
-[[ $release =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA' >&2; exit 1; }
+airflow_changed=${6-}
+if [[ $action == recovery-baseline ]]; then
+  [[ $# == 2 ]] || { echo 'Unexpected recovery baseline arguments' >&2; exit 1; }
+else
+  [[ $# -le 6 && $release =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid deployment guard arguments' >&2; exit 1; }
+fi
 if [[ -n $expected_baseline || -n $expected_digest ]]; then
   [[ ( $action == begin || $action == complete ) && $expected_baseline =~ ^[0-9a-f]{40}$ && $expected_digest =~ ^[0-9a-f]{64}$ ]] || {
     echo 'Invalid expected deployment baseline' >&2; exit 1;
   }
+fi
+if [[ -n $airflow_changed ]]; then
+  [[ $action == begin && $airflow_changed =~ ^(true|false)$ ]] || { echo 'Invalid Airflow change flag' >&2; exit 1; }
 fi
 [[ -d $workdir/infra && -f $workdir/infra/.env ]] || {
   echo 'Production Compose directory or environment is missing' >&2; exit 1;
@@ -96,7 +103,7 @@ read_state() {
   [[ $(wc -c < "$state_file") -le 1024 ]] || fail 'deployment state is oversized'
   state=()
   while IFS= read -r line; do state+=("$line"); done < "$state_file"
-  [[ ${#state[@]} == 4 || ( ${#state[@]} == 5 && ${state[4]} == schema-v1 ) ]] || fail 'deployment state is malformed'
+  [[ ${#state[@]} == 4 || ( ${#state[@]} == 5 && ${state[4]} == schema-v1 ) || ( ${#state[@]} == 6 && ${state[4]} == schema-v2 && ${state[5]} =~ ^[0-9a-f]{40}$ ) ]] || fail 'deployment state is malformed'
   [[ ${state[0]} == committed || ${state[0]} == in_progress ]] || fail 'deployment state has an invalid phase'
   [[ ${state[1]} =~ ^[0-9a-f]{40}$ && ${state[2]} =~ ^[0-9a-f]{40}$ && ${state[3]} =~ ^[0-9a-f]{64}$ ]] || fail 'deployment state has invalid values'
   state_version=legacy-migrations
@@ -129,10 +136,14 @@ source_digest() {
 }
 
 write_state() {
-  local temp
+  local temp airflow=${5-}
   temp=$(mktemp "$workdir/.deploy-state.XXXXXXXX")
   chmod 600 "$temp"
-  printf '%s\n%s\n%s\n%s\nschema-v1\n' "$1" "$2" "$3" "$4" > "$temp"
+  if [[ -n $airflow ]]; then
+    printf '%s\n%s\n%s\n%s\nschema-v2\n%s\n' "$1" "$2" "$3" "$4" "$airflow" > "$temp"
+  else
+    printf '%s\n%s\n%s\n%s\nschema-v1\n' "$1" "$2" "$3" "$4" > "$temp"
+  fi
   mv -f "$temp" "$state_file"
 }
 
@@ -141,17 +152,39 @@ case "$action" in
     # This mode is streamed from the reviewed checkout before rsync. It never
     # writes a marker, invokes Atlas, or starts/recreates a container.
     read_state
-    [[ ${state[0]} == committed && ${state[1]} == "${state[2]}" && $state_version == schema-v1 && -O $state_file ]] || fail 'an owned committed schema-v1 baseline is required'
+    [[ ${state[0]} == committed && ${state[1]} == "${state[2]}" && ( $state_version == schema-v1 || $state_version == schema-v2 ) && -O $state_file ]] || fail 'an owned committed schema baseline is required'
     mode=$(stat -c %a "$state_file" 2>/dev/null || stat -f %Lp "$state_file")
     [[ $mode == 600 ]] || fail 'deployment baseline must have mode 0600'
     for service in server email-compose mcp db redis; do require_healthy_service "$service"; done
     current=$(application_sha)
+    airflow=$(airflow_sha)
     digest=$(schema_digest)
     [[ $current == "${state[1]}" && $digest == "${state[3]}" ]] || fail 'running SHA or database schema differs from the last successful deployment'
+    if [[ $state_version == schema-v2 ]]; then
+      [[ $airflow == "${state[5]}" ]] || fail 'running Airflow SHA differs from the last successful deployment'
+    fi
     source_sql=$(source_digest 'apps/server/schema.sql')
     source_atlas=$(source_digest 'atlas.hcl')
     printf '{"version":1,"target_sha":"%s","baseline_sha":"%s","database_digest":"%s","sources":{"apps/server/schema.sql":"%s","atlas.hcl":"%s"}}\n' \
       "$release" "$current" "$digest" "$source_sql" "$source_atlas"
+    ;;
+  recovery-baseline)
+    # This mode identifies the one unfinished schema-v2 release without taking
+    # user input or changing the host. The caller must independently verify the
+    # returned immutable Git revision before requesting completion.
+    read_state
+    [[ ${state[0]} == in_progress && $state_version == schema-v2 && -O $state_file ]] || fail 'an owned unfinished schema-v2 deployment is required'
+    mode=$(stat -c %a "$state_file" 2>/dev/null || stat -f %Lp "$state_file")
+    [[ $mode == 600 ]] || fail 'unfinished deployment state must have mode 0600'
+    for service in server email-compose mcp db redis airflow-webserver airflow-scheduler airflow-dag-processor; do require_healthy_service "$service"; done
+    current=$(application_sha)
+    airflow=$(airflow_sha)
+    digest=$(schema_digest)
+    [[ $current == "${state[2]}" && $airflow == "${state[5]}" && $digest == "${state[3]}" ]] || fail 'unfinished release does not match healthy running application, Airflow and schema state'
+    source_sql=$(source_digest 'apps/server/schema.sql')
+    source_atlas=$(source_digest 'atlas.hcl')
+    printf '{"version":1,"target_sha":"%s","baseline_sha":"%s","database_digest":"%s","sources":{"apps/server/schema.sql":"%s","atlas.hcl":"%s"}}\n' \
+      "${state[2]}" "${state[1]}" "$digest" "$source_sql" "$source_atlas"
     ;;
   begin)
     if [[ -e $state_file ]]; then
@@ -167,9 +200,12 @@ case "$action" in
     current=$(application_sha)
     airflow=$(airflow_sha)
     digest=$(schema_digest)
+    if [[ -e $state_file && $state_version == schema-v2 ]]; then
+      [[ $airflow == "${state[5]}" ]] || fail 'running Airflow SHA differs from the last successful deployment'
+    fi
     if [[ -n $expected_baseline ]]; then
       [[ $current == "$expected_baseline" && $digest == "$expected_digest" ]] || fail 'verified schema baseline changed before deployment'
-      [[ -e $state_file && $state_version == schema-v1 && ${state[0]} == committed ]] || fail 'verified schema baseline is no longer committed'
+      [[ -e $state_file && ( $state_version == schema-v1 || $state_version == schema-v2 ) && ${state[0]} == committed ]] || fail 'verified schema baseline is no longer committed'
       for service in server email-compose mcp db redis; do require_healthy_service "$service"; done
     fi
     if [[ -e $state_file ]]; then
@@ -179,7 +215,9 @@ case "$action" in
       fi
       [[ $current == "${state[1]}" && $recorded_digest == "${state[3]}" ]] || fail 'running SHA or database schema differs from the last successful deployment'
     fi
-    write_state in_progress "$current" "$release" "$digest"
+    desired_airflow=$airflow
+    if [[ $airflow_changed == true ]]; then desired_airflow=$release; fi
+    write_state in_progress "$current" "$release" "$digest" "$desired_airflow"
     echo "Deployment started: current=$current target=$release airflow=$airflow schema_digest=$digest"
     ;;
   complete)
@@ -188,12 +226,15 @@ case "$action" in
     current=$(application_sha)
     [[ $current == "$release" ]] || fail "running SHA $current differs from target $release"
     airflow=$(airflow_sha)
+    if [[ $state_version == schema-v2 ]]; then
+      [[ $airflow == "${state[5]}" ]] || fail "running Airflow SHA $airflow differs from target ${state[5]}"
+    fi
     digest=$(schema_digest)
     if [[ -n $expected_baseline ]]; then
-      [[ $state_version == schema-v1 && ${state[1]} == "$expected_baseline" && ${state[3]} == "$expected_digest" && $digest == "$expected_digest" ]] || fail 'code-only deployment changed its verified database schema'
+      [[ ( $state_version == schema-v1 || $state_version == schema-v2 ) && ${state[1]} == "$expected_baseline" && ${state[3]} == "$expected_digest" && $digest == "$expected_digest" ]] || fail 'code-only deployment changed its verified database schema'
     fi
-    write_state committed "$release" "$release" "$digest"
+    write_state committed "$release" "$release" "$digest" "$airflow"
     echo "Deployment complete: sha=$release airflow=$airflow schema_digest=$digest"
     ;;
-  *) echo 'Expected schema-baseline, begin or complete' >&2; exit 2 ;;
+  *) echo 'Expected schema-baseline, recovery-baseline, begin or complete' >&2; exit 2 ;;
 esac

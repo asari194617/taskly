@@ -10,7 +10,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   reconcile:
@@ -28,50 +27,81 @@ jobs:
       PROD_PUBLIC_API_HEALTH_URL: ${{ secrets.PROD_PUBLIC_API_HEALTH_URL }}
       PROD_PUBLIC_MCP_HEALTH_URL: ${{ secrets.PROD_PUBLIC_MCP_HEALTH_URL }}
       PROD_PUBLIC_AIRFLOW_HEALTH_URL: ${{ secrets.PROD_PUBLIC_AIRFLOW_HEALTH_URL }}
-      RELEASE_SHA: 1a2f63b47167ea5bed0bd147eb97e31936e4751c
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: 1a2f63b47167ea5bed0bd147eb97e31936e4751c
-          path: .reconcile-release
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify the exact failed deployment and immutable schema attestation
-        timeout-minutes: 3
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 .github/scripts/verify-reconcile-attestation.py \
-            --repo "$GITHUB_WORKSPACE/.reconcile-release" \
-            --output-dir "$RUNNER_TEMP/taskly-reconcile-proof" \
-            --github-env "$GITHUB_ENV"
       - name: Prepare bounded production SSH
         timeout-minutes: 2
         run: .github/scripts/prepare-prod-ssh.sh
+      - name: Read the one healthy unfinished deployment
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          umask 077
+          .github/scripts/run-prod-script.sh 120 recovery-baseline "$PROD_WORKDIR" \
+            < infra/ops/deploy-state.sh > "$RUNNER_TEMP/taskly-reconcile-baseline.json"
+          python3 .github/scripts/prepare-reconcile-baseline.py \
+            --baseline-file "$RUNNER_TEMP/taskly-reconcile-baseline.json" \
+            --github-env "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RECOVERY_TARGET_SHA }}
+          path: .reconcile-release
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify immutable target and unchanged schema
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify-no-ddl-release.py \
+            --repo "$GITHUB_WORKSPACE/.reconcile-release" \
+            --target-sha "$RECOVERY_TARGET_SHA" \
+            --baseline-file "$RUNNER_TEMP/taskly-reconcile-baseline.json" \
+            --output "$RUNNER_TEMP/taskly-reconcile-proof.json" \
+            --github-env "$GITHUB_ENV"
+      - name: Bind production files to the immutable target
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/.reconcile-release"
+          while read -r variable relative; do
+            test -f "$relative" && test ! -L "$relative"
+            printf '%s=%s\n' "$variable" "$(sha256sum "$relative" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          done <<'FILES'
+          RECOVERY_DEPLOY_STATE_SHA infra/ops/deploy-state.sh
+          RECOVERY_HEALTH_SHA infra/ops/verify-deploy-health.sh
+          RECOVERY_DISK_SHA infra/ops/disk-maintenance.sh
+          RECOVERY_WATCHDOG_SHA infra/ops/monitoring-watchdog.sh
+          RECOVERY_SCHEMA_SHA apps/server/schema.sql
+          RECOVERY_ATLAS_SHA atlas.hcl
+          FILES
       - name: Verify every remaining invariant and complete the exact release
         timeout-minutes: 8
         run: |
           set -euo pipefail
-          test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
+          test "$SCHEMA_TARGET_SHA" = "$RECOVERY_TARGET_SHA"
+          test "$SCHEMA_BASELINE_SHA" = "$RECOVERY_BASELINE_SHA"
+          test "$SCHEMA_DATABASE_DIGEST" = "$RECOVERY_DATABASE_DIGEST"
           {
             printf 'export PROD_PUBLIC_API_HEALTH_URL=%q\n' "$PROD_PUBLIC_API_HEALTH_URL"
             printf 'export PROD_PUBLIC_MCP_HEALTH_URL=%q\n' "$PROD_PUBLIC_MCP_HEALTH_URL"
             printf 'export PROD_PUBLIC_AIRFLOW_HEALTH_URL=%q\n' "$PROD_PUBLIC_AIRFLOW_HEALTH_URL"
             cat infra/ops/reconcile-code-only.sh
-          } | .github/scripts/run-prod-script.sh 420 "$PROD_WORKDIR" "$RELEASE_SHA" "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST"
+          } | .github/scripts/run-prod-script.sh 420 "$PROD_WORKDIR" \
+            "$RECOVERY_TARGET_SHA" "$RECOVERY_BASELINE_SHA" "$RECOVERY_DATABASE_DIGEST" \
+            "$RECOVERY_DEPLOY_STATE_SHA" "$RECOVERY_HEALTH_SHA" "$RECOVERY_DISK_SHA" \
+            "$RECOVERY_WATCHDOG_SHA" "$RECOVERY_SCHEMA_SHA" "$RECOVERY_ATLAS_SHA"
       - name: Verify committed production release
         timeout-minutes: 3
         run: |
           set -euo pipefail
           umask 077
-          .github/scripts/run-prod-script.sh 120 schema-baseline "$PROD_WORKDIR" "$RELEASE_SHA" \
+          .github/scripts/run-prod-script.sh 120 schema-baseline "$PROD_WORKDIR" "$RECOVERY_TARGET_SHA" \
             < infra/ops/deploy-state.sh > "$RUNNER_TEMP/taskly-completed-baseline.json"
           python3 .github/scripts/verify-no-ddl-release.py \
             --repo "$GITHUB_WORKSPACE/.reconcile-release" \
-            --target-sha "$RELEASE_SHA" \
+            --target-sha "$RECOVERY_TARGET_SHA" \
             --baseline-file "$RUNNER_TEMP/taskly-completed-baseline.json" \
-            --committed-digest "$SCHEMA_DATABASE_DIGEST" \
+            --committed-digest "$RECOVERY_DATABASE_DIGEST" \
             --output "$RUNNER_TEMP/taskly-completed-proof.json"

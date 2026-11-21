@@ -11,8 +11,12 @@ cp "$root/atlas.hcl" "$temp/host/atlas.hcl"
 touch "$temp/host/infra/.env"
 printf 'CREATE TABLE fixture (id bigint PRIMARY KEY);\n' > "$temp/schema"
 digest=$(sha256sum "$temp/schema" | cut -d' ' -f1)
-release=1a2f63b47167ea5bed0bd147eb97e31936e4751c
+release=2222222222222222222222222222222222222222
 baseline=1111111111111111111111111111111111111111
+hashes=()
+for relative in infra/ops/deploy-state.sh infra/ops/verify-deploy-health.sh infra/ops/disk-maintenance.sh infra/ops/monitoring-watchdog.sh apps/server/schema.sql atlas.hcl; do
+  hashes+=("$(sha256sum "$root/$relative" | cut -d' ' -f1)")
+done
 cat > "$temp/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -63,7 +67,7 @@ cat > "$temp/cron" <<EOF
 25 3 * * * cd '$temp/host/infra' && bash -o pipefail -c './ops/disk-maintenance.sh cleanup 2>&1 | logger -t taskly-disk'
 # END taskly disk maintenance
 EOF
-reset_state() { printf 'in_progress\n%s\n%s\n%s\nschema-v1\n' "$baseline" "$release" "$digest" > "$temp/host/.deploy-state"; chmod 600 "$temp/host/.deploy-state"; }
+reset_state() { printf 'in_progress\n%s\n%s\n%s\nschema-v2\n%s\n' "$baseline" "$release" "$digest" "$release" > "$temp/host/.deploy-state"; chmod 600 "$temp/host/.deploy-state"; }
 reset_state
 # Reproduce the real failure: the actual health helper invokes compose exec -T,
 # and its stdin-consuming metrics fixture steals the remaining streamed source.
@@ -72,12 +76,12 @@ line=$(grep -n '^./ops/verify-deploy-health.sh ' "$root/infra/ops/reconcile-code
  head -n "$line" "$root/infra/ops/reconcile-code-only.sh"
  /bin/sleep 0.1
  tail -n "+$((line + 1))" "$root/infra/ops/reconcile-code-only.sh"
-} | bash -s -- "$temp/host" "$release" "$baseline" "$digest"
+} | bash -s -- "$temp/host" "$release" "$baseline" "$digest" "${hashes[@]}"
 [[ $(head -1 "$temp/host/.deploy-state") == in_progress ]]
 # Identical source/fixtures must reach the true guarded completion when isolated.
-bash "$root/.github/scripts/run-prod-script.sh" 30 "$temp/host" "$release" "$baseline" "$digest" < "$root/infra/ops/reconcile-code-only.sh"
+bash "$root/.github/scripts/run-prod-script.sh" 30 "$temp/host" "$release" "$baseline" "$digest" "${hashes[@]}" < "$root/infra/ops/reconcile-code-only.sh"
 [[ $(head -1 "$temp/host/.deploy-state") == committed ]]
-for issue in committed bad-mode missing-state wrong-target paused unhealthy cron schema-drift changed-helper symlink-parent; do
+for issue in committed bad-mode missing-state wrong-target wrong-airflow paused unhealthy cron schema-drift changed-helper wrong-hash symlink-parent; do
  reset_state
  target=$release
  case "$issue" in
@@ -85,20 +89,23 @@ for issue in committed bad-mode missing-state wrong-target paused unhealthy cron
   bad-mode) chmod 644 "$temp/host/.deploy-state" ;;
   missing-state) rm "$temp/host/.deploy-state" ;;
   wrong-target) target=$baseline ;;
+  wrong-airflow) sed "6s/$release/$baseline/" "$temp/host/.deploy-state" > "$temp/next"; cp "$temp/next" "$temp/host/.deploy-state" ;;
   paused) export MOCK_PAUSED=True ;;
   unhealthy) export MOCK_HEALTH=unhealthy ;;
   cron) cp "$temp/cron" "$temp/cron.saved"; printf '\n' > "$temp/cron" ;;
   schema-drift) printf 'CREATE TABLE drift (id int);\n' >> "$temp/schema" ;;
   changed-helper) printf '\n# changed\n' >> "$temp/host/infra/ops/deploy-state.sh" ;;
+  wrong-hash) hashes[0]=$(printf '%064d' 0) ;;
   symlink-parent) mv "$temp/host/infra/ops" "$temp/ops"; ln -s "$temp/ops" "$temp/host/infra/ops" ;;
  esac
- if bash "$root/infra/ops/reconcile-code-only.sh" "$temp/host" "$target" "$baseline" "$digest" </dev/null > "$temp/output" 2>&1; then echo "Unsafe recovery accepted: $issue" >&2; exit 1; fi
+ if bash "$root/infra/ops/reconcile-code-only.sh" "$temp/host" "$target" "$baseline" "$digest" "${hashes[@]}" </dev/null > "$temp/output" 2>&1; then echo "Unsafe recovery accepted: $issue" >&2; exit 1; fi
  if [[ -e $temp/host/.deploy-state && $issue != committed ]]; then [[ $(head -1 "$temp/host/.deploy-state") == in_progress ]]; fi
  unset MOCK_PAUSED MOCK_HEALTH
  case "$issue" in
   cron) mv "$temp/cron.saved" "$temp/cron" ;;
   schema-drift) sed '$d' "$temp/schema" > "$temp/next"; mv "$temp/next" "$temp/schema" ;;
   changed-helper) cp "$root/infra/ops/deploy-state.sh" "$temp/host/infra/ops/" ;;
+  wrong-hash) hashes[0]=$(sha256sum "$root/infra/ops/deploy-state.sh" | cut -d' ' -f1) ;;
   symlink-parent) rm "$temp/host/infra/ops"; mv "$temp/ops" "$temp/host/infra/ops" ;;
  esac
 done

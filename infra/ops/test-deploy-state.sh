@@ -94,7 +94,7 @@ sed '$d' "$temp/schema" > "$temp/schema.tmp"
 mv "$temp/schema.tmp" "$temp/schema"
 bash "$guard" begin "$temp/host" "$old"
 
-# Read-only baseline attestation requires a previously committed schema-v1 state.
+# Read-only baseline attestation keeps compatibility with a previously committed schema-v1 state.
 digest=$(sed -E 's/AUTO_INCREMENT=[0-9]+ //g' "$temp/schema" | sha256sum | cut -d' ' -f1)
 printf 'committed\n%s\n%s\n%s\nschema-v1\n' "$new" "$new" "$digest" > "$temp/host/.deploy-state"
 chmod 600 "$temp/host/.deploy-state"
@@ -111,6 +111,46 @@ assert baseline['database_digest']==sys.argv[4]
 root=pathlib.Path(sys.argv[5])
 assert baseline['sources']=={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in ['apps/server/schema.sql','atlas.hcl']}
 PY
+
+# schema-v2 binds the expected Airflow image and remains a valid baseline for
+# subsequent releases.
+printf 'committed\n%s\n%s\n%s\nschema-v2\n%s\n' "$new" "$new" "$digest" "$old" > "$temp/host/.deploy-state"
+chmod 600 "$temp/host/.deploy-state"
+bash "$guard" schema-baseline "$temp/host" "$old" > "$temp/baseline-v2.json"
+printf '%s\n' "$new" > "$temp/airflow-sha"
+if bash "$guard" schema-baseline "$temp/host" "$old" > "$temp/output" 2>&1; then
+  echo 'A schema-v2 baseline accepted the wrong Airflow release' >&2; exit 1
+fi
+if bash "$guard" begin "$temp/host" "$old" "$new" "$digest" false > "$temp/output" 2>&1; then
+  echo 'A new deployment accepted Airflow drift after attestation' >&2; exit 1
+fi
+printf '%s\n' "$old" > "$temp/airflow-sha"
+bash "$guard" begin "$temp/host" "$old" "$new" "$digest" true
+[[ $(sed -n '5p' "$temp/host/.deploy-state") == schema-v2 ]]
+[[ $(sed -n '6p' "$temp/host/.deploy-state") == "$old" ]]
+
+# Recovery selects the only owned in-progress target from the host, without a
+# release input, and is strictly read-only.
+printf 'in_progress\n%s\n%s\n%s\nschema-v2\n%s\n' "$old" "$new" "$digest" "$old" > "$temp/host/.deploy-state"
+chmod 600 "$temp/host/.deploy-state"
+cp "$temp/host/.deploy-state" "$temp/recovery-state"
+bash "$guard" recovery-baseline "$temp/host" > "$temp/recovery.json"
+cmp "$temp/host/.deploy-state" "$temp/recovery-state"
+python3 - "$temp/recovery.json" "$old" "$new" <<'PY'
+import json,pathlib,sys
+proof=json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert proof['baseline_sha']==sys.argv[2]
+assert proof['target_sha']==sys.argv[3]
+PY
+sed "6s/$old/$new/" "$temp/recovery-state" > "$temp/host/.deploy-state"
+if bash "$guard" recovery-baseline "$temp/host" > "$temp/output" 2>&1; then
+  echo 'Recovery accepted an unexpected Airflow release' >&2; exit 1
+fi
+
+# Continue legacy/schema-v1 compatibility rejection tests from the original
+# committed fixture.
+cp "$temp/expected-state" "$temp/host/.deploy-state"
+chmod 600 "$temp/host/.deploy-state"
 
 for issue in missing legacy in-progress bad-mode wrong-target missing-source symlink-source-parent unhealthy schema-drift; do
   cp "$temp/expected-state" "$temp/host/.deploy-state"

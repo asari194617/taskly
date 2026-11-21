@@ -270,7 +270,7 @@ jobs:
         run: |
           test "$SCHEMA_TARGET_SHA" = "$RELEASE_SHA"
           .github/scripts/run-prod-script.sh 120 begin "$PROD_WORKDIR" "$RELEASE_SHA" \
-            "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" < infra/ops/deploy-state.sh
+            "$SCHEMA_BASELINE_SHA" "$SCHEMA_DATABASE_DIGEST" "$AIRFLOW_CHANGED" < infra/ops/deploy-state.sh
       - name: Rsync repository to server
         timeout-minutes: 5
         run: |

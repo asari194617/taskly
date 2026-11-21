@@ -14,7 +14,8 @@ the existing deployment SSH connection. The installed older helper does not
 need to support this mode. This read-only operation requires:
 
 - An owned, non-symlink, mode0600 `.deploy-state` marked `committed` with
-  `schema-v1`; both recorded release SHAs must match.
+  `schema-v1` or `schema-v2`; both recorded release SHAs must match. Version 2
+  also binds the healthy Airflow SHA that must remain active.
 - Healthy existing core applications, MySQL and Redis; the running application
   SHA and normalized live database schema digest must match that committed state.
 - Regular `apps/server/schema.sql` and `atlas.hcl` files on the host, with no
@@ -40,10 +41,12 @@ rejected rather than repaired. The proof uses the actual immutable objects and
 their ancestry in a complete checkout; persistent runner metadata cannot
 substitute another tree for a release SHA.
 
-The expected baseline SHA and database digest are passed to `begin` and
-`complete`. A change between attestation and deployment stops `begin`; an
-unexpected schema change during the code-only release stops `complete` and
-retains `in_progress` for operator review. Follow the existing
+The expected baseline SHA, database digest and whether Airflow is changing are
+passed to `begin`. New markers record the exact expected Airflow SHA alongside
+the application target. A change between attestation and deployment stops
+`begin`; an unexpected application image, Airflow image or schema change during
+the code-only release stops `complete` and retains `in_progress` for operator
+review. Follow the existing
 [recovery procedure](recovery-drill.md) rather than deleting that record.
 
 Application containers use `docker compose up --no-deps`; the existing database
