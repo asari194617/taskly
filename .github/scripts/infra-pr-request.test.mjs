@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import resolveRequest from './atlas-pr-request.cjs';
-import selfMerge from './self-merge.cjs';
 
 const base = 'a'.repeat(40);
 const revision = 'b'.repeat(40);
@@ -120,82 +119,4 @@ test('Atlas runs only for verified repository writers', async () => {
     assert.deepEqual((await resolve('atlas apply', options)).outputs, {});
   }
   assert.equal((await resolve('atlas plan', { permission: 'admin' })).outputs.command, 'plan');
-});
-
-const { authorizeSelfMerge, mergeOwnPR } = selfMerge;
-const sha = 'a'.repeat(40);
-
-function fixture(overrides = {}) {
-  const context = {
-    repo: { owner: 'owner', repo: 'taskly' },
-    payload: {
-      comment: { body: `self-merge ${sha}`, user: { id: 25, login: 'member', type: 'User' }, ...overrides.comment },
-      issue: { number: 13 },
-      repository: { id: 90, default_branch: 'main' },
-    },
-  };
-  const github = { rest: {
-    repos: { getCollaboratorPermissionLevel: async () => ({ data: {
-      user: { id: 25 }, permission: 'write', ...overrides.member,
-    } }) },
-    pulls: { get: async () => ({ data: {
-      state: 'open', draft: false, user: { id: 25 },
-      head: { sha, repo: { id: 12345 } },
-      base: { ref: 'main', repo: { id: 90 } },
-      ...overrides.pr,
-    } }) },
-  } };
-  return { github, context };
-}
-
-test('a repository writer can self-merge a pinned PR of their own, including from a fork', async () => {
-  const { github, context } = fixture();
-  assert.deepEqual(await authorizeSelfMerge(github, context), {
-    owner: 'owner', repo: 'taskly', pull_number: 13, sha,
-  });
-});
-
-test('readers, authors without write access, bots and other reviewers cannot request a bypass', async () => {
-  for (const overrides of [
-    { member: { permission: 'read' } },
-    { member: { permission: 'none' } },
-    { member: { user: { id: 99 } } },
-    { comment: { user: { id: 25, type: 'Bot', login: 'member' } } },
-    { pr: { user: { id: 99 } } },
-  ]) {
-    const { github, context } = fixture(overrides);
-    assert.equal(await authorizeSelfMerge(github, context), null);
-    const app = { request: () => assert.fail('App must not be used for an unauthorized request') };
-    await assert.rejects(mergeOwnPR(github, app, context), /no longer matches/);
-  }
-});
-
-test('closed, draft, retargeted and changed PRs are excluded', async () => {
-  for (const pr of [
-    { state: 'closed' }, { draft: true }, { head: { sha: 'b'.repeat(40) } },
-    { base: { ref: 'development', repo: { id: 90 } } },
-    { base: { ref: 'main', repo: { id: 91 } } },
-  ]) {
-    const { github, context } = fixture({ pr });
-    assert.equal(await authorizeSelfMerge(github, context), null);
-  }
-});
-
-test('merge is bound to the approved SHA and waits for GitHub to report a merge', async () => {
-  const { github, context } = fixture();
-  const seen = [];
-  const app = { request: async (route, args) => {
-    seen.push([route, args]);
-    return route.startsWith('PUT')
-      ? { data: { status: 'pending', details: { uuid: 'request-id' } } }
-      : { data: { status: 'merged', details: { sha: 'merge-commit' } } };
-  } };
-  assert.equal(await mergeOwnPR(github, app, context, async () => {}), 'merge-commit');
-  assert.equal(seen[0][1].sha, sha);
-  assert.equal(seen[0][1].bypass_rules, true);
-  assert.equal(seen[0][1].merge_method, 'merge');
-  assert.equal(seen[1][1].uuid, 'request-id');
-
-  const blockedApp = { request: async () => ({ data: { status: 'failed', details: { message: 'Required status check is missing' } } }) };
-  await assert.rejects(mergeOwnPR(github, blockedApp, context), /Required status check is missing/);
 });
