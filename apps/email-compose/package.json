@@ -25,7 +25,7 @@
     "i18next-resources-to-backend": "^1.2.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-email": "6.11.14",
+    "react-email": "6.11.16",
     "react-i18next": "18.0.2",
     "redis": "^6.3.1",
     "tslog": "^5.5.0",
