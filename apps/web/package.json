@@ -52,7 +52,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "^5.1.0",
-    "autoprefixer": "10.6.2",
+    "autoprefixer": "10.7.0",
     "cf": "1.0.0-rc.2",
     "postcss": "8.5.33",
     "storybook": "10.6.7",
