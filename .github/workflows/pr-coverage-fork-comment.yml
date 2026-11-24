@@ -63,16 +63,16 @@ jobs:
             }
             const marker = '<!-- taskly-pr-coverage -->';
             const rows = [
-              ['API core (Go statements)', 'server'],
-              ['Guidance bridge (Go statements, minimum 80%)', 'guidance-bridge'],
-              ['Guidance MySQL integration (Go statements, minimum 80%)', 'guidance-bridge-integration'],
-              ['Notification core (Go statements)', 'batches'],
-              ['Email core (Go statements)', 'batch-email'],
-              ['Web push core (Go statements)', 'batch-web-push'],
-              ['Web logic (Vitest lines)', 'web'],
-              ['MCP runtime (Node lines)', 'mcp'],
+              ['API の中核（Go ステートメント）', 'server'],
+              ['企業ガイダンス連携（Go ステートメント、最低 80%）', 'guidance-bridge'],
+              ['企業ガイダンスの MySQL 統合テスト（Go ステートメント、最低 80%）', 'guidance-bridge-integration'],
+              ['通知の中核（Go ステートメント）', 'batches'],
+              ['メールの中核（Go ステートメント）', 'batch-email'],
+              ['Web Push の中核（Go ステートメント）', 'batch-web-push'],
+              ['Web のロジック（Vitest の行カバレッジ）', 'web'],
+              ['MCP ランタイム（Node の行カバレッジ）', 'mcp'],
             ].map(([label, id]) => {
-              let value = 'Unavailable (test or setup failed)';
+              let value = '計測結果なし（テストまたはセットアップに失敗）';
               try {
                 const result = JSON.parse(fs.readFileSync(`coverage-results/${id}.json`, 'utf8'));
                 if (typeof result.percent === 'number' && Number.isFinite(result.percent) &&
@@ -84,10 +84,10 @@ jobs:
               }
               return `| ${label} | ${value} |`;
             });
-            const body = [marker, '### Test coverage', '',
-              '| Test group | Coverage |', '| --- | ---: |', ...rows, '',
-              `Results for ${metadata.sha.slice(0, 7)}. The core scope in \`docs/testing/coverage.md\` has a 75% minimum. Go reports statement coverage; Web and MCP report line coverage.`,
-              `[Workflow run](${run.html_url})`,
+            const body = [marker, '### テストカバレッジ', '',
+              '| テストグループ | カバレッジ |', '| --- | ---: |', ...rows, '',
+              `コミット ${metadata.sha.slice(0, 7)} の計測結果です。\`docs/testing/coverage.md\` に記載の中核ロジックには最低 75% のカバレッジが必要です。Go はステートメントカバレッジ、Web と MCP は行カバレッジを表示しています。`,
+              `[ワークフローの実行結果](${run.html_url})`,
             ].join('\n');
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number, per_page: 100,
